@@ -16,7 +16,7 @@ import sqlite3
 import sys
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from contextlib import closing, contextmanager, suppress
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -801,6 +801,19 @@ class BotDataViewer:
                 )
             conn.commit()
             return cursor.lastrowid
+
+    @contextmanager
+    def _db_connection(self) -> Iterator[sqlite3.Connection]:
+        """Yield ``_get_db_connection()`` and close it on exit.
+
+        Unlike ``_with_db_connection``, this opens through ``_get_db_connection``,
+        so it logs connect failures and honors tests that patch that method.
+        """
+        conn = self._get_db_connection()
+        try:
+            yield conn
+        finally:
+            conn.close()
 
     @contextmanager
     def _with_db_connection(self):
@@ -2997,7 +3010,6 @@ class BotDataViewer:
         @self.app.route('/api/mesh/nodes')
         def api_mesh_nodes():
             """Get all repeater nodes with locations and metadata. Prefix length from query param or [Bot] prefix_bytes."""
-            conn = None
             try:
                 prefix_hex_chars = request.args.get('prefix_hex_chars', type=int)
                 days = request.args.get('days', type=int)
@@ -3005,10 +3017,10 @@ class BotDataViewer:
                     prefix_hex_chars = self.config.getint('Bot', 'prefix_bytes', fallback=1) * 2
                 if prefix_hex_chars <= 0:
                     prefix_hex_chars = 2
-                conn = self._get_db_connection()
-                cursor = conn.cursor()
+                with self._db_connection() as conn:
+                    cursor = conn.cursor()
 
-                query = f'''
+                    query = f'''
                     SELECT
                         public_key,
                         SUBSTR(public_key, 1, {prefix_hex_chars}) as prefix,
@@ -3026,39 +3038,36 @@ class BotDataViewer:
                     AND latitude != 0
                     AND longitude != 0
                 '''
-                params = []
-                if days is not None:
-                    query += '''
+                    params = []
+                    if days is not None:
+                        query += '''
                     AND COALESCE(NULLIF(last_heard, ''), last_advert_timestamp)
                         >= datetime("now", "-" || ? || " days")
                     '''
-                    params.append(days)
-                query += ' ORDER BY name'
+                        params.append(days)
+                    query += ' ORDER BY name'
 
-                cursor.execute(query, params)
-                rows = cursor.fetchall()
+                    cursor.execute(query, params)
+                    rows = cursor.fetchall()
 
-                nodes = []
-                for row in rows:
-                    nodes.append({
-                        'public_key': row['public_key'],
-                        'prefix': row['prefix'].lower(),
-                        'name': row['name'] or f"Node {row['prefix']}",
-                        'latitude': float(row['latitude']),
-                        'longitude': float(row['longitude']),
-                        'role': row['role'],
-                        'is_starred': bool(row['is_starred']),
-                        'last_heard': row['last_heard'],
-                        'last_advert_timestamp': row['last_advert_timestamp']
-                    })
+                    nodes = []
+                    for row in rows:
+                        nodes.append({
+                            'public_key': row['public_key'],
+                            'prefix': row['prefix'].lower(),
+                            'name': row['name'] or f"Node {row['prefix']}",
+                            'latitude': float(row['latitude']),
+                            'longitude': float(row['longitude']),
+                            'role': row['role'],
+                            'is_starred': bool(row['is_starred']),
+                            'last_heard': row['last_heard'],
+                            'last_advert_timestamp': row['last_advert_timestamp']
+                        })
 
-                return jsonify({'nodes': nodes})
+                    return jsonify({'nodes': nodes})
             except Exception as e:
                 self.logger.error(f"Error getting mesh nodes: {e}")
                 return jsonify({'error': str(e)}), 500
-            finally:
-                if conn:
-                    conn.close()
 
         @self.app.route('/api/mesh/edges')
         def api_mesh_edges():
@@ -3072,7 +3081,6 @@ class BotDataViewer:
             discovery (neighbor_links) — full public keys on both ends plus a
             measured SNR, the strongest evidence class available.
             """
-            conn = None
             try:
                 # Get optional query parameters
                 min_observations = request.args.get('min_observations', type=int)
@@ -3111,15 +3119,15 @@ class BotDataViewer:
                 # claim a recent edge is a current direct neighbor.
                 neighbor_keys = self._neighbor_evidence_edge_keys(days=days)
 
-                conn = self._get_db_connection()
-                cursor = conn.cursor()
+                with self._db_connection() as conn:
+                    cursor = conn.cursor()
 
-                # Edge windows control visibility, but node identity must retain
-                # the lifetime graph's prefix resolution. Otherwise an older
-                # multi-byte edge disappearing from the window can collapse
-                # distinct nodes onto one shorter prefix in the browser.
-                cursor.execute(
-                    '''
+                    # Edge windows control visibility, but node identity must retain
+                    # the lifetime graph's prefix resolution. Otherwise an older
+                    # multi-byte edge disappearing from the window can collapse
+                    # distinct nodes onto one shorter prefix in the browser.
+                    cursor.execute(
+                        '''
                     SELECT COALESCE(
                         MAX(
                             CASE
@@ -3132,10 +3140,10 @@ class BotDataViewer:
                     ) AS prefix_hex_chars
                     FROM mesh_connections
                     '''
-                )
-                prefix_hex_chars = cursor.fetchone()['prefix_hex_chars']
+                    )
+                    prefix_hex_chars = cursor.fetchone()['prefix_hex_chars']
 
-                query = '''
+                    query = '''
                     SELECT
                         from_prefix,
                         to_prefix,
@@ -3149,71 +3157,68 @@ class BotDataViewer:
                     FROM mesh_connections
                     WHERE 1=1
                 '''
-                params = []
+                    params = []
 
-                if min_observations is not None:
-                    query += ' AND observation_count >= ?'
-                    params.append(min_observations)
+                    if min_observations is not None:
+                        query += ' AND observation_count >= ?'
+                        params.append(min_observations)
 
-                if days is not None:
-                    query += ' AND last_seen >= datetime("now", "-" || ? || " days")'
-                    params.append(days)
+                    if days is not None:
+                        query += ' AND last_seen >= datetime("now", "-" || ? || " days")'
+                        params.append(days)
 
-                if min_distance is not None:
-                    query += ' AND geographic_distance >= ?'
-                    params.append(min_distance)
+                    if min_distance is not None:
+                        query += ' AND geographic_distance >= ?'
+                        params.append(min_distance)
 
-                if max_distance is not None:
-                    query += ' AND geographic_distance <= ?'
-                    params.append(max_distance)
+                    if max_distance is not None:
+                        query += ' AND geographic_distance <= ?'
+                        params.append(max_distance)
 
-                query += ' ORDER BY last_seen DESC'
+                    query += ' ORDER BY last_seen DESC'
 
-                cursor.execute(query, params)
-                rows = cursor.fetchall()
+                    cursor.execute(query, params)
+                    rows = cursor.fetchall()
 
-                edges = []
-                for row in rows:
-                    fp, tp = row['from_prefix'], row['to_prefix']
-                    prefix_hex_chars = max(prefix_hex_chars, len(fp) if fp else 0, len(tp) if tp else 0)
-                    # Edges keyed at 4+ hex chars were necessarily created (or promoted)
-                    # by a multi-byte path observation; 2-char keys carry only ambiguous
-                    # single-byte evidence.
-                    is_multibyte = bool(fp) and bool(tp) and len(fp) >= 4 and len(tp) >= 4
-                    from_lower = fp.lower() if fp else ''
-                    to_lower = tp.lower() if tp else ''
-                    from_key = (row['from_public_key'] or '').lower()
-                    to_key = (row['to_public_key'] or '').lower()
-                    if (
-                        (from_lower, to_lower) in neighbor_keys.prefixes
-                        or (from_key and to_key
-                            and (from_key, to_key) in neighbor_keys.public_keys)
-                    ):
-                        edge_evidence = 'neighbors'
-                    elif is_multibyte:
-                        edge_evidence = 'multibyte'
-                    else:
-                        edge_evidence = 'singlebyte'
-                    edges.append({
-                        'from_prefix': from_lower,
-                        'to_prefix': to_lower,
-                        'from_public_key': row['from_public_key'],
-                        'to_public_key': row['to_public_key'],
-                        'observation_count': row['observation_count'],
-                        'first_seen': row['first_seen'],
-                        'last_seen': row['last_seen'],
-                        'avg_hop_position': row['avg_hop_position'],
-                        'geographic_distance': row['geographic_distance'],
-                        'evidence': edge_evidence
-                    })
+                    edges = []
+                    for row in rows:
+                        fp, tp = row['from_prefix'], row['to_prefix']
+                        prefix_hex_chars = max(prefix_hex_chars, len(fp) if fp else 0, len(tp) if tp else 0)
+                        # Edges keyed at 4+ hex chars were necessarily created (or promoted)
+                        # by a multi-byte path observation; 2-char keys carry only ambiguous
+                        # single-byte evidence.
+                        is_multibyte = bool(fp) and bool(tp) and len(fp) >= 4 and len(tp) >= 4
+                        from_lower = fp.lower() if fp else ''
+                        to_lower = tp.lower() if tp else ''
+                        from_key = (row['from_public_key'] or '').lower()
+                        to_key = (row['to_public_key'] or '').lower()
+                        if (
+                            (from_lower, to_lower) in neighbor_keys.prefixes
+                            or (from_key and to_key
+                                and (from_key, to_key) in neighbor_keys.public_keys)
+                        ):
+                            edge_evidence = 'neighbors'
+                        elif is_multibyte:
+                            edge_evidence = 'multibyte'
+                        else:
+                            edge_evidence = 'singlebyte'
+                        edges.append({
+                            'from_prefix': from_lower,
+                            'to_prefix': to_lower,
+                            'from_public_key': row['from_public_key'],
+                            'to_public_key': row['to_public_key'],
+                            'observation_count': row['observation_count'],
+                            'first_seen': row['first_seen'],
+                            'last_seen': row['last_seen'],
+                            'avg_hop_position': row['avg_hop_position'],
+                            'geographic_distance': row['geographic_distance'],
+                            'evidence': edge_evidence
+                        })
 
-                return jsonify({'edges': edges, 'prefix_hex_chars': prefix_hex_chars or 2})
+                    return jsonify({'edges': edges, 'prefix_hex_chars': prefix_hex_chars or 2})
             except Exception as e:
                 self.logger.error(f"Error getting mesh edges: {e}")
                 return jsonify({'error': str(e)}), 500
-            finally:
-                if conn:
-                    conn.close()
 
         @self.app.route('/api/mesh/stats')
         def api_mesh_stats():
@@ -3503,7 +3508,6 @@ class BotDataViewer:
         @self.app.route('/api/geocode-contact', methods=['POST'])
         def api_geocode_contact():
             """Manually geocode a contact by public_key"""
-            conn = None
             try:
                 data = request.get_json()
                 if not data or 'public_key' not in data:
@@ -3512,105 +3516,101 @@ class BotDataViewer:
                 public_key = data['public_key']
 
                 # Get contact data from database
-                conn = self._get_db_connection()
-                cursor = conn.cursor()
+                with self._db_connection() as conn:
+                    cursor = conn.cursor()
 
-                cursor.execute('''
+                    cursor.execute('''
                     SELECT latitude, longitude, name, city, state, country
                     FROM complete_contact_tracking
                     WHERE public_key = ?
                 ''', (public_key,))
 
-                contact = cursor.fetchone()
-                if not contact:
-                    return jsonify({'error': 'Contact not found'}), 404
+                    contact = cursor.fetchone()
+                    if not contact:
+                        return jsonify({'error': 'Contact not found'}), 404
 
-                lat = contact['latitude']
-                lon = contact['longitude']
-                name = contact['name']
+                    lat = contact['latitude']
+                    lon = contact['longitude']
+                    name = contact['name']
 
-                # Check if we have valid coordinates
-                if lat is None or lon is None or lat == 0.0 or lon == 0.0:
-                    return jsonify({'error': 'Contact does not have valid coordinates'}), 400
+                    # Check if we have valid coordinates
+                    if lat is None or lon is None or lat == 0.0 or lon == 0.0:
+                        return jsonify({'error': 'Contact does not have valid coordinates'}), 400
 
-                # Perform geocoding
-                self.logger.info(f"Manual geocoding requested for {name} ({public_key[:16]}...) at coordinates {lat}, {lon}")
-                # sqlite3.Row objects use dictionary-style access with []
-                current_city = contact['city']
-                current_state = contact['state']
-                current_country = contact['country']
-                self.logger.debug(f"Current location data - city: {current_city}, state: {current_state}, country: {current_country}")
+                    # Perform geocoding
+                    self.logger.info(f"Manual geocoding requested for {name} ({public_key[:16]}...) at coordinates {lat}, {lon}")
+                    # sqlite3.Row objects use dictionary-style access with []
+                    current_city = contact['city']
+                    current_state = contact['state']
+                    current_country = contact['country']
+                    self.logger.debug(f"Current location data - city: {current_city}, state: {current_state}, country: {current_country}")
 
-                # Outside the try below: a failure to build the manager is a
-                # setup problem, not a geocoding one, and must not be reported
-                # to the user as "Geocoding exception".
-                repeater_manager = self._get_repeater_manager()
+                    # Outside the try below: a failure to build the manager is a
+                    # setup problem, not a geocoding one, and must not be reported
+                    # to the user as "Geocoding exception".
+                    repeater_manager = self._get_repeater_manager()
 
-                try:
-                    location_info = repeater_manager._get_full_location_from_coordinates(lat, lon)
-                    self.logger.debug(f"Geocoding result for {name}: {location_info}")
-                except Exception as geocode_error:
-                    self.logger.error(f"Exception during geocoding for {name} at {lat}, {lon}: {geocode_error}", exc_info=True)
-                    return jsonify({
-                        'success': False,
-                        'error': f'Geocoding exception: {str(geocode_error)}',
-                        'location': {}
-                    }), 500
+                    try:
+                        location_info = repeater_manager._get_full_location_from_coordinates(lat, lon)
+                        self.logger.debug(f"Geocoding result for {name}: {location_info}")
+                    except Exception as geocode_error:
+                        self.logger.error(f"Exception during geocoding for {name} at {lat}, {lon}: {geocode_error}", exc_info=True)
+                        return jsonify({
+                            'success': False,
+                            'error': f'Geocoding exception: {str(geocode_error)}',
+                            'location': {}
+                        }), 500
 
-                # Check if geocoding returned any useful data
-                has_location_data = location_info.get('city') or location_info.get('state') or location_info.get('country')
+                    # Check if geocoding returned any useful data
+                    has_location_data = location_info.get('city') or location_info.get('state') or location_info.get('country')
 
-                if not has_location_data:
-                    self.logger.warning(f"Geocoding returned no location data for {name} at {lat}, {lon}. Result: {location_info}")
-                    return jsonify({
-                        'success': False,
-                        'error': 'Geocoding returned no location data. The coordinates may be invalid or the geocoding service may be unavailable.',
-                        'location': location_info
-                    }), 500
+                    if not has_location_data:
+                        self.logger.warning(f"Geocoding returned no location data for {name} at {lat}, {lon}. Result: {location_info}")
+                        return jsonify({
+                            'success': False,
+                            'error': 'Geocoding returned no location data. The coordinates may be invalid or the geocoding service may be unavailable.',
+                            'location': location_info
+                        }), 500
 
-                # Update database with new location data
-                cursor.execute('''
+                    # Update database with new location data
+                    cursor.execute('''
                     UPDATE complete_contact_tracking
                     SET city = ?, state = ?, country = ?
                     WHERE public_key = ?
                 ''', (
-                    location_info.get('city'),
-                    location_info.get('state'),
-                    location_info.get('country'),
-                    public_key
-                ))
+                        location_info.get('city'),
+                        location_info.get('state'),
+                        location_info.get('country'),
+                        public_key
+                    ))
 
-                conn.commit()
+                    conn.commit()
 
-                # Build success message with what was found
-                found_parts = []
-                if location_info.get('city'):
-                    found_parts.append(f"city: {location_info['city']}")
-                if location_info.get('state'):
-                    found_parts.append(f"state: {location_info['state']}")
-                if location_info.get('country'):
-                    found_parts.append(f"country: {location_info['country']}")
+                    # Build success message with what was found
+                    found_parts = []
+                    if location_info.get('city'):
+                        found_parts.append(f"city: {location_info['city']}")
+                    if location_info.get('state'):
+                        found_parts.append(f"state: {location_info['state']}")
+                    if location_info.get('country'):
+                        found_parts.append(f"country: {location_info['country']}")
 
-                success_message = f'Successfully geocoded {name} - Found {", ".join(found_parts)}'
-                self.logger.info(f"Successfully geocoded {name}: {location_info}")
+                    success_message = f'Successfully geocoded {name} - Found {", ".join(found_parts)}'
+                    self.logger.info(f"Successfully geocoded {name}: {location_info}")
 
-                return jsonify({
-                    'success': True,
-                    'location': location_info,
-                    'message': success_message
-                })
+                    return jsonify({
+                        'success': True,
+                        'location': location_info,
+                        'message': success_message
+                    })
 
             except Exception as e:
                 self.logger.error(f"Error geocoding contact: {e}", exc_info=True)
                 return jsonify({'error': str(e)}), 500
-            finally:
-                if conn:
-                    conn.close()
 
         @self.app.route('/api/toggle-star-contact', methods=['POST'])
         def api_toggle_star_contact():
             """Toggle star status for any contact by public_key."""
-            conn = None
             try:
                 data = request.get_json()
                 if not data or 'public_key' not in data:
@@ -3619,44 +3619,41 @@ class BotDataViewer:
                 public_key = data['public_key']
 
                 # Get contact data from database
-                conn = self._get_db_connection()
-                cursor = conn.cursor()
+                with self._db_connection() as conn:
+                    cursor = conn.cursor()
 
-                cursor.execute('''
+                    cursor.execute('''
                     SELECT name, is_starred, role FROM complete_contact_tracking
                     WHERE public_key = ?
                 ''', (public_key,))
 
-                contact = cursor.fetchone()
-                if not contact:
-                    return jsonify({'error': 'Contact not found'}), 404
+                    contact = cursor.fetchone()
+                    if not contact:
+                        return jsonify({'error': 'Contact not found'}), 404
 
-                # Toggle star status
-                current_starred = contact['is_starred']
-                new_star_status = 1 if not current_starred else 0
-                cursor.execute('''
+                    # Toggle star status
+                    current_starred = contact['is_starred']
+                    new_star_status = 1 if not current_starred else 0
+                    cursor.execute('''
                     UPDATE complete_contact_tracking
                     SET is_starred = ?
                     WHERE public_key = ?
                 ''', (new_star_status, public_key))
 
-                conn.commit()
+                    conn.commit()
 
-                action = 'starred' if new_star_status else 'unstarred'
-                self.logger.info(f"Contact {contact['name']} ({public_key[:16]}...) {action}")
+                    action = 'starred' if new_star_status else 'unstarred'
+                    self.logger.info(f"Contact {contact['name']} ({public_key[:16]}...) {action}")
 
-                return jsonify({
-                    'success': True,
-                    'is_starred': bool(new_star_status),
-                    'message': f'Contact {action} successfully'
-                })
+                    return jsonify({
+                        'success': True,
+                        'is_starred': bool(new_star_status),
+                        'message': f'Contact {action} successfully'
+                    })
 
             except Exception as e:
                 self.logger.error(f"Error toggling star status: {e}", exc_info=True)
                 return jsonify({'error': str(e)}), 500
-            finally:
-                if conn:
-                    conn.close()
 
         @self.app.route('/api/decode-path', methods=['POST'])
         def api_decode_path():
@@ -3696,7 +3693,6 @@ class BotDataViewer:
         @self.app.route('/api/delete-contact', methods=['POST'])
         def api_delete_contact():
             """Delete a contact from the complete contact tracking database"""
-            conn = None
             try:
                 data = request.get_json()
                 if not data or 'public_key' not in data:
@@ -3705,60 +3701,57 @@ class BotDataViewer:
                 public_key = data['public_key']
 
                 # Get contact data from database to log what we're deleting
-                conn = self._get_db_connection()
-                cursor = conn.cursor()
+                with self._db_connection() as conn:
+                    cursor = conn.cursor()
 
-                # Check if contact exists
-                cursor.execute('''
+                    # Check if contact exists
+                    cursor.execute('''
                     SELECT name, role, device_type FROM complete_contact_tracking
                     WHERE public_key = ?
                 ''', (public_key,))
 
-                contact = cursor.fetchone()
-                if not contact:
-                    return jsonify({'error': 'Contact not found'}), 404
+                    contact = cursor.fetchone()
+                    if not contact:
+                        return jsonify({'error': 'Contact not found'}), 404
 
-                contact_name = contact['name']
-                contact_role = contact['role']
-                contact_device_type = contact['device_type']
+                    contact_name = contact['name']
+                    contact_role = contact['role']
+                    contact_device_type = contact['device_type']
 
-                # Delete from all related tables
-                deleted_counts = {}
+                    # Delete from all related tables
+                    deleted_counts = {}
 
-                # Delete from complete_contact_tracking
-                cursor.execute('DELETE FROM complete_contact_tracking WHERE public_key = ?', (public_key,))
-                deleted_counts['complete_contact_tracking'] = cursor.rowcount
+                    # Delete from complete_contact_tracking
+                    cursor.execute('DELETE FROM complete_contact_tracking WHERE public_key = ?', (public_key,))
+                    deleted_counts['complete_contact_tracking'] = cursor.rowcount
 
-                # Delete from daily_stats
-                cursor.execute('DELETE FROM daily_stats WHERE public_key = ?', (public_key,))
-                deleted_counts['daily_stats'] = cursor.rowcount
+                    # Delete from daily_stats
+                    cursor.execute('DELETE FROM daily_stats WHERE public_key = ?', (public_key,))
+                    deleted_counts['daily_stats'] = cursor.rowcount
 
-                # Delete from repeater_contacts if it exists
-                try:
-                    cursor.execute('DELETE FROM repeater_contacts WHERE public_key = ?', (public_key,))
-                    deleted_counts['repeater_contacts'] = cursor.rowcount
-                except sqlite3.OperationalError:
-                    # Table might not exist, that's okay
-                    deleted_counts['repeater_contacts'] = 0
+                    # Delete from repeater_contacts if it exists
+                    try:
+                        cursor.execute('DELETE FROM repeater_contacts WHERE public_key = ?', (public_key,))
+                        deleted_counts['repeater_contacts'] = cursor.rowcount
+                    except sqlite3.OperationalError:
+                        # Table might not exist, that's okay
+                        deleted_counts['repeater_contacts'] = 0
 
-                conn.commit()
+                    conn.commit()
 
-                # Log the deletion
-                self.logger.info(f"Contact deleted: {contact_name} ({public_key[:16]}...) - Role: {contact_role}, Device: {contact_device_type}")
-                self.logger.debug(f"Deleted counts: {deleted_counts}")
+                    # Log the deletion
+                    self.logger.info(f"Contact deleted: {contact_name} ({public_key[:16]}...) - Role: {contact_role}, Device: {contact_device_type}")
+                    self.logger.debug(f"Deleted counts: {deleted_counts}")
 
-                return jsonify({
-                    'success': True,
-                    'message': f'Contact "{contact_name}" has been deleted successfully',
-                    'deleted_counts': deleted_counts
-                })
+                    return jsonify({
+                        'success': True,
+                        'message': f'Contact "{contact_name}" has been deleted successfully',
+                        'deleted_counts': deleted_counts
+                    })
 
             except Exception as e:
                 self.logger.error(f"Error deleting contact: {e}", exc_info=True)
                 return jsonify({'error': str(e)}), 500
-            finally:
-                if conn:
-                    conn.close()
 
         @self.app.route('/api/contacts/purge-preview')
         def api_contacts_purge_preview():
@@ -3766,29 +3759,25 @@ class BotDataViewer:
             days = request.args.get('days', 30, type=int)
             if days < 1:
                 return jsonify({'error': 'days must be >= 1'}), 400
-            conn = None
             try:
-                conn = self._get_db_connection()
-                cursor = conn.cursor()
-                cursor.execute('''
+                with self._db_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute('''
                     SELECT COUNT(*) AS cnt FROM complete_contact_tracking
                     WHERE last_heard < datetime('now', 'localtime', ? || ' days')
                 ''', (f'-{days}',))
-                count = cursor.fetchone()['cnt']
-                cursor.execute('''
+                    count = cursor.fetchone()['cnt']
+                    cursor.execute('''
                     SELECT name, role, last_heard FROM complete_contact_tracking
                     WHERE last_heard < datetime('now', 'localtime', ? || ' days')
                     ORDER BY last_heard ASC
                     LIMIT 5
                 ''', (f'-{days}',))
-                samples = [dict(r) for r in cursor.fetchall()]
-                return jsonify({'count': count, 'days': days, 'samples': samples})
+                    samples = [dict(r) for r in cursor.fetchall()]
+                    return jsonify({'count': count, 'days': days, 'samples': samples})
             except Exception as e:
                 self.logger.error(f"Error in purge preview: {e}", exc_info=True)
                 return jsonify({'error': str(e)}), 500
-            finally:
-                if conn:
-                    conn.close()
 
         @self.app.route('/api/contacts/purge', methods=['POST'])
         def api_contacts_purge():
@@ -3801,59 +3790,54 @@ class BotDataViewer:
                 return jsonify({'error': 'days must be an integer'}), 400
             if days < 1:
                 return jsonify({'error': 'days must be >= 1'}), 400
-            conn = None
             try:
-                conn = self._get_db_connection()
-                cursor = conn.cursor()
-                cutoff = f'-{days} days'
-                # Collect public_keys to purge so we can cascade
-                cursor.execute('''
+                with self._db_connection() as conn:
+                    cursor = conn.cursor()
+                    cutoff = f'-{days} days'
+                    # Collect public_keys to purge so we can cascade
+                    cursor.execute('''
                     SELECT public_key FROM complete_contact_tracking
                     WHERE last_heard < datetime('now', 'localtime', ?)
                 ''', (cutoff,))
-                keys = [r['public_key'] for r in cursor.fetchall()]
-                if not keys:
-                    return jsonify({'success': True, 'deleted': 0, 'message': 'No contacts matched the threshold'})
-                placeholders = ','.join('?' * len(keys))
-                cursor.execute(f'DELETE FROM complete_contact_tracking WHERE public_key IN ({placeholders})', keys)
-                deleted = cursor.rowcount
-                cursor.execute(f'DELETE FROM daily_stats WHERE public_key IN ({placeholders})', keys)
-                try:
-                    cursor.execute(f'DELETE FROM repeater_contacts WHERE public_key IN ({placeholders})', keys)
-                except sqlite3.OperationalError:
-                    pass
-                conn.commit()
-                self.logger.info(f"Purged {deleted} contact(s) not heard in {days}+ days")
-                return jsonify({'success': True, 'deleted': deleted,
-                                'message': f'Purged {deleted} contact(s) not heard in {days}+ days'})
+                    keys = [r['public_key'] for r in cursor.fetchall()]
+                    if not keys:
+                        return jsonify({'success': True, 'deleted': 0, 'message': 'No contacts matched the threshold'})
+                    placeholders = ','.join('?' * len(keys))
+                    cursor.execute(f'DELETE FROM complete_contact_tracking WHERE public_key IN ({placeholders})', keys)
+                    deleted = cursor.rowcount
+                    cursor.execute(f'DELETE FROM daily_stats WHERE public_key IN ({placeholders})', keys)
+                    try:
+                        cursor.execute(f'DELETE FROM repeater_contacts WHERE public_key IN ({placeholders})', keys)
+                    except sqlite3.OperationalError:
+                        pass
+                    conn.commit()
+                    self.logger.info(f"Purged {deleted} contact(s) not heard in {days}+ days")
+                    return jsonify({'success': True, 'deleted': deleted,
+                                    'message': f'Purged {deleted} contact(s) not heard in {days}+ days'})
             except Exception as e:
                 self.logger.error(f"Error purging contacts: {e}", exc_info=True)
                 return jsonify({'error': str(e)}), 500
-            finally:
-                if conn:
-                    conn.close()
 
         @self.app.route('/api/greeter')
         def api_greeter():
             """Get greeter data including rollout status, settings, and greeted users"""
-            conn = None
             try:
-                conn = self._get_db_connection()
-                cursor = conn.cursor()
+                with self._db_connection() as conn:
+                    cursor = conn.cursor()
 
-                # Check if greeter tables exist
-                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='greeter_rollout'")
-                if not cursor.fetchone():
-                    return jsonify({
-                        'enabled': False,
-                        'rollout_active': False,
-                        'settings': {},
-                        'greeted_users': [],
-                        'error': 'Greeter tables not found'
-                    })
+                    # Check if greeter tables exist
+                    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='greeter_rollout'")
+                    if not cursor.fetchone():
+                        return jsonify({
+                            'enabled': False,
+                            'rollout_active': False,
+                            'settings': {},
+                            'greeted_users': [],
+                            'error': 'Greeter tables not found'
+                        })
 
-                # Get active rollout status
-                cursor.execute('''
+                    # Get active rollout status
+                    cursor.execute('''
                     SELECT id, rollout_started_at, rollout_days, rollout_completed,
                            datetime(rollout_started_at, '+' || rollout_days || ' days') as end_date,
                            datetime('now') as current_time
@@ -3862,76 +3846,76 @@ class BotDataViewer:
                     ORDER BY rollout_started_at DESC
                     LIMIT 1
                 ''')
-                rollout = cursor.fetchone()
+                    rollout = cursor.fetchone()
 
-                rollout_active = False
-                rollout_data = None
-                time_remaining = None
+                    rollout_active = False
+                    rollout_data = None
+                    time_remaining = None
 
-                if rollout:
-                    rollout_id = rollout['id']
-                    started_at_str = rollout['rollout_started_at']
-                    rollout_days = rollout['rollout_days']
-                    end_date_str = rollout['end_date']
-                    current_time_str = rollout['current_time']
+                    if rollout:
+                        rollout_id = rollout['id']
+                        started_at_str = rollout['rollout_started_at']
+                        rollout_days = rollout['rollout_days']
+                        end_date_str = rollout['end_date']
+                        current_time_str = rollout['current_time']
 
-                    end_date = datetime.fromisoformat(end_date_str)
-                    current_time = datetime.fromisoformat(current_time_str)
+                        end_date = datetime.fromisoformat(end_date_str)
+                        current_time = datetime.fromisoformat(current_time_str)
 
-                    if current_time < end_date:
-                        rollout_active = True
-                        remaining_seconds = (end_date - current_time).total_seconds()
-                        time_remaining = {
-                            'days': int(remaining_seconds // 86400),
-                            'hours': int((remaining_seconds % 86400) // 3600),
-                            'minutes': int((remaining_seconds % 3600) // 60),
-                            'seconds': int(remaining_seconds % 60),
-                            'total_seconds': int(remaining_seconds)
-                        }
-                        rollout_data = {
-                            'id': rollout_id,
-                            'started_at': started_at_str,
-                            'days': rollout_days,
-                            'end_date': end_date_str
-                        }
+                        if current_time < end_date:
+                            rollout_active = True
+                            remaining_seconds = (end_date - current_time).total_seconds()
+                            time_remaining = {
+                                'days': int(remaining_seconds // 86400),
+                                'hours': int((remaining_seconds % 86400) // 3600),
+                                'minutes': int((remaining_seconds % 3600) // 60),
+                                'seconds': int(remaining_seconds % 60),
+                                'total_seconds': int(remaining_seconds)
+                            }
+                            rollout_data = {
+                                'id': rollout_id,
+                                'started_at': started_at_str,
+                                'days': rollout_days,
+                                'end_date': end_date_str
+                            }
 
-                # Get greeter settings from config
-                settings = {
-                    'enabled': self.config.getboolean('Greeter_Command', 'enabled', fallback=False),
-                    'greeting_message': self.config.get('Greeter_Command', 'greeting_message',
-                                                       fallback='Welcome to the mesh, {sender}!'),
-                    'rollout_days': self.config.getint('Greeter_Command', 'rollout_days', fallback=7),
-                    'include_mesh_info': self.config.getboolean('Greeter_Command', 'include_mesh_info',
-                                                               fallback=True),
-                    'mesh_info_format': self.config.get('Greeter_Command', 'mesh_info_format',
-                                                      fallback='\n\nMesh Info: {total_contacts} contacts, {repeaters} repeaters'),
-                    'per_channel_greetings': self.config.getboolean('Greeter_Command', 'per_channel_greetings',
-                                                                   fallback=False)
-                }
+                    # Get greeter settings from config
+                    settings = {
+                        'enabled': self.config.getboolean('Greeter_Command', 'enabled', fallback=False),
+                        'greeting_message': self.config.get('Greeter_Command', 'greeting_message',
+                                                           fallback='Welcome to the mesh, {sender}!'),
+                        'rollout_days': self.config.getint('Greeter_Command', 'rollout_days', fallback=7),
+                        'include_mesh_info': self.config.getboolean('Greeter_Command', 'include_mesh_info',
+                                                                   fallback=True),
+                        'mesh_info_format': self.config.get('Greeter_Command', 'mesh_info_format',
+                                                          fallback='\n\nMesh Info: {total_contacts} contacts, {repeaters} repeaters'),
+                        'per_channel_greetings': self.config.getboolean('Greeter_Command', 'per_channel_greetings',
+                                                                       fallback=False)
+                    }
 
-                # Generate sample greeting — use str.replace() instead of .format()
-                # to avoid KeyError / info leaks from user-controlled templates
-                sample_greeting = settings['greeting_message'].replace('{sender}', 'SampleUser')
-                if settings['include_mesh_info']:
-                    sample_mesh_info = (
-                        settings['mesh_info_format']
-                        .replace('{total_contacts}', '100')
-                        .replace('{repeaters}', '5')
-                        .replace('{companions}', '95')
-                        .replace('{recent_activity_24h}', '10')
-                    )
-                    sample_greeting += sample_mesh_info
+                    # Generate sample greeting — use str.replace() instead of .format()
+                    # to avoid KeyError / info leaks from user-controlled templates
+                    sample_greeting = settings['greeting_message'].replace('{sender}', 'SampleUser')
+                    if settings['include_mesh_info']:
+                        sample_mesh_info = (
+                            settings['mesh_info_format']
+                            .replace('{total_contacts}', '100')
+                            .replace('{repeaters}', '5')
+                            .replace('{companions}', '95')
+                            .replace('{recent_activity_24h}', '10')
+                        )
+                        sample_greeting += sample_mesh_info
 
-                # Check if message_stats table exists for last seen data
-                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='message_stats'")
-                has_message_stats = cursor.fetchone() is not None
+                    # Check if message_stats table exists for last seen data
+                    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='message_stats'")
+                    has_message_stats = cursor.fetchone() is not None
 
-                # Get greeted users - use GROUP BY to ensure only one entry per (sender_id, channel)
-                # This handles any potential duplicates that might exist in the database
-                # We use MIN(greeted_at) to get the earliest (first) greeting time
-                # If per_channel_greetings is False, we'll still show one entry per user (channel will be NULL)
-                # If per_channel_greetings is True, we'll show one entry per user per channel
-                cursor.execute('''
+                    # Get greeted users - use GROUP BY to ensure only one entry per (sender_id, channel)
+                    # This handles any potential duplicates that might exist in the database
+                    # We use MIN(greeted_at) to get the earliest (first) greeting time
+                    # If per_channel_greetings is False, we'll still show one entry per user (channel will be NULL)
+                    # If per_channel_greetings is True, we'll show one entry per user per channel
+                    cursor.execute('''
                     SELECT sender_id, channel, MIN(greeted_at) as greeted_at,
                            MAX(rollout_marked) as rollout_marked
                     FROM greeted_users
@@ -3939,31 +3923,31 @@ class BotDataViewer:
                     ORDER BY MIN(greeted_at) DESC
                     LIMIT 500
                 ''')
-                greeted_users_rows = cursor.fetchall()
-                greeted_users = []
+                    greeted_users_rows = cursor.fetchall()
+                    greeted_users = []
 
-                for row in greeted_users_rows:
-                    # Access row data - handle both dict-style (Row) and tuple access
-                    try:
-                        sender_id = row['sender_id'] if isinstance(row, dict) or hasattr(row, '__getitem__') else row[0]
-                        channel_raw = row['channel'] if isinstance(row, dict) or hasattr(row, '__getitem__') else row[1]
-                        greeted_at = row['greeted_at'] if isinstance(row, dict) or hasattr(row, '__getitem__') else row[2]
-                        rollout_marked = row['rollout_marked'] if isinstance(row, dict) or hasattr(row, '__getitem__') else row[3]
-                    except (KeyError, IndexError, TypeError) as e:
-                        self.logger.error(f"Error accessing row data: {e}, row type: {type(row)}")
-                        continue
+                    for row in greeted_users_rows:
+                        # Access row data - handle both dict-style (Row) and tuple access
+                        try:
+                            sender_id = row['sender_id'] if isinstance(row, dict) or hasattr(row, '__getitem__') else row[0]
+                            channel_raw = row['channel'] if isinstance(row, dict) or hasattr(row, '__getitem__') else row[1]
+                            greeted_at = row['greeted_at'] if isinstance(row, dict) or hasattr(row, '__getitem__') else row[2]
+                            rollout_marked = row['rollout_marked'] if isinstance(row, dict) or hasattr(row, '__getitem__') else row[3]
+                        except (KeyError, IndexError, TypeError) as e:
+                            self.logger.error(f"Error accessing row data: {e}, row type: {type(row)}")
+                            continue
 
-                    sender_id = str(sender_id) if sender_id else ''
-                    channel = str(channel_raw) if channel_raw else '(global)'
+                        sender_id = str(sender_id) if sender_id else ''
+                        channel = str(channel_raw) if channel_raw else '(global)'
 
-                    # Get last seen timestamp from message_stats if available
-                    last_seen = None
-                    if has_message_stats:
-                        # Get the most recent channel message (not DM) for this user
-                        # If per_channel_greetings is enabled, match the specific channel
-                        # Otherwise, get the most recent message from any channel
-                        if channel_raw:  # Use the raw channel value, not the formatted one
-                            cursor.execute('''
+                        # Get last seen timestamp from message_stats if available
+                        last_seen = None
+                        if has_message_stats:
+                            # Get the most recent channel message (not DM) for this user
+                            # If per_channel_greetings is enabled, match the specific channel
+                            # Otherwise, get the most recent message from any channel
+                            if channel_raw:  # Use the raw channel value, not the formatted one
+                                cursor.execute('''
                                 SELECT MAX(timestamp) as last_seen
                                 FROM message_stats
                                 WHERE sender_id = ?
@@ -3971,9 +3955,9 @@ class BotDataViewer:
                                   AND is_dm = 0
                                   AND channel IS NOT NULL
                             ''', (sender_id, channel_raw))
-                        else:
-                            # Global greeting - get last seen from any channel
-                            cursor.execute('''
+                            else:
+                                # Global greeting - get last seen from any channel
+                                cursor.execute('''
                                 SELECT MAX(timestamp) as last_seen
                                 FROM message_stats
                                 WHERE sender_id = ?
@@ -3981,85 +3965,77 @@ class BotDataViewer:
                                   AND channel IS NOT NULL
                             ''', (sender_id,))
 
-                        result = cursor.fetchone()
-                        if result and result['last_seen']:
-                            last_seen = result['last_seen']
+                            result = cursor.fetchone()
+                            if result and result['last_seen']:
+                                last_seen = result['last_seen']
 
-                    greeted_users.append({
-                        'sender_id': sender_id,
-                        'channel': channel,
-                        'greeted_at': str(greeted_at),
-                        'rollout_marked': bool(rollout_marked),
-                        'last_seen': last_seen
+                        greeted_users.append({
+                            'sender_id': sender_id,
+                            'channel': channel,
+                            'greeted_at': str(greeted_at),
+                            'rollout_marked': bool(rollout_marked),
+                            'last_seen': last_seen
+                        })
+
+                    return jsonify({
+                        'enabled': settings['enabled'],
+                        'rollout_active': rollout_active,
+                        'rollout_data': rollout_data,
+                        'time_remaining': time_remaining,
+                        'settings': settings,
+                        'sample_greeting': sample_greeting,
+                        'greeted_users': greeted_users,
+                        'total_greeted': len(greeted_users)
                     })
-
-                return jsonify({
-                    'enabled': settings['enabled'],
-                    'rollout_active': rollout_active,
-                    'rollout_data': rollout_data,
-                    'time_remaining': time_remaining,
-                    'settings': settings,
-                    'sample_greeting': sample_greeting,
-                    'greeted_users': greeted_users,
-                    'total_greeted': len(greeted_users)
-                })
 
             except Exception as e:
                 self.logger.error(f"Error getting greeter data: {e}", exc_info=True)
                 return jsonify({'error': str(e)}), 500
-            finally:
-                if conn:
-                    conn.close()
 
         @self.app.route('/api/greeter/end-rollout', methods=['POST'])
         def api_end_rollout():
             """End the active onboarding period"""
-            conn = None
             try:
-                conn = self._get_db_connection()
-                cursor = conn.cursor()
+                with self._db_connection() as conn:
+                    cursor = conn.cursor()
 
-                # Find active rollout
-                cursor.execute('''
+                    # Find active rollout
+                    cursor.execute('''
                     SELECT id FROM greeter_rollout
                     WHERE rollout_completed = 0
                     ORDER BY rollout_started_at DESC
                     LIMIT 1
                 ''')
-                rollout = cursor.fetchone()
+                    rollout = cursor.fetchone()
 
-                if not rollout:
-                    return jsonify({'success': False, 'error': 'No active rollout found'}), 404
+                    if not rollout:
+                        return jsonify({'success': False, 'error': 'No active rollout found'}), 404
 
-                rollout_id = rollout['id']
+                    rollout_id = rollout['id']
 
-                # Mark rollout as completed
-                cursor.execute('''
+                    # Mark rollout as completed
+                    cursor.execute('''
                     UPDATE greeter_rollout
                     SET rollout_completed = 1
                     WHERE id = ?
                 ''', (rollout_id,))
 
-                conn.commit()
+                    conn.commit()
 
-                self.logger.info(f"Greeter rollout {rollout_id} ended manually via web viewer")
+                    self.logger.info(f"Greeter rollout {rollout_id} ended manually via web viewer")
 
-                return jsonify({
-                    'success': True,
-                    'message': 'Onboarding period ended successfully'
-                })
+                    return jsonify({
+                        'success': True,
+                        'message': 'Onboarding period ended successfully'
+                    })
 
             except Exception as e:
                 self.logger.error(f"Error ending rollout: {e}", exc_info=True)
                 return jsonify({'success': False, 'error': str(e)}), 500
-            finally:
-                if conn:
-                    conn.close()
 
         @self.app.route('/api/greeter/ungreet', methods=['POST'])
         def api_ungreet_user():
             """Mark a user as ungreeted (remove from greeted_users table)"""
-            conn = None
             try:
                 data = request.get_json()
                 if not data or 'sender_id' not in data:
@@ -4068,51 +4044,48 @@ class BotDataViewer:
                 sender_id = data['sender_id']
                 channel = data.get('channel')  # Optional - if None, removes global greeting
 
-                conn = self._get_db_connection()
-                cursor = conn.cursor()
+                with self._db_connection() as conn:
+                    cursor = conn.cursor()
 
-                # Check if user exists
-                if channel and channel != '(global)':
-                    cursor.execute('''
+                    # Check if user exists
+                    if channel and channel != '(global)':
+                        cursor.execute('''
                         SELECT id FROM greeted_users
                         WHERE sender_id = ? AND channel = ?
                     ''', (sender_id, channel))
-                else:
-                    cursor.execute('''
+                    else:
+                        cursor.execute('''
                         SELECT id FROM greeted_users
                         WHERE sender_id = ? AND channel IS NULL
                     ''', (sender_id,))
 
-                if not cursor.fetchone():
-                    return jsonify({'error': 'User not found in greeted users'}), 404
+                    if not cursor.fetchone():
+                        return jsonify({'error': 'User not found in greeted users'}), 404
 
-                # Delete the record
-                if channel and channel != '(global)':
-                    cursor.execute('''
+                    # Delete the record
+                    if channel and channel != '(global)':
+                        cursor.execute('''
                         DELETE FROM greeted_users
                         WHERE sender_id = ? AND channel = ?
                     ''', (sender_id, channel))
-                else:
-                    cursor.execute('''
+                    else:
+                        cursor.execute('''
                         DELETE FROM greeted_users
                         WHERE sender_id = ? AND channel IS NULL
                     ''', (sender_id,))
 
-                conn.commit()
+                    conn.commit()
 
-                self.logger.info(f"User {sender_id} marked as ungreeted (channel: {channel or 'global'})")
+                    self.logger.info(f"User {sender_id} marked as ungreeted (channel: {channel or 'global'})")
 
-                return jsonify({
-                    'success': True,
-                    'message': f'User {sender_id} marked as ungreeted'
-                })
+                    return jsonify({
+                        'success': True,
+                        'message': f'User {sender_id} marked as ungreeted'
+                    })
 
             except Exception as e:
                 self.logger.error(f"Error ungreeting user: {e}", exc_info=True)
                 return jsonify({'success': False, 'error': str(e)}), 500
-            finally:
-                if conn:
-                    conn.close()
 
         # ── Region warnings (regional flood scope) ───────────────────────────
 
@@ -4919,37 +4892,33 @@ class BotDataViewer:
         @self.app.route('/api/channel-operations/<int:operation_id>', methods=['GET'])
         def api_get_operation_status(operation_id):
             """Get status of a channel operation"""
-            conn = None
             try:
-                conn = self._get_db_connection()
-                cursor = conn.cursor()
-                cursor.execute('''
+                with self._db_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute('''
                     SELECT status, error_message, result_data, processed_at, claimed_at
                     FROM channel_operations
                     WHERE id = ?
                 ''', (operation_id,))
 
-                result = cursor.fetchone()
+                    result = cursor.fetchone()
 
-                if not result:
-                    return jsonify({'error': 'Operation not found'}), 404
+                    if not result:
+                        return jsonify({'error': 'Operation not found'}), 404
 
-                status, error_msg, result_data, processed_at, claimed_at = result
+                    status, error_msg, result_data, processed_at, claimed_at = result
 
-                return jsonify({
-                    'operation_id': operation_id,
-                    'status': status,
-                    'error_message': error_msg,
-                    'claimed_at': claimed_at,
-                    'processed_at': processed_at,
-                    'result_data': json.loads(result_data) if result_data else None
-                })
+                    return jsonify({
+                        'operation_id': operation_id,
+                        'status': status,
+                        'error_message': error_msg,
+                        'claimed_at': claimed_at,
+                        'processed_at': processed_at,
+                        'result_data': json.loads(result_data) if result_data else None
+                    })
             except Exception as e:
                 self.logger.error(f"Error getting operation status: {e}")
                 return jsonify({'error': str(e)}), 500
-            finally:
-                if conn:
-                    conn.close()
 
         @self.app.route('/api/channels/validate', methods=['POST'])
         @self._api_errors('Error validating channel')
@@ -5959,280 +5928,279 @@ class BotDataViewer:
     def _get_database_stats(self, top_users_window='all', top_commands_window='all',
                            top_paths_window='all', top_channels_window='all'):
         """Get comprehensive database statistics for dashboard"""
-        conn = None
         try:
-            conn = self._get_db_connection()
-            cursor = conn.cursor()
+            with self._db_connection() as conn:
+                cursor = conn.cursor()
 
-            # Get all available tables
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-            tables = [row[0] for row in cursor.fetchall()]
+                # Get all available tables
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+                tables = [row[0] for row in cursor.fetchall()]
 
-            # Filter tables by ALLOWED_TABLES whitelist for security
-            tables = [t for t in tables if t in self.ALLOWED_TABLES]
+                # Filter tables by ALLOWED_TABLES whitelist for security
+                tables = [t for t in tables if t in self.ALLOWED_TABLES]
 
-            with self._clients_lock:
-                client_count = len(self.connected_clients)
+                with self._clients_lock:
+                    client_count = len(self.connected_clients)
 
-            stats = {
-                'timestamp': time.time(),
-                'connected_clients': client_count,
-                'tables': tables
-            }
+                stats = {
+                    'timestamp': time.time(),
+                    'connected_clients': client_count,
+                    'tables': tables
+                }
 
-            # Contact and tracking statistics
-            if 'complete_contact_tracking' in tables:
-                cursor.execute("SELECT COUNT(*) FROM complete_contact_tracking")
-                stats['total_contacts'] = cursor.fetchone()[0]
+                # Contact and tracking statistics
+                if 'complete_contact_tracking' in tables:
+                    cursor.execute("SELECT COUNT(*) FROM complete_contact_tracking")
+                    stats['total_contacts'] = cursor.fetchone()[0]
 
-                cursor.execute("""
+                    cursor.execute("""
                     SELECT COUNT(*) FROM complete_contact_tracking
                     WHERE last_heard > datetime('now', 'localtime', '-24 hours')
                 """)
-                stats['contacts_24h'] = cursor.fetchone()[0]
+                    stats['contacts_24h'] = cursor.fetchone()[0]
 
-                cursor.execute("""
+                    cursor.execute("""
                     SELECT COUNT(*) FROM complete_contact_tracking
                     WHERE last_heard > datetime('now', 'localtime', '-7 days')
                 """)
-                stats['contacts_7d'] = cursor.fetchone()[0]
+                    stats['contacts_7d'] = cursor.fetchone()[0]
 
-                # Contacts heard in 7d with multibyte path evidence. Scope observed_paths to 7d so
-                # the pie chart matches "last 7 days" (lifetime paths + stale out_bytes_per_hop
-                # otherwise inflated the percentage).
-                stats['contacts_7d_multibyte_path'] = 0
-                chunk_buckets = self._bucket_hop_chunks(set())
-                mb_advert_pks: set[str] = set()
-                if 'observed_paths' in tables:
-                    try:
-                        chunk_buckets = self._bucket_hop_chunks(
-                            self._get_cached_contact_multibyte_hop_chunks(
-                                cursor, recent_days=7
+                    # Contacts heard in 7d with multibyte path evidence. Scope observed_paths to 7d so
+                    # the pie chart matches "last 7 days" (lifetime paths + stale out_bytes_per_hop
+                    # otherwise inflated the percentage).
+                    stats['contacts_7d_multibyte_path'] = 0
+                    chunk_buckets = self._bucket_hop_chunks(set())
+                    mb_advert_pks: set[str] = set()
+                    if 'observed_paths' in tables:
+                        try:
+                            chunk_buckets = self._bucket_hop_chunks(
+                                self._get_cached_contact_multibyte_hop_chunks(
+                                    cursor, recent_days=7
+                                )
                             )
-                        )
-                        # Use date() — julianday(iso8601) often returns NULL for Python isoformat() strings
-                        cursor.execute(
-                            """
+                            # Use date() — julianday(iso8601) often returns NULL for Python isoformat() strings
+                            cursor.execute(
+                                """
                             SELECT DISTINCT public_key FROM observed_paths
                             WHERE packet_type = 'advert' AND public_key IS NOT NULL
                             AND bytes_per_hop IN (2, 3)
                             AND date(last_seen) >= date('now', 'localtime', '-7 days')
                             """
-                        )
-                        mb_advert_pks = {
-                            row["public_key"] for row in cursor.fetchall() if row["public_key"]
-                        }
-                    except Exception as e:
-                        self.logger.debug(f"Could not load multibyte path sets for 7d stats: {e}")
-                try:
-                    cursor.execute(
-                        """
+                            )
+                            mb_advert_pks = {
+                                row["public_key"] for row in cursor.fetchall() if row["public_key"]
+                            }
+                        except Exception as e:
+                            self.logger.debug(f"Could not load multibyte path sets for 7d stats: {e}")
+                    try:
+                        cursor.execute(
+                            """
                         SELECT public_key, role, out_bytes_per_hop
                         FROM complete_contact_tracking
                         WHERE last_heard > datetime('now', 'localtime', '-7 days')
                         """
-                    )
-                    mb_7d = 0
-                    for row in cursor.fetchall():
-                        if self._contact_has_multibyte_path_evidence(
-                            row["public_key"],
-                            row["role"],
-                            row["out_bytes_per_hop"],
-                            mb_advert_pks,
-                            chunk_buckets,
-                        ):
-                            mb_7d += 1
-                    stats['contacts_7d_multibyte_path'] = mb_7d
-                except Exception as e:
-                    self.logger.debug(f"Could not compute contacts_7d_multibyte_path: {e}")
+                        )
+                        mb_7d = 0
+                        for row in cursor.fetchall():
+                            if self._contact_has_multibyte_path_evidence(
+                                row["public_key"],
+                                row["role"],
+                                row["out_bytes_per_hop"],
+                                mb_advert_pks,
+                                chunk_buckets,
+                            ):
+                                mb_7d += 1
+                        stats['contacts_7d_multibyte_path'] = mb_7d
+                    except Exception as e:
+                        self.logger.debug(f"Could not compute contacts_7d_multibyte_path: {e}")
 
-                cursor.execute("""
+                    cursor.execute("""
                     SELECT COUNT(*) FROM complete_contact_tracking
                     WHERE is_currently_tracked = 1
                 """)
-                stats['tracked_contacts'] = cursor.fetchone()[0]
+                    stats['tracked_contacts'] = cursor.fetchone()[0]
 
-                cursor.execute("""
+                    cursor.execute("""
                     SELECT AVG(hop_count) FROM complete_contact_tracking
                     WHERE hop_count IS NOT NULL
                 """)
-                avg_hops = cursor.fetchone()[0]
-                stats['avg_hop_count'] = round(avg_hops, 1) if avg_hops else 0
+                    avg_hops = cursor.fetchone()[0]
+                    stats['avg_hop_count'] = round(avg_hops, 1) if avg_hops else 0
 
-                cursor.execute("""
+                    cursor.execute("""
                     SELECT MAX(hop_count) FROM complete_contact_tracking
                     WHERE hop_count IS NOT NULL
                 """)
-                stats['max_hop_count'] = cursor.fetchone()[0] or 0
+                    stats['max_hop_count'] = cursor.fetchone()[0] or 0
 
-                cursor.execute("""
+                    cursor.execute("""
                     SELECT COUNT(DISTINCT role) FROM complete_contact_tracking
                     WHERE role IS NOT NULL
                 """)
-                stats['unique_roles'] = cursor.fetchone()[0]
+                    stats['unique_roles'] = cursor.fetchone()[0]
 
-                cursor.execute("""
+                    cursor.execute("""
                     SELECT COUNT(DISTINCT device_type) FROM complete_contact_tracking
                     WHERE device_type IS NOT NULL
                 """)
-                stats['unique_device_types'] = cursor.fetchone()[0]
+                    stats['unique_device_types'] = cursor.fetchone()[0]
 
-            # Incoming packets: multibyte path share over whatever packet_stream
-            # actually retains.  The key names still say 7d for compatibility,
-            # but the window is reported honestly alongside them —
-            # packet_stream is pruned at 3 days, so the old label was never true.
-            stats['incoming_packets_7d'] = 0
-            stats['incoming_packets_7d_multibyte_path'] = 0
-            if 'packet_stream' in tables:
-                try:
-                    cutoff_ts = time.time() - 7 * 86400
-                    cursor.execute(
-                        """
+                # Incoming packets: multibyte path share over whatever packet_stream
+                # actually retains.  The key names still say 7d for compatibility,
+                # but the window is reported honestly alongside them —
+                # packet_stream is pruned at 3 days, so the old label was never true.
+                stats['incoming_packets_7d'] = 0
+                stats['incoming_packets_7d_multibyte_path'] = 0
+                if 'packet_stream' in tables:
+                    try:
+                        cutoff_ts = time.time() - 7 * 86400
+                        cursor.execute(
+                            """
                         SELECT COUNT(*),
                                SUM(CASE WHEN bytes_per_hop IN (2, 3) THEN 1 ELSE 0 END),
                                MIN(timestamp)
                         FROM packet_stream
                         WHERE type = ? AND timestamp > ? AND route_type_name IS NOT NULL
                         """,
-                        ("packet", cutoff_ts),
-                    )
-                    row = cursor.fetchone()
-                    stats['incoming_packets_7d'] = row[0] or 0
-                    stats['incoming_packets_7d_multibyte_path'] = row[1] or 0
-                    stats['incoming_packets_from'] = row[2]
-                    stats['incoming_packets_window_label'] = humanize_span(
-                        time.time() - row[2] if row[2] else None
-                    )
-                except Exception as e:
-                    self.logger.debug(f"Could not compute incoming packet multibyte stats: {e}")
+                            ("packet", cutoff_ts),
+                        )
+                        row = cursor.fetchone()
+                        stats['incoming_packets_7d'] = row[0] or 0
+                        stats['incoming_packets_7d_multibyte_path'] = row[1] or 0
+                        stats['incoming_packets_from'] = row[2]
+                        stats['incoming_packets_window_label'] = humanize_span(
+                            time.time() - row[2] if row[2] else None
+                        )
+                    except Exception as e:
+                        self.logger.debug(f"Could not compute incoming packet multibyte stats: {e}")
 
-            # Advertisement statistics using daily tracking table
-            if 'daily_stats' in tables:
-                # Total advertisements (all time)
-                cursor.execute("""
-                    SELECT SUM(advert_count) FROM daily_stats
-                """)
-                total_adverts = cursor.fetchone()[0]
-                stats['total_advertisements'] = total_adverts or 0
-
-                # 24h advertisements
-                cursor.execute("""
-                    SELECT SUM(advert_count) FROM daily_stats
-                    WHERE date = date('now', 'localtime')
-                """)
-                stats['advertisements_24h'] = cursor.fetchone()[0] or 0
-
-                # 7d advertisements (last 7 days, excluding today)
-                cursor.execute("""
-                    SELECT SUM(advert_count) FROM daily_stats
-                    WHERE date >= date('now', 'localtime', '-7 days') AND date < date('now', 'localtime')
-                """)
-                stats['advertisements_7d'] = cursor.fetchone()[0] or 0
-
-                # Nodes per day statistics
-                cursor.execute("""
-                    SELECT COUNT(DISTINCT public_key) FROM daily_stats
-                    WHERE date = date('now', 'localtime')
-                """)
-                stats['nodes_24h'] = cursor.fetchone()[0] or 0
-
-                cursor.execute("""
-                    SELECT COUNT(DISTINCT public_key) FROM daily_stats
-                    WHERE date >= date('now', 'localtime', '-6 days')
-                """)
-                stats['nodes_7d'] = cursor.fetchone()[0] or 0
-
-                cursor.execute("""
-                    SELECT COUNT(DISTINCT public_key) FROM daily_stats
-                """)
-                stats['nodes_all'] = cursor.fetchone()[0] or 0
-            else:
-                # Fallback to old method if daily table doesn't exist yet
-                if 'complete_contact_tracking' in tables:
+                # Advertisement statistics using daily tracking table
+                if 'daily_stats' in tables:
+                    # Total advertisements (all time)
                     cursor.execute("""
-                        SELECT SUM(advert_count) FROM complete_contact_tracking
-                    """)
+                    SELECT SUM(advert_count) FROM daily_stats
+                """)
                     total_adverts = cursor.fetchone()[0]
                     stats['total_advertisements'] = total_adverts or 0
 
+                    # 24h advertisements
                     cursor.execute("""
+                    SELECT SUM(advert_count) FROM daily_stats
+                    WHERE date = date('now', 'localtime')
+                """)
+                    stats['advertisements_24h'] = cursor.fetchone()[0] or 0
+
+                    # 7d advertisements (last 7 days, excluding today)
+                    cursor.execute("""
+                    SELECT SUM(advert_count) FROM daily_stats
+                    WHERE date >= date('now', 'localtime', '-7 days') AND date < date('now', 'localtime')
+                """)
+                    stats['advertisements_7d'] = cursor.fetchone()[0] or 0
+
+                    # Nodes per day statistics
+                    cursor.execute("""
+                    SELECT COUNT(DISTINCT public_key) FROM daily_stats
+                    WHERE date = date('now', 'localtime')
+                """)
+                    stats['nodes_24h'] = cursor.fetchone()[0] or 0
+
+                    cursor.execute("""
+                    SELECT COUNT(DISTINCT public_key) FROM daily_stats
+                    WHERE date >= date('now', 'localtime', '-6 days')
+                """)
+                    stats['nodes_7d'] = cursor.fetchone()[0] or 0
+
+                    cursor.execute("""
+                    SELECT COUNT(DISTINCT public_key) FROM daily_stats
+                """)
+                    stats['nodes_all'] = cursor.fetchone()[0] or 0
+                else:
+                    # Fallback to old method if daily table doesn't exist yet
+                    if 'complete_contact_tracking' in tables:
+                        cursor.execute("""
+                        SELECT SUM(advert_count) FROM complete_contact_tracking
+                    """)
+                        total_adverts = cursor.fetchone()[0]
+                        stats['total_advertisements'] = total_adverts or 0
+
+                        cursor.execute("""
                         SELECT SUM(advert_count) FROM complete_contact_tracking
                         WHERE last_heard > datetime('now', 'localtime', '-24 hours')
                     """)
-                    stats['advertisements_24h'] = cursor.fetchone()[0] or 0
+                        stats['advertisements_24h'] = cursor.fetchone()[0] or 0
 
-                    cursor.execute("""
+                        cursor.execute("""
                         SELECT SUM(advert_count) FROM complete_contact_tracking
                         WHERE last_heard > datetime('now', 'localtime', '-7 days')
                     """)
-                    stats['advertisements_7d'] = cursor.fetchone()[0] or 0
+                        stats['advertisements_7d'] = cursor.fetchone()[0] or 0
 
-            # Repeater contacts (if exists)
-            if 'repeater_contacts' in tables:
-                cursor.execute("SELECT COUNT(*) FROM repeater_contacts")
-                stats['repeater_contacts'] = cursor.fetchone()[0]
+                # Repeater contacts (if exists)
+                if 'repeater_contacts' in tables:
+                    cursor.execute("SELECT COUNT(*) FROM repeater_contacts")
+                    stats['repeater_contacts'] = cursor.fetchone()[0]
 
-                cursor.execute("SELECT COUNT(*) FROM repeater_contacts WHERE is_active = 1")
-                stats['active_repeater_contacts'] = cursor.fetchone()[0]
+                    cursor.execute("SELECT COUNT(*) FROM repeater_contacts WHERE is_active = 1")
+                    stats['active_repeater_contacts'] = cursor.fetchone()[0]
 
-            # Cache statistics
-            cache_tables = [t for t in tables if 'cache' in t]
-            stats['cache_tables'] = cache_tables
-            stats['total_cache_entries'] = 0
-            stats['active_cache_entries'] = 0
+                # Cache statistics
+                cache_tables = [t for t in tables if 'cache' in t]
+                stats['cache_tables'] = cache_tables
+                stats['total_cache_entries'] = 0
+                stats['active_cache_entries'] = 0
 
-            for table in cache_tables:
-                try:
-                    validate_sql_identifier(table)
-                except ValueError:
-                    self.logger.warning(f"Rejecting invalid table name: {table!r}")
-                    raise
-                cursor.execute(f"SELECT COUNT(*) FROM {table}")
-                count = cursor.fetchone()[0]
-                stats['total_cache_entries'] += count
-                stats[f'{table}_count'] = count
+                for table in cache_tables:
+                    try:
+                        validate_sql_identifier(table)
+                    except ValueError:
+                        self.logger.warning(f"Rejecting invalid table name: {table!r}")
+                        raise
+                    cursor.execute(f"SELECT COUNT(*) FROM {table}")
+                    count = cursor.fetchone()[0]
+                    stats['total_cache_entries'] += count
+                    stats[f'{table}_count'] = count
 
-                # Get active entries (not expired)
-                cursor.execute(f"SELECT COUNT(*) FROM {table} WHERE expires_at > datetime('now')")
-                active_count = cursor.fetchone()[0]
-                stats['active_cache_entries'] += active_count
-                stats[f'{table}_active'] = active_count
+                    # Get active entries (not expired)
+                    cursor.execute(f"SELECT COUNT(*) FROM {table} WHERE expires_at > datetime('now')")
+                    active_count = cursor.fetchone()[0]
+                    stats['active_cache_entries'] += active_count
+                    stats[f'{table}_active'] = active_count
 
-            # Message and command statistics (if stats tables exist)
-            if 'message_stats' in tables:
-                cursor.execute("SELECT COUNT(*) FROM message_stats")
-                stats['total_messages'] = cursor.fetchone()[0]
+                # Message and command statistics (if stats tables exist)
+                if 'message_stats' in tables:
+                    cursor.execute("SELECT COUNT(*) FROM message_stats")
+                    stats['total_messages'] = cursor.fetchone()[0]
 
-                cursor.execute("""
+                    cursor.execute("""
                     SELECT COUNT(*) FROM message_stats
                     WHERE timestamp > strftime('%s', 'now', '-24 hours')
                 """)
-                stats['messages_24h'] = cursor.fetchone()[0]
+                    stats['messages_24h'] = cursor.fetchone()[0]
 
-                cursor.execute("""
+                    cursor.execute("""
                     SELECT COUNT(DISTINCT sender_id) FROM message_stats
                     WHERE timestamp > strftime('%s', 'now', '-24 hours')
                 """)
-                stats['unique_senders_24h'] = cursor.fetchone()[0]
+                    stats['unique_senders_24h'] = cursor.fetchone()[0]
 
-                # Total unique users and channels
-                cursor.execute("SELECT COUNT(DISTINCT sender_id) FROM message_stats")
-                stats['unique_users_total'] = cursor.fetchone()[0]
+                    # Total unique users and channels
+                    cursor.execute("SELECT COUNT(DISTINCT sender_id) FROM message_stats")
+                    stats['unique_users_total'] = cursor.fetchone()[0]
 
-                cursor.execute("SELECT COUNT(DISTINCT channel) FROM message_stats WHERE channel IS NOT NULL")
-                stats['unique_channels_total'] = cursor.fetchone()[0]
+                    cursor.execute("SELECT COUNT(DISTINCT channel) FROM message_stats WHERE channel IS NOT NULL")
+                    stats['unique_channels_total'] = cursor.fetchone()[0]
 
-                # Top users (most frequent message senders) - filter by time window
-                if top_users_window == '24h':
-                    time_filter = "WHERE timestamp > strftime('%s', 'now', '-24 hours')"
-                elif top_users_window == '7d':
-                    time_filter = "WHERE timestamp > strftime('%s', 'now', '-7 days')"
-                elif top_users_window == '30d':
-                    time_filter = "WHERE timestamp > strftime('%s', 'now', '-30 days')"
-                else:  # 'all'
-                    time_filter = ""
+                    # Top users (most frequent message senders) - filter by time window
+                    if top_users_window == '24h':
+                        time_filter = "WHERE timestamp > strftime('%s', 'now', '-24 hours')"
+                    elif top_users_window == '7d':
+                        time_filter = "WHERE timestamp > strftime('%s', 'now', '-7 days')"
+                    elif top_users_window == '30d':
+                        time_filter = "WHERE timestamp > strftime('%s', 'now', '-30 days')"
+                    else:  # 'all'
+                        time_filter = ""
 
-                query = f"""
+                    query = f"""
                     SELECT sender_id, COUNT(*) as count
                     FROM message_stats
                     {time_filter}
@@ -6240,20 +6208,20 @@ class BotDataViewer:
                     ORDER BY count DESC
                     LIMIT 15
                 """
-                cursor.execute(query)
-                stats['top_users'] = [{'user': row[0], 'count': row[1]} for row in cursor.fetchall()]
+                    cursor.execute(query)
+                    stats['top_users'] = [{'user': row[0], 'count': row[1]} for row in cursor.fetchall()]
 
-                # Top channels by message count - filter by time window
-                if top_channels_window == '24h':
-                    time_filter = "AND timestamp > strftime('%s', 'now', '-24 hours')"
-                elif top_channels_window == '7d':
-                    time_filter = "AND timestamp > strftime('%s', 'now', '-7 days')"
-                elif top_channels_window == '30d':
-                    time_filter = "AND timestamp > strftime('%s', 'now', '-30 days')"
-                else:  # 'all'
-                    time_filter = ""
+                    # Top channels by message count - filter by time window
+                    if top_channels_window == '24h':
+                        time_filter = "AND timestamp > strftime('%s', 'now', '-24 hours')"
+                    elif top_channels_window == '7d':
+                        time_filter = "AND timestamp > strftime('%s', 'now', '-7 days')"
+                    elif top_channels_window == '30d':
+                        time_filter = "AND timestamp > strftime('%s', 'now', '-30 days')"
+                    else:  # 'all'
+                        time_filter = ""
 
-                query = f"""
+                    query = f"""
                     SELECT channel, COUNT(*) as message_count, COUNT(DISTINCT sender_id) as unique_users
                     FROM message_stats
                     WHERE channel IS NOT NULL {time_filter}
@@ -6261,33 +6229,33 @@ class BotDataViewer:
                     ORDER BY message_count DESC
                     LIMIT 10
                 """
-                cursor.execute(query)
-                stats['top_channels'] = [
-                    {'channel': row[0], 'messages': row[1], 'users': row[2]}
-                    for row in cursor.fetchall()
-                ]
+                    cursor.execute(query)
+                    stats['top_channels'] = [
+                        {'channel': row[0], 'messages': row[1], 'users': row[2]}
+                        for row in cursor.fetchall()
+                    ]
 
-            if 'command_stats' in tables:
-                cursor.execute("SELECT COUNT(*) FROM command_stats")
-                stats['total_commands'] = cursor.fetchone()[0]
+                if 'command_stats' in tables:
+                    cursor.execute("SELECT COUNT(*) FROM command_stats")
+                    stats['total_commands'] = cursor.fetchone()[0]
 
-                cursor.execute("""
+                    cursor.execute("""
                     SELECT COUNT(*) FROM command_stats
                     WHERE timestamp > strftime('%s', 'now', '-24 hours')
                 """)
-                stats['commands_24h'] = cursor.fetchone()[0]
+                    stats['commands_24h'] = cursor.fetchone()[0]
 
-                # Top commands - filter by time window
-                if top_commands_window == '24h':
-                    time_filter = "WHERE timestamp > strftime('%s', 'now', '-24 hours')"
-                elif top_commands_window == '7d':
-                    time_filter = "WHERE timestamp > strftime('%s', 'now', '-7 days')"
-                elif top_commands_window == '30d':
-                    time_filter = "WHERE timestamp > strftime('%s', 'now', '-30 days')"
-                else:  # 'all'
-                    time_filter = ""
+                    # Top commands - filter by time window
+                    if top_commands_window == '24h':
+                        time_filter = "WHERE timestamp > strftime('%s', 'now', '-24 hours')"
+                    elif top_commands_window == '7d':
+                        time_filter = "WHERE timestamp > strftime('%s', 'now', '-7 days')"
+                    elif top_commands_window == '30d':
+                        time_filter = "WHERE timestamp > strftime('%s', 'now', '-30 days')"
+                    else:  # 'all'
+                        time_filter = ""
 
-                query = f"""
+                    query = f"""
                     SELECT command_name, COUNT(*) as count
                     FROM command_stats
                     {time_filter}
@@ -6295,123 +6263,123 @@ class BotDataViewer:
                     ORDER BY count DESC
                     LIMIT 15
                 """
-                cursor.execute(query)
-                stats['top_commands'] = [{'command': row[0], 'count': row[1]} for row in cursor.fetchall()]
+                    cursor.execute(query)
+                    stats['top_commands'] = [{'command': row[0], 'count': row[1]} for row in cursor.fetchall()]
 
-                # Bot reply rates (commands that got responses) - calculate for different time windows
-                # 24 hour reply rate
-                cursor.execute("""
+                    # Bot reply rates (commands that got responses) - calculate for different time windows
+                    # 24 hour reply rate
+                    cursor.execute("""
                     SELECT COUNT(*) FROM command_stats
                     WHERE timestamp > strftime('%s', 'now', '-24 hours') AND response_sent = 1
                 """)
-                replied_24h = cursor.fetchone()[0]
-                cursor.execute("""
+                    replied_24h = cursor.fetchone()[0]
+                    cursor.execute("""
                     SELECT COUNT(*) FROM command_stats
                     WHERE timestamp > strftime('%s', 'now', '-24 hours')
                 """)
-                total_24h = cursor.fetchone()[0]
-                if total_24h > 0:
-                    stats['bot_reply_rate_24h'] = round((replied_24h / total_24h) * 100, 1)
-                else:
-                    stats['bot_reply_rate_24h'] = 0
+                    total_24h = cursor.fetchone()[0]
+                    if total_24h > 0:
+                        stats['bot_reply_rate_24h'] = round((replied_24h / total_24h) * 100, 1)
+                    else:
+                        stats['bot_reply_rate_24h'] = 0
 
-                # 7 day reply rate
-                cursor.execute("""
+                    # 7 day reply rate
+                    cursor.execute("""
                     SELECT COUNT(*) FROM command_stats
                     WHERE timestamp > strftime('%s', 'now', '-7 days') AND response_sent = 1
                 """)
-                replied_7d = cursor.fetchone()[0]
-                cursor.execute("""
+                    replied_7d = cursor.fetchone()[0]
+                    cursor.execute("""
                     SELECT COUNT(*) FROM command_stats
                     WHERE timestamp > strftime('%s', 'now', '-7 days')
                 """)
-                total_7d = cursor.fetchone()[0]
-                if total_7d > 0:
-                    stats['bot_reply_rate_7d'] = round((replied_7d / total_7d) * 100, 1)
-                else:
-                    stats['bot_reply_rate_7d'] = 0
+                    total_7d = cursor.fetchone()[0]
+                    if total_7d > 0:
+                        stats['bot_reply_rate_7d'] = round((replied_7d / total_7d) * 100, 1)
+                    else:
+                        stats['bot_reply_rate_7d'] = 0
 
-                # 30 day reply rate
-                cursor.execute("""
+                    # 30 day reply rate
+                    cursor.execute("""
                     SELECT COUNT(*) FROM command_stats
                     WHERE timestamp > strftime('%s', 'now', '-30 days') AND response_sent = 1
                 """)
-                replied_30d = cursor.fetchone()[0]
-                cursor.execute("""
+                    replied_30d = cursor.fetchone()[0]
+                    cursor.execute("""
                     SELECT COUNT(*) FROM command_stats
                     WHERE timestamp > strftime('%s', 'now', '-30 days')
                 """)
-                total_30d = cursor.fetchone()[0]
-                if total_30d > 0:
-                    stats['bot_reply_rate_30d'] = round((replied_30d / total_30d) * 100, 1)
-                else:
-                    stats['bot_reply_rate_30d'] = 0
+                    total_30d = cursor.fetchone()[0]
+                    if total_30d > 0:
+                        stats['bot_reply_rate_30d'] = round((replied_30d / total_30d) * 100, 1)
+                    else:
+                        stats['bot_reply_rate_30d'] = 0
 
-            # Path statistics (if path_stats table exists)
-            if 'path_stats' in tables:
-                cursor.execute("""
+                # Path statistics (if path_stats table exists)
+                if 'path_stats' in tables:
+                    cursor.execute("""
                     SELECT sender_id, path_length, path_string, timestamp
                     FROM path_stats
                     ORDER BY path_length DESC
                     LIMIT 1
                 """)
-                longest_path = cursor.fetchone()
-                if longest_path:
-                    stats['longest_path'] = {
-                        'user': longest_path[0],
-                        'path_length': longest_path[1],
-                        'path_string': longest_path[2],
-                        'timestamp': longest_path[3]
-                    }
+                    longest_path = cursor.fetchone()
+                    if longest_path:
+                        stats['longest_path'] = {
+                            'user': longest_path[0],
+                            'path_length': longest_path[1],
+                            'path_string': longest_path[2],
+                            'timestamp': longest_path[3]
+                        }
 
-                # Top paths (longest paths) - filter by time window
-                if top_paths_window == '24h':
-                    time_filter = "WHERE timestamp > strftime('%s', 'now', '-24 hours')"
-                elif top_paths_window == '7d':
-                    time_filter = "WHERE timestamp > strftime('%s', 'now', '-7 days')"
-                elif top_paths_window == '30d':
-                    time_filter = "WHERE timestamp > strftime('%s', 'now', '-30 days')"
-                else:  # 'all'
-                    time_filter = ""
+                    # Top paths (longest paths) - filter by time window
+                    if top_paths_window == '24h':
+                        time_filter = "WHERE timestamp > strftime('%s', 'now', '-24 hours')"
+                    elif top_paths_window == '7d':
+                        time_filter = "WHERE timestamp > strftime('%s', 'now', '-7 days')"
+                    elif top_paths_window == '30d':
+                        time_filter = "WHERE timestamp > strftime('%s', 'now', '-30 days')"
+                    else:  # 'all'
+                        time_filter = ""
 
-                query = f"""
+                    query = f"""
                     SELECT sender_id, path_length, path_string, timestamp
                     FROM path_stats
                     {time_filter}
                     ORDER BY path_length DESC
                     LIMIT 5
                 """
-                cursor.execute(query)
-                stats['top_paths'] = [
-                    {
-                        'user': row[0],
-                        'path_length': row[1],
-                        'path_string': row[2],
-                        'timestamp': row[3]
-                    }
-                    for row in cursor.fetchall()
-                ]
+                    cursor.execute(query)
+                    stats['top_paths'] = [
+                        {
+                            'user': row[0],
+                            'path_length': row[1],
+                            'path_string': row[2],
+                            'timestamp': row[3]
+                        }
+                        for row in cursor.fetchall()
+                    ]
 
-            # Network health metrics
-            if 'complete_contact_tracking' in tables:
-                cursor.execute("""
+                # Network health metrics
+                if 'complete_contact_tracking' in tables:
+                    cursor.execute("""
                     SELECT AVG(snr) FROM complete_contact_tracking
                     WHERE snr IS NOT NULL AND last_heard > datetime('now', 'localtime', '-24 hours')
                 """)
-                avg_snr = cursor.fetchone()[0]
-                stats['avg_snr_24h'] = round(avg_snr, 1) if avg_snr else 0
+                    avg_snr = cursor.fetchone()[0]
+                    stats['avg_snr_24h'] = round(avg_snr, 1) if avg_snr else 0
 
-                cursor.execute("""
+                    cursor.execute("""
                     SELECT AVG(signal_strength) FROM complete_contact_tracking
                     WHERE signal_strength IS NOT NULL AND last_heard > datetime('now', 'localtime', '-24 hours')
                 """)
-                avg_signal = cursor.fetchone()[0]
-                stats['avg_signal_strength_24h'] = round(avg_signal, 1) if avg_signal else 0
+                    avg_signal = cursor.fetchone()[0]
+                    stats['avg_signal_strength_24h'] = round(avg_signal, 1) if avg_signal else 0
 
-            # Geographic distribution - only count currently tracked contacts heard in the last 30 days
-            # Normalize country names to avoid duplicates (e.g., "United States" vs "United States of America")
-            if 'complete_contact_tracking' in tables:
-                cursor.execute("""
+                # Geographic distribution - only count currently tracked contacts heard in the last 30 days
+                # Normalize country names to avoid duplicates (e.g., "United States" vs "United States of America")
+                if 'complete_contact_tracking' in tables:
+                    cursor.execute("""
                     SELECT COUNT(DISTINCT
                         CASE
                             WHEN country IN ('United States', 'United States of America', 'US', 'USA')
@@ -6423,108 +6391,104 @@ class BotDataViewer:
                     AND last_heard > datetime('now', 'localtime', '-30 days')
                     AND is_currently_tracked = 1
                 """)
-                stats['countries'] = cursor.fetchone()[0]
+                    stats['countries'] = cursor.fetchone()[0]
 
-                cursor.execute("""
+                    cursor.execute("""
                     SELECT COUNT(DISTINCT state) FROM complete_contact_tracking
                     WHERE state IS NOT NULL AND state != ''
                     AND last_heard > datetime('now', 'localtime', '-30 days')
                     AND is_currently_tracked = 1
                 """)
-                stats['states'] = cursor.fetchone()[0]
+                    stats['states'] = cursor.fetchone()[0]
 
-                cursor.execute("""
+                    cursor.execute("""
                     SELECT COUNT(DISTINCT city) FROM complete_contact_tracking
                     WHERE city IS NOT NULL AND city != ''
                     AND last_heard > datetime('now', 'localtime', '-30 days')
                     AND is_currently_tracked = 1
                 """)
-                stats['cities'] = cursor.fetchone()[0]
+                    stats['cities'] = cursor.fetchone()[0]
 
-            return stats
+                return stats
 
         except Exception as e:
             self.logger.error(f"Error getting database stats: {e}")
             return {'error': str(e)}
-        finally:
-            if conn:
-                conn.close()
 
     def _get_database_info(self):
         """Get comprehensive database information for database page"""
-        conn = None
         try:
-            conn = self._get_db_connection()
-            cursor = conn.cursor()
+            with self._db_connection() as conn:
+                cursor = conn.cursor()
 
-            # Get all tables
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
-            table_names = [row[0] for row in cursor.fetchall()]
+                # Get all tables
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+                table_names = [row[0] for row in cursor.fetchall()]
 
-            # Filter tables by ALLOWED_TABLES whitelist for security
-            table_names = [
-                name for name in table_names
-                if name in self.ALLOWED_TABLES
-            ]
+                # Filter tables by ALLOWED_TABLES whitelist for security
+                table_names = [
+                    name for name in table_names
+                    if name in self.ALLOWED_TABLES
+                ]
 
-            # Get table information
-            tables = []
-            total_records = 0
+                # Get table information
+                tables = []
+                total_records = 0
 
-            for table_name in table_names:
+                for table_name in table_names:
+                    try:
+                        # Get record count
+                        cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
+                        record_count = cursor.fetchone()[0]
+                        total_records += record_count
+
+                        # Get table size (approximate)
+                        cursor.execute(f"PRAGMA table_info({table_name})")
+                        columns = cursor.fetchall()
+
+                        # Estimate size (rough calculation)
+                        estimated_size = record_count * len(columns) * 50  # Rough estimate
+                        size_str = f"{estimated_size:,} bytes" if estimated_size < 1024 else f"{estimated_size/1024:.1f} KB"
+
+                        # Get table description based on name
+                        description = self._get_table_description(table_name)
+
+                        tables.append({
+                            'name': table_name,
+                            'record_count': record_count,
+                            'size': size_str,
+                            'description': description
+                        })
+
+                    except Exception as e:
+                        self.logger.debug(f"Error getting info for table {table_name}: {e}")
+                        tables.append({
+                            'name': table_name,
+                            'record_count': 0,
+                            'size': 'Unknown',
+                            'description': 'Error reading table'
+                        })
+
+                # Get database file size
+                import os
                 try:
-                    # Get record count
-                    cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
-                    record_count = cursor.fetchone()[0]
-                    total_records += record_count
+                    db_size_bytes = os.path.getsize(self.db_path)
+                    if db_size_bytes < 1024:
+                        db_size = f"{db_size_bytes} bytes"
+                    elif db_size_bytes < 1024 * 1024:
+                        db_size = f"{db_size_bytes/1024:.1f} KB"
+                    else:
+                        db_size = f"{db_size_bytes/(1024*1024):.1f} MB"
+                except:
+                    db_size = "Unknown"
 
-                    # Get table size (approximate)
-                    cursor.execute(f"PRAGMA table_info({table_name})")
-                    columns = cursor.fetchall()
-
-                    # Estimate size (rough calculation)
-                    estimated_size = record_count * len(columns) * 50  # Rough estimate
-                    size_str = f"{estimated_size:,} bytes" if estimated_size < 1024 else f"{estimated_size/1024:.1f} KB"
-
-                    # Get table description based on name
-                    description = self._get_table_description(table_name)
-
-                    tables.append({
-                        'name': table_name,
-                        'record_count': record_count,
-                        'size': size_str,
-                        'description': description
-                    })
-
-                except Exception as e:
-                    self.logger.debug(f"Error getting info for table {table_name}: {e}")
-                    tables.append({
-                        'name': table_name,
-                        'record_count': 0,
-                        'size': 'Unknown',
-                        'description': 'Error reading table'
-                    })
-
-            # Get database file size
-            import os
-            try:
-                db_size_bytes = os.path.getsize(self.db_path)
-                if db_size_bytes < 1024:
-                    db_size = f"{db_size_bytes} bytes"
-                elif db_size_bytes < 1024 * 1024:
-                    db_size = f"{db_size_bytes/1024:.1f} KB"
-                else:
-                    db_size = f"{db_size_bytes/(1024*1024):.1f} MB"
-            except:
-                db_size = "Unknown"
-
-            return {
-                'total_tables': len(table_names),
-                'total_records': total_records,
-                'last_updated': time.strftime('%Y-%m-%d %H:%M:%S'),
-                'db_size': db_size,
-                'tables': tables
-            }
+                return {
+                    'total_tables': len(table_names),
+                    'total_records': total_records,
+                    'last_updated': time.strftime('%Y-%m-%d %H:%M:%S'),
+                    'db_size': db_size,
+                    'tables': tables
+                }
 
         except Exception as e:
             self.logger.error(f"Error getting database info: {e}")
@@ -6535,9 +6499,6 @@ class BotDataViewer:
                 'db_size': 'Unknown',
                 'tables': []
             }
-        finally:
-            if conn:
-                conn.close()
 
     def _is_safe_table_name(self, table_name: str) -> bool:
         """Check if table name is in the ALLOWED_TABLES whitelist.
@@ -6568,66 +6529,65 @@ class BotDataViewer:
 
     def _optimize_database(self):
         """Optimize database using VACUUM, ANALYZE, and REINDEX"""
-        conn = None
         try:
-            conn = self._get_db_connection()
-            cursor = conn.cursor()
+            with self._db_connection() as conn:
+                cursor = conn.cursor()
 
-            # Get initial database size
-            import os
-            initial_size = os.path.getsize(self.db_path)
+                # Get initial database size
+                import os
+                initial_size = os.path.getsize(self.db_path)
 
-            # Perform VACUUM to reclaim unused space
-            self.logger.info("Starting database VACUUM...")
-            cursor.execute("VACUUM")
-            vacuum_size = os.path.getsize(self.db_path)
-            vacuum_saved = initial_size - vacuum_size
+                # Perform VACUUM to reclaim unused space
+                self.logger.info("Starting database VACUUM...")
+                cursor.execute("VACUUM")
+                vacuum_size = os.path.getsize(self.db_path)
+                vacuum_saved = initial_size - vacuum_size
 
-            # Perform ANALYZE to update table statistics
-            self.logger.info("Starting database ANALYZE...")
-            cursor.execute("ANALYZE")
+                # Perform ANALYZE to update table statistics
+                self.logger.info("Starting database ANALYZE...")
+                cursor.execute("ANALYZE")
 
-            # Get all tables for REINDEX
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-            tables = [row[0] for row in cursor.fetchall()]
+                # Get all tables for REINDEX
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+                tables = [row[0] for row in cursor.fetchall()]
 
-            # Filter tables by ALLOWED_TABLES whitelist for security
-            tables = [t for t in tables if t in self.ALLOWED_TABLES]
+                # Filter tables by ALLOWED_TABLES whitelist for security
+                tables = [t for t in tables if t in self.ALLOWED_TABLES]
 
-            # Perform REINDEX on all tables
-            self.logger.info("Starting database REINDEX...")
-            reindexed_tables = []
-            for table in tables:
-                try:
-                    cursor.execute(f"REINDEX {table}")
-                    reindexed_tables.append(table)
-                except Exception as e:
-                    self.logger.debug(f"Could not reindex table {table}: {e}")
+                # Perform REINDEX on all tables
+                self.logger.info("Starting database REINDEX...")
+                reindexed_tables = []
+                for table in tables:
+                    try:
+                        cursor.execute(f"REINDEX {table}")
+                        reindexed_tables.append(table)
+                    except Exception as e:
+                        self.logger.debug(f"Could not reindex table {table}: {e}")
 
-            # Get final database size
-            final_size = os.path.getsize(self.db_path)
-            total_saved = initial_size - final_size
+                # Get final database size
+                final_size = os.path.getsize(self.db_path)
+                total_saved = initial_size - final_size
 
-            # Format size information
-            def format_size(size_bytes):
-                if size_bytes < 1024:
-                    return f"{size_bytes} bytes"
-                elif size_bytes < 1024 * 1024:
-                    return f"{size_bytes/1024:.1f} KB"
-                else:
-                    return f"{size_bytes/(1024*1024):.1f} MB"
+                # Format size information
+                def format_size(size_bytes):
+                    if size_bytes < 1024:
+                        return f"{size_bytes} bytes"
+                    elif size_bytes < 1024 * 1024:
+                        return f"{size_bytes/1024:.1f} KB"
+                    else:
+                        return f"{size_bytes/(1024*1024):.1f} MB"
 
-            return {
-                'success': True,
-                'vacuum_result': f"VACUUM completed - saved {format_size(vacuum_saved)}",
-                'analyze_result': f"ANALYZE completed - updated statistics for {len(tables)} tables",
-                'reindex_result': f"REINDEX completed - rebuilt indexes for {len(reindexed_tables)} tables",
-                'initial_size': format_size(initial_size),
-                'final_size': format_size(final_size),
-                'total_saved': format_size(total_saved),
-                'tables_processed': len(tables),
-                'tables_reindexed': len(reindexed_tables)
-            }
+                return {
+                    'success': True,
+                    'vacuum_result': f"VACUUM completed - saved {format_size(vacuum_saved)}",
+                    'analyze_result': f"ANALYZE completed - updated statistics for {len(tables)} tables",
+                    'reindex_result': f"REINDEX completed - rebuilt indexes for {len(reindexed_tables)} tables",
+                    'initial_size': format_size(initial_size),
+                    'final_size': format_size(final_size),
+                    'total_saved': format_size(total_saved),
+                    'tables_processed': len(tables),
+                    'tables_reindexed': len(reindexed_tables)
+                }
 
         except Exception as e:
             self.logger.error(f"Error optimizing database: {e}")
@@ -6635,9 +6595,6 @@ class BotDataViewer:
                 'success': False,
                 'error': str(e)
             }
-        finally:
-            if conn:
-                conn.close()
 
     @staticmethod
     def _chunks_from_multibyte_path_hex(path_hex: str, bytes_per_hop: int) -> list[str]:
@@ -6945,58 +6902,57 @@ class BotDataViewer:
         node_type: all | repeater | roomserver — filters which relay node types are included.
         The daily_trend array always covers the last 30 days regardless of ``since``.
         """
-        conn = None
         try:
-            conn = self._get_db_connection()
-            cursor = conn.cursor()
+            with self._db_connection() as conn:
+                cursor = conn.cursor()
 
-            # Role filter based on node_type
-            if node_type == 'repeater':
-                role_filter = "c.role = 'repeater'"
-            elif node_type == 'roomserver':
-                role_filter = "c.role = 'roomserver'"
-            else:
-                role_filter = "c.role IN ('repeater', 'roomserver')"
+                # Role filter based on node_type
+                if node_type == 'repeater':
+                    role_filter = "c.role = 'repeater'"
+                elif node_type == 'roomserver':
+                    role_filter = "c.role = 'roomserver'"
+                else:
+                    role_filter = "c.role IN ('repeater', 'roomserver')"
 
-            # last_heard is stored as a Python datetime serialised to ISO text by sqlite3
-            # (e.g. '2026-05-17 10:30:00.123456').  Use SQLite's datetime() so the comparison
-            # is ISO-text vs ISO-text, which sorts correctly lexicographically.
-            datetime_offsets = {
-                '24h': "'-24 hours'",
-                '7d':  "'-7 days'",
-                '30d': "'-30 days'",
-                '90d': "'-90 days'",
-            }
-            if since in datetime_offsets:
-                where_clause = (
-                    f"WHERE {role_filter}"
-                    f" AND c.last_heard >= datetime('now', 'localtime', {datetime_offsets[since]})"
-                )
-            else:
-                where_clause = f"WHERE {role_filter}"
+                # last_heard is stored as a Python datetime serialised to ISO text by sqlite3
+                # (e.g. '2026-05-17 10:30:00.123456').  Use SQLite's datetime() so the comparison
+                # is ISO-text vs ISO-text, which sorts correctly lexicographically.
+                datetime_offsets = {
+                    '24h': "'-24 hours'",
+                    '7d':  "'-7 days'",
+                    '30d': "'-30 days'",
+                    '90d': "'-90 days'",
+                }
+                if since in datetime_offsets:
+                    where_clause = (
+                        f"WHERE {role_filter}"
+                        f" AND c.last_heard >= datetime('now', 'localtime', {datetime_offsets[since]})"
+                    )
+                else:
+                    where_clause = f"WHERE {role_filter}"
 
-            # Check for observed_paths table
-            cursor.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name='observed_paths'"
-            )
-            has_observed_paths = cursor.fetchone() is not None
-
-            # Collect multibyte hop chunks for prefix matching, scoped to the same window as the
-            # contact filter so the rollout numbers are consistent with the dashboard's 7d stats.
-            _since_to_days = {'24h': 1, '7d': 7, '30d': 30, '90d': 90}
-            _chunk_recent_days = _since_to_days.get(since)  # None → all-time for 'all'
-            multibyte_hop_chunks: set[str] = set()
-            if has_observed_paths:
-                multibyte_hop_chunks = self._collect_multibyte_hop_chunks(
-                    cursor, recent_days=_chunk_recent_days
-                )
-            chunk_buckets = self._bucket_hop_chunks(multibyte_hop_chunks)
-
-            # Per-repeater path traffic totals (advert paths only)
-            path_traffic: dict[str, dict] = {}
-            if has_observed_paths:
+                # Check for observed_paths table
                 cursor.execute(
-                    """
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name='observed_paths'"
+                )
+                has_observed_paths = cursor.fetchone() is not None
+
+                # Collect multibyte hop chunks for prefix matching, scoped to the same window as the
+                # contact filter so the rollout numbers are consistent with the dashboard's 7d stats.
+                _since_to_days = {'24h': 1, '7d': 7, '30d': 30, '90d': 90}
+                _chunk_recent_days = _since_to_days.get(since)  # None → all-time for 'all'
+                multibyte_hop_chunks: set[str] = set()
+                if has_observed_paths:
+                    multibyte_hop_chunks = self._collect_multibyte_hop_chunks(
+                        cursor, recent_days=_chunk_recent_days
+                    )
+                chunk_buckets = self._bucket_hop_chunks(multibyte_hop_chunks)
+
+                # Per-repeater path traffic totals (advert paths only)
+                path_traffic: dict[str, dict] = {}
+                if has_observed_paths:
+                    cursor.execute(
+                        """
                     SELECT public_key,
                         SUM(observation_count) as total_traffic,
                         SUM(CASE WHEN bytes_per_hop IN (2,3) THEN observation_count ELSE 0 END) as mb_traffic,
@@ -7005,25 +6961,25 @@ class BotDataViewer:
                     WHERE public_key IS NOT NULL AND packet_type = 'advert'
                     GROUP BY public_key
                     """
-                )
-                for pt_row in cursor.fetchall():
-                    path_traffic[pt_row['public_key']] = {
-                        'total_traffic': pt_row['total_traffic'] or 0,
-                        'mb_traffic':    pt_row['mb_traffic'] or 0,
-                        'latest_path_seen': pt_row['latest_path_seen'],
-                    }
+                    )
+                    for pt_row in cursor.fetchall():
+                        path_traffic[pt_row['public_key']] = {
+                            'total_traffic': pt_row['total_traffic'] or 0,
+                            'mb_traffic':    pt_row['mb_traffic'] or 0,
+                            'latest_path_seen': pt_row['latest_path_seen'],
+                        }
 
-            # Scope the path history to the same window so badge evidence matches the since filter.
-            path_time_cond = ""
-            if since in datetime_offsets:
-                path_time_cond = f"AND last_seen >= datetime('now', 'localtime', {datetime_offsets[since]})"
+                # Scope the path history to the same window so badge evidence matches the since filter.
+                path_time_cond = ""
+                if since in datetime_offsets:
+                    path_time_cond = f"AND last_seen >= datetime('now', 'localtime', {datetime_offsets[since]})"
 
-            # Fetch the relay contacts directly (no join/group-by); their recent advert paths are
-            # loaded separately below and assembled in Python. This mirrors _get_tracking_data and
-            # keeps the planner on the idx_observed_paths_advert_pk_seen covering index for the path
-            # scan instead of building a runtime automatic index for a LEFT JOIN + GROUP_CONCAT.
-            cursor.execute(
-                f"""
+                # Fetch the relay contacts directly (no join/group-by); their recent advert paths are
+                # loaded separately below and assembled in Python. This mirrors _get_tracking_data and
+                # keeps the planner on the idx_observed_paths_advert_pk_seen covering index for the path
+                # scan instead of building a runtime automatic index for a LEFT JOIN + GROUP_CONCAT.
+                cursor.execute(
+                    f"""
                 SELECT
                     c.public_key, c.name, c.role, c.device_type,
                     c.latitude, c.longitude, c.city, c.state, c.country,
@@ -7033,17 +6989,17 @@ class BotDataViewer:
                 {where_clause}
                 ORDER BY c.last_heard DESC
                 """
-            )
-            main_rows = cursor.fetchall()
+                )
+                main_rows = cursor.fetchall()
 
-            # Recent advert paths per contact (most-recent 50), grouped in Python by public_key.
-            # With idx_observed_paths_advert_pk_seen this runs as an ordered covering index scan.
-            # We don't filter to the relay keys here: the loop only looks up paths for contacts in
-            # main_rows, and joining the key set pushes the planner off the covering index.
-            paths_by_key: dict[str, list[dict]] = {}
-            if has_observed_paths:
-                cursor.execute(
-                    f"""
+                # Recent advert paths per contact (most-recent 50), grouped in Python by public_key.
+                # With idx_observed_paths_advert_pk_seen this runs as an ordered covering index scan.
+                # We don't filter to the relay keys here: the loop only looks up paths for contacts in
+                # main_rows, and joining the key set pushes the planner off the covering index.
+                paths_by_key: dict[str, list[dict]] = {}
+                if has_observed_paths:
+                    cursor.execute(
+                        f"""
                     WITH recent_paths AS (
                         SELECT public_key, path_hex, bytes_per_hop, observation_count, last_seen,
                                ROW_NUMBER() OVER (PARTITION BY public_key ORDER BY last_seen DESC) as rn
@@ -7055,219 +7011,219 @@ class BotDataViewer:
                     FROM recent_paths WHERE rn <= 50
                     ORDER BY public_key, last_seen DESC
                     """
-                )
-                for prow in cursor.fetchall():
-                    ph = prow['path_hex']
-                    if not ph:
-                        continue
-                    bph = 1
-                    if prow['bytes_per_hop'] is not None:
-                        try:
-                            bph = int(prow['bytes_per_hop'])
-                            if bph not in (1, 2, 3):
+                    )
+                    for prow in cursor.fetchall():
+                        ph = prow['path_hex']
+                        if not ph:
+                            continue
+                        bph = 1
+                        if prow['bytes_per_hop'] is not None:
+                            try:
+                                bph = int(prow['bytes_per_hop'])
+                                if bph not in (1, 2, 3):
+                                    bph = 1
+                            except (TypeError, ValueError):
                                 bph = 1
-                        except (TypeError, ValueError):
-                            bph = 1
-                    paths_by_key.setdefault(prow['public_key'], []).append({
-                        'path_hex': ph,
-                        'bytes_per_hop': bph,
-                        'observation_count': int(prow['observation_count']) if prow['observation_count'] is not None else 1,
-                        'last_seen': prow['last_seen'] if prow['last_seen'] is not None else None,
+                        paths_by_key.setdefault(prow['public_key'], []).append({
+                            'path_hex': ph,
+                            'bytes_per_hop': bph,
+                            'observation_count': int(prow['observation_count']) if prow['observation_count'] is not None else 1,
+                            'last_seen': prow['last_seen'] if prow['last_seen'] is not None else None,
+                        })
+
+                # Classify each repeater
+                status_counts: dict[str, int] = {
+                    'multibyte_direct': 0,
+                    'multibyte_relayed': 0,
+                    'single_byte': 0,
+                    'unknown': 0,
+                }
+                all_repeaters: list[dict] = []
+
+                for row in main_rows:
+                    pk = row['public_key']
+
+                    # Recent advert paths for this contact (grouped from the path query above)
+                    all_paths = paths_by_key.get(pk, [])
+
+                    badge = self._compute_path_encoding_badge(row, all_paths, chunk_buckets)
+
+                    obph_raw = row['out_bytes_per_hop']
+                    try:
+                        obph: int | None = int(obph_raw) if obph_raw is not None else None
+                    except (TypeError, ValueError):
+                        obph = None
+
+                    if badge == 'multibyte':
+                        status = 'multibyte_direct' if obph in (2, 3) else 'multibyte_relayed'
+                    elif badge == 'one_byte':
+                        status = 'single_byte'
+                    else:
+                        status = 'unknown'
+
+                    status_counts[status] += 1
+
+                    loc_parts = [p for p in [row['city'], row['state'], row['country']] if p]
+
+                    pt = path_traffic.get(pk or '', {})
+                    all_repeaters.append({
+                        'public_key':      pk,
+                        'name':            row['name'],
+                        'role':            row['role'],
+                        'device_type':     row['device_type'],
+                        'status':          status,
+                        'out_bytes_per_hop': obph,
+                        'advert_count':    row['advert_count'] or 0,
+                        'total_traffic':   pt.get('total_traffic', 0),
+                        'last_seen':       row['last_heard'],
+                        'first_heard':     row['first_heard'],
+                        'location':        ', '.join(loc_parts),
+                        'latitude':        row['latitude'],
+                        'longitude':       row['longitude'],
                     })
 
-            # Classify each repeater
-            status_counts: dict[str, int] = {
-                'multibyte_direct': 0,
-                'multibyte_relayed': 0,
-                'single_byte': 0,
-                'unknown': 0,
-            }
-            all_repeaters: list[dict] = []
-
-            for row in main_rows:
-                pk = row['public_key']
-
-                # Recent advert paths for this contact (grouped from the path query above)
-                all_paths = paths_by_key.get(pk, [])
-
-                badge = self._compute_path_encoding_badge(row, all_paths, chunk_buckets)
-
-                obph_raw = row['out_bytes_per_hop']
-                try:
-                    obph: int | None = int(obph_raw) if obph_raw is not None else None
-                except (TypeError, ValueError):
-                    obph = None
-
-                if badge == 'multibyte':
-                    status = 'multibyte_direct' if obph in (2, 3) else 'multibyte_relayed'
-                elif badge == 'one_byte':
-                    status = 'single_byte'
-                else:
-                    status = 'unknown'
-
-                status_counts[status] += 1
-
-                loc_parts = [p for p in [row['city'], row['state'], row['country']] if p]
-
-                pt = path_traffic.get(pk or '', {})
-                all_repeaters.append({
-                    'public_key':      pk,
-                    'name':            row['name'],
-                    'role':            row['role'],
-                    'device_type':     row['device_type'],
-                    'status':          status,
-                    'out_bytes_per_hop': obph,
-                    'advert_count':    row['advert_count'] or 0,
-                    'total_traffic':   pt.get('total_traffic', 0),
-                    'last_seen':       row['last_heard'],
-                    'first_heard':     row['first_heard'],
-                    'location':        ', '.join(loc_parts),
-                    'latitude':        row['latitude'],
-                    'longitude':       row['longitude'],
-                })
-
-            # ── Priority scoring ──────────────────────────────────────────────────
-            unupgraded_pks: set[str] = set()
-            # Build prefix → all nodes (any status) for complete prefix_peers reporting.
-            # Confirmed-multibyte nodes sharing a 1-byte prefix may be the actual relay
-            # in those paths, so surfacing them in the tooltip is important.
-            all_by_prefix: dict[str, list[dict]] = {}
-            for r in all_repeaters:
-                if r['public_key']:
-                    pfx = r['public_key'][:2].lower()
-                    all_by_prefix.setdefault(pfx, []).append(r)
-                if r['status'] == 'single_byte' and r['public_key']:
-                    unupgraded_pks.add(r['public_key'])
-
-            sb_metrics: dict[str, dict] = {}
-            if has_observed_paths and unupgraded_pks:
-                sb_metrics = self._compute_single_byte_relay_metrics(cursor, path_time_cond)
-
-            legacy_degree: dict[str, int] = {}
-            try:
-                cursor.execute(
-                    "SELECT name FROM sqlite_master WHERE type='table' AND name='mesh_connections'"
-                )
-                if cursor.fetchone() is not None and unupgraded_pks:
-                    mc_since_cond = ""
-                    if since in datetime_offsets:
-                        mc_since_cond = (
-                            f"AND last_seen >= datetime('now', 'localtime', {datetime_offsets[since]})"
-                        )
-                    legacy_degree = self._compute_legacy_degree(
-                        cursor, unupgraded_pks, mc_since_cond
-                    )
-            except Exception as e:
-                self.logger.debug(f"Legacy degree skipped: {e}")
-
-            for r in all_repeaters:
-                if r['status'] == 'single_byte' and r['public_key']:
-                    pfx = r['public_key'][:2].lower()
-                    m = sb_metrics.get(pfx, {})
-                    r['relay_score']    = m.get('relay_score', 0)
-                    r['unique_sources'] = m.get('unique_sources', 0)
-                    r['unique_dests']   = m.get('unique_dests', 0)
-                    r['legacy_degree']  = legacy_degree.get(r['public_key'], 0)
-                    # prefix_peers: ALL other nodes (any status) sharing this 1-byte prefix.
-                    # Confirmed-multibyte peers explain inflated scores on low-traffic nodes.
-                    r['prefix_peers']   = [
-                        {'public_key': r2['public_key'], 'name': r2['name'], 'status': r2['status']}
-                        for r2 in all_by_prefix.get(pfx, [])
-                        if r2['public_key'] != r['public_key']
-                    ]
-                else:
-                    r['relay_score']    = 0
-                    r['unique_sources'] = 0
-                    r['unique_dests']   = 0
-                    r['legacy_degree']  = 0
-                    r['prefix_peers']   = []
-
-            # ── Name-based suppression ────────────────────────────────────────────
-            # A single_byte record that shares a name with a confirmed-multibyte
-            # record is almost certainly the same physical device — the single_byte
-            # entry reflects stale traffic from before the firmware upgrade.
-            # Suppress it so it doesn't appear as an upgrade target or inflate counts.
-            multibyte_names: set[str] = {
-                r['name'].strip().lower()
-                for r in all_repeaters
-                if r['status'] in ('multibyte_direct', 'multibyte_relayed') and r['name']
-            }
-            if multibyte_names:
-                kept: list[dict] = []
+                # ── Priority scoring ──────────────────────────────────────────────────
+                unupgraded_pks: set[str] = set()
+                # Build prefix → all nodes (any status) for complete prefix_peers reporting.
+                # Confirmed-multibyte nodes sharing a 1-byte prefix may be the actual relay
+                # in those paths, so surfacing them in the tooltip is important.
+                all_by_prefix: dict[str, list[dict]] = {}
                 for r in all_repeaters:
-                    if (r['status'] == 'single_byte'
-                            and r['name']
-                            and r['name'].strip().lower() in multibyte_names):
-                        status_counts['single_byte'] -= 1
+                    if r['public_key']:
+                        pfx = r['public_key'][:2].lower()
+                        all_by_prefix.setdefault(pfx, []).append(r)
+                    if r['status'] == 'single_byte' and r['public_key']:
+                        unupgraded_pks.add(r['public_key'])
+
+                sb_metrics: dict[str, dict] = {}
+                if has_observed_paths and unupgraded_pks:
+                    sb_metrics = self._compute_single_byte_relay_metrics(cursor, path_time_cond)
+
+                legacy_degree: dict[str, int] = {}
+                try:
+                    cursor.execute(
+                        "SELECT name FROM sqlite_master WHERE type='table' AND name='mesh_connections'"
+                    )
+                    if cursor.fetchone() is not None and unupgraded_pks:
+                        mc_since_cond = ""
+                        if since in datetime_offsets:
+                            mc_since_cond = (
+                                f"AND last_seen >= datetime('now', 'localtime', {datetime_offsets[since]})"
+                            )
+                        legacy_degree = self._compute_legacy_degree(
+                            cursor, unupgraded_pks, mc_since_cond
+                        )
+                except Exception as e:
+                    self.logger.debug(f"Legacy degree skipped: {e}")
+
+                for r in all_repeaters:
+                    if r['status'] == 'single_byte' and r['public_key']:
+                        pfx = r['public_key'][:2].lower()
+                        m = sb_metrics.get(pfx, {})
+                        r['relay_score']    = m.get('relay_score', 0)
+                        r['unique_sources'] = m.get('unique_sources', 0)
+                        r['unique_dests']   = m.get('unique_dests', 0)
+                        r['legacy_degree']  = legacy_degree.get(r['public_key'], 0)
+                        # prefix_peers: ALL other nodes (any status) sharing this 1-byte prefix.
+                        # Confirmed-multibyte peers explain inflated scores on low-traffic nodes.
+                        r['prefix_peers']   = [
+                            {'public_key': r2['public_key'], 'name': r2['name'], 'status': r2['status']}
+                            for r2 in all_by_prefix.get(pfx, [])
+                            if r2['public_key'] != r['public_key']
+                        ]
                     else:
-                        kept.append(r)
-                all_repeaters = kept
+                        r['relay_score']    = 0
+                        r['unique_sources'] = 0
+                        r['unique_dests']   = 0
+                        r['legacy_degree']  = 0
+                        r['prefix_peers']   = []
 
-            # Priority list: single_byte nodes ranked by relay_score desc
-            priority_list = sorted(
-                [r for r in all_repeaters if r['status'] == 'single_byte'],
-                key=lambda r: (-(r['relay_score'] or 0), -(r['unique_sources'] or 0)),
-            )
+                # ── Name-based suppression ────────────────────────────────────────────
+                # A single_byte record that shares a name with a confirmed-multibyte
+                # record is almost certainly the same physical device — the single_byte
+                # entry reflects stale traffic from before the firmware upgrade.
+                # Suppress it so it doesn't appear as an upgrade target or inflate counts.
+                multibyte_names: set[str] = {
+                    r['name'].strip().lower()
+                    for r in all_repeaters
+                    if r['status'] in ('multibyte_direct', 'multibyte_relayed') and r['name']
+                }
+                if multibyte_names:
+                    kept: list[dict] = []
+                    for r in all_repeaters:
+                        if (r['status'] == 'single_byte'
+                                and r['name']
+                                and r['name'].strip().lower() in multibyte_names):
+                            status_counts['single_byte'] -= 1
+                        else:
+                            kept.append(r)
+                    all_repeaters = kept
 
-            # Summary
-            total = len(all_repeaters)
-            mb_total = status_counts['multibyte_direct'] + status_counts['multibyte_relayed']
-            adoption_pct = round(mb_total / total * 100, 1) if total > 0 else 0.0
+                # Priority list: single_byte nodes ranked by relay_score desc
+                priority_list = sorted(
+                    [r for r in all_repeaters if r['status'] == 'single_byte'],
+                    key=lambda r: (-(r['relay_score'] or 0), -(r['unique_sources'] or 0)),
+                )
 
-            # Overall path observation traffic breakdown (advert paths, within the since window,
-            # for nodes matching the node_type filter)
-            total_path_obs = multibyte_path_obs = single_byte_path_obs = 0
-            traffic_mb_pct = 0.0
-            if has_observed_paths:
-                # observed_paths.last_seen is an ISO timestamp → use datetime() comparison
-                if node_type == 'repeater':
-                    obs_role_filter = "c.role = 'repeater'"
-                elif node_type == 'roomserver':
-                    obs_role_filter = "c.role = 'roomserver'"
-                else:
-                    obs_role_filter = "c.role IN ('repeater', 'roomserver')"
+                # Summary
+                total = len(all_repeaters)
+                mb_total = status_counts['multibyte_direct'] + status_counts['multibyte_relayed']
+                adoption_pct = round(mb_total / total * 100, 1) if total > 0 else 0.0
 
-                obs_time_cond = ""
-                if since in datetime_offsets:
-                    obs_time_cond = f" AND op.last_seen >= datetime('now', 'localtime', {datetime_offsets[since]})"
+                # Overall path observation traffic breakdown (advert paths, within the since window,
+                # for nodes matching the node_type filter)
+                total_path_obs = multibyte_path_obs = single_byte_path_obs = 0
+                traffic_mb_pct = 0.0
+                if has_observed_paths:
+                    # observed_paths.last_seen is an ISO timestamp → use datetime() comparison
+                    if node_type == 'repeater':
+                        obs_role_filter = "c.role = 'repeater'"
+                    elif node_type == 'roomserver':
+                        obs_role_filter = "c.role = 'roomserver'"
+                    else:
+                        obs_role_filter = "c.role IN ('repeater', 'roomserver')"
 
-                cursor.execute(
-                    f"""
+                    obs_time_cond = ""
+                    if since in datetime_offsets:
+                        obs_time_cond = f" AND op.last_seen >= datetime('now', 'localtime', {datetime_offsets[since]})"
+
+                    cursor.execute(
+                        f"""
                     SELECT op.bytes_per_hop, SUM(op.observation_count) as n
                     FROM observed_paths op
                     JOIN complete_contact_tracking c ON c.public_key = op.public_key
                     WHERE op.packet_type = 'advert' AND {obs_role_filter}{obs_time_cond}
                     GROUP BY op.bytes_per_hop
                     """
-                )
-                for tr in cursor.fetchall():
-                    n = tr['n'] or 0
-                    total_path_obs += n
-                    bph = tr['bytes_per_hop'] or 1
-                    try:
-                        bph = int(bph)
-                    except (TypeError, ValueError):
-                        bph = 1
-                    if bph in (2, 3):
-                        multibyte_path_obs += n
+                    )
+                    for tr in cursor.fetchall():
+                        n = tr['n'] or 0
+                        total_path_obs += n
+                        bph = tr['bytes_per_hop'] or 1
+                        try:
+                            bph = int(bph)
+                        except (TypeError, ValueError):
+                            bph = 1
+                        if bph in (2, 3):
+                            multibyte_path_obs += n
+                        else:
+                            single_byte_path_obs += n
+
+                    if total_path_obs > 0:
+                        traffic_mb_pct = round(multibyte_path_obs / total_path_obs * 100, 1)
+
+                # Daily trend: last 30 days, filtered by node_type
+                daily_trend: list[dict] = []
+                if has_observed_paths:
+                    if node_type == 'repeater':
+                        trend_role_filter = "c.role = 'repeater'"
+                    elif node_type == 'roomserver':
+                        trend_role_filter = "c.role = 'roomserver'"
                     else:
-                        single_byte_path_obs += n
+                        trend_role_filter = "c.role IN ('repeater', 'roomserver')"
 
-                if total_path_obs > 0:
-                    traffic_mb_pct = round(multibyte_path_obs / total_path_obs * 100, 1)
-
-            # Daily trend: last 30 days, filtered by node_type
-            daily_trend: list[dict] = []
-            if has_observed_paths:
-                if node_type == 'repeater':
-                    trend_role_filter = "c.role = 'repeater'"
-                elif node_type == 'roomserver':
-                    trend_role_filter = "c.role = 'roomserver'"
-                else:
-                    trend_role_filter = "c.role IN ('repeater', 'roomserver')"
-
-                cursor.execute(
-                    f"""
+                    cursor.execute(
+                        f"""
                     SELECT date(op.last_seen) as obs_date,
                         SUM(CASE WHEN op.bytes_per_hop IN (2,3)
                                  THEN op.observation_count ELSE 0 END) as mb_obs,
@@ -7281,33 +7237,33 @@ class BotDataViewer:
                     GROUP BY date(op.last_seen)
                     ORDER BY obs_date
                     """
-                )
-                for tr in cursor.fetchall():
-                    daily_trend.append({
-                        'date':        tr['obs_date'],
-                        'multibyte':   tr['mb_obs'] or 0,
-                        'single_byte': tr['sb_obs'] or 0,
-                    })
+                    )
+                    for tr in cursor.fetchall():
+                        daily_trend.append({
+                            'date':        tr['obs_date'],
+                            'multibyte':   tr['mb_obs'] or 0,
+                            'single_byte': tr['sb_obs'] or 0,
+                        })
 
-            return {
-                'since': since,
-                'node_type': node_type,
-                'summary': {
-                    'total_repeaters':      total,
-                    'multibyte_direct':     status_counts['multibyte_direct'],
-                    'multibyte_relayed':    status_counts['multibyte_relayed'],
-                    'single_byte':          status_counts['single_byte'],
-                    'unknown':              status_counts['unknown'],
-                    'adoption_pct':         adoption_pct,
-                    'total_path_obs':       total_path_obs,
-                    'multibyte_path_obs':   multibyte_path_obs,
-                    'single_byte_path_obs': single_byte_path_obs,
-                    'traffic_multibyte_pct': traffic_mb_pct,
-                },
-                'priority_list': priority_list,
-                'all_repeaters': all_repeaters,
-                'daily_trend':   daily_trend,
-            }
+                return {
+                    'since': since,
+                    'node_type': node_type,
+                    'summary': {
+                        'total_repeaters':      total,
+                        'multibyte_direct':     status_counts['multibyte_direct'],
+                        'multibyte_relayed':    status_counts['multibyte_relayed'],
+                        'single_byte':          status_counts['single_byte'],
+                        'unknown':              status_counts['unknown'],
+                        'adoption_pct':         adoption_pct,
+                        'total_path_obs':       total_path_obs,
+                        'multibyte_path_obs':   multibyte_path_obs,
+                        'single_byte_path_obs': single_byte_path_obs,
+                        'traffic_multibyte_pct': traffic_mb_pct,
+                    },
+                    'priority_list': priority_list,
+                    'all_repeaters': all_repeaters,
+                    'daily_trend':   daily_trend,
+                }
 
         except Exception as e:
             self.logger.error(f"Error getting multibyte rollout data: {e}")
@@ -7325,9 +7281,6 @@ class BotDataViewer:
                 'all_repeaters': [],
                 'daily_trend': [],
             }
-        finally:
-            if conn:
-                conn.close()
 
     def _get_contact_detail(self, public_key: str) -> dict:
         """Per-contact detail loaded on demand by the contacts UI modals.
@@ -7336,69 +7289,65 @@ class BotDataViewer:
         advertisement data. Both are excluded from the /api/contacts list payload — they were
         ~85% of its size and are only needed when a single contact is opened.
         """
-        conn = None
         try:
-            conn = self._get_db_connection()
-            cursor = conn.cursor()
+            with self._db_connection() as conn:
+                cursor = conn.cursor()
 
-            # Recent advert paths (most-recent 50). The idx_observed_paths_advert_pk_seen covering
-            # index serves WHERE public_key=? AND packet_type='advert' ORDER BY last_seen DESC directly.
-            all_paths: list[dict[str, Any]] = []
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='observed_paths'")
-            if cursor.fetchone():
-                cursor.execute("""
+                # Recent advert paths (most-recent 50). The idx_observed_paths_advert_pk_seen covering
+                # index serves WHERE public_key=? AND packet_type='advert' ORDER BY last_seen DESC directly.
+                all_paths: list[dict[str, Any]] = []
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='observed_paths'")
+                if cursor.fetchone():
+                    cursor.execute("""
                     SELECT path_hex, path_length, bytes_per_hop, observation_count, last_seen
                     FROM observed_paths
                     WHERE packet_type = 'advert' AND public_key = ?
                     ORDER BY last_seen DESC
                     LIMIT 50
                 """, (public_key,))
-                for prow in cursor.fetchall():
-                    if not prow['path_hex']:
-                        continue
-                    bph = None
-                    if prow['bytes_per_hop'] is not None:
-                        try:
-                            bph = int(prow['bytes_per_hop'])
-                            if bph not in (1, 2, 3):
+                    for prow in cursor.fetchall():
+                        if not prow['path_hex']:
+                            continue
+                        bph = None
+                        if prow['bytes_per_hop'] is not None:
+                            try:
+                                bph = int(prow['bytes_per_hop'])
+                                if bph not in (1, 2, 3):
+                                    bph = 1
+                            except (TypeError, ValueError):
                                 bph = 1
-                        except (TypeError, ValueError):
-                            bph = 1
-                    all_paths.append({
-                        'path_hex': prow['path_hex'],
-                        'path_length': int(prow['path_length']) if prow['path_length'] is not None else 0,
-                        'bytes_per_hop': bph,
-                        'observation_count': int(prow['observation_count']) if prow['observation_count'] is not None else 1,
-                        'last_seen': prow['last_seen'] if prow['last_seen'] is not None else None,
-                    })
+                        all_paths.append({
+                            'path_hex': prow['path_hex'],
+                            'path_length': int(prow['path_length']) if prow['path_length'] is not None else 0,
+                            'bytes_per_hop': bph,
+                            'observation_count': int(prow['observation_count']) if prow['observation_count'] is not None else 1,
+                            'last_seen': prow['last_seen'] if prow['last_seen'] is not None else None,
+                        })
 
-            # Raw advertisement data for the "Advertisement Data" modal.
-            raw_advert_data = None
-            raw_advert_data_parsed = None
-            cursor.execute("""
+                # Raw advertisement data for the "Advertisement Data" modal.
+                raw_advert_data = None
+                raw_advert_data_parsed = None
+                cursor.execute("""
                 SELECT raw_advert_data FROM complete_contact_tracking
                 WHERE public_key = ? ORDER BY last_heard DESC LIMIT 1
             """, (public_key,))
-            rad_row = cursor.fetchone()
-            if rad_row and rad_row['raw_advert_data']:
-                raw_advert_data = rad_row['raw_advert_data']
-                try:
-                    import json
-                    raw_advert_data_parsed = json.loads(raw_advert_data)
-                except Exception:
-                    raw_advert_data_parsed = None
+                rad_row = cursor.fetchone()
+                if rad_row and rad_row['raw_advert_data']:
+                    raw_advert_data = rad_row['raw_advert_data']
+                    try:
+                        import json
+                        raw_advert_data_parsed = json.loads(raw_advert_data)
+                    except Exception:
+                        raw_advert_data_parsed = None
 
-            return {
-                'all_paths': all_paths,
-                'raw_advert_data': raw_advert_data,
-                'raw_advert_data_parsed': raw_advert_data_parsed,
-            }
+                return {
+                    'all_paths': all_paths,
+                    'raw_advert_data': raw_advert_data,
+                    'raw_advert_data_parsed': raw_advert_data_parsed,
+                }
         except Exception as e:
             self.logger.error(f"Error getting contact detail: {e}")
             return {'error': str(e)}
-        finally:
-            if conn:
-                conn.close()
 
     def _get_tracking_data(
         self,
@@ -7423,35 +7372,34 @@ class BotDataViewer:
         enrichment is limited to visible contacts. include_detail=True (the export endpoint)
         keeps the legacy full-result behavior and full fields.
         """
-        conn = None
         try:
-            conn = self._get_db_connection()
-            cursor = conn.cursor()
+            with self._db_connection() as conn:
+                cursor = conn.cursor()
 
-            # Get bot location from config
-            bot_lat = self.config.getfloat('Bot', 'bot_latitude', fallback=None)
-            bot_lon = self.config.getfloat('Bot', 'bot_longitude', fallback=None)
+                # Get bot location from config
+                bot_lat = self.config.getfloat('Bot', 'bot_latitude', fallback=None)
+                bot_lon = self.config.getfloat('Bot', 'bot_longitude', fallback=None)
 
-            # Filter by last_heard (default: last 30 days). last_heard is stored as ISO-text
-            # datetime in LOCAL time (e.g. '2026-06-16 09:03:49.606966', written by datetime.now()),
-            # so the cutoff must also be local: datetime('now', 'localtime', ...). Using bare
-            # datetime('now', ...) computes the cutoff in UTC and shaves the local UTC offset off
-            # the window (e.g. a "24h" filter only returns ~17h of data in US/Pacific).
-            datetime_offsets = {
-                '24h': "'-24 hours'",
-                '7d':  "'-7 days'",
-                '30d': "'-30 days'",
-                '90d': "'-90 days'",
-            }
-            where_parts = []
-            where_params: list[Any] = []
-            # A node can have more than one observed advert path.  Treat its byte class as
-            # the widest path encoding seen for it, with the contact's current out-path as a
-            # fallback for databases that have not retained an observed path yet.  This gives
-            # the list one stable, sortable value instead of placing the same node in several
-            # byte buckets.  Only count rows with a known 1/2/3 encoding so NULL/invalid
-            # observations do not collapse to "1-byte" and block the out-path fallback.
-            path_bytes_expression = """COALESCE((
+                # Filter by last_heard (default: last 30 days). last_heard is stored as ISO-text
+                # datetime in LOCAL time (e.g. '2026-06-16 09:03:49.606966', written by datetime.now()),
+                # so the cutoff must also be local: datetime('now', 'localtime', ...). Using bare
+                # datetime('now', ...) computes the cutoff in UTC and shaves the local UTC offset off
+                # the window (e.g. a "24h" filter only returns ~17h of data in US/Pacific).
+                datetime_offsets = {
+                    '24h': "'-24 hours'",
+                    '7d':  "'-7 days'",
+                    '30d': "'-30 days'",
+                    '90d': "'-90 days'",
+                }
+                where_parts = []
+                where_params: list[Any] = []
+                # A node can have more than one observed advert path.  Treat its byte class as
+                # the widest path encoding seen for it, with the contact's current out-path as a
+                # fallback for databases that have not retained an observed path yet.  This gives
+                # the list one stable, sortable value instead of placing the same node in several
+                # byte buckets.  Only count rows with a known 1/2/3 encoding so NULL/invalid
+                # observations do not collapse to "1-byte" and block the out-path fallback.
+                path_bytes_expression = """COALESCE((
                 SELECT MAX(op.bytes_per_hop)
                 FROM observed_paths op
                 WHERE op.public_key = c.public_key
@@ -7460,76 +7408,76 @@ class BotDataViewer:
                   AND op.bytes_per_hop IN (1, 2, 3)
             ), CASE WHEN c.out_bytes_per_hop IN (1, 2, 3)
                      THEN c.out_bytes_per_hop ELSE 0 END)"""
-            if since in datetime_offsets:
-                where_parts.append(
-                    f"c.last_heard >= datetime('now', 'localtime', {datetime_offsets[since]})"
+                if since in datetime_offsets:
+                    where_parts.append(
+                        f"c.last_heard >= datetime('now', 'localtime', {datetime_offsets[since]})"
+                    )
+
+                search = (search or '').strip().lower()[:100]
+                if search and not include_detail:
+                    # Match the former client-side behavior: public keys are prefix-only,
+                    # while names, roles, device types, and locations match anywhere.
+                    escaped = search.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+                    where_parts.append(
+                        "("
+                        "LOWER(COALESCE(c.public_key, '')) LIKE ? ESCAPE '\\' OR "
+                        "LOWER(COALESCE(c.name, '')) LIKE ? ESCAPE '\\' OR "
+                        "LOWER(COALESCE(c.role, '')) LIKE ? ESCAPE '\\' OR "
+                        "LOWER(COALESCE(c.device_type, '')) LIKE ? ESCAPE '\\' OR "
+                        "LOWER(COALESCE(c.city, '')) LIKE ? ESCAPE '\\' OR "
+                        "LOWER(COALESCE(c.state, '')) LIKE ? ESCAPE '\\' OR "
+                        "LOWER(COALESCE(c.country, '')) LIKE ? ESCAPE '\\'"
+                        ")"
+                    )
+                    where_params.extend([f'{escaped}%'] + [f'%{escaped}%'] * 6)
+
+                path_bytes = str(path_bytes or '').strip()
+                if path_bytes in ('1', '2', '3'):
+                    where_parts.append(f'{path_bytes_expression} = ?')
+                    where_params.append(int(path_bytes))
+                elif path_bytes == 'unknown':
+                    where_parts.append(f'{path_bytes_expression} = 0')
+
+                device_role = str(device_role or '').strip().lower()
+                if device_role in ('companion', 'repeater', 'roomserver', 'sensor'):
+                    where_parts.append("LOWER(COALESCE(c.role, '')) = ?")
+                    where_params.append(device_role)
+                elif device_role == 'other':
+                    where_parts.append("LOWER(COALESCE(c.role, '')) NOT IN ('companion', 'repeater', 'roomserver', 'sensor')")
+
+                if hop_filter in ('0', '1', '2', '3'):
+                    where_parts.append(
+                        'COALESCE(c.hop_count, 0) = ?' if hop_filter == '0'
+                        else 'COALESCE(c.hop_count, 0) >= ?'
+                    )
+                    where_params.append(int(hop_filter))
+
+                has_location_expression = (
+                    "((c.city IS NOT NULL AND c.city != '') OR "
+                    "(c.state IS NOT NULL AND c.state != '') OR "
+                    "(c.country IS NOT NULL AND c.country != '') OR "
+                    "(c.latitude IS NOT NULL AND c.longitude IS NOT NULL "
+                    "AND c.latitude != 0 AND c.longitude != 0))"
                 )
+                if location_filter == 'known':
+                    where_parts.append(has_location_expression)
+                elif location_filter == 'unknown':
+                    where_parts.append(f'NOT {has_location_expression}')
 
-            search = (search or '').strip().lower()[:100]
-            if search and not include_detail:
-                # Match the former client-side behavior: public keys are prefix-only,
-                # while names, roles, device types, and locations match anywhere.
-                escaped = search.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
-                where_parts.append(
-                    "("
-                    "LOWER(COALESCE(c.public_key, '')) LIKE ? ESCAPE '\\' OR "
-                    "LOWER(COALESCE(c.name, '')) LIKE ? ESCAPE '\\' OR "
-                    "LOWER(COALESCE(c.role, '')) LIKE ? ESCAPE '\\' OR "
-                    "LOWER(COALESCE(c.device_type, '')) LIKE ? ESCAPE '\\' OR "
-                    "LOWER(COALESCE(c.city, '')) LIKE ? ESCAPE '\\' OR "
-                    "LOWER(COALESCE(c.state, '')) LIKE ? ESCAPE '\\' OR "
-                    "LOWER(COALESCE(c.country, '')) LIKE ? ESCAPE '\\'"
-                    ")"
-                )
-                where_params.extend([f'{escaped}%'] + [f'%{escaped}%'] * 6)
+                if starred == 'yes':
+                    where_parts.append('COALESCE(c.is_starred, 0) = 1')
+                elif starred == 'no':
+                    where_parts.append('COALESCE(c.is_starred, 0) = 0')
 
-            path_bytes = str(path_bytes or '').strip()
-            if path_bytes in ('1', '2', '3'):
-                where_parts.append(f'{path_bytes_expression} = ?')
-                where_params.append(int(path_bytes))
-            elif path_bytes == 'unknown':
-                where_parts.append(f'{path_bytes_expression} = 0')
+                where_clause = (' WHERE ' + ' AND '.join(where_parts)) if where_parts else ''
 
-            device_role = str(device_role or '').strip().lower()
-            if device_role in ('companion', 'repeater', 'roomserver', 'sensor'):
-                where_parts.append("LOWER(COALESCE(c.role, '')) = ?")
-                where_params.append(device_role)
-            elif device_role == 'other':
-                where_parts.append("LOWER(COALESCE(c.role, '')) NOT IN ('companion', 'repeater', 'roomserver', 'sensor')")
-
-            if hop_filter in ('0', '1', '2', '3'):
-                where_parts.append(
-                    'COALESCE(c.hop_count, 0) = ?' if hop_filter == '0'
-                    else 'COALESCE(c.hop_count, 0) >= ?'
-                )
-                where_params.append(int(hop_filter))
-
-            has_location_expression = (
-                "((c.city IS NOT NULL AND c.city != '') OR "
-                "(c.state IS NOT NULL AND c.state != '') OR "
-                "(c.country IS NOT NULL AND c.country != '') OR "
-                "(c.latitude IS NOT NULL AND c.longitude IS NOT NULL "
-                "AND c.latitude != 0 AND c.longitude != 0))"
-            )
-            if location_filter == 'known':
-                where_parts.append(has_location_expression)
-            elif location_filter == 'unknown':
-                where_parts.append(f'NOT {has_location_expression}')
-
-            if starred == 'yes':
-                where_parts.append('COALESCE(c.is_starred, 0) = 1')
-            elif starred == 'no':
-                where_parts.append('COALESCE(c.is_starred, 0) = 0')
-
-            where_clause = (' WHERE ' + ' AND '.join(where_parts)) if where_parts else ''
-
-            pagination = None
-            filtered_stats = None
-            if page is not None and page_size is not None and not include_detail:
-                page_size = max(1, min(200, int(page_size)))
-                page = max(1, int(page))
-                cursor.execute(
-                    """
+                pagination = None
+                filtered_stats = None
+                if page is not None and page_size is not None and not include_detail:
+                    page_size = max(1, min(200, int(page_size)))
+                    page = max(1, int(page))
+                    cursor.execute(
+                        """
                     SELECT
                         COUNT(*) AS total_items,
                         SUM(CASE WHEN c.last_heard >= datetime('now', 'localtime', '-24 hours') THEN 1 ELSE 0 END) AS contacts_24h,
@@ -7543,75 +7491,75 @@ class BotDataViewer:
                                        OR LOWER(COALESCE(c.device_type, '')) LIKE '%server%') THEN 1 ELSE 0 END) AS new_room_servers
                     FROM complete_contact_tracking c
                     """ + where_clause,
-                    tuple(where_params),
-                )
-                aggregate = cursor.fetchone()
-                total_items = int(aggregate['total_items'] or 0)
-                total_pages = max(1, (total_items + page_size - 1) // page_size)
-                page = min(page, total_pages)
-                pagination = {
-                    'page': page,
-                    'page_size': page_size,
-                    'total_items': total_items,
-                    'total_pages': total_pages,
-                    'has_previous': page > 1,
-                    'has_next': page < total_pages,
-                }
-                filtered_stats = {
-                    'contacts_24h': int(aggregate['contacts_24h'] or 0),
-                    'contacts_7d': int(aggregate['contacts_7d'] or 0),
-                    'contacts_total': total_items,
-                    'new_companions': int(aggregate['new_companions'] or 0),
-                    'new_repeaters': int(aggregate['new_repeaters'] or 0),
-                    'new_room_servers': int(aggregate['new_room_servers'] or 0),
-                }
+                        tuple(where_params),
+                    )
+                    aggregate = cursor.fetchone()
+                    total_items = int(aggregate['total_items'] or 0)
+                    total_pages = max(1, (total_items + page_size - 1) // page_size)
+                    page = min(page, total_pages)
+                    pagination = {
+                        'page': page,
+                        'page_size': page_size,
+                        'total_items': total_items,
+                        'total_pages': total_pages,
+                        'has_previous': page > 1,
+                        'has_next': page < total_pages,
+                    }
+                    filtered_stats = {
+                        'contacts_24h': int(aggregate['contacts_24h'] or 0),
+                        'contacts_7d': int(aggregate['contacts_7d'] or 0),
+                        'contacts_total': total_items,
+                        'new_companions': int(aggregate['new_companions'] or 0),
+                        'new_repeaters': int(aggregate['new_repeaters'] or 0),
+                        'new_room_servers': int(aggregate['new_room_servers'] or 0),
+                    }
 
-            # Fetch contacts directly (no join/group-by). The recent paths per contact are
-            # loaded in a second query below and assembled in Python. This avoids materializing
-            # a window-function CTE over all of observed_paths and grouping by every contact
-            # column (incl. the raw_advert_data blob) on every request. last_advert_timestamp is
-            # the per-contact value, so it matches the old MAX(...) over a single contact's rows.
-            detail_cols = "c.raw_advert_data," if include_detail else ""
-            sort_expressions = {
-                'username': "LOWER(COALESCE(c.name, ''))",
-                'device_type': "LOWER(COALESCE(c.device_type, ''))",
-                'location': (
-                    "LOWER(CASE "
-                    "WHEN c.city IS NOT NULL AND c.city != '' AND c.state IS NOT NULL AND c.state != '' "
-                    "THEN c.city || ', ' || c.state "
-                    "WHEN c.city IS NOT NULL AND c.city != '' THEN c.city "
-                    "WHEN c.latitude IS NOT NULL AND c.longitude IS NOT NULL "
-                    "AND c.latitude != 0 AND c.longitude != 0 THEN printf('%s, %s', c.latitude, c.longitude) "
-                    "ELSE '' END)"
-                ),
-                'snr': 'COALESCE(c.snr, 0)',
-                'hop_count': 'COALESCE(c.hop_count, 0)',
-                'path_bytes': path_bytes_expression,
-                'first_heard': "COALESCE(c.first_heard, '')",
-                'last_seen': "COALESCE(c.last_heard, '')",
-                'advert_count': 'COALESCE(c.advert_count, 0)',
-            }
-            sort = sort if sort in (*sort_expressions.keys(), 'distance') else 'last_seen'
-            direction = 'asc' if direction == 'asc' else 'desc'
-            if sort == 'distance':
-                if bot_lat is None or bot_lon is None:
-                    sort_expression = '0'
+                # Fetch contacts directly (no join/group-by). The recent paths per contact are
+                # loaded in a second query below and assembled in Python. This avoids materializing
+                # a window-function CTE over all of observed_paths and grouping by every contact
+                # column (incl. the raw_advert_data blob) on every request. last_advert_timestamp is
+                # the per-contact value, so it matches the old MAX(...) over a single contact's rows.
+                detail_cols = "c.raw_advert_data," if include_detail else ""
+                sort_expressions = {
+                    'username': "LOWER(COALESCE(c.name, ''))",
+                    'device_type': "LOWER(COALESCE(c.device_type, ''))",
+                    'location': (
+                        "LOWER(CASE "
+                        "WHEN c.city IS NOT NULL AND c.city != '' AND c.state IS NOT NULL AND c.state != '' "
+                        "THEN c.city || ', ' || c.state "
+                        "WHEN c.city IS NOT NULL AND c.city != '' THEN c.city "
+                        "WHEN c.latitude IS NOT NULL AND c.longitude IS NOT NULL "
+                        "AND c.latitude != 0 AND c.longitude != 0 THEN printf('%s, %s', c.latitude, c.longitude) "
+                        "ELSE '' END)"
+                    ),
+                    'snr': 'COALESCE(c.snr, 0)',
+                    'hop_count': 'COALESCE(c.hop_count, 0)',
+                    'path_bytes': path_bytes_expression,
+                    'first_heard': "COALESCE(c.first_heard, '')",
+                    'last_seen': "COALESCE(c.last_heard, '')",
+                    'advert_count': 'COALESCE(c.advert_count, 0)',
+                }
+                sort = sort if sort in (*sort_expressions.keys(), 'distance') else 'last_seen'
+                direction = 'asc' if direction == 'asc' else 'desc'
+                if sort == 'distance':
+                    if bot_lat is None or bot_lon is None:
+                        sort_expression = '0'
+                    else:
+                        conn.create_function('contacts_distance_km', 2, lambda lat, lon: (
+                            self._calculate_distance(bot_lat, bot_lon, lat, lon)
+                            if lat is not None and lon is not None else 0
+                        ))
+                        sort_expression = 'contacts_distance_km(c.latitude, c.longitude)'
                 else:
-                    conn.create_function('contacts_distance_km', 2, lambda lat, lon: (
-                        self._calculate_distance(bot_lat, bot_lon, lat, lon)
-                        if lat is not None and lon is not None else 0
-                    ))
-                    sort_expression = 'contacts_distance_km(c.latitude, c.longitude)'
-            else:
-                sort_expression = sort_expressions[sort]
+                    sort_expression = sort_expressions[sort]
 
-            query_params = list(where_params)
-            limit_clause = ''
-            if pagination is not None:
-                limit_clause = ' LIMIT ? OFFSET ?'
-                query_params.extend([page_size, (page - 1) * page_size])
+                query_params = list(where_params)
+                limit_clause = ''
+                if pagination is not None:
+                    limit_clause = ' LIMIT ? OFFSET ?'
+                    query_params.extend([page_size, (page - 1) * page_size])
 
-            cursor.execute("""
+                cursor.execute("""
                 SELECT
                     c.public_key, c.name, c.role, c.device_type,
                     c.latitude, c.longitude, c.city, c.state, c.country,
@@ -7625,25 +7573,25 @@ class BotDataViewer:
                 FROM complete_contact_tracking c
                 """ + where_clause + """
                 ORDER BY """ + sort_expression + f" {direction.upper()}, c.public_key ASC" + limit_clause,
-                tuple(query_params),
-            )
+                    tuple(query_params),
+                )
 
-            main_rows = cursor.fetchall()
+                main_rows = cursor.fetchall()
 
-            paths_by_key = {}
-            path_rows = []
-            if main_rows:
-                path_params: list[Any] = []
-                page_key_clause = ''
-                if pagination is not None:
-                    # The interactive list enriches only the visible page.  At most 200 keys are
-                    # supplied, staying comfortably below SQLite's parameter limit and turning
-                    # the former all-history window scan into targeted index lookups.
-                    page_keys = [row['public_key'] for row in main_rows]
-                    placeholders = ','.join('?' for _ in page_keys)
-                    page_key_clause = f' AND public_key IN ({placeholders})'
-                    path_params.extend(page_keys)
-                cursor.execute("""
+                paths_by_key = {}
+                path_rows = []
+                if main_rows:
+                    path_params: list[Any] = []
+                    page_key_clause = ''
+                    if pagination is not None:
+                        # The interactive list enriches only the visible page.  At most 200 keys are
+                        # supplied, staying comfortably below SQLite's parameter limit and turning
+                        # the former all-history window scan into targeted index lookups.
+                        page_keys = [row['public_key'] for row in main_rows]
+                        placeholders = ','.join('?' for _ in page_keys)
+                        page_key_clause = f' AND public_key IN ({placeholders})'
+                        path_params.extend(page_keys)
+                    cursor.execute("""
                     WITH recent_paths AS (
                         SELECT public_key, path_hex, path_length, bytes_per_hop,
                                observation_count, last_seen,
@@ -7656,218 +7604,218 @@ class BotDataViewer:
                     FROM recent_paths WHERE rn <= 50
                     ORDER BY public_key, last_seen DESC
                 """, tuple(path_params))
-                path_rows = cursor.fetchall()
+                    path_rows = cursor.fetchall()
 
-            for prow in path_rows:
-                if not prow['path_hex']:  # Skip empty paths
-                    continue
-                bph = None
-                if prow['bytes_per_hop'] is not None:
-                    try:
-                        bph = int(prow['bytes_per_hop'])
-                        if bph not in (1, 2, 3):
-                            bph = 1
-                    except (TypeError, ValueError):
-                        bph = 1
-                paths_by_key.setdefault(prow['public_key'], []).append({
-                    'path_hex': prow['path_hex'],
-                    'path_length': int(prow['path_length']) if prow['path_length'] is not None else 0,
-                    'bytes_per_hop': bph,
-                    'observation_count': int(prow['observation_count']) if prow['observation_count'] is not None else 1,
-                    'last_seen': prow['last_seen'] if prow['last_seen'] is not None else None
-                })
-
-            multibyte_hop_chunks = self._get_cached_contact_multibyte_hop_chunks(cursor)
-            chunk_buckets = self._bucket_hop_chunks(multibyte_hop_chunks)
-
-            tracking = []
-            for row in main_rows:
-                # Calculate distance if both bot and contact have coordinates
-                distance = None
-                if (bot_lat is not None and bot_lon is not None and
-                    row['latitude'] is not None and row['longitude'] is not None):
-                    distance = self._calculate_distance(bot_lat, bot_lon, row['latitude'], row['longitude'])
-
-                # Recent paths for this contact (grouped from the second query above). The full
-                # path objects are NOT sent in the list payload (they were ~70% of its size and
-                # are only used in the per-contact modal); the UI fetches them on demand via
-                # /api/contact-detail. The list only needs the count and the badge.
-                all_paths = paths_by_key.get(row['public_key'], [])
-                paths_count = len(all_paths)
-
-                # Preserve the legacy total_messages value: it was COUNT(*) over the LEFT-JOINed
-                # path rows, i.e. the number of paths, or 1 when a contact had no paths.
-                total_messages = max(1, paths_count)
-
-                path_encoding_badge = self._compute_path_encoding_badge(
-                    row, all_paths, chunk_buckets
-                )
-
-                # The badge/tooltip decodes out_path (the "primary" path) using out_bytes_per_hop.
-                # The contact column can be stale (e.g. left at 1 while the primary path is a 3-byte
-                # path), which makes a multi-byte path render as twice/three-times as many 1-byte
-                # hops. Index the encoding on the primary observed path itself, which carries the
-                # authoritative bytes_per_hop, falling back to the contact column when unmatched.
-                out_path_val = row['out_path'] if row['out_path'] is not None else ''
-                out_bytes_per_hop_val = row['out_bytes_per_hop'] if row['out_bytes_per_hop'] is not None else None
-                if out_path_val:
-                    primary_path = next((p for p in all_paths if p['path_hex'] == out_path_val), None)
-                    if primary_path and primary_path.get('bytes_per_hop') in (1, 2, 3):
-                        out_bytes_per_hop_val = primary_path['bytes_per_hop']
-
-                entry = {
-                    'user_id': row['public_key'],
-                    'username': row['name'],
-                    'role': row['role'],
-                    'device_type': row['device_type'],
-                    'latitude': row['latitude'],
-                    'longitude': row['longitude'],
-                    'city': row['city'],
-                    'state': row['state'],
-                    'country': row['country'],
-                    'snr': row['snr'],
-                    'hop_count': row['hop_count'],
-                    'first_heard': row['first_heard'],
-                    'last_seen': row['last_heard'],
-                    'advert_count': row['advert_count'],
-                    'is_currently_tracked': row['is_currently_tracked'],
-                    'signal_strength': row['signal_strength'],
-                    'total_messages': total_messages,
-                    'last_message': row['last_message'],
-                    'distance': distance,
-                    'is_starred': bool(row['is_starred'] if row['is_starred'] is not None else 0),
-                    'out_path': out_path_val,
-                    'out_path_len': row['out_path_len'] if row['out_path_len'] is not None else -1,
-                    'out_bytes_per_hop': out_bytes_per_hop_val,
-                    'path_bytes_per_hop': int(row['path_bytes_per_hop'] or 0),
-                    'paths_count': paths_count,
-                    'path_encoding_badge': path_encoding_badge,
-                }
-                if include_detail:
-                    # Full fidelity for the export endpoint (size-tolerant, infrequent download).
-                    raw_advert_data = row['raw_advert_data']
-                    raw_advert_data_parsed = None
-                    if raw_advert_data:
+                for prow in path_rows:
+                    if not prow['path_hex']:  # Skip empty paths
+                        continue
+                    bph = None
+                    if prow['bytes_per_hop'] is not None:
                         try:
-                            import json
-                            raw_advert_data_parsed = json.loads(raw_advert_data)
-                        except Exception:
-                            raw_advert_data_parsed = None
-                    entry['all_paths'] = all_paths
-                    entry['raw_advert_data'] = raw_advert_data
-                    entry['raw_advert_data_parsed'] = raw_advert_data_parsed
-                tracking.append(entry)
+                            bph = int(prow['bytes_per_hop'])
+                            if bph not in (1, 2, 3):
+                                bph = 1
+                        except (TypeError, ValueError):
+                            bph = 1
+                    paths_by_key.setdefault(prow['public_key'], []).append({
+                        'path_hex': prow['path_hex'],
+                        'path_length': int(prow['path_length']) if prow['path_length'] is not None else 0,
+                        'bytes_per_hop': bph,
+                        'observation_count': int(prow['observation_count']) if prow['observation_count'] is not None else 1,
+                        'last_seen': prow['last_seen'] if prow['last_seen'] is not None else None
+                    })
 
-            # Get server statistics for daily tracking using direct database queries
-            server_stats = {}
-            try:
-                # Check if daily_stats table exists
-                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='daily_stats'")
-                if cursor.fetchone():
-                    # 24h: Last 24 hours of advertisements
-                    cursor.execute("""
+                multibyte_hop_chunks = self._get_cached_contact_multibyte_hop_chunks(cursor)
+                chunk_buckets = self._bucket_hop_chunks(multibyte_hop_chunks)
+
+                tracking = []
+                for row in main_rows:
+                    # Calculate distance if both bot and contact have coordinates
+                    distance = None
+                    if (bot_lat is not None and bot_lon is not None and
+                        row['latitude'] is not None and row['longitude'] is not None):
+                        distance = self._calculate_distance(bot_lat, bot_lon, row['latitude'], row['longitude'])
+
+                    # Recent paths for this contact (grouped from the second query above). The full
+                    # path objects are NOT sent in the list payload (they were ~70% of its size and
+                    # are only used in the per-contact modal); the UI fetches them on demand via
+                    # /api/contact-detail. The list only needs the count and the badge.
+                    all_paths = paths_by_key.get(row['public_key'], [])
+                    paths_count = len(all_paths)
+
+                    # Preserve the legacy total_messages value: it was COUNT(*) over the LEFT-JOINed
+                    # path rows, i.e. the number of paths, or 1 when a contact had no paths.
+                    total_messages = max(1, paths_count)
+
+                    path_encoding_badge = self._compute_path_encoding_badge(
+                        row, all_paths, chunk_buckets
+                    )
+
+                    # The badge/tooltip decodes out_path (the "primary" path) using out_bytes_per_hop.
+                    # The contact column can be stale (e.g. left at 1 while the primary path is a 3-byte
+                    # path), which makes a multi-byte path render as twice/three-times as many 1-byte
+                    # hops. Index the encoding on the primary observed path itself, which carries the
+                    # authoritative bytes_per_hop, falling back to the contact column when unmatched.
+                    out_path_val = row['out_path'] if row['out_path'] is not None else ''
+                    out_bytes_per_hop_val = row['out_bytes_per_hop'] if row['out_bytes_per_hop'] is not None else None
+                    if out_path_val:
+                        primary_path = next((p for p in all_paths if p['path_hex'] == out_path_val), None)
+                        if primary_path and primary_path.get('bytes_per_hop') in (1, 2, 3):
+                            out_bytes_per_hop_val = primary_path['bytes_per_hop']
+
+                    entry = {
+                        'user_id': row['public_key'],
+                        'username': row['name'],
+                        'role': row['role'],
+                        'device_type': row['device_type'],
+                        'latitude': row['latitude'],
+                        'longitude': row['longitude'],
+                        'city': row['city'],
+                        'state': row['state'],
+                        'country': row['country'],
+                        'snr': row['snr'],
+                        'hop_count': row['hop_count'],
+                        'first_heard': row['first_heard'],
+                        'last_seen': row['last_heard'],
+                        'advert_count': row['advert_count'],
+                        'is_currently_tracked': row['is_currently_tracked'],
+                        'signal_strength': row['signal_strength'],
+                        'total_messages': total_messages,
+                        'last_message': row['last_message'],
+                        'distance': distance,
+                        'is_starred': bool(row['is_starred'] if row['is_starred'] is not None else 0),
+                        'out_path': out_path_val,
+                        'out_path_len': row['out_path_len'] if row['out_path_len'] is not None else -1,
+                        'out_bytes_per_hop': out_bytes_per_hop_val,
+                        'path_bytes_per_hop': int(row['path_bytes_per_hop'] or 0),
+                        'paths_count': paths_count,
+                        'path_encoding_badge': path_encoding_badge,
+                    }
+                    if include_detail:
+                        # Full fidelity for the export endpoint (size-tolerant, infrequent download).
+                        raw_advert_data = row['raw_advert_data']
+                        raw_advert_data_parsed = None
+                        if raw_advert_data:
+                            try:
+                                import json
+                                raw_advert_data_parsed = json.loads(raw_advert_data)
+                            except Exception:
+                                raw_advert_data_parsed = None
+                        entry['all_paths'] = all_paths
+                        entry['raw_advert_data'] = raw_advert_data
+                        entry['raw_advert_data_parsed'] = raw_advert_data_parsed
+                    tracking.append(entry)
+
+                # Get server statistics for daily tracking using direct database queries
+                server_stats = {}
+                try:
+                    # Check if daily_stats table exists
+                    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='daily_stats'")
+                    if cursor.fetchone():
+                        # 24h: Last 24 hours of advertisements
+                        cursor.execute("""
                         SELECT SUM(advert_count) FROM daily_stats
                         WHERE date >= date('now', 'localtime', '-1 day')
                     """)
-                    server_stats['advertisements_24h'] = cursor.fetchone()[0] or 0
+                        server_stats['advertisements_24h'] = cursor.fetchone()[0] or 0
 
-                    # 7d: Previous 6 days (excluding today)
-                    cursor.execute("""
+                        # 7d: Previous 6 days (excluding today)
+                        cursor.execute("""
                         SELECT SUM(advert_count) FROM daily_stats
                         WHERE date >= date('now', 'localtime', '-7 days') AND date < date('now', 'localtime')
                     """)
-                    server_stats['advertisements_7d'] = cursor.fetchone()[0] or 0
+                        server_stats['advertisements_7d'] = cursor.fetchone()[0] or 0
 
-                    # All: Everything
-                    cursor.execute("""
+                        # All: Everything
+                        cursor.execute("""
                         SELECT SUM(advert_count) FROM daily_stats
                     """)
-                    server_stats['total_advertisements'] = cursor.fetchone()[0] or 0
+                        server_stats['total_advertisements'] = cursor.fetchone()[0] or 0
 
-                    # Nodes per day statistics
-                    # Calculate today's unique nodes from complete_contact_tracking
-                    # (last_heard in last 24 hours) since daily_stats might not have today's data yet
-                    cursor.execute("""
+                        # Nodes per day statistics
+                        # Calculate today's unique nodes from complete_contact_tracking
+                        # (last_heard in last 24 hours) since daily_stats might not have today's data yet
+                        cursor.execute("""
                         SELECT COUNT(DISTINCT public_key) FROM complete_contact_tracking
                         WHERE last_heard >= datetime('now', 'localtime', '-24 hours')
                     """)
-                    server_stats['nodes_24h'] = cursor.fetchone()[0] or 0
+                        server_stats['nodes_24h'] = cursor.fetchone()[0] or 0
 
-                    # Get today's unique nodes by role for the stacked chart
-                    cursor.execute("""
+                        # Get today's unique nodes by role for the stacked chart
+                        cursor.execute("""
                         SELECT role, COUNT(DISTINCT public_key) as count
                         FROM complete_contact_tracking
                         WHERE last_heard >= datetime('now', 'localtime', '-24 hours')
                         AND role IS NOT NULL AND role != ''
                         GROUP BY role
                     """)
-                    today_by_role = {}
-                    for row in cursor.fetchall():
-                        role = row[0].lower() if row[0] else 'unknown'
-                        count = row[1]
-                        today_by_role[role] = count
+                        today_by_role = {}
+                        for row in cursor.fetchall():
+                            role = row[0].lower() if row[0] else 'unknown'
+                            count = row[1]
+                            today_by_role[role] = count
 
-                    server_stats['nodes_24h_by_role'] = {
-                        'companion': today_by_role.get('companion', 0),
-                        'repeater': today_by_role.get('repeater', 0),
-                        'roomserver': today_by_role.get('roomserver', 0),
-                        'sensor': today_by_role.get('sensor', 0),
-                        'other': sum(v for k, v in today_by_role.items() if k not in ['companion', 'repeater', 'roomserver', 'sensor'])
-                    }
+                        server_stats['nodes_24h_by_role'] = {
+                            'companion': today_by_role.get('companion', 0),
+                            'repeater': today_by_role.get('repeater', 0),
+                            'roomserver': today_by_role.get('roomserver', 0),
+                            'sensor': today_by_role.get('sensor', 0),
+                            'other': sum(v for k, v in today_by_role.items() if k not in ['companion', 'repeater', 'roomserver', 'sensor'])
+                        }
 
-                    cursor.execute("""
+                        cursor.execute("""
                         SELECT COUNT(DISTINCT public_key) FROM daily_stats
                         WHERE date >= date('now', 'localtime', '-7 days') AND date < date('now', 'localtime')
                     """)
-                    server_stats['nodes_7d'] = cursor.fetchone()[0] or 0
+                        server_stats['nodes_7d'] = cursor.fetchone()[0] or 0
 
-                    # Calculate day-over-day and period-over-period comparisons
-                    # Today vs 7 days ago (single day comparison)
-                    cursor.execute("""
+                        # Calculate day-over-day and period-over-period comparisons
+                        # Today vs 7 days ago (single day comparison)
+                        cursor.execute("""
                         SELECT COUNT(DISTINCT public_key) FROM daily_stats
                         WHERE date = date('now', 'localtime', '-7 days')
                     """)
-                    result = cursor.fetchone()
-                    server_stats['nodes_7d_ago'] = result[0] if result and result[0] else 0
+                        result = cursor.fetchone()
+                        server_stats['nodes_7d_ago'] = result[0] if result and result[0] else 0
 
-                    # Last 7 days vs previous 7 days (days 8-14 ago)
-                    cursor.execute("""
+                        # Last 7 days vs previous 7 days (days 8-14 ago)
+                        cursor.execute("""
                         SELECT COUNT(DISTINCT public_key) FROM daily_stats
                         WHERE date >= date('now', 'localtime', '-14 days') AND date < date('now', 'localtime', '-7 days')
                     """)
-                    result = cursor.fetchone()
-                    server_stats['nodes_prev_7d'] = result[0] if result and result[0] else 0
+                        result = cursor.fetchone()
+                        server_stats['nodes_prev_7d'] = result[0] if result and result[0] else 0
 
-                    # Last 30 days vs previous 30 days (days 31-60 ago)
-                    cursor.execute("""
+                        # Last 30 days vs previous 30 days (days 31-60 ago)
+                        cursor.execute("""
                         SELECT COUNT(DISTINCT public_key) FROM daily_stats
                         WHERE date >= date('now', 'localtime', '-60 days') AND date < date('now', 'localtime', '-30 days')
                     """)
-                    result = cursor.fetchone()
-                    server_stats['nodes_prev_30d'] = result[0] if result and result[0] else 0
+                        result = cursor.fetchone()
+                        server_stats['nodes_prev_30d'] = result[0] if result and result[0] else 0
 
-                    # Also get current period totals for comparison
-                    cursor.execute("""
+                        # Also get current period totals for comparison
+                        cursor.execute("""
                         SELECT COUNT(DISTINCT public_key) FROM daily_stats
                         WHERE date >= date('now', 'localtime', '-7 days')
                     """)
-                    server_stats['nodes_7d'] = cursor.fetchone()[0] or 0
+                        server_stats['nodes_7d'] = cursor.fetchone()[0] or 0
 
-                    cursor.execute("""
+                        cursor.execute("""
                         SELECT COUNT(DISTINCT public_key) FROM daily_stats
                         WHERE date >= date('now', 'localtime', '-30 days')
                     """)
-                    server_stats['nodes_30d'] = cursor.fetchone()[0] or 0
+                        server_stats['nodes_30d'] = cursor.fetchone()[0] or 0
 
-                    cursor.execute("""
+                        cursor.execute("""
                         SELECT COUNT(DISTINCT public_key) FROM daily_stats
                     """)
-                    server_stats['nodes_all'] = cursor.fetchone()[0] or 0
+                        server_stats['nodes_all'] = cursor.fetchone()[0] or 0
 
-                    # Get daily unique node counts by role for the last 30 days for the stacked graph
-                    # Join daily_stats with complete_contact_tracking to get role information
-                    # This gives us accurate historical daily counts by role
-                    cursor.execute("""
+                        # Get daily unique node counts by role for the last 30 days for the stacked graph
+                        # Join daily_stats with complete_contact_tracking to get role information
+                        # This gives us accurate historical daily counts by role
+                        cursor.execute("""
                         SELECT ds.date, c.role, COUNT(DISTINCT ds.public_key) as daily_count
                         FROM daily_stats ds
                         LEFT JOIN complete_contact_tracking c ON ds.public_key = c.public_key
@@ -7876,63 +7824,60 @@ class BotDataViewer:
                         GROUP BY ds.date, c.role
                         ORDER BY ds.date ASC, c.role ASC
                     """)
-                    daily_data_by_role = cursor.fetchall()
+                        daily_data_by_role = cursor.fetchall()
 
-                    # Organize data by date and role
-                    daily_by_role = {}
-                    for row in daily_data_by_role:
-                        date_str = row[0]
-                        role = (row[1] or 'unknown').lower()
-                        count = row[2]
+                        # Organize data by date and role
+                        daily_by_role = {}
+                        for row in daily_data_by_role:
+                            date_str = row[0]
+                            role = (row[1] or 'unknown').lower()
+                            count = row[2]
 
-                        if date_str not in daily_by_role:
-                            daily_by_role[date_str] = {}
-                        daily_by_role[date_str][role] = count
+                            if date_str not in daily_by_role:
+                                daily_by_role[date_str] = {}
+                            daily_by_role[date_str][role] = count
 
-                    # Convert to array format with all roles for each date
-                    server_stats['daily_nodes_30d_by_role'] = []
-                    for date_str in sorted(daily_by_role.keys()):
-                        roles_data = daily_by_role[date_str]
-                        server_stats['daily_nodes_30d_by_role'].append({
-                            'date': date_str,
-                            'companion': roles_data.get('companion', 0),
-                            'repeater': roles_data.get('repeater', 0),
-                            'roomserver': roles_data.get('roomserver', 0),
-                            'sensor': roles_data.get('sensor', 0),
-                            'other': sum(v for k, v in roles_data.items() if k not in ['companion', 'repeater', 'roomserver', 'sensor'])
-                        })
+                        # Convert to array format with all roles for each date
+                        server_stats['daily_nodes_30d_by_role'] = []
+                        for date_str in sorted(daily_by_role.keys()):
+                            roles_data = daily_by_role[date_str]
+                            server_stats['daily_nodes_30d_by_role'].append({
+                                'date': date_str,
+                                'companion': roles_data.get('companion', 0),
+                                'repeater': roles_data.get('repeater', 0),
+                                'roomserver': roles_data.get('roomserver', 0),
+                                'sensor': roles_data.get('sensor', 0),
+                                'other': sum(v for k, v in roles_data.items() if k not in ['companion', 'repeater', 'roomserver', 'sensor'])
+                            })
 
-                    # Also keep the total count for backward compatibility
-                    cursor.execute("""
+                        # Also keep the total count for backward compatibility
+                        cursor.execute("""
                         SELECT date, COUNT(DISTINCT public_key) as daily_count
                         FROM daily_stats
                         WHERE date >= date('now', 'localtime', '-30 days') AND date <= date('now', 'localtime')
                         GROUP BY date
                         ORDER BY date ASC
                     """)
-                    daily_data = cursor.fetchall()
-                    server_stats['daily_nodes_30d'] = [
-                        {'date': row[0], 'count': row[1]}
-                        for row in daily_data
-                    ]
+                        daily_data = cursor.fetchall()
+                        server_stats['daily_nodes_30d'] = [
+                            {'date': row[0], 'count': row[1]}
+                            for row in daily_data
+                        ]
 
-            except Exception as e:
-                self.logger.debug(f"Could not get server stats: {e}")
+                except Exception as e:
+                    self.logger.debug(f"Could not get server stats: {e}")
 
-            result = {
-                'tracking_data': tracking,
-                'server_stats': server_stats
-            }
-            if pagination is not None:
-                result['pagination'] = pagination
-                result['filtered_stats'] = filtered_stats
-            return result
+                result = {
+                    'tracking_data': tracking,
+                    'server_stats': server_stats
+                }
+                if pagination is not None:
+                    result['pagination'] = pagination
+                    result['filtered_stats'] = filtered_stats
+                return result
         except Exception as e:
             self.logger.error(f"Error getting tracking data: {e}")
             return {'error': str(e)}
-        finally:
-            if conn:
-                conn.close()
 
     def _calculate_distance(self, lat1, lon1, lat2, lon2):
         """Calculate distance between two points using Haversine formula"""
@@ -7954,107 +7899,95 @@ class BotDataViewer:
 
     def _get_cache_data(self):
         """Get cache data"""
-        conn = None
         try:
-            conn = self._get_db_connection()
-            cursor = conn.cursor()
+            with self._db_connection() as conn:
+                cursor = conn.cursor()
 
-            # Get cache statistics
-            cursor.execute("SELECT COUNT(*) FROM adverts")
-            total_adverts = cursor.fetchone()[0]
+                # Get cache statistics
+                cursor.execute("SELECT COUNT(*) FROM adverts")
+                total_adverts = cursor.fetchone()[0]
 
-            cursor.execute("""
+                cursor.execute("""
                 SELECT COUNT(*) FROM adverts
                 WHERE timestamp > datetime('now', '-1 hour')
             """)
-            recent_adverts = cursor.fetchone()[0]
+                recent_adverts = cursor.fetchone()[0]
 
-            cursor.execute("""
+                cursor.execute("""
                 SELECT COUNT(DISTINCT user_id) FROM adverts
                 WHERE timestamp > datetime('now', '-24 hours')
             """)
-            active_users = cursor.fetchone()[0]
+                active_users = cursor.fetchone()[0]
 
-            return {
-                'total_adverts': total_adverts,
-                'recent_adverts_1h': recent_adverts,
-                'active_users_24h': active_users,
-                'timestamp': time.time()
-            }
+                return {
+                    'total_adverts': total_adverts,
+                    'recent_adverts_1h': recent_adverts,
+                    'active_users_24h': active_users,
+                    'timestamp': time.time()
+                }
         except Exception as e:
             self.logger.error(f"Error getting cache data: {e}")
             return {'error': str(e)}
-        finally:
-            if conn:
-                conn.close()
 
 
     def _get_feed_subscriptions(self, channel_filter=None):
         """Get all feed subscriptions, optionally filtered by channel"""
         import sqlite3
-        conn = None
         try:
-            conn = self._get_db_connection()
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
+            with self._db_connection() as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
 
-            if channel_filter:
-                cursor.execute('''
+                if channel_filter:
+                    cursor.execute('''
                     SELECT * FROM feed_subscriptions
                     WHERE channel_name = ?
                     ORDER BY id
                 ''', (channel_filter,))
-            else:
-                cursor.execute('''
+                else:
+                    cursor.execute('''
                     SELECT * FROM feed_subscriptions
                     ORDER BY id
                 ''')
 
-            rows = cursor.fetchall()
-            feeds = []
-            for row in rows:
-                feed = dict(row)
-                # Get feed count for this channel
-                cursor.execute('''
+                rows = cursor.fetchall()
+                feeds = []
+                for row in rows:
+                    feed = dict(row)
+                    # Get feed count for this channel
+                    cursor.execute('''
                     SELECT COUNT(*) FROM feed_activity
                     WHERE feed_id = ?
                 ''', (feed['id'],))
-                feed['item_count'] = cursor.fetchone()[0]
+                    feed['item_count'] = cursor.fetchone()[0]
 
-                # Get error count
-                cursor.execute('''
+                    # Get error count
+                    cursor.execute('''
                     SELECT COUNT(*) FROM feed_errors
                     WHERE feed_id = ? AND resolved_at IS NULL
                 ''', (feed['id'],))
-                feed['error_count'] = cursor.fetchone()[0]
+                    feed['error_count'] = cursor.fetchone()[0]
 
-                feeds.append(feed)
+                    feeds.append(feed)
 
-            return {'feeds': feeds, 'total': len(feeds)}
+                return {'feeds': feeds, 'total': len(feeds)}
         except Exception as e:
             self.logger.error(f"Error getting feed subscriptions: {e}")
             return {'feeds': [], 'total': 0, 'error': str(e)}
-        finally:
-            if conn:
-                conn.close()
 
     def _get_feed_subscription(self, feed_id):
         """Get a single feed subscription by ID"""
         import sqlite3
-        conn = None
         try:
-            conn = self._get_db_connection()
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
-            cursor.execute('SELECT * FROM feed_subscriptions WHERE id = ?', (feed_id,))
-            row = cursor.fetchone()
-            return dict(row) if row else None
+            with self._db_connection() as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+                cursor.execute('SELECT * FROM feed_subscriptions WHERE id = ?', (feed_id,))
+                row = cursor.fetchone()
+                return dict(row) if row else None
         except Exception as e:
             self.logger.error(f"Error getting feed subscription: {e}")
             return None
-        finally:
-            if conn:
-                conn.close()
 
     def _create_feed_subscription(self, data):
         """Create a new feed subscription"""
@@ -8210,89 +8143,80 @@ class BotDataViewer:
     def _get_feed_activity(self, feed_id, limit=50):
         """Get activity log for a feed"""
         import sqlite3
-        conn = None
         try:
-            conn = self._get_db_connection()
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
-            cursor.execute('''
+            with self._db_connection() as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+                cursor.execute('''
                 SELECT * FROM feed_activity
                 WHERE feed_id = ?
                 ORDER BY processed_at DESC
                 LIMIT ?
             ''', (feed_id, limit))
-            rows = cursor.fetchall()
-            return [dict(row) for row in rows]
+                rows = cursor.fetchall()
+                return [dict(row) for row in rows]
         except Exception as e:
             self.logger.error(f"Error getting feed activity: {e}")
             return []
-        finally:
-            if conn:
-                conn.close()
 
     def _get_feed_errors(self, feed_id, limit=20):
         """Get error history for a feed"""
         import sqlite3
-        conn = None
         try:
-            conn = self._get_db_connection()
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
-            cursor.execute('''
+            with self._db_connection() as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+                cursor.execute('''
                 SELECT * FROM feed_errors
                 WHERE feed_id = ?
                 ORDER BY occurred_at DESC
                 LIMIT ?
             ''', (feed_id, limit))
-            rows = cursor.fetchall()
-            return [dict(row) for row in rows]
+                rows = cursor.fetchall()
+                return [dict(row) for row in rows]
         except Exception as e:
             self.logger.error(f"Error getting feed errors: {e}")
             return []
-        finally:
-            if conn:
-                conn.close()
 
     def _get_feed_statistics(self):
         """Get aggregate feed statistics"""
-        conn = None
         try:
-            conn = self._get_db_connection()
-            cursor = conn.cursor()
+            with self._db_connection() as conn:
+                cursor = conn.cursor()
 
-            stats = {}
+                stats = {}
 
-            # Total subscriptions
-            cursor.execute('SELECT COUNT(*) FROM feed_subscriptions')
-            stats['total_subscriptions'] = cursor.fetchone()[0]
+                # Total subscriptions
+                cursor.execute('SELECT COUNT(*) FROM feed_subscriptions')
+                stats['total_subscriptions'] = cursor.fetchone()[0]
 
-            # Enabled subscriptions
-            cursor.execute('SELECT COUNT(*) FROM feed_subscriptions WHERE enabled = 1')
-            stats['enabled_subscriptions'] = cursor.fetchone()[0]
+                # Enabled subscriptions
+                cursor.execute('SELECT COUNT(*) FROM feed_subscriptions WHERE enabled = 1')
+                stats['enabled_subscriptions'] = cursor.fetchone()[0]
 
-            # Items processed in last 24h
-            cursor.execute('''
+                # Items processed in last 24h
+                cursor.execute('''
                 SELECT COUNT(*) FROM feed_activity
                 WHERE processed_at > datetime('now', '-24 hours')
             ''')
-            stats['items_24h'] = cursor.fetchone()[0]
+                stats['items_24h'] = cursor.fetchone()[0]
 
-            # Items processed in last 7d
-            cursor.execute('''
+                # Items processed in last 7d
+                cursor.execute('''
                 SELECT COUNT(*) FROM feed_activity
                 WHERE processed_at > datetime('now', '-7 days')
             ''')
-            stats['items_7d'] = cursor.fetchone()[0]
+                stats['items_7d'] = cursor.fetchone()[0]
 
-            # Error count
-            cursor.execute('''
+                # Error count
+                cursor.execute('''
                 SELECT COUNT(*) FROM feed_errors
                 WHERE resolved_at IS NULL
             ''')
-            stats['active_errors'] = cursor.fetchone()[0]
+                stats['active_errors'] = cursor.fetchone()[0]
 
-            # Most active channels
-            cursor.execute('''
+                # Most active channels
+                cursor.execute('''
                 SELECT channel_name, COUNT(*) as feed_count
                 FROM feed_subscriptions
                 WHERE enabled = 1
@@ -8300,15 +8224,12 @@ class BotDataViewer:
                 ORDER BY feed_count DESC
                 LIMIT 10
             ''')
-            stats['top_channels'] = [{'channel': row[0], 'count': row[1]} for row in cursor.fetchall()]
+                stats['top_channels'] = [{'channel': row[0], 'count': row[1]} for row in cursor.fetchall()]
 
-            return stats
+                return stats
         except Exception as e:
             self.logger.error(f"Error getting feed statistics: {e}")
             return {'error': str(e)}
-        finally:
-            if conn:
-                conn.close()
 
     def _get_feeds_by_channel(self, channel_idx):
         """Get all feeds for a specific channel index"""
@@ -8320,62 +8241,58 @@ class BotDataViewer:
     def _get_channels(self):
         """Get all configured channels from database plus additional decode-only channels"""
         import sqlite3
-        conn = None
         try:
-            conn = self._get_db_connection()
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
+            with self._db_connection() as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
 
-            cursor.execute('''
+                cursor.execute('''
                 SELECT channel_idx, channel_name, channel_type, channel_key_hex, last_updated
                 FROM channels
                 ORDER BY channel_idx
             ''')
 
-            rows = cursor.fetchall()
-            channels = []
-            existing_names = set()
+                rows = cursor.fetchall()
+                channels = []
+                existing_names = set()
 
-            for row in rows:
-                name = row['channel_name']
-                channels.append({
-                    'channel_idx': row['channel_idx'],
-                    'index': row['channel_idx'],  # Alias for compatibility
-                    'name': name,
-                    'channel_name': name,  # Alias for compatibility
-                    'type': row['channel_type'] or 'hashtag',
-                    'key_hex': row['channel_key_hex'],
-                    'last_updated': row['last_updated']
-                })
-                # Track names for deduplication (normalize to lowercase with #)
-                normalized = name.lower() if name.startswith('#') else f'#{name.lower()}'
-                existing_names.add(normalized)
-
-            # Add additional decode-only hashtag channels from config
-            additional_channels = self._get_additional_decode_channels()
-            for channel_name in additional_channels:
-                # Normalize name
-                normalized = channel_name.lower() if channel_name.startswith('#') else f'#{channel_name.lower()}'
-                if normalized not in existing_names:
+                for row in rows:
+                    name = row['channel_name']
                     channels.append({
-                        'channel_idx': None,  # Not a real radio channel
-                        'index': None,
-                        'name': normalized,
-                        'channel_name': normalized,
-                        'type': 'hashtag',
-                        'key_hex': None,  # Key will be derived client-side
-                        'last_updated': None,
-                        'decode_only': True  # Flag to indicate this is decode-only
+                        'channel_idx': row['channel_idx'],
+                        'index': row['channel_idx'],  # Alias for compatibility
+                        'name': name,
+                        'channel_name': name,  # Alias for compatibility
+                        'type': row['channel_type'] or 'hashtag',
+                        'key_hex': row['channel_key_hex'],
+                        'last_updated': row['last_updated']
                     })
+                    # Track names for deduplication (normalize to lowercase with #)
+                    normalized = name.lower() if name.startswith('#') else f'#{name.lower()}'
                     existing_names.add(normalized)
 
-            return channels
+                # Add additional decode-only hashtag channels from config
+                additional_channels = self._get_additional_decode_channels()
+                for channel_name in additional_channels:
+                    # Normalize name
+                    normalized = channel_name.lower() if channel_name.startswith('#') else f'#{channel_name.lower()}'
+                    if normalized not in existing_names:
+                        channels.append({
+                            'channel_idx': None,  # Not a real radio channel
+                            'index': None,
+                            'name': normalized,
+                            'channel_name': normalized,
+                            'type': 'hashtag',
+                            'key_hex': None,  # Key will be derived client-side
+                            'last_updated': None,
+                            'decode_only': True  # Flag to indicate this is decode-only
+                        })
+                        existing_names.add(normalized)
+
+                return channels
         except Exception as e:
             self.logger.error(f"Error getting channels: {e}")
             return []
-        finally:
-            if conn:
-                conn.close()
 
     def _get_additional_decode_channels(self):
         """Get additional hashtag channels to decode from config"""
@@ -8439,35 +8356,31 @@ class BotDataViewer:
 
     def _get_channel_statistics(self):
         """Get channel statistics"""
-        conn = None
         try:
-            conn = self._get_db_connection()
-            cursor = conn.cursor()
+            with self._db_connection() as conn:
+                cursor = conn.cursor()
 
-            # Get feed count per channel
-            cursor.execute('''
+                # Get feed count per channel
+                cursor.execute('''
                 SELECT channel_name, COUNT(*) as feed_count
                 FROM feed_subscriptions
                 WHERE enabled = 1
                 GROUP BY channel_name
             ''')
 
-            channel_feeds = {row[0]: row[1] for row in cursor.fetchall()}
+                channel_feeds = {row[0]: row[1] for row in cursor.fetchall()}
 
-            # Get max_channels from config (default 40)
-            max_channels = self.config.getint('Bot', 'max_channels', fallback=40)
+                # Get max_channels from config (default 40)
+                max_channels = self.config.getint('Bot', 'max_channels', fallback=40)
 
-            return {
-                'channels_with_feeds': len(channel_feeds),
-                'channel_feed_counts': channel_feeds,
-                'max_channels': max_channels
-            }
+                return {
+                    'channels_with_feeds': len(channel_feeds),
+                    'channel_feed_counts': channel_feeds,
+                    'max_channels': max_channels
+                }
         except Exception as e:
             self.logger.error(f"Error getting channel statistics: {e}")
             return {'error': str(e)}
-        finally:
-            if conn:
-                conn.close()
 
     def _preview_feed_items(self, feed_url: str, feed_type: str, output_format: str, api_config: dict[str, Any] | None = None, filter_config: dict[str, Any] | None = None, sort_config: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         """Preview feed items with custom output format (standalone, doesn't require bot)"""
