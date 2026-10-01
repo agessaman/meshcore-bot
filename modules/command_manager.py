@@ -49,6 +49,11 @@ from .models import (
     self_info_name,
 )
 
+# Default for [Bot] dm_min_ack_timeout: the shortest per-attempt wait for a DM's
+# ACK, in seconds. See CommandManager._dm_min_ack_timeout.
+DM_MIN_ACK_TIMEOUT_DEFAULT = 8.0
+DM_MIN_ACK_TIMEOUT_MAX = 60.0
+
 # Links the bot puts on the air, for keeping them intact across a chunk boundary.
 # Explicit schemes and "www." only: matching bare "host.tld/path" would take
 # ordinary prose ("gusts 40mph.Take shelter") for a link and move split points for
@@ -1291,6 +1296,31 @@ class CommandManager:
             self.logger.error(f"Failed to send DM: {e}")
             return False
 
+    def _dm_min_ack_timeout(self) -> float:
+        """Shortest time to wait for a DM's ACK on each attempt, in seconds.
+
+        ``send_msg_with_retry`` otherwise waits 1.2x the radio's
+        ``suggested_timeout``, which the firmware derives from the packet's
+        airtime and hop count with only ~750 ms of fixed allowance. The round
+        trip also carries fixed costs that do not shrink with airtime: the
+        recipient's ACK delay, each repeater's retransmit and rx delays, the
+        radio's TX queue, and the host link. On a fast preset a zero-hop estimate is barely over a second, so the ACK of
+        a message that arrived lands after the last attempt has given up, and
+        the send reports a failure for a delivered message. A floor only
+        lengthens the wait before declaring failure; an ACK still ends it at
+        once.
+        """
+        try:
+            value = self.bot.config.getfloat(
+                'Bot', 'dm_min_ack_timeout', fallback=DM_MIN_ACK_TIMEOUT_DEFAULT
+            )
+        except ValueError:
+            return DM_MIN_ACK_TIMEOUT_DEFAULT
+        if value < 0:
+            return DM_MIN_ACK_TIMEOUT_DEFAULT
+        # A value meant as milliseconds would otherwise hold one DM for hours.
+        return min(value, DM_MIN_ACK_TIMEOUT_MAX)
+
     async def _send_dm_payload(
         self,
         contact: Any,
@@ -1312,15 +1342,20 @@ class CommandManager:
                     max_flood_attempts = self.bot.config.getint('Bot', 'dm_max_flood_attempts', fallback=2)
                     flood_after = self.bot.config.getint('Bot', 'dm_flood_after', fallback=2)
                     timeout = 0  # Use suggested timeout from meshcore
+                    min_timeout = self._dm_min_ack_timeout()
 
-                    self.logger.debug(f"Attempting DM send with {max_attempts} max attempts")
+                    self.logger.debug(
+                        f"Attempting DM send with {max_attempts} max attempts "
+                        f"(ACK wait at least {min_timeout:g}s per attempt)"
+                    )
                     result = await self.bot.meshcore.commands.send_msg_with_retry(
                         contact,
                         content,
                         max_attempts=max_attempts,
                         max_flood_attempts=max_flood_attempts,
                         flood_after=flood_after,
-                        timeout=timeout
+                        timeout=timeout,
+                        min_timeout=min_timeout,
                     )
                 else:
                     # Fallback to regular send_msg for older meshcore versions
@@ -1492,7 +1527,7 @@ class CommandManager:
                     try:
                         if scoped:
                             _scope_result = await self.bot.meshcore.commands.set_flood_scope(scope_to_use)
-                            if _scope_result is None or getattr(_scope_result, "type", None) == "ERROR":
+                            if _scope_result is None or getattr(_scope_result, "type", None) == EventType.ERROR:
                                 if _attempt == 0:
                                     self.logger.warning(
                                         "set_flood_scope(%s) failed (result=%s); "
@@ -1511,7 +1546,7 @@ class CommandManager:
                     finally:
                         if scoped:
                             _restore_result = await self.bot.meshcore.commands.set_flood_scope("*")
-                            if _restore_result is None or getattr(_restore_result, "type", None) == "ERROR":
+                            if _restore_result is None or getattr(_restore_result, "type", None) == EventType.ERROR:
                                 self.logger.warning(
                                     "set_flood_scope('*') restore failed (result=%s)", _restore_result
                                 )

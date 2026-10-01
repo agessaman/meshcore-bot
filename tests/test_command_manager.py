@@ -1598,3 +1598,87 @@ class TestLinkSpanStraddling:
         span = CommandManager._link_span_straddling(text, 30)
         assert span == (24, len(text))
         assert text[span[0]:span[1]] == "https://b.example/22"
+
+
+class TestDMAckTimeoutFloor:
+    """[Bot] dm_min_ack_timeout sets the per-attempt ACK wait floor (issue #290)."""
+
+    def _retry_bot(self, cm_bot, **bot_values):
+        cm_bot.connected = True
+        cm_bot.meshcore = Mock()
+        cm_bot.meshcore.commands = Mock(spec=["send_msg_with_retry"])
+        cm_bot.meshcore.commands.send_msg_with_retry = AsyncMock(return_value=None)
+        for key, value in bot_values.items():
+            cm_bot.config.set("Bot", key, str(value))
+        return make_manager(cm_bot)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("configured", "expected"),
+        [
+            (None, 8.0),
+            ("15", 15.0),
+            ("2.5", 2.5),
+            ("0", 0.0),
+            ("-1", 8.0),
+            ("soon", 8.0),
+            ("8000", 60.0),
+        ],
+    )
+    async def test_min_timeout_passed_to_retry(self, cm_bot, configured, expected):
+        values = {} if configured is None else {"dm_min_ack_timeout": configured}
+        manager = self._retry_bot(cm_bot, **values)
+        await manager._send_dm_payload({"public_key": "ab" * 32}, "Alice", "hi")
+        kwargs = cm_bot.meshcore.commands.send_msg_with_retry.await_args.kwargs
+        assert kwargs["min_timeout"] == expected
+        assert kwargs["timeout"] == 0
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(("floor", "delivered"), [("0", False), ("1.5", True)])
+    async def test_late_ack_counts_once_the_floor_covers_it(self, cm_bot, floor, delivered):
+        """Real meshcore retry loop: an ACK slower than the radio's estimate.
+
+        The radio suggests 100 ms (a 120 ms wait); the ACK comes back after
+        300 ms, as a zero-hop ACK on a fast preset does. Without a floor the
+        send reports failure for a delivered message.
+        """
+        import asyncio
+
+        from meshcore import EventType
+        from meshcore.commands import CommandHandler
+        from meshcore.events import Event, EventDispatcher
+
+        dispatcher = EventDispatcher()
+        await dispatcher.start()
+        try:
+            handler = CommandHandler()
+            handler.set_dispatcher(dispatcher)
+            contact = {"public_key": "ab" * 32, "out_path_len": 0, "out_path": ""}
+            handler._get_contact_by_prefix = lambda prefix: contact
+
+            async def deliver_ack():
+                await asyncio.sleep(0.3)
+                await dispatcher.dispatch(
+                    Event(EventType.ACK, {"code": "01020304"}, {"code": "01020304"})
+                )
+
+            async def radio(data):
+                if bytes(data)[0] == 0x02:  # CMD_SEND_TXT_MSG
+                    await dispatcher.dispatch(Event(
+                        EventType.MSG_SENT,
+                        {"type": 0, "expected_ack": b"\x01\x02\x03\x04", "suggested_timeout": 100},
+                    ))
+                    asyncio.get_running_loop().create_task(deliver_ack())
+
+            handler._sender_func = radio
+            cm_bot.connected = True
+            cm_bot.meshcore = Mock()
+            cm_bot.meshcore.commands = handler
+            cm_bot.config.set("Bot", "dm_max_retries", "1")
+            cm_bot.config.set("Bot", "dm_min_ack_timeout", floor)
+            manager = make_manager(cm_bot)
+
+            result = await manager._send_dm_payload(contact, "Alice", "hi")
+            assert result is delivered
+        finally:
+            await dispatcher.stop()
