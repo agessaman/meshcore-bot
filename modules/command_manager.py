@@ -6,6 +6,7 @@ Handles all bot commands, keyword matching, and response generation
 
 import asyncio
 import contextlib
+import math
 import random
 import re
 import time
@@ -1307,7 +1308,8 @@ class CommandManager:
             )
         except ValueError:
             return DM_MIN_ACK_TIMEOUT_DEFAULT
-        if value < 0:
+        # NaN fails every comparison, so it would pass the cap below untouched.
+        if math.isnan(value) or value < 0:
             return DM_MIN_ACK_TIMEOUT_DEFAULT
         # A value meant as milliseconds would otherwise hold one DM for hours.
         return min(value, DM_MIN_ACK_TIMEOUT_MAX)

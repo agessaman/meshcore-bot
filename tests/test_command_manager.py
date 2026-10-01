@@ -1623,6 +1623,8 @@ class TestDMAckTimeoutFloor:
             ("-1", 8.0),
             ("soon", 8.0),
             ("8000", 60.0),
+            ("nan", 8.0),
+            ("inf", 60.0),
         ],
     )
     async def test_min_timeout_passed_to_retry(self, cm_bot, configured, expected):
