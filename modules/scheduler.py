@@ -335,23 +335,28 @@ class MessageScheduler:
             self.logger.warning("send_scheduled_message suppressed — radio is offline (repeated send timeouts)")
             return
 
-        current_time = self.get_current_time()
-        scope_note = f" [{scope}]" if scope else ""
-        self.logger.info(
-            f"📅 Sending scheduled message at {current_time.strftime('%H:%M:%S')} "
-            f"to {channel}{scope_note}: {message}"
-        )
+        try:
+            current_time = self.get_current_time()
+            scope_note = f" [{scope}]" if scope else ""
+            self.logger.info(
+                f"📅 Sending scheduled message at {current_time.strftime('%H:%M:%S')} "
+                f"to {channel}{scope_note}: {message}"
+            )
 
-        self._run_measured_send(
-            lambda: self._send_scheduled_message_async(
-                channel, message, schedule_key=schedule_key, scope=scope
-            ),
-            trial,
-            error_label="Error sending scheduled message",
-            loop_gone_label="Event loop gone during scheduled message",
-            reports_outcome=True,
-            run_fallback=self._run_in_temporary_loop,
-        )
+            self._run_measured_send(
+                lambda: self._send_scheduled_message_async(
+                    channel, message, schedule_key=schedule_key, scope=scope
+                ),
+                trial,
+                error_label="Error sending scheduled message",
+                loop_gone_label="Event loop gone during scheduled message",
+                reports_outcome=True,
+                run_fallback=self._run_in_temporary_loop,
+            )
+        except BaseException:
+            # A no-op when the send already settled the trial.
+            self.bot._record_send_inconclusive(trial)
+            raise
 
     @staticmethod
     def _run_in_temporary_loop(coro: Any) -> Any:
@@ -404,7 +409,13 @@ class MessageScheduler:
                         coro.close()
                         send.close()
                         raise
-                    outcome = future.result(timeout=60)  # 60 second timeout
+                    try:
+                        outcome = future.result(timeout=60)  # 60 second timeout
+                    except BaseException:
+                        if trial:
+                            # A trial that ran out of time must not resume and transmit later.
+                            future.cancel()
+                        raise
                 except RuntimeError as e:
                     if loop_gone_label is None:
                         self.logger.error(f"{error_label}: {type(e).__name__}: {e}")
@@ -419,7 +430,7 @@ class MessageScheduler:
                     # False means the send reported failure (or nothing was sent)
                     # without timing out: no evidence either way about the radio.
                     if outcome or not reports_outcome:
-                        self.bot._record_send_success()
+                        self.bot._record_send_success(trial)
                     else:
                         self.bot._record_send_inconclusive(trial)
                 settled = True
@@ -437,7 +448,7 @@ class MessageScheduler:
                 settled = True
                 raise
             if outcome or not reports_outcome:
-                self.bot._record_send_success()
+                self.bot._record_send_success(trial)
             else:
                 self.bot._record_send_inconclusive(trial)
             settled = True
@@ -1122,17 +1133,22 @@ class MessageScheduler:
             self.logger.warning("send_interval_advert suppressed — radio is offline (repeated send timeouts)")
             return
 
-        current_time = self.get_current_time()
-        self.logger.info(f"📢 Sending interval-based flood advert at {current_time.strftime('%H:%M:%S')}")
+        try:
+            current_time = self.get_current_time()
+            self.logger.info(f"📢 Sending interval-based flood advert at {current_time.strftime('%H:%M:%S')}")
 
-        self._run_measured_send(
-            self._send_interval_advert_async,
-            trial,
-            error_label="Error sending interval advert",
-            loop_gone_label=None,
-            reports_outcome=False,
-            run_fallback=self._run_in_current_loop,
-        )
+            self._run_measured_send(
+                self._send_interval_advert_async,
+                trial,
+                error_label="Error sending interval advert",
+                loop_gone_label=None,
+                reports_outcome=False,
+                run_fallback=self._run_in_current_loop,
+            )
+        except BaseException:
+            # A no-op when the send already settled the trial.
+            self.bot._record_send_inconclusive(trial)
+            raise
 
     async def _send_interval_advert_async(self):
         """Send an interval-based advert (async implementation)"""

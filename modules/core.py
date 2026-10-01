@@ -622,21 +622,31 @@ class MeshCoreBot:
                 daemon=True,
             ).start()
 
-    def _record_send_success(self) -> None:
-        """Clear the consecutive-send-failure counter after a successful send."""
-        failures = getattr(self, '_send_consecutive_failures', 0)
-        was_offline = bool(getattr(self, '_radio_offline', False))
-        if failures > 0 or was_offline:
+    def _record_send_success(self, trial: int = 0) -> None:
+        """Clear the consecutive-send-failure counter after a successful send.
+
+        While offline, only the success of trial *trial*, if it is still the
+        trial in flight, clears the outage; a send admitted before the outage
+        (or an older trial finishing late) cannot clear a newer one.
+        """
+        with self._offline_lock():
+            failures = getattr(self, '_send_consecutive_failures', 0)
+            was_offline = bool(getattr(self, '_radio_offline', False))
+            clears = was_offline and self._holds_offline_trial(trial)
+            if was_offline and not clears:
+                return
+            if clears:
+                self._reset_offline_state_locked()
+            self._send_consecutive_failures = 0
+        if failures > 0 or clears:
             self.logger.info(
                 "Outbound send succeeded — clearing radio-offline state "
                 "(was_offline=%s, failure_count=%d)",
                 was_offline,
                 failures,
             )
-        with self._offline_lock():
-            self._send_consecutive_failures = 0
-        if was_offline:
-            self._clear_radio_offline_state()
+        if clears:
+            self._publish_offline_state()
 
     def _record_send_inconclusive(self, trial: int = 0) -> None:
         """A measured send finished without showing whether the radio transmits.
@@ -668,14 +678,18 @@ class MeshCoreBot:
                 and getattr(self, '_radio_offline_generation', 0) == expected_generation
             ):
                 return False
-            self._radio_offline = False
-            self._radio_offline_trial = None
-            self._radio_offline_alerted = False
-            self._radio_offline_since = ''
-            self._send_consecutive_failures = 0
-            self._radio_offline_generation = getattr(self, '_radio_offline_generation', 0) + 1
+            self._reset_offline_state_locked()
         self._publish_offline_state()
         return True
+
+    def _reset_offline_state_locked(self) -> None:
+        """Leave radio-offline state in memory; the caller holds ``_offline_lock`` and publishes."""
+        self._radio_offline = False
+        self._radio_offline_trial = None
+        self._radio_offline_alerted = False
+        self._radio_offline_since = ''
+        self._send_consecutive_failures = 0
+        self._radio_offline_generation = getattr(self, '_radio_offline_generation', 0) + 1
 
     def _publish_offline_state(self) -> None:
         """Write the current offline state to bot_metadata for the web viewer.
@@ -2993,7 +3007,8 @@ long_jokes = false
 
         except (OSError, AttributeError, ValueError, RuntimeError, asyncio.TimeoutError) as e:
             if isinstance(e, asyncio.TimeoutError):
-                self._record_send_failure()
+                # May trip the outage, which writes bot_metadata; keep that off the loop.
+                await asyncio.to_thread(self._record_send_failure)
             self.logger.error(f"Error sending startup advert: {e}")
             import traceback
             self.logger.error(traceback.format_exc())
