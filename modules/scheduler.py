@@ -391,10 +391,12 @@ class MessageScheduler:
 
         On the running main loop (waiting at most 60 s): an exception, the
         timeout included, records a failure; completion records a success,
-        unless the send reports its own outcome and returned False, which is
-        inconclusive. With no running main loop the send runs on a local loop
-        and, as before, only a trial is settled. A trial (``trial`` is its id)
-        runs under ``_as_offline_trial`` and is always settled, whatever exits.
+        unless the send reports its own outcome and returned False: for an
+        ordinary send that is inconclusive (no counter moves), while a trial
+        that returned False ends until the next answered probe. With no running
+        main loop the send runs on a local loop and, as before, only a trial is
+        settled. A trial (``trial`` is its id) runs under ``_as_offline_trial``
+        and is always settled, whatever exits.
         """
         settled = False
         try:
