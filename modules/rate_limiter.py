@@ -65,8 +65,11 @@ class PerUserRateLimiter:
             self._order = list(self._last_send.keys())
 
 
-class RateLimiter:
-    """Rate limiting for message sending"""
+class _IntervalLimiter:
+    """At most one event per ``seconds``, with send/throttle counters for stats."""
+
+    # Key under which get_stats reports the event count.
+    _count_key = 'total_sends'
 
     def __init__(self, seconds: float):
         self.seconds = float(seconds)
@@ -76,7 +79,7 @@ class RateLimiter:
         self._lock = threading.Lock()
 
     def can_send(self) -> bool:
-        """Check if we can send a message"""
+        """Whether the interval has passed since the last recorded event (counts a throttle if not)."""
         with self._lock:
             can = time.monotonic() - self.last_send >= self.seconds
             if not can:
@@ -84,13 +87,13 @@ class RateLimiter:
             return can
 
     def time_until_next(self) -> float:
-        """Get time until next allowed send"""
+        """Seconds until the next event is allowed (0 when it already is)."""
         with self._lock:
             elapsed = time.monotonic() - self.last_send
             return max(0, self.seconds - elapsed)
 
-    def record_send(self):
-        """Record that we sent a message"""
+    def record_send(self) -> None:
+        """Record that an event happened now."""
         with self._lock:
             self.last_send = time.monotonic()
             self._total_sends += 1
@@ -101,41 +104,44 @@ class RateLimiter:
             total_attempts = self._total_sends + self._total_throttled
             throttle_rate = self._total_throttled / max(1, total_attempts)
             return {
-                'total_sends': self._total_sends,
+                self._count_key: self._total_sends,
                 'total_throttled': self._total_throttled,
                 'throttle_rate': throttle_rate
             }
 
 
-class BotTxRateLimiter:
+class RateLimiter(_IntervalLimiter):
+    """Rate limiting for message sending"""
+
+
+class BotTxRateLimiter(_IntervalLimiter):
     """Rate limiting for bot transmission to prevent network overload"""
 
-    def __init__(self, seconds: float = 1.0):
-        self.seconds = seconds
-        self.last_tx = 0.0
-        self._total_tx = 0
-        self._total_throttled = 0
-        self._lock = threading.Lock()
+    _count_key = 'total_tx'
 
+    def __init__(self, seconds: float = 1.0):
+        super().__init__(seconds)
+
+    # Transmission-flavored names for the same operations.
     def can_tx(self) -> bool:
         """Check if bot can transmit a message"""
-        with self._lock:
-            can = time.monotonic() - self.last_tx >= self.seconds
-            if not can:
-                self._total_throttled += 1
-            return can
+        return self.can_send()
 
     def time_until_next_tx(self) -> float:
         """Get time until next allowed transmission"""
-        with self._lock:
-            elapsed = time.monotonic() - self.last_tx
-            return max(0, self.seconds - elapsed)
+        return self.time_until_next()
 
-    def record_tx(self):
+    def record_tx(self) -> None:
         """Record that bot transmitted a message"""
-        with self._lock:
-            self.last_tx = time.monotonic()
-            self._total_tx += 1
+        self.record_send()
+
+    @property
+    def last_tx(self) -> float:
+        return self.last_send
+
+    @last_tx.setter
+    def last_tx(self, value: float) -> None:
+        self.last_send = value
 
     async def wait_for_tx(self):
         """Wait until bot can transmit (async)"""
@@ -143,17 +149,6 @@ class BotTxRateLimiter:
             wait_time = self.time_until_next_tx()
             if wait_time > 0:
                 await asyncio.sleep(wait_time + 0.05)  # Small buffer
-
-    def get_stats(self) -> dict:
-        """Get rate limiter statistics"""
-        with self._lock:
-            total_attempts = self._total_tx + self._total_throttled
-            throttle_rate = self._total_throttled / max(1, total_attempts)
-            return {
-                'total_tx': self._total_tx,
-                'total_throttled': self._total_throttled,
-                'throttle_rate': throttle_rate
-            }
 
 
 class ChannelRateLimiter:
