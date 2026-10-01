@@ -602,14 +602,16 @@ def geocode_zipcode_best_effort(
         return None, None, None
 
 
-def get_bot_lat_lon(bot: Any) -> Optional[tuple[float, float]]:
+def get_bot_lat_lon(bot: Any, logger: Any = None) -> Optional[tuple[float, float]]:
+    """[Bot] bot_latitude/bot_longitude when both are set and in range, else None."""
     try:
         lat = bot.config.getfloat("Bot", "bot_latitude", fallback=None)
         lon = bot.config.getfloat("Bot", "bot_longitude", fallback=None)
         if lat is not None and lon is not None and -90 <= lat <= 90 and -180 <= lon <= 180:
             return (lat, lon)
-    except Exception:
-        pass
+    except Exception as e:
+        if logger is not None:
+            logger.debug(f"Error getting bot location: {e}")
     return None
 
 
@@ -626,7 +628,8 @@ def get_config_default_lat_lon(bot: Any, section: str) -> Optional[tuple[float, 
     return None
 
 
-def get_companion_lat_lon(bot: Any, message: Any) -> Optional[tuple[float, float]]:
+def get_companion_lat_lon(bot: Any, message: Any, logger: Any = None) -> Optional[tuple[float, float]]:
+    """The sender's most recent advertised position from contact tracking, or None."""
     try:
         sender_pubkey = getattr(message, "sender_pubkey", None)
         if not sender_pubkey or not hasattr(bot, "db_manager"):
@@ -644,8 +647,9 @@ def get_companion_lat_lon(bot: Any, message: Any) -> Optional[tuple[float, float
         if results:
             row = results[0]
             return (float(row["latitude"]), float(row["longitude"]))
-    except Exception:
-        pass
+    except Exception as e:
+        if logger is not None:
+            logger.debug(f"Error getting companion location: {e}")
     return None
 
 

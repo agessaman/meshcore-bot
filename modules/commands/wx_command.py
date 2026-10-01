@@ -23,6 +23,7 @@ from ..clients.mqtt_weather import (
 # First-party modules with only required dependencies; they always import.
 from ..clients.wxsim_parser import WXSIMParser
 from ..http_retry import make_retry_session
+from ..location import get_bot_lat_lon, get_companion_lat_lon
 from ..models import MeshMessage
 from ..utils import (
     format_temperature_high_low,
@@ -232,63 +233,12 @@ class WxCommand(BaseCommand):
         return super().get_remaining_cooldown(user_id)
 
     def _get_companion_location(self, message: MeshMessage) -> Optional[tuple[float, float]]:
-        """Get companion/sender location from database.
-
-        Args:
-            message: The message object.
-
-        Returns:
-            Optional[Tuple[float, float]]: Tuple of (latitude, longitude) or None.
-        """
-        try:
-            sender_pubkey = message.sender_pubkey
-            if not sender_pubkey:
-                self.logger.debug("No sender_pubkey in message for companion location lookup")
-                return None
-
-            query = '''
-                SELECT latitude, longitude
-                FROM complete_contact_tracking
-                WHERE public_key = ?
-                AND latitude IS NOT NULL AND longitude IS NOT NULL
-                AND latitude != 0 AND longitude != 0
-                ORDER BY COALESCE(last_advert_timestamp, last_heard) DESC
-                LIMIT 1
-            '''
-
-            results = self.bot.db_manager.execute_query(query, (sender_pubkey,))
-
-            if results:
-                row = results[0]
-                lat = row['latitude']
-                lon = row['longitude']
-                self.logger.debug(f"Found companion location: {lat}, {lon} for pubkey {sender_pubkey[:16]}...")
-                return (lat, lon)
-            else:
-                self.logger.debug(f"No location found in database for pubkey {sender_pubkey[:16]}...")
-            return None
-        except Exception as e:
-            self.logger.warning(f"Error getting companion location: {e}")
-            return None
+        """Get companion/sender location from the contact-tracking database."""
+        return get_companion_lat_lon(self.bot, message, self.logger)
 
     def _get_bot_location(self) -> Optional[tuple[float, float]]:
-        """Get bot location from config.
-
-        Returns:
-            Optional[Tuple[float, float]]: Tuple of (latitude, longitude) or None.
-        """
-        try:
-            lat = self.bot.config.getfloat('Bot', 'bot_latitude', fallback=None)
-            lon = self.bot.config.getfloat('Bot', 'bot_longitude', fallback=None)
-
-            if lat is not None and lon is not None:
-                # Validate coordinates
-                if -90 <= lat <= 90 and -180 <= lon <= 180:
-                    return (lat, lon)
-            return None
-        except Exception as e:
-            self.logger.debug(f"Error getting bot location: {e}")
-            return None
+        """Get bot location from config ([Bot] bot_latitude, bot_longitude)."""
+        return get_bot_lat_lon(self.bot, self.logger)
 
     def _get_custom_wxsim_source(self, location: Optional[str] = None) -> Optional[str]:
         """Get custom WXSIM source URL from config.

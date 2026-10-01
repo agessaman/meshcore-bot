@@ -18,6 +18,8 @@ from ..http_retry import make_retry_session
 from ..location import (
     US_STATE_ABBRS,  # noqa: F401 — re-exported for weather_service/tests
     city_display_name,
+    get_bot_lat_lon,
+    get_companion_lat_lon,
     join_location,
     reverse_geocode_region,
     titlecase_location,  # noqa: F401 — re-exported for weather_service/tests
@@ -811,39 +813,11 @@ class RainCommand(BaseCommand):
 
     def _get_companion_location(self, message: MeshMessage) -> Optional[tuple[float, float]]:
         """Get companion/sender location from the contact-tracking database."""
-        try:
-            sender_pubkey = getattr(message, "sender_pubkey", None)
-            if not sender_pubkey:
-                return None
-            query = """
-                SELECT latitude, longitude
-                FROM complete_contact_tracking
-                WHERE public_key = ?
-                AND latitude IS NOT NULL AND longitude IS NOT NULL
-                AND latitude != 0 AND longitude != 0
-                ORDER BY COALESCE(last_advert_timestamp, last_heard) DESC
-                LIMIT 1
-            """
-            results = self.bot.db_manager.execute_query(query, (sender_pubkey,))
-            if results:
-                row = results[0]
-                return (float(row["latitude"]), float(row["longitude"]))
-            return None
-        except Exception as e:
-            self.logger.debug(f"Error getting companion location: {e}")
-            return None
+        return get_companion_lat_lon(self.bot, message, self.logger)
 
     def _get_bot_location(self) -> Optional[tuple[float, float]]:
         """Get bot location from config ([Bot] bot_latitude, bot_longitude)."""
-        try:
-            lat = self.bot.config.getfloat("Bot", "bot_latitude", fallback=None)
-            lon = self.bot.config.getfloat("Bot", "bot_longitude", fallback=None)
-            if lat is not None and lon is not None and -90 <= lat <= 90 and -180 <= lon <= 180:
-                return (lat, lon)
-            return None
-        except Exception as e:
-            self.logger.debug(f"Error getting bot location: {e}")
-            return None
+        return get_bot_lat_lon(self.bot, self.logger)
 
     def _reverse_geocode(self, lat: float, lon: float) -> tuple[Optional[str], Optional[str]]:
         """Reverse-geocode to (city, suffix), cached. suffix is the US state
