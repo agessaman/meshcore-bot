@@ -234,6 +234,28 @@ class BaseServicePlugin(ABC):
         """
         pass
 
+    def _subscribe(self, meshcore: Any, event_type: Any, handler: Any) -> Any:
+        """Subscribe *handler* to a meshcore event and remember it for ``_unsubscribe_all``.
+
+        Services must unsubscribe in ``stop()``: a health restart calls
+        ``start()`` again, and a subscription left behind would deliver every
+        event twice.
+        """
+        subscription = meshcore.subscribe(event_type, handler)
+        if not hasattr(self, '_meshcore_subscriptions'):
+            self._meshcore_subscriptions: list[Any] = []
+        self._meshcore_subscriptions.append(subscription)
+        return subscription
+
+    def _unsubscribe_all(self) -> None:
+        """Drop every subscription made with ``_subscribe``."""
+        for subscription in getattr(self, '_meshcore_subscriptions', []):
+            try:
+                subscription.unsubscribe()
+            except Exception as e:
+                self.logger.debug(f"Error unsubscribing from meshcore events: {e}")
+        self._meshcore_subscriptions = []
+
     async def on_transport_reconnected(self) -> None:
         """Called after bot.connect() replaces meshcore; re-bind mesh subscriptions.
 
