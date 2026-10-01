@@ -30,6 +30,8 @@ semantic versioning.
 
 ### Fixed
 
+- A delivered DM is no longer reported as failed because its ACK came back after the bot stopped waiting (#290). Each attempt waited 1.2 times the radio's `suggested_timeout`, which the firmware derives from airtime alone, so on fast presets a zero-hop attempt gave up after about a second, before the recipient's ACK delay and the radio's TX queue had even played out. Webhook DMs then returned an error for messages the recipient had. New `[Bot] dm_min_ack_timeout` (default 8 seconds) sets a floor on each attempt's wait; an ACK still ends it at once, so successful sends are no slower. Set it to 0 for the old behavior.
+
 - The web viewer login no longer redirects off-site after sign-in. The `next`
   check let `///host` and `/\host` through, which browsers treat as another
   origin.
