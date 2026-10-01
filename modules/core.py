@@ -126,6 +126,12 @@ _radio_session_held: contextvars.ContextVar[bool] = contextvars.ContextVar(
     "radio_session_held", default=False
 )
 
+# The id of the radio-offline trial the current task was admitted as
+# (MeshCoreBot._as_offline_trial), so is_radio_offline lets only that send out.
+_OFFLINE_TRIAL_SEND: contextvars.ContextVar[int] = contextvars.ContextVar(
+    "offline_trial_send", default=0
+)
+
 
 def _serialize_command_frames(bot: "MeshCoreBot", commands: Any) -> bool:
     """Route every host->radio frame through the bot's radio command lock.
@@ -500,15 +506,99 @@ class MeshCoreBot:
 
     @property
     def is_radio_offline(self) -> bool:
-        """True when repeated outbound send timeouts have been detected.
+        """True while repeated outbound send timeouts are suppressing sends.
 
         Distinct from zombie state — the radio may still be forwarding received
-        packets but is not completing outbound sends.  Cleared automatically
-        when a send succeeds, so no manual intervention is required.
+        packets but is not completing outbound sends. The state works like a
+        circuit breaker: after a health probe gets an answer, the scheduler's
+        next measured send (a scheduled message or interval advert) goes out on
+        trial. Only that send sees False here; everything else stays suppressed
+        until it succeeds, which clears the state. The web viewer's "Clear
+        Offline Flag" also clears it.
         """
-        return bool(getattr(self, '_radio_offline', False))
+        if not getattr(self, '_radio_offline', False):
+            return False
+        return not self._holds_offline_trial(_OFFLINE_TRIAL_SEND.get())
 
-    def _record_send_failure(self, scheduler: "Any | None" = None) -> None:
+    def _holds_offline_trial(self, trial: int) -> bool:
+        """True when *trial* is the id of the trial send currently in flight."""
+        return bool(trial) and (
+            getattr(self, '_radio_offline_trial', None) == 'in_flight'
+            and getattr(self, '_radio_offline_trial_id', 0) == trial
+        )
+
+    def _offline_lock(self) -> threading.Lock:
+        """Guards the offline state, which the scheduler thread and the event loop both change."""
+        lock = getattr(self, '_radio_offline_lock', None)
+        if lock is None:
+            lock = self._radio_offline_lock = threading.Lock()
+        return lock
+
+    def _offline_publish_lock(self) -> threading.RLock:
+        """Serializes bot_metadata writes and reads of the offline state."""
+        lock = getattr(self, '_radio_offline_publish_lock', None)
+        if lock is None:
+            lock = self._radio_offline_publish_lock = threading.RLock()
+        return lock
+
+    def _admit_measured_send(self) -> tuple[bool, int]:
+        """Decide whether a measured scheduler send may go out: ``(allowed, trial_id)``.
+
+        ``trial_id`` is 0 for an ordinary send. While offline, a probe-armed
+        trial is claimed here, once, so concurrent callers cannot all pass. The
+        caller runs the send under ``_as_offline_trial(coro, trial_id)`` and
+        settles it with ``_record_send_success``, ``_record_send_failure`` or
+        ``_record_send_inconclusive``; settlements naming an older trial are
+        ignored.
+        """
+        with self._offline_lock():
+            if not getattr(self, '_radio_offline', False):
+                return True, 0
+            if getattr(self, '_radio_offline_trial', None) == 'armed':
+                self._radio_offline_trial = 'in_flight'
+                self._radio_offline_trial_id = getattr(self, '_radio_offline_trial_id', 0) + 1
+                return True, self._radio_offline_trial_id
+            return False, 0
+
+    @staticmethod
+    async def _as_offline_trial(coro: "Any", trial: int) -> "Any":
+        """Run *coro* as offline trial *trial*, so the send-path guards let it through."""
+        _OFFLINE_TRIAL_SEND.set(trial)
+        return await coro
+
+    async def _send_as_offline_trial(self, trial: int, send: "Any") -> bool:
+        """Run an interactive send (``send()`` returns its coroutine) as offline trial *trial*.
+
+        Lets a bot with no scheduled messages or interval adverts recover too.
+        The send's own result settles the trial: True clears the outage; False
+        or an exception ends the trial until the next answered health probe,
+        so a dead radio still gets at most one attempt per probe.
+        """
+        token = _OFFLINE_TRIAL_SEND.set(trial)
+        try:
+            ok = bool(await send())
+        except BaseException:
+            self._end_offline_trial(trial)
+            raise
+        finally:
+            _OFFLINE_TRIAL_SEND.reset(token)
+        if ok:
+            # Clearing the outage writes bot_metadata, so it runs in a worker
+            # thread; shielded so a cancelled caller cannot strand the trial.
+            await asyncio.shield(asyncio.to_thread(self._record_send_success, trial))
+        else:
+            self._end_offline_trial(trial)
+        return ok
+
+    def _end_offline_trial(self, trial: int) -> None:
+        """Trial *trial* went out but did not succeed: suppress again until the next answered probe."""
+        with self._offline_lock():
+            if not self._holds_offline_trial(trial):
+                return
+            self._radio_offline_trial = None
+        self.logger.warning("Trial send after a health probe failed; outbound sends stay suppressed")
+
+    def _record_send_failure(self, scheduler: "Any | None" = None, trial: int = 0) -> None:
         """Increment the consecutive-send-failure counter.
 
         Called by the scheduler when an outbound send times out at the
@@ -516,60 +606,184 @@ class MeshCoreBot:
         timeout fired).  After ``radio_offline_threshold`` consecutive
         failures the bot transitions to radio-offline state, persists it
         to the DB for the web viewer banner, and optionally sends an alert
-        email.
+        email (once per outage). A failed trial send leaves the state in
+        place without a new alert; the next answered health probe arms
+        another trial.
         """
         import datetime as _dt
         import threading as _threading
 
-        self._send_consecutive_failures: int = (
-            getattr(self, '_send_consecutive_failures', 0) + 1
-        )
         threshold = self.config.getint(
             'Connection',
             'radio_offline_threshold',
             fallback=self.config.getint('Bot', 'radio_offline_threshold', fallback=3),
         )
-        if self._send_consecutive_failures >= threshold and not self.is_radio_offline:
-            self._radio_offline = True
-            since = _dt.datetime.now(_dt.timezone.utc).isoformat()
-            self.logger.critical(
-                "RADIO OFFLINE: %d consecutive send timeouts (threshold %d). "
-                "Bot will suppress further outbound sends until one succeeds. "
-                "Check radio power and connection.",
-                self._send_consecutive_failures,
-                threshold,
+        send_alert = False
+        with self._offline_lock():
+            self._send_consecutive_failures: int = (
+                getattr(self, '_send_consecutive_failures', 0) + 1
             )
-            try:
-                self.db_manager.set_metadata('bot.radio_offline', 'true')
-                self.db_manager.set_metadata('bot.radio_offline_since', since)
-            except Exception:
-                pass
-            if scheduler is not None:
-                _threading.Thread(
-                    target=scheduler.send_radio_offline_alert_email,
-                    args=(self._send_consecutive_failures, threshold),
-                    daemon=True,
-                ).start()
+            failures = self._send_consecutive_failures
+            if getattr(self, '_radio_offline', False):
+                if self._holds_offline_trial(trial):
+                    self._radio_offline_trial = None
+                    self.logger.warning(
+                        "Trial send after a health probe failed; outbound sends stay suppressed"
+                    )
+                return
+            if failures < threshold:
+                return
+            self._radio_offline = True
+            self._radio_offline_trial = None
+            self._radio_offline_generation = getattr(self, '_radio_offline_generation', 0) + 1
+            self._radio_offline_since = _dt.datetime.now(_dt.timezone.utc).isoformat()
+            send_alert = not getattr(self, '_radio_offline_alerted', False)
+            self._radio_offline_alerted = True
+        self.logger.critical(
+            "RADIO OFFLINE: %d consecutive send timeouts (threshold %d). "
+            "Bot will suppress further outbound sends until one succeeds. "
+            "Check radio power and connection.",
+            failures,
+            threshold,
+        )
+        self._publish_offline_state()
+        if scheduler is not None and send_alert:
+            _threading.Thread(
+                target=scheduler.send_radio_offline_alert_email,
+                args=(failures, threshold),
+                daemon=True,
+            ).start()
 
-    def _record_send_success(self) -> None:
-        """Clear the consecutive-send-failure counter after a successful send."""
-        failures = getattr(self, '_send_consecutive_failures', 0)
-        was_offline = self.is_radio_offline
-        if failures > 0 or was_offline:
+    def _record_send_success(self, trial: int = 0) -> None:
+        """Clear the consecutive-send-failure counter after a successful send.
+
+        While offline, only the success of trial *trial*, if it is still the
+        trial in flight, clears the outage; a send admitted before the outage
+        (or an older trial finishing late) cannot clear a newer one.
+        """
+        with self._offline_lock():
+            failures = getattr(self, '_send_consecutive_failures', 0)
+            was_offline = bool(getattr(self, '_radio_offline', False))
+            clears = was_offline and self._holds_offline_trial(trial)
+            if was_offline and not clears:
+                return
+            if clears:
+                self._reset_offline_state_locked()
+            self._send_consecutive_failures = 0
+        if failures > 0 or clears:
             self.logger.info(
                 "Outbound send succeeded — clearing radio-offline state "
                 "(was_offline=%s, failure_count=%d)",
                 was_offline,
                 failures,
             )
+        if clears:
+            self._publish_offline_state()
+
+    def _record_send_inconclusive(self, trial: int = 0) -> None:
+        """A measured send finished without showing whether the radio transmits.
+
+        Nothing was sent, or the send reported failure without timing out, so
+        neither counter moves; trial *trial* goes back to waiting for the next send.
+        """
+        with self._offline_lock():
+            if self._holds_offline_trial(trial):
+                self._radio_offline_trial = 'armed'
+
+    def _allow_offline_trial(self, reason: str) -> None:
+        """Arm one trial send while offline; the scheduler's next measured send takes it."""
+        with self._offline_lock():
+            if not getattr(self, '_radio_offline', False) or getattr(self, '_radio_offline_trial', None) is not None:
+                return
+            self._radio_offline_trial = 'armed'
+        self.logger.info("Radio offline, but %s; the next scheduled send goes out on trial", reason)
+
+    def _clear_radio_offline_state(self, expected_generation: int | None = None) -> bool:
+        """Leave radio-offline state entirely (counter, trial, alert latch, banner).
+
+        With *expected_generation*, only if that outage is still the current
+        one; returns whether anything was cleared.
+        """
+        with self._offline_lock():
+            if expected_generation is not None and not (
+                getattr(self, '_radio_offline', False)
+                and getattr(self, '_radio_offline_generation', 0) == expected_generation
+            ):
+                return False
+            self._reset_offline_state_locked()
+        self._publish_offline_state()
+        return True
+
+    def _reset_offline_state_locked(self) -> None:
+        """Leave radio-offline state in memory; the caller holds ``_offline_lock`` and publishes."""
+        self._radio_offline = False
+        self._radio_offline_trial = None
+        self._radio_offline_alerted = False
+        self._radio_offline_since = ''
         self._send_consecutive_failures = 0
-        if was_offline:
-            self._radio_offline = False
+        self._radio_offline_generation = getattr(self, '_radio_offline_generation', 0) + 1
+
+    def _publish_offline_state(self) -> None:
+        """Write the current offline state to bot_metadata for the web viewer.
+
+        Serialized, and always writes the state as it is now rather than as a
+        caller saw it, so a slow writer cannot overwrite a newer transition.
+        While offline, the stored 'true' is read back (set_metadata swallows its
+        own errors) and confirmed for this outage's generation; the viewer-clear
+        check only trusts a stored 'false' after that.
+        """
+        with self._offline_publish_lock():
+            with self._offline_lock():
+                offline = bool(getattr(self, '_radio_offline', False))
+                since = getattr(self, '_radio_offline_since', '') if offline else ''
+                generation = getattr(self, '_radio_offline_generation', 0)
             try:
-                self.db_manager.set_metadata('bot.radio_offline', 'false')
-                self.db_manager.set_metadata('bot.radio_offline_since', '')
+                self.db_manager.set_metadata('bot.radio_offline', 'true' if offline else 'false')
+                self.db_manager.set_metadata('bot.radio_offline_since', since)
+                confirmed = offline and self.db_manager.get_metadata('bot.radio_offline') == 'true'
             except Exception:
-                pass
+                confirmed = False
+            if confirmed:
+                with self._offline_lock():
+                    if getattr(self, '_radio_offline_generation', 0) == generation:
+                        self._radio_offline_persisted_generation = generation
+
+    def _radio_offline_sync_due(self) -> bool:
+        """True (and starts the 30 s throttle) when the viewer-clear check should run."""
+        if not getattr(self, '_radio_offline', False):
+            return False
+        now = time.time()
+        if now - getattr(self, '_last_offline_metadata_check', 0.0) < 30:
+            return False
+        self._last_offline_metadata_check = now
+        return True
+
+    def _sync_radio_offline_from_metadata(self, *, check_due: bool = True) -> None:
+        """Honor the web viewer's "Clear Offline Flag", and retry an unconfirmed write.
+
+        The viewer runs in its own process and can only write bot_metadata, so
+        the health loop checks here (at most every 30 s) whether it stored
+        'false'. Only once this process has confirmed its own 'true' for the
+        current outage, so a read that races the bot's own trip cannot cancel
+        it; until then, it retries that write. This blocks on the database, so
+        the health loop runs it in a worker thread.
+        """
+        if check_due and not self._radio_offline_sync_due():
+            return
+        with self._offline_publish_lock():
+            with self._offline_lock():
+                generation = getattr(self, '_radio_offline_generation', 0)
+                confirmed = getattr(self, '_radio_offline_persisted_generation', None) == generation
+            if not confirmed:
+                self._publish_offline_state()
+                return
+            try:
+                cleared = self.db_manager.get_metadata('bot.radio_offline') == 'false'
+            except Exception as e:
+                self.logger.debug(f"Could not read radio-offline metadata: {e}")
+                return
+            if cleared and self._clear_radio_offline_state(expected_generation=generation):
+                self.logger.info("Cleared radio-offline state: cleared from the web viewer")
 
     def load_config(self) -> None:
         """Load configuration from file.
@@ -1109,6 +1323,9 @@ dm_max_flood_attempts = 2
 
 # Number of attempts before switching to flood mode
 dm_flood_after = 2
+
+# Shortest time in seconds to wait for a DM's ACK on each attempt (0 = radio's estimate only)
+dm_min_ack_timeout = 8
 
 # Timezone for bot operations
 # Use standard timezone names (e.g., "America/New_York", "Europe/London", "UTC")
@@ -2115,6 +2332,7 @@ long_jokes = false
                 self.logger.info("Radio health probe recovered — resetting fail counter")
             self._radio_fail_count = 0
             self._tcp_probe_fail_count = 0
+            self._allow_offline_trial("the radio answered a health probe")
             return True
         except asyncio.TimeoutError:
             if is_tcp:
@@ -2394,11 +2612,11 @@ long_jokes = false
         # link is actually ready, so it's safe to bind before we're connected.
         webhook_service = self.services.get('webhook')
         if webhook_service is not None and getattr(webhook_service, 'enabled', False):
-            try:
-                await webhook_service.start()
-                self.logger.info("Service 'webhook' started (early, before radio connect)")
-            except Exception as e:
-                self.logger.error(f"Failed to start service 'webhook' early: {e}")
+            await self._start_service_at_boot(
+                'webhook', webhook_service,
+                started="Service 'webhook' started (early, before radio connect)",
+                failed="Failed to start service 'webhook' early",
+            )
 
         # Connect to MeshCore node
         if not await self.connect():
@@ -2446,11 +2664,11 @@ long_jokes = false
         for service_name, service_instance in self.services.items():
             if service_name == 'webhook':
                 continue
-            try:
-                await service_instance.start()
-                self.logger.info(f"Service '{service_name}' started")
-            except Exception as e:
-                self.logger.error(f"Failed to start service '{service_name}': {e}")
+            await self._start_service_at_boot(
+                service_name, service_instance,
+                started=f"Service '{service_name}' started",
+                failed=f"Failed to start service '{service_name}'",
+            )
 
         # Start command queue processor if needed
         if hasattr(self.command_manager, '_start_queue_processor'):
@@ -2460,6 +2678,10 @@ long_jokes = false
         self.logger.info("Bot is running. Press Ctrl+C to stop.")
         try:
             while self.keep_running:
+                # Before the transport check, so a viewer clear works while disconnected.
+                if self._radio_offline_sync_due():
+                    await asyncio.to_thread(self._sync_radio_offline_from_metadata, check_due=False)
+
                 # Backup: meshcore transport dropped (DISCONNECTED event is primary)
                 if self.meshcore and not self.meshcore.is_connected:
                     await self._schedule_transport_reconnect('poll_detected')
@@ -2527,26 +2749,7 @@ long_jokes = false
                     restart_backoff = self.config.getint(
                         'Bot', 'service_restart_backoff_seconds', fallback=300
                     )
-                    now = time.time()
-                    for name, service in self.services.items():
-                        if not getattr(service, 'enabled', True):
-                            continue
-                        try:
-                            healthy = service.is_healthy()
-                        except Exception:
-                            healthy = False
-                        if healthy:
-                            continue
-                        if name in self._service_restarting:
-                            continue
-                        if name in self._service_restart_failures and (
-                            now - self._service_restart_failures[name]
-                        ) < restart_backoff:
-                            continue
-                        self.logger.warning(
-                            f"Service '{name}' unhealthy, attempting restart..."
-                        )
-                        asyncio.create_task(self._restart_service(name, service))
+                    self._restart_unhealthy_services(time.time(), restart_backoff)
 
                 await asyncio.sleep(5)  # Check every 5 seconds
         except KeyboardInterrupt:
@@ -2643,6 +2846,64 @@ long_jokes = false
         finally:
             self._shutdown_complete = True
 
+    async def _start_service_at_boot(self, name: str, service: Any, *, started: str, failed: str) -> None:
+        """Start one service during startup; a failure or a declined start waits out the restart backoff."""
+        try:
+            await service.start()
+        except Exception as e:
+            self.logger.error(f"{failed}: {e}")
+            self._service_restart_failures[name] = time.time()
+            return
+        if not self._note_if_service_not_running(name, service):
+            self.logger.info(started)
+
+    def _restart_unhealthy_services(self, now: float, backoff: float) -> None:
+        """Health-loop step: start a restart task for each service that is due one."""
+        for name, service in self.services.items():
+            if not self._service_restart_due(name, service, now, backoff):
+                continue
+            self.logger.warning(f"Service '{name}' unhealthy, attempting restart...")
+            asyncio.create_task(self._restart_service(name, service))
+
+    def _service_restart_due(self, name: str, service: Any, now: float, backoff: float) -> bool:
+        """Whether the health loop should restart *service* now."""
+        if not getattr(service, 'enabled', True):
+            return False
+        try:
+            if service.is_healthy():
+                return False
+        except Exception:
+            pass
+        if name in self._service_restarting:
+            return False
+        last_failure = self._service_restart_failures.get(name)
+        return last_failure is None or now - last_failure >= backoff
+
+    def _note_if_service_not_running(self, service_name: str, service_instance: Any) -> bool:
+        """Back off a service whose start() returned without running; True if so.
+
+        That happens for missing configuration (Discord or Telegram with no
+        channels, the map uploader with no key) and for transient conditions
+        (the radio not connected yet). Either way, restarting it on every
+        health tick cannot help; after the backoff the health loop tries again,
+        which recovers the transient case.
+        """
+        if not getattr(service_instance, 'enabled', True):
+            return False  # disabled on purpose; the health loop skips it anyway
+        try:
+            running = service_instance.is_running()
+        except Exception:
+            running = True
+        if running:
+            return False
+        backoff = self.config.getint('Bot', 'service_restart_backoff_seconds', fallback=300)
+        self.logger.info(
+            f"Service '{service_name}' did not start (check its configuration); "
+            f"next attempt in {backoff}s"
+        )
+        self._service_restart_failures[service_name] = time.time()
+        return True
+
     async def _restart_service(self, service_name: str, service_instance: Any) -> bool:
         """Stop and start a service. Used when is_healthy() is False.
         Returns True on success, False on failure. Exceptions are caught and logged.
@@ -2651,6 +2912,14 @@ long_jokes = false
         try:
             await service_instance.stop()
             await service_instance.start()
+            if self._note_if_service_not_running(service_name, service_instance):
+                return False
+            if not service_instance.is_healthy():
+                # Restarted but still unhealthy: wait out the backoff before the
+                # next attempt rather than restarting it on every health tick.
+                self.logger.warning(f"Service '{service_name}' is still unhealthy after restart")
+                self._service_restart_failures[service_name] = time.time()
+                return False
             self._service_restart_failures.pop(service_name, None)
             return True
         except Exception as e:
@@ -2817,7 +3086,8 @@ long_jokes = false
 
         except (OSError, AttributeError, ValueError, RuntimeError, asyncio.TimeoutError) as e:
             if isinstance(e, asyncio.TimeoutError):
-                self._record_send_failure()
+                # May trip the outage, which writes bot_metadata; keep that off the loop.
+                await asyncio.to_thread(self._record_send_failure)
             self.logger.error(f"Error sending startup advert: {e}")
             import traceback
             self.logger.error(traceback.format_exc())

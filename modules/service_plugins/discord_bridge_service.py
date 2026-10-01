@@ -334,10 +334,13 @@ class DiscordBridgeService(BaseServicePlugin):
         # Subscribe to channel message events
         # NOTE: We do NOT subscribe to CONTACT_MSG_RECV (DMs are never bridged)
         if hasattr(self.bot, 'meshcore') and self.bot.meshcore:
-            self.bot.meshcore.subscribe(EventType.CHANNEL_MSG_RECV, self._on_mesh_channel_message)
+            self._subscribe(self.bot.meshcore, EventType.CHANNEL_MSG_RECV, self._on_mesh_channel_message)
             self.logger.info("Subscribed to CHANNEL_MSG_RECV events")
         else:
             self.logger.error("Cannot subscribe to events - meshcore not available")
+            if self.http_session is not None:
+                await self.http_session.close()
+                self.http_session = None
             return
 
         # Register for bot-sent channel messages so bot responses are bridged too
@@ -361,7 +364,8 @@ class DiscordBridgeService(BaseServicePlugin):
         """Re-subscribe to channel messages on the new meshcore instance."""
         if not self._running or not getattr(self.bot, 'meshcore', None):
             return
-        self.bot.meshcore.subscribe(EventType.CHANNEL_MSG_RECV, self._on_mesh_channel_message)
+        self._unsubscribe_all()
+        self._subscribe(self.bot.meshcore, EventType.CHANNEL_MSG_RECV, self._on_mesh_channel_message)
         self.logger.info("Discord bridge re-subscribed to CHANNEL_MSG_RECV after transport reconnect")
 
     async def stop(self) -> None:
@@ -371,6 +375,7 @@ class DiscordBridgeService(BaseServicePlugin):
         """
         self.logger.info("Stopping Discord bridge service...")
         self._running = False
+        self._unsubscribe_all()
 
         # Unregister bot channel-sent listener
         if getattr(self.bot, 'channel_sent_listeners', None) is not None:
