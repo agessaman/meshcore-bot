@@ -1110,6 +1110,9 @@ dm_max_flood_attempts = 2
 # Number of attempts before switching to flood mode
 dm_flood_after = 2
 
+# Shortest time in seconds to wait for a DM's ACK on each attempt (0 = radio's estimate only)
+dm_min_ack_timeout = 8
+
 # Timezone for bot operations
 # Use standard timezone names (e.g., "America/New_York", "Europe/London", "UTC")
 # Leave empty to use system timezone
