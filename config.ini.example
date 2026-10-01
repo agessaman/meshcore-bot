@@ -358,9 +358,15 @@ dry_run = true
 # How the warning reaches the sender:
 #   dm      — a direct message to the sender (default; costs the least airtime).
 #             Only sent to a name the radio already has a contact for.
-#   channel — a reply on the channel they posted to, always at global scope,
-#             because a scoped reply would not reach someone outside your region
+#   channel — a reply on the channel they posted to, at the bot's usual
+#             channel scope (see flood_scope below)
 delivery = dm
+
+# Flood scope for channel delivery. Unset follows [Channels]
+# flood_scope.<channel>, then outgoing_flood_scope_override, then global flood.
+# A sender with no region still hears a scoped warning wherever the region's
+# repeaters reach. Use * to send warnings at global scope regardless.
+# flood_scope = #west
 
 # Only warn about messages on these channels (comma-separated, # optional).
 # Leave empty to consider every channel the bot hears.

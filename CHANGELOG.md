@@ -30,6 +30,8 @@ semantic versioning.
 
 ### Fixed
 
+- Region warnings sent with `delivery = channel` now go out at the bot's configured channel scope instead of always at global scope (#306). They were forced to global flood on the belief that a sender with no region could not hear a scoped message, but a companion radio accepts a regional flood whatever region it has set itself, so the override only meant a bot with `outgoing_flood_scope_override` set flooded the whole mesh to tell someone not to. The warning now follows `[Region_Warnings] flood_scope`, then `flood_scope.<channel>`, then `outgoing_flood_scope_override`, and is sized for the regional overhead when it applies. Set `[Region_Warnings] flood_scope = *` to keep the old behavior.
+
 - The web viewer login no longer redirects off-site after sign-in. The `next`
   check let `///host` and `/\host` through, which browsers treat as another
   origin.

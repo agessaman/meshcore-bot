@@ -115,6 +115,8 @@ def _monitor(db=None, **settings_values) -> RegionWarningMonitor:
     bot.command_manager.send_dm = AsyncMock(return_value=True)
     bot.command_manager.send_channel_message = AsyncMock(return_value=True)
     bot.command_manager.get_max_message_length.return_value = 130
+    bot.command_manager.channel_body_budget.return_value = 130
+    bot.command_manager.resolve_channel_send_scope.return_value = None
     return RegionWarningMonitor(bot)
 
 
@@ -691,16 +693,42 @@ class TestDelivery:
             "SELECT sender_id FROM region_warning_events")
         assert [r["sender_id"] for r in rows] == ["Ann"]
 
-    async def test_channel_delivery_forces_global_scope(self):
-        """A scoped reply could never reach someone outside the region."""
+    async def test_channel_delivery_uses_the_configured_scope(self):
+        """The warning goes out at the bot's resolved channel scope, not forced global."""
+        monitor = _monitor(
+            enabled="true", dry_run="false", delivery="channel",
+            min_unscoped_messages=1, mesh_cooldown_minutes=0)
+        cmd_mgr = monitor.bot.command_manager
+        cmd_mgr.resolve_channel_send_scope.return_value = "#west"
+        cmd_mgr.channel_body_budget.return_value = 120
+        await monitor.observe(
+            verdict=VERDICT_GLOBAL, sender_id="Ann", sender_pubkey="ab", channel="#gen")
+        cmd_mgr.resolve_channel_send_scope.assert_called_once_with(
+            config_section=region_warning.CONFIG_SECTION, channel="#gen")
+        cmd_mgr.channel_body_budget.assert_called_once_with(channel="#gen", scope="#west")
+        call = cmd_mgr.send_channel_message.call_args
+        assert call[0][0] == "#gen"
+        assert call[1]["scope"] == "#west"
+
+    async def test_channel_delivery_leaves_unset_scope_to_the_send(self):
+        """None lets send_channel_message apply outgoing_flood_scope_override."""
         monitor = _monitor(
             enabled="true", dry_run="false", delivery="channel",
             min_unscoped_messages=1, mesh_cooldown_minutes=0)
         await monitor.observe(
             verdict=VERDICT_GLOBAL, sender_id="Ann", sender_pubkey="ab", channel="#gen")
         call = monitor.bot.command_manager.send_channel_message.call_args
-        assert call[0][0] == "#gen"
-        assert call[1]["scope"] == "*"
+        assert call[1]["scope"] is None
+
+    async def test_channel_delivery_truncates_to_the_scoped_budget(self):
+        monitor = _monitor(
+            enabled="true", dry_run="false", delivery="channel",
+            min_unscoped_messages=1, mesh_cooldown_minutes=0, message="x" * 400)
+        monitor.bot.command_manager.channel_body_budget.return_value = 111
+        await monitor.observe(
+            verdict=VERDICT_GLOBAL, sender_id="Ann", sender_pubkey="ab", channel="#gen")
+        body = monitor.bot.command_manager.send_channel_message.call_args[0][1]
+        assert len(body.encode("utf-8")) == 111
 
     async def test_long_message_is_truncated_to_the_dm_budget(self):
         monitor = _monitor(

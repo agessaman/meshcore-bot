@@ -645,12 +645,20 @@ class RegionWarningMonitor:
         if self.settings.delivery == DELIVERY_CHANNEL:
             if not channel:
                 return False, "no channel to reply on"
-            body = truncate_to_bytes(text, self._channel_body_limit())
-            # Deliberately global scope: the recipient is by definition not
-            # inside any region the bot replies under, so a scoped reply would
-            # never reach them.
+            # The same scope any other proactive channel send from this bot gets:
+            # [Region_Warnings] flood_scope, then flood_scope.<channel>, then
+            # (when this returns None) outgoing_flood_scope_override inside the
+            # send. A companion accepts a scoped flood whatever region it has
+            # set itself (the firmware's filterRecvFloodPacket drops nothing),
+            # so the sender still hears a scoped warning wherever the region's
+            # repeaters reach, and an operator who scoped the bot's traffic does
+            # not get a global flood from the one feature about global floods.
+            scope = cmd_mgr.resolve_channel_send_scope(
+                config_section=CONFIG_SECTION, channel=channel
+            )
+            body = truncate_to_bytes(text, self._channel_body_limit(channel, scope))
             ok = await cmd_mgr.send_channel_message(
-                channel, body, skip_user_rate_limit=True, scope="*"
+                channel, body, skip_user_rate_limit=True, scope=scope
             )
             return ok, body if ok else f"channel send failed: {body}"
 
@@ -658,16 +666,12 @@ class RegionWarningMonitor:
         ok = await cmd_mgr.send_dm(sender_id, body, skip_user_rate_limit=True)
         return ok, body if ok else f"DM send failed (contact unknown or radio busy): {body}"
 
-    def _channel_body_limit(self) -> int:
-        """Channel body budget for a global-scope send from this node.
-
-        Warnings always go out unscoped, so no regional-scope overhead applies.
-        """
+    def _channel_body_limit(self, channel: str, scope: Optional[str]) -> int:
+        """Channel body budget for this send, regional-scope overhead included."""
         try:
-            from modules.models import MeshMessage
-
-            probe = MeshMessage(content="", channel="", is_dm=False, reply_scope="")
-            return int(self.bot.command_manager.get_max_message_length(probe))
+            return int(
+                self.bot.command_manager.channel_body_budget(channel=channel, scope=scope)
+            )
         except Exception:
             return channel_body_limit(None)
 
