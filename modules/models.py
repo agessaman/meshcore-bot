@@ -7,6 +7,8 @@ Contains shared data structures used across modules
 from dataclasses import dataclass
 from typing import Any, Optional
 
+from .flood_scope import channel_scope_entry, is_global_marker, outgoing_override
+
 # Firmware reserves extra bytes for regional (non-global) TC_FLOOD scope on channel text.
 CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD = 10
 
@@ -94,22 +96,12 @@ class MeshMessage:
             return ""
         if self.reply_scope is not None:
             return (self.reply_scope or "").strip()
-        if self.channel and bot.config.has_section("Channels"):
-            channel_key = self.channel.strip().removeprefix("#").lower()
-            for key, value in bot.config.items("Channels"):
-                if not key.startswith("flood_scope."):
-                    continue
-                configured_channel = key[len("flood_scope."):].strip().removeprefix("#").lower()
-                if configured_channel == channel_key:
-                    return (value or "").strip()
-        scope_cfg = ""
-        if bot.config.has_section("Channels") and bot.config.has_option(
-            "Channels", "outgoing_flood_scope_override"
-        ):
-            scope_cfg = (bot.config.get("Channels", "outgoing_flood_scope_override") or "").strip()
-        return scope_cfg
+        channel_scope = channel_scope_entry(bot.config, self.channel)
+        if channel_scope is not None:
+            return channel_scope
+        return outgoing_override(bot.config)
 
     @staticmethod
     def is_global_flood_scope(scope: str) -> bool:
         """Match ``send_channel_message`` global markers (before ``_normalize_scope_name``)."""
-        return scope in ("", "*", "0", "None") or scope.lower() == "none"
+        return is_global_marker(scope)

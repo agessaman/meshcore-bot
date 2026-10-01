@@ -34,8 +34,12 @@ from .config_validation import (
     strip_optional_quotes,
 )
 from .flood_scope import (
+    channel_scope_entry,
     is_global_marker,
+    normalize_channel_for_scope,
     normalize_scope_name,
+    outgoing_override,
+    section_flood_scope,
 )
 from .models import (
     CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD,
@@ -225,28 +229,16 @@ class CommandManager:
     @staticmethod
     def _normalize_channel_name_for_scope_config(channel: str) -> str:
         """Normalize channel names for [Channels] flood_scope.<channel> lookups."""
-        return channel.strip().removeprefix("#").lower()
+        return normalize_channel_for_scope(channel)
 
     def _outgoing_flood_scope_override(self) -> str:
         """[Channels] outgoing_flood_scope_override when set, else empty string."""
-        if self.bot.config.has_section("Channels") and self.bot.config.has_option(
-            "Channels", "outgoing_flood_scope_override"
-        ):
-            return (self.bot.config.get("Channels", "outgoing_flood_scope_override") or "").strip()
-        return ""
+        return outgoing_override(self.bot.config)
 
     def _channel_flood_scope(self, channel: str | None) -> str | None:
         """Return [Channels] flood_scope.<channel> when configured, including global markers."""
-        if not channel or not self.bot.config.has_section("Channels"):
-            return None
-        channel_key = self._normalize_channel_name_for_scope_config(channel)
-        for key, value in self.bot.config.items("Channels"):
-            if not key.startswith("flood_scope."):
-                continue
-            configured_channel = key[len("flood_scope."):]
-            if self._normalize_channel_name_for_scope_config(configured_channel) == channel_key:
-                return self._normalize_scope_name((value or "").strip())
-        return None
+        entry = channel_scope_entry(self.bot.config, channel)
+        return None if entry is None else self._normalize_scope_name(entry)
 
     def resolve_channel_send_scope(
         self,
@@ -267,10 +259,9 @@ class CommandManager:
             return scope
         if message is not None and message.reply_scope is not None:
             return message.reply_scope
-        if config_section and self.bot.config.has_section(config_section):
-            raw = (self.bot.config.get(config_section, "flood_scope", fallback="") or "").strip()
-            if raw:
-                return self._normalize_scope_name(raw)
+        section_scope = section_flood_scope(self.bot.config, config_section)
+        if section_scope is not None:
+            return section_scope
         channel_scope = self._channel_flood_scope(channel or (message.channel if message else None))
         if channel_scope is not None:
             return channel_scope

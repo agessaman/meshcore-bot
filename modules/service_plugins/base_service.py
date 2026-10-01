@@ -10,6 +10,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, Optional
 
+from ..flood_scope import section_flood_scope
+
 
 @dataclass
 class ExternalNotifySettings:
@@ -126,15 +128,7 @@ class BaseServicePlugin(ABC):
         Reads ``flood_scope`` from ``config_section``. When omitted, returns ``None``
         so ``send_channel_message`` uses ``[Channels] outgoing_flood_scope_override``.
         """
-        from modules.command_manager import CommandManager
-
-        section = self.config_section or self._derive_config_section()
-        if not self.bot.config.has_section(section):
-            return None
-        raw = (self.bot.config.get(section, "flood_scope", fallback="") or "").strip()
-        if not raw:
-            return None
-        return CommandManager._normalize_scope_name(raw)
+        return section_flood_scope(self.bot.config, self.config_section or self._derive_config_section())
 
     def has_external_notification_targets(self) -> bool:
         """True if Discord URLs are set, or Telegram chats plus a resolved bot token."""
