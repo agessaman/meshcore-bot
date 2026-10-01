@@ -315,15 +315,20 @@ class TestStatsPerformance:
         """~35ms after the rework, against ~264ms for the linear hop-prefix scan."""
         with seeded_viewer.app.test_client() as client:
             client.get("/api/stats")  # warm the page cache
-            started = time.perf_counter()
-            response = client.get("/api/stats")
-            elapsed = time.perf_counter() - started
+            timings = []
+            for _ in range(5):
+                started = time.perf_counter()
+                response = client.get("/api/stats")
+                timings.append(time.perf_counter() - started)
 
         assert response.status_code == 200
         payload = response.get_json()
         assert "error" not in payload
         assert payload["total_contacts"] == CONTACTS
-        assert elapsed < 0.2, f"/api/stats took {elapsed:.2f}s on a synthetic 100k-row DB"
+        # The fastest of several requests: a GC pause or a busy runner slows one
+        # request, while an algorithmic regression slows them all.
+        shown = ", ".join(f"{t * 1000:.0f}" for t in timings)
+        assert min(timings) < 0.2, f"/api/stats took {shown} ms on a synthetic 100k-row DB"
 
     def test_dashboard_summary_is_a_single_row_read(self, seeded_viewer):
         with closing(seeded_viewer._dashboard_connection()) as conn:
