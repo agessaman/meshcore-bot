@@ -1124,37 +1124,10 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             if is_current_night and today_period:
                 period = today_period[1]
                 # Always add today_period - it represents tomorrow's daytime when current is Tonight
-                period_name = self._noaa_period_display_name(period)
-                period_temp = period.get('temperature', '')
-                period_short = period.get('shortForecast', '')
                 period_detailed = period.get('detailedForecast', '')
-                period_wind_speed = period.get('windSpeed', '')
-                period_wind_direction = period.get('windDirection', '')
-
-                if period_temp and period_short:
-                    # Try to get high/low
-                    period_high_low = self.extract_high_low(
-                        period_detailed, self._noaa_period_temp_symbol(period)
-                    )
-
-                    period_emoji = self.get_weather_emoji(period_short)
-                    if period_high_low:
-                        period_str = f" | {period_name}: {period_emoji}{period_short} {period_high_low}"
-                    else:
-                        period_str = f" | {period_name}: {period_emoji}{period_short} {period_temp}°"
-
-                    # Add wind info if space allows (using display width)
-                    if period_wind_speed and period_wind_direction:
-                        test_str = weather + period_str
-                        if self._count_display_width(test_str) < max_length - 10:
-                            wind_match = re.search(r'(\d+)', period_wind_speed)
-                            if wind_match:
-                                wind_num = wind_match.group(1)
-                                wind_dir = self.abbreviate_wind_direction(period_wind_direction)
-                                if wind_dir:
-                                    wind_info = f" {wind_dir}{wind_num}"
-                                    if self._count_display_width(test_str + wind_info) <= max_length:
-                                        period_str += wind_info
+                period_head = self._noaa_period_str(period)
+                if period_head:
+                    period_str = self._noaa_period_wind(weather, period_head, period, max_length - 10, max_length)
 
                     # Add additional details (humidity, dew point, visibility, etc.)
                     # But only if current period isn't too long - prioritize current period details
@@ -1184,37 +1157,10 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
 
                 if should_add_tonight:
                     period = tonight_period[1]
-                    period_name = self._noaa_period_display_name(period)
-                    period_temp = period.get('temperature', '')
-                    period_short = period.get('shortForecast', '')
                     period_detailed = period.get('detailedForecast', '')
-                    period_wind_speed = period.get('windSpeed', '')
-                    period_wind_direction = period.get('windDirection', '')
-
-                    if period_temp and period_short:
-                        # Try to get high/low
-                        period_high_low = self.extract_high_low(
-                            period_detailed, self._noaa_period_temp_symbol(period)
-                        )
-
-                        period_emoji = self.get_weather_emoji(period_short)
-                        if period_high_low:
-                            period_str = f" | {period_name}: {period_emoji}{period_short} {period_high_low}"
-                        else:
-                            period_str = f" | {period_name}: {period_emoji}{period_short} {period_temp}°"
-
-                        # Add wind info if space allows (using display width)
-                        if period_wind_speed and period_wind_direction:
-                            test_str = weather + period_str
-                            if self._count_display_width(test_str) < max_length - 10:
-                                wind_match = re.search(r'(\d+)', period_wind_speed)
-                                if wind_match:
-                                    wind_num = wind_match.group(1)
-                                    wind_dir = self.abbreviate_wind_direction(period_wind_direction)
-                                    if wind_dir:
-                                        wind_info = f" {wind_dir}{wind_num}"
-                                        if self._count_display_width(test_str + wind_info) <= max_length:
-                                            period_str += wind_info
+                    period_head = self._noaa_period_str(period)
+                    if period_head:
+                        period_str = self._noaa_period_wind(weather, period_head, period, max_length - 10, max_length)
 
                     # Add additional details (humidity, dew point, visibility, etc.)
                     # But only if current period isn't too long - prioritize current period details
@@ -1233,76 +1179,17 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             # Prioritize adding Tomorrow when current is Tonight to use more of the available message length
             if tomorrow_period:
                 period = tomorrow_period[1]
-                period_name = self._noaa_period_display_name(period)
-                period_temp = period.get('temperature', '')
-                period_short = period.get('shortForecast', '')
                 period_detailed = period.get('detailedForecast', '')
-                period_wind_speed = period.get('windSpeed', '')
-                period_wind_direction = period.get('windDirection', '')
-
-                if period_temp and period_short:
-                    # Try to get high/low for tomorrow
-                    period_high_low = self.extract_high_low(
-                        period_detailed, self._noaa_period_temp_symbol(period)
-                    )
-
-                    # Abbreviate forecast text if it's too long (especially when current is a night period)
-                    abbreviated_forecast = period_short
-                    if (is_current_tonight or is_current_night) and len(period_short) > 20:
-                        # Try to shorten forecast text to fit more info
-                        # Remove transitional words and keep meaningful conditions
-                        words = period_short.split()
-                        # Transitional words to skip
-                        transitions = {'then', 'and', 'or', 'becoming', 'followed', 'by', 'with'}
-
-                        # If there's a "then" pattern, take first condition and last significant condition
-                        if 'then' in words:
-                            then_index = words.index('then')
-                            # Take first condition (before "then")
-                            first_part = words[:then_index]
-                            # Take last significant condition (after "then", skip small words)
-                            if then_index + 1 < len(words):
-                                last_part = [w for w in words[then_index + 1:] if w.lower() not in transitions]
-                                # Combine: first condition + last significant condition (max 2 words)
-                                if last_part:
-                                    abbreviated_forecast = ' '.join(first_part)
-                                    if len(last_part) <= 2:
-                                        abbreviated_forecast += ' ' + ' '.join(last_part)
-                                    else:
-                                        # Take last 2 words of the last part
-                                        abbreviated_forecast += ' ' + ' '.join(last_part[-2:])
-                                else:
-                                    abbreviated_forecast = ' '.join(first_part)
-                            else:
-                                abbreviated_forecast = ' '.join(first_part)
-                        else:
-                            # Filter out transitional words and take first meaningful words
-                            meaningful_words = [w for w in words if w.lower() not in transitions]
-                            if len(meaningful_words) > 3:
-                                abbreviated_forecast = ' '.join(meaningful_words[:3])
-                            else:
-                                abbreviated_forecast = ' '.join(meaningful_words)
-
-                    period_emoji = self.get_weather_emoji(period_short)
-                    if period_high_low:
-                        period_str = f" | {period_name}: {period_emoji}{abbreviated_forecast} {period_high_low}"
-                    else:
-                        period_str = f" | {period_name}: {period_emoji}{abbreviated_forecast} {period_temp}°"
-
-                    # Add wind info if space allows (using display width)
+                period_short = period.get('shortForecast', '')
+                night = is_current_tonight or is_current_night
+                forecast_text = (
+                    self._abbreviate_noaa_forecast(period_short) if night and len(period_short) > 20 else period_short
+                )
+                period_head = self._noaa_period_str(period, forecast_text)
+                if period_head:
                     # Be more aggressive about adding wind when current is a night period
-                    wind_threshold = 115 if (is_current_tonight or is_current_night) else 120
-                    if period_wind_speed and period_wind_direction:
-                        test_str = weather + period_str
-                        if self._count_display_width(test_str) < wind_threshold:
-                            wind_match = re.search(r'(\d+)', period_wind_speed)
-                            if wind_match:
-                                wind_num = wind_match.group(1)
-                                wind_dir = self.abbreviate_wind_direction(period_wind_direction)
-                                if wind_dir:
-                                    wind_info = f" {wind_dir}{wind_num}"
-                                    if self._count_display_width(test_str + wind_info) <= max_length:
-                                        period_str += wind_info
+                    wind_threshold = 115 if night else 120
+                    period_str = self._noaa_period_wind(weather, period_head, period, wind_threshold, max_length)
 
                     # Add additional details (humidity, dew point, visibility, etc.)
                     # But only if current period isn't too long - prioritize current period details
@@ -1331,6 +1218,84 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         except Exception as e:
             self.logger.error(f"Error fetching NOAA weather: {e}")
             return self.ERROR_FETCHING_DATA, None
+
+    def _noaa_period_str(self, period: dict, forecast_text: Optional[str] = None) -> Optional[str]:
+        """``" | Name: <emoji><forecast> <high/low or temp°>"`` for a forecast period.
+
+        None when the period has no temperature or no short forecast.
+        ``forecast_text`` replaces the short forecast in the text (the emoji
+        still comes from the short forecast).
+        """
+        period_name = self._noaa_period_display_name(period)
+        period_temp = period.get('temperature', '')
+        period_short = period.get('shortForecast', '')
+        if not (period_temp and period_short):
+            return None
+        period_high_low = self.extract_high_low(
+            period.get('detailedForecast', ''), self._noaa_period_temp_symbol(period)
+        )
+        period_emoji = self.get_weather_emoji(period_short)
+        text = period_short if forecast_text is None else forecast_text
+        if period_high_low:
+            return f" | {period_name}: {period_emoji}{text} {period_high_low}"
+        return f" | {period_name}: {period_emoji}{text} {period_temp}°"
+
+    def _noaa_period_wind(self, weather: str, period_str: str, period: dict, threshold: int, max_length: int) -> str:
+        """Append the period's wind to ``period_str`` when ``weather + period_str`` is under ``threshold``
+        display columns and the result still fits ``max_length``."""
+        period_wind_speed = period.get('windSpeed', '')
+        period_wind_direction = period.get('windDirection', '')
+        if period_wind_speed and period_wind_direction:
+            test_str = weather + period_str
+            if self._count_display_width(test_str) < threshold:
+                wind_match = re.search(r'(\d+)', period_wind_speed)
+                if wind_match:
+                    wind_num = wind_match.group(1)
+                    wind_dir = self.abbreviate_wind_direction(period_wind_direction)
+                    if wind_dir:
+                        wind_info = f" {wind_dir}{wind_num}"
+                        if self._count_display_width(test_str + wind_info) <= max_length:
+                            return period_str + wind_info
+        return period_str
+
+    @staticmethod
+    def _abbreviate_noaa_forecast(period_short: str) -> str:
+        """Shorten a long short-forecast ("A then B and C") to its main conditions."""
+        abbreviated_forecast = period_short
+        # Try to shorten forecast text to fit more info
+        # Remove transitional words and keep meaningful conditions
+        words = period_short.split()
+        # Transitional words to skip
+        transitions = {'then', 'and', 'or', 'becoming', 'followed', 'by', 'with'}
+
+        # If there's a "then" pattern, take first condition and last significant condition
+        if 'then' in words:
+            then_index = words.index('then')
+            # Take first condition (before "then")
+            first_part = words[:then_index]
+            # Take last significant condition (after "then", skip small words)
+            if then_index + 1 < len(words):
+                last_part = [w for w in words[then_index + 1:] if w.lower() not in transitions]
+                # Combine: first condition + last significant condition (max 2 words)
+                if last_part:
+                    abbreviated_forecast = ' '.join(first_part)
+                    if len(last_part) <= 2:
+                        abbreviated_forecast += ' ' + ' '.join(last_part)
+                    else:
+                        # Take last 2 words of the last part
+                        abbreviated_forecast += ' ' + ' '.join(last_part[-2:])
+                else:
+                    abbreviated_forecast = ' '.join(first_part)
+            else:
+                abbreviated_forecast = ' '.join(first_part)
+        else:
+            # Filter out transitional words and take first meaningful words
+            meaningful_words = [w for w in words if w.lower() not in transitions]
+            if len(meaningful_words) > 3:
+                abbreviated_forecast = ' '.join(meaningful_words[:3])
+            else:
+                abbreviated_forecast = ' '.join(meaningful_words)
+        return abbreviated_forecast
 
     def get_noaa_hourly_weather(self, lat: float, lon: float) -> tuple:
         """Get hourly weather forecast from NOAA
