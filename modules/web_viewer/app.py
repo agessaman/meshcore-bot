@@ -5,6 +5,7 @@ Bot montoring web interface using Flask-SocketIO 5.x
 """
 
 import configparser
+import functools
 import hmac
 import json
 import logging
@@ -15,6 +16,7 @@ import sqlite3
 import sys
 import threading
 import time
+from collections.abc import Callable
 from contextlib import closing, contextmanager, suppress
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -759,6 +761,23 @@ class BotDataViewer:
                 self.db_manager.set_metadata(f'{prefix}.{field}', str(data[field]))
                 saved.append(field)
         return saved
+
+    def _api_errors(self, message: str) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+        """Route decorator: log ``"<message>: <error>"`` and answer 500 with the error text.
+
+        The response body is later rewritten to a generic message by
+        set_security_headers, as for every 5xx JSON error.
+        """
+        def decorate(view: Callable[..., Any]) -> Callable[..., Any]:
+            @functools.wraps(view)
+            def wrapper(*args: Any, **kwargs: Any) -> Any:
+                try:
+                    return view(*args, **kwargs)
+                except Exception as e:
+                    self.logger.error(f"{message}: {e}")
+                    return jsonify({'error': str(e)}), 500
+            return wrapper
+        return decorate
 
     def _queue_operation(self, operation_type: str, payload: Any = None) -> int | None:
         """Queue a bot-side operation in ``channel_operations`` and return its row id.
@@ -2392,32 +2411,29 @@ class BotDataViewer:
                 return jsonify({'error': str(e)}), 500
 
         @self.app.route('/api/maintenance/list_backups')
+        @self._api_errors('Error listing backups')
         def api_maintenance_list_backups():
             """List available backup files from the configured backup directory."""
-            try:
-                backup_dir_str = self.db_manager.get_metadata('maint.db_backup_dir') or ''
-                if not backup_dir_str or not os.path.isdir(backup_dir_str):
-                    return jsonify({'backups': []})
-                backup_dir = Path(backup_dir_str)
-                db_stem = Path(self.db_path).stem
-                files = sorted(
-                    backup_dir.glob(f'{db_stem}_*.db'),
-                    key=lambda p: p.stat().st_mtime,
-                    reverse=True,
-                )
-                backups = [
-                    {
-                        'path': str(f),
-                        'name': f.name,
-                        'size_mb': round(f.stat().st_size / 1_048_576, 2),
-                        'mtime': f.stat().st_mtime,
-                    }
-                    for f in files
-                ]
-                return jsonify({'backups': backups})
-            except Exception as e:
-                self.logger.error(f"Error listing backups: {e}")
-                return jsonify({'error': str(e)}), 500
+            backup_dir_str = self.db_manager.get_metadata('maint.db_backup_dir') or ''
+            if not backup_dir_str or not os.path.isdir(backup_dir_str):
+                return jsonify({'backups': []})
+            backup_dir = Path(backup_dir_str)
+            db_stem = Path(self.db_path).stem
+            files = sorted(
+                backup_dir.glob(f'{db_stem}_*.db'),
+                key=lambda p: p.stat().st_mtime,
+                reverse=True,
+            )
+            backups = [
+                {
+                    'path': str(f),
+                    'name': f.name,
+                    'size_mb': round(f.stat().st_size / 1_048_576, 2),
+                    'mtime': f.stat().st_mtime,
+                }
+                for f in files
+            ]
+            return jsonify({'backups': backups})
 
         @self.app.route('/api/maintenance/purge', methods=['POST'])
         def api_maintenance_purge():
@@ -2714,6 +2730,7 @@ class BotDataViewer:
                 }), 500
 
         @self.app.route('/api/stats')
+        @self._api_errors('Error getting stats')
         def api_stats():
             """Deprecated: whole-database statistics in one payload.
 
@@ -2722,65 +2739,58 @@ class BotDataViewer:
             with every key name intact for external consumers, and scheduled for
             removal at the next major version.
             """
-            try:
-                # Get optional time window parameters for analytics
-                top_users_window = request.args.get('top_users_window', 'all')
-                top_commands_window = request.args.get('top_commands_window', 'all')
-                top_paths_window = request.args.get('top_paths_window', 'all')
-                top_channels_window = request.args.get('top_channels_window', 'all')
-                stats = self._get_database_stats(
-                    top_users_window=top_users_window,
-                    top_commands_window=top_commands_window,
-                    top_paths_window=top_paths_window,
-                    top_channels_window=top_channels_window
-                )
-                stats['deprecated'] = True
-                response = jsonify(stats)
-                response.headers['Deprecation'] = 'true'
-                response.headers['Sunset'] = STATS_ENDPOINT_SUNSET
-                response.headers['Link'] = '</api/dashboard/summary>; rel="successor-version"'
-                return response
-            except Exception as e:
-                self.logger.error(f"Error getting stats: {e}")
-                return jsonify({'error': str(e)}), 500
+            # Get optional time window parameters for analytics
+            top_users_window = request.args.get('top_users_window', 'all')
+            top_commands_window = request.args.get('top_commands_window', 'all')
+            top_paths_window = request.args.get('top_paths_window', 'all')
+            top_channels_window = request.args.get('top_channels_window', 'all')
+            stats = self._get_database_stats(
+                top_users_window=top_users_window,
+                top_commands_window=top_commands_window,
+                top_paths_window=top_paths_window,
+                top_channels_window=top_channels_window
+            )
+            stats['deprecated'] = True
+            response = jsonify(stats)
+            response.headers['Deprecation'] = 'true'
+            response.headers['Sunset'] = STATS_ENDPOINT_SUNSET
+            response.headers['Link'] = '</api/dashboard/summary>; rel="successor-version"'
+            return response
 
 
 
         @self.app.route('/api/dashboard/summary')
+        @self._api_errors('Error reading dashboard summary')
         def api_dashboard_summary():
             """Snapshot-backed dashboard payload — one row read, no aggregation.
 
             Sparkline series are folded in so first paint costs two requests
             (/api/health plus this) instead of the six the old page made.
             """
-            try:
-                with self._with_db_connection() as conn:
-                    payload = self.dashboard_stats.read_summary(conn)
-                if payload is None:
-                    # No snapshot yet: the refresher runs a couple of seconds
-                    # after startup, so tell the client to retry rather than
-                    # recomputing everything on the request path.
-                    response = jsonify({
-                        'error': 'Dashboard snapshot not generated yet',
-                        'pending': True,
-                    })
-                    response.status_code = 503
-                    response.headers['Retry-After'] = '5'
-                    return response
-
-                # ETags.contains() wants the bare tag; the quotes belong only in
-                # the header itself.
-                tag = str(payload['generated_at'])
-                if request.if_none_match.contains(tag):
-                    response = self.app.response_class(status=304)
-                else:
-                    response = jsonify(payload)
-                response.headers['ETag'] = f'"{tag}"'
-                response.headers['Cache-Control'] = 'private, max-age=15'
+            with self._with_db_connection() as conn:
+                payload = self.dashboard_stats.read_summary(conn)
+            if payload is None:
+                # No snapshot yet: the refresher runs a couple of seconds
+                # after startup, so tell the client to retry rather than
+                # recomputing everything on the request path.
+                response = jsonify({
+                    'error': 'Dashboard snapshot not generated yet',
+                    'pending': True,
+                })
+                response.status_code = 503
+                response.headers['Retry-After'] = '5'
                 return response
-            except Exception as e:
-                self.logger.error(f"Error reading dashboard summary: {e}")
-                return jsonify({'error': str(e)}), 500
+
+            # ETags.contains() wants the bare tag; the quotes belong only in
+            # the header itself.
+            tag = str(payload['generated_at'])
+            if request.if_none_match.contains(tag):
+                response = self.app.response_class(status=304)
+            else:
+                response = jsonify(payload)
+            response.headers['ETag'] = f'"{tag}"'
+            response.headers['Cache-Control'] = 'private, max-age=15'
+            return response
 
         @self.app.route('/api/dashboard/series')
         def api_dashboard_series():
@@ -2831,15 +2841,12 @@ class BotDataViewer:
                 return jsonify({'error': str(e)}), 500
 
         @self.app.route('/api/dashboard/windows')
+        @self._api_errors('Error deriving dashboard windows')
         def api_dashboard_windows():
             """Selector options derived from retention, so no label overclaims."""
-            try:
-                response = jsonify(self.dashboard_stats.derive_windows())
-                response.headers['Cache-Control'] = 'private, max-age=300'
-                return response
-            except Exception as e:
-                self.logger.error(f"Error deriving dashboard windows: {e}")
-                return jsonify({'error': str(e)}), 500
+            response = jsonify(self.dashboard_stats.derive_windows())
+            response.headers['Cache-Control'] = 'private, max-age=300'
+            return response
 
         @self.app.route('/api/dashboard/refresh', methods=['POST'])
         def api_dashboard_refresh():
@@ -2853,109 +2860,97 @@ class BotDataViewer:
                 return jsonify({'success': False, 'error': str(e)}), 500
 
         @self.app.route('/api/stats/rate_limiters')
+        @self._api_errors('Error getting rate limiter stats')
         def api_rate_limiter_stats():
             """Return current rate limiter statistics from the running bot."""
-            try:
-                bot = getattr(self, 'bot', None)
-                stats: dict[str, Any] = {}
-                if bot is None:
-                    return jsonify(stats)
-                if hasattr(bot, 'rate_limiter') and bot.rate_limiter:
-                    stats['message'] = bot.rate_limiter.get_stats()
-                if hasattr(bot, 'bot_tx_rate_limiter') and bot.bot_tx_rate_limiter:
-                    stats['tx'] = bot.bot_tx_rate_limiter.get_stats()
-                if hasattr(bot, 'per_user_rate_limiter') and bot.per_user_rate_limiter:
-                    rl = bot.per_user_rate_limiter
-                    stats['per_user'] = {
-                        'seconds': rl.seconds,
-                        'tracked_users': len(rl._last_send),
-                        'max_entries': rl.max_entries,
-                    }
-                if hasattr(bot, 'channel_rate_limiter') and bot.channel_rate_limiter:
-                    stats['channels'] = bot.channel_rate_limiter.get_stats()
-                if hasattr(bot, 'nominatim_rate_limiter') and bot.nominatim_rate_limiter:
-                    stats['nominatim'] = bot.nominatim_rate_limiter.get_stats()
+            bot = getattr(self, 'bot', None)
+            stats: dict[str, Any] = {}
+            if bot is None:
                 return jsonify(stats)
-            except Exception as e:
-                self.logger.error(f"Error getting rate limiter stats: {e}")
-                return jsonify({'error': str(e)}), 500
+            if hasattr(bot, 'rate_limiter') and bot.rate_limiter:
+                stats['message'] = bot.rate_limiter.get_stats()
+            if hasattr(bot, 'bot_tx_rate_limiter') and bot.bot_tx_rate_limiter:
+                stats['tx'] = bot.bot_tx_rate_limiter.get_stats()
+            if hasattr(bot, 'per_user_rate_limiter') and bot.per_user_rate_limiter:
+                rl = bot.per_user_rate_limiter
+                stats['per_user'] = {
+                    'seconds': rl.seconds,
+                    'tracked_users': len(rl._last_send),
+                    'max_entries': rl.max_entries,
+                }
+            if hasattr(bot, 'channel_rate_limiter') and bot.channel_rate_limiter:
+                stats['channels'] = bot.channel_rate_limiter.get_stats()
+            if hasattr(bot, 'nominatim_rate_limiter') and bot.nominatim_rate_limiter:
+                stats['nominatim'] = bot.nominatim_rate_limiter.get_stats()
+            return jsonify(stats)
 
         @self.app.route('/api/connected_clients')
+        @self._api_errors('Error getting connected clients')
         def api_connected_clients():
             """Return list of currently connected web viewer clients."""
-            try:
-                with self._clients_lock:
-                    clients = [
-                        {
-                            'client_id': cid[:8] + '…' if len(cid) > 8 else cid,
-                            'connected_at': info.get('connected_at'),
-                            'last_activity': info.get('last_activity'),
-                        }
-                        for cid, info in self.connected_clients.items()
-                    ]
-                return jsonify(clients)
-            except Exception as e:
-                self.logger.error(f"Error getting connected clients: {e}")
-                return jsonify({'error': str(e)}), 500
+            with self._clients_lock:
+                clients = [
+                    {
+                        'client_id': cid[:8] + '…' if len(cid) > 8 else cid,
+                        'connected_at': info.get('connected_at'),
+                        'last_activity': info.get('last_activity'),
+                    }
+                    for cid, info in self.connected_clients.items()
+                ]
+            return jsonify(clients)
 
         @self.app.route('/api/contacts')
+        @self._api_errors('Error getting contacts')
         def api_contacts():
             """Get filtered contact data, optionally paginated for the interactive list."""
-            try:
-                since = request.args.get('since', '30d')
-                if since not in ('24h', '7d', '30d', '90d', 'all'):
-                    since = '30d'
-                paginate = 'page' in request.args or 'page_size' in request.args
-                page = None
-                page_size = None
-                if paginate:
-                    try:
-                        page = max(1, int(request.args.get('page', '1')))
-                    except (TypeError, ValueError):
-                        page = 1
-                    try:
-                        page_size = max(1, min(200, int(request.args.get('page_size', '100'))))
-                    except (TypeError, ValueError):
-                        page_size = 100
-                search = request.args.get('search', '').strip()[:100]
-                path_bytes = request.args.get('path_bytes', '').strip()
-                device_role = request.args.get('device_role', '').strip()
-                hop_filter = request.args.get('hop_filter', '').strip()
-                location_filter = request.args.get('location_filter', '').strip()
-                starred = request.args.get('starred', '').strip()
-                sort = request.args.get('sort', 'last_seen')
-                direction = request.args.get('direction', 'desc').lower()
-                contacts = self._get_tracking_data(
-                    since=since,
-                    page=page,
-                    page_size=page_size,
-                    search=search,
-                    path_bytes=path_bytes,
-                    device_role=device_role,
-                    hop_filter=hop_filter,
-                    location_filter=location_filter,
-                    starred=starred,
-                    sort=sort,
-                    direction=direction,
-                )
-                return jsonify(contacts)
-            except Exception as e:
-                self.logger.error(f"Error getting contacts: {e}")
-                return jsonify({'error': str(e)}), 500
+            since = request.args.get('since', '30d')
+            if since not in ('24h', '7d', '30d', '90d', 'all'):
+                since = '30d'
+            paginate = 'page' in request.args or 'page_size' in request.args
+            page = None
+            page_size = None
+            if paginate:
+                try:
+                    page = max(1, int(request.args.get('page', '1')))
+                except (TypeError, ValueError):
+                    page = 1
+                try:
+                    page_size = max(1, min(200, int(request.args.get('page_size', '100'))))
+                except (TypeError, ValueError):
+                    page_size = 100
+            search = request.args.get('search', '').strip()[:100]
+            path_bytes = request.args.get('path_bytes', '').strip()
+            device_role = request.args.get('device_role', '').strip()
+            hop_filter = request.args.get('hop_filter', '').strip()
+            location_filter = request.args.get('location_filter', '').strip()
+            starred = request.args.get('starred', '').strip()
+            sort = request.args.get('sort', 'last_seen')
+            direction = request.args.get('direction', 'desc').lower()
+            contacts = self._get_tracking_data(
+                since=since,
+                page=page,
+                page_size=page_size,
+                search=search,
+                path_bytes=path_bytes,
+                device_role=device_role,
+                hop_filter=hop_filter,
+                location_filter=location_filter,
+                starred=starred,
+                sort=sort,
+                direction=direction,
+            )
+            return jsonify(contacts)
 
         @self.app.route('/api/contact-detail')
+        @self._api_errors('Error getting contact detail')
         def api_contact_detail():
             """On-demand per-contact detail (recent advert paths + advertisement data) for the
             contacts UI modals. These are intentionally excluded from the /api/contacts list
             payload. Query param: user_id (the contact's public key)."""
-            try:
-                public_key = request.args.get('user_id', '').strip()
-                if not public_key:
-                    return jsonify({'error': 'user_id is required'}), 400
-                return jsonify(self._get_contact_detail(public_key))
-            except Exception as e:
-                self.logger.error(f"Error getting contact detail: {e}")
-                return jsonify({'error': str(e)}), 500
+            public_key = request.args.get('user_id', '').strip()
+            if not public_key:
+                return jsonify({'error': 'user_id is required'}), 400
+            return jsonify(self._get_contact_detail(public_key))
 
         @self.app.route('/api/multibyte-rollout')
         def api_multibyte_rollout():
@@ -2976,24 +2971,18 @@ class BotDataViewer:
                 return jsonify({'error': str(e)}), 500
 
         @self.app.route('/api/cache')
+        @self._api_errors('Error getting cache')
         def api_cache():
             """Get cache data"""
-            try:
-                cache_data = self._get_cache_data()
-                return jsonify(cache_data)
-            except Exception as e:
-                self.logger.error(f"Error getting cache: {e}")
-                return jsonify({'error': str(e)}), 500
+            cache_data = self._get_cache_data()
+            return jsonify(cache_data)
 
         @self.app.route('/api/database')
+        @self._api_errors('Error getting database info')
         def api_database():
             """Get database information"""
-            try:
-                db_info = self._get_database_info()
-                return jsonify(db_info)
-            except Exception as e:
-                self.logger.error(f"Error getting database info: {e}")
-                return jsonify({'error': str(e)}), 500
+            db_info = self._get_database_info()
+            return jsonify(db_info)
 
         @self.app.route('/api/optimize-database', methods=['POST'])
         def api_optimize_database():
@@ -3341,6 +3330,7 @@ class BotDataViewer:
                 return jsonify({'error': str(e), 'traceback': error_trace}), 500
 
         @self.app.route('/api/stream_data', methods=['POST'])
+        @self._api_errors('Error in stream_data endpoint')
         def api_stream_data():
             """API endpoint for receiving real-time data from bot.
 
@@ -3349,71 +3339,63 @@ class BotDataViewer:
             callers from injecting fake stream data when the web viewer is
             network-accessible.
             """
-            try:
-                if not current_app.config.get('TESTING'):
-                    token = request.headers.get('X-Stream-Token', '')
-                    expected = self.db_manager.get_metadata('internal.stream_token') if self.db_manager else None
-                    if not expected or not token or token != expected:
-                        return jsonify({'error': 'Unauthorized'}), 401
+            if not current_app.config.get('TESTING'):
+                token = request.headers.get('X-Stream-Token', '')
+                expected = self.db_manager.get_metadata('internal.stream_token') if self.db_manager else None
+                if not expected or not token or token != expected:
+                    return jsonify({'error': 'Unauthorized'}), 401
 
-                data = request.get_json()
-                if not data:
-                    return jsonify({'error': 'No data provided'}), 400
+            data = request.get_json()
+            if not data:
+                return jsonify({'error': 'No data provided'}), 400
 
-                data_type = data.get('type')
-                if data_type == 'command':
-                    self._handle_command_data(data.get('data', {}))
-                elif data_type == 'packet':
-                    self._handle_packet_data(data.get('data', {}))
-                elif data_type == 'mesh_edge':
-                    self._handle_mesh_edge_data(data.get('data', {}))
-                elif data_type == 'mesh_node':
-                    self._handle_mesh_node_data(data.get('data', {}))
-                else:
-                    return jsonify({'error': 'Invalid data type'}), 400
+            data_type = data.get('type')
+            if data_type == 'command':
+                self._handle_command_data(data.get('data', {}))
+            elif data_type == 'packet':
+                self._handle_packet_data(data.get('data', {}))
+            elif data_type == 'mesh_edge':
+                self._handle_mesh_edge_data(data.get('data', {}))
+            elif data_type == 'mesh_node':
+                self._handle_mesh_node_data(data.get('data', {}))
+            else:
+                return jsonify({'error': 'Invalid data type'}), 400
 
-                return jsonify({'status': 'success'})
-            except Exception as e:
-                self.logger.error(f"Error in stream_data endpoint: {e}")
-                return jsonify({'error': str(e)}), 500
+            return jsonify({'status': 'success'})
 
         @self.app.route('/api/recent_commands')
+        @self._api_errors('Error getting recent commands')
         def api_recent_commands():
             """API endpoint to get recent commands from database"""
-            try:
-                import json
-                import sqlite3
-                import time
+            import json
+            import sqlite3
+            import time
 
-                # Get commands from last 60 minutes
-                cutoff_time = time.time() - (60 * 60)  # 60 minutes ago
+            # Get commands from last 60 minutes
+            cutoff_time = time.time() - (60 * 60)  # 60 minutes ago
 
-                with closing(sqlite3.connect(self.db_path, timeout=60)) as conn:
-                    cursor = conn.cursor()
+            with closing(sqlite3.connect(self.db_path, timeout=60)) as conn:
+                cursor = conn.cursor()
 
-                    cursor.execute('''
-                        SELECT data FROM packet_stream
-                        WHERE type = 'command' AND timestamp > ?
-                        ORDER BY timestamp DESC
-                        LIMIT 100
-                    ''', (cutoff_time,))
+                cursor.execute('''
+                    SELECT data FROM packet_stream
+                    WHERE type = 'command' AND timestamp > ?
+                    ORDER BY timestamp DESC
+                    LIMIT 100
+                ''', (cutoff_time,))
 
-                    rows = cursor.fetchall()
+                rows = cursor.fetchall()
 
-                    # Parse and return commands
-                    commands = []
-                    for (data_json,) in rows:
-                        try:
-                            command_data = json.loads(data_json)
-                            commands.append(command_data)
-                        except Exception as e:
-                            self.logger.debug(f"Error parsing command data: {e}")
+                # Parse and return commands
+                commands = []
+                for (data_json,) in rows:
+                    try:
+                        command_data = json.loads(data_json)
+                        commands.append(command_data)
+                    except Exception as e:
+                        self.logger.debug(f"Error parsing command data: {e}")
 
-                    return jsonify({'commands': commands})
-
-            except Exception as e:
-                self.logger.error(f"Error getting recent commands: {e}")
-                return jsonify({'error': str(e)}), 500
+                return jsonify({'commands': commands})
 
         # ── Export ──────────────────────────────────────────────────────────
 
@@ -4507,34 +4489,28 @@ class BotDataViewer:
             return {e['schedule'] for e in read_entries(self.config_path, _schedule_tz())}
 
         @self.app.route('/api/scheduled-messages')
+        @self._api_errors('Error reading scheduled messages')
         def api_scheduled_messages():
             """List scheduled messages with their next run times."""
-            try:
-                return jsonify({'entries': read_entries(self.config_path, _schedule_tz())})
-            except Exception as e:
-                self.logger.error(f"Error reading scheduled messages: {e}")
-                return jsonify({'error': str(e)}), 500
+            return jsonify({'entries': read_entries(self.config_path, _schedule_tz())})
 
         @self.app.route('/api/scheduled-messages/preview', methods=['POST'])
+        @self._api_errors('Error previewing schedule')
         def api_scheduled_messages_preview():
             """Validate a schedule and return its next run times (powers the builder)."""
+            data = request.get_json(silent=True) or {}
             try:
-                data = request.get_json(silent=True) or {}
-                try:
-                    count = int(data.get('count', 5))
-                except (TypeError, ValueError):
-                    return jsonify({'error': 'count must be an integer'}), 400
-                if not 1 <= count <= 20:
-                    return jsonify({'error': 'count must be between 1 and 20'}), 400
-                return jsonify(describe_schedule(
-                    data.get('schedule', ''),
-                    _schedule_tz(),
-                    message=data.get('message', ''),
-                    count=count,
-                ))
-            except Exception as e:
-                self.logger.error(f"Error previewing schedule: {e}")
-                return jsonify({'error': str(e)}), 500
+                count = int(data.get('count', 5))
+            except (TypeError, ValueError):
+                return jsonify({'error': 'count must be an integer'}), 400
+            if not 1 <= count <= 20:
+                return jsonify({'error': 'count must be between 1 and 20'}), 400
+            return jsonify(describe_schedule(
+                data.get('schedule', ''),
+                _schedule_tz(),
+                message=data.get('message', ''),
+                count=count,
+            ))
 
         def _save_scheduled_message(data, *, replacing=None):
             """Shared create/update: validate, write config.ini, queue a reload."""
@@ -4682,78 +4658,63 @@ class BotDataViewer:
                 return jsonify({'success': False, 'error': str(e)}), 500
 
         @self.app.route('/api/feeds')
+        @self._api_errors('Error getting feeds')
         def api_feeds():
             """Get all feed subscriptions with statistics"""
-            try:
-                feeds = self._get_feed_subscriptions()
-                return jsonify(feeds)
-            except Exception as e:
-                self.logger.error(f"Error getting feeds: {e}")
-                return jsonify({'error': str(e)}), 500
+            feeds = self._get_feed_subscriptions()
+            return jsonify(feeds)
 
         @self.app.route('/api/feeds/<int:feed_id>')
+        @self._api_errors('Error getting feed detail')
         def api_feed_detail(feed_id):
             """Get detailed information about a specific feed"""
-            try:
-                feed = self._get_feed_subscription(feed_id)
-                if not feed:
-                    return jsonify({'error': 'Feed not found'}), 404
+            feed = self._get_feed_subscription(feed_id)
+            if not feed:
+                return jsonify({'error': 'Feed not found'}), 404
 
-                # Get activity and errors
-                activity = self._get_feed_activity(feed_id)
-                errors = self._get_feed_errors(feed_id)
+            # Get activity and errors
+            activity = self._get_feed_activity(feed_id)
+            errors = self._get_feed_errors(feed_id)
 
-                feed['activity'] = activity
-                feed['errors'] = errors
+            feed['activity'] = activity
+            feed['errors'] = errors
 
-                return jsonify(feed)
-            except Exception as e:
-                self.logger.error(f"Error getting feed detail: {e}")
-                return jsonify({'error': str(e)}), 500
+            return jsonify(feed)
 
         @self.app.route('/api/feeds', methods=['POST'])
+        @self._api_errors('Error creating feed')
         def api_create_feed():
             """Create a new feed subscription"""
-            try:
-                data = request.get_json()
-                if not data:
-                    return jsonify({'error': 'No data provided'}), 400
+            data = request.get_json()
+            if not data:
+                return jsonify({'error': 'No data provided'}), 400
 
-                feed_id = self._create_feed_subscription(data)
-                return jsonify({'success': True, 'id': feed_id})
-            except Exception as e:
-                self.logger.error(f"Error creating feed: {e}")
-                return jsonify({'error': str(e)}), 500
+            feed_id = self._create_feed_subscription(data)
+            return jsonify({'success': True, 'id': feed_id})
 
         @self.app.route('/api/feeds/<int:feed_id>', methods=['PUT'])
+        @self._api_errors('Error updating feed')
         def api_update_feed(feed_id):
             """Update an existing feed subscription"""
-            try:
-                data = request.get_json()
-                if not data:
-                    return jsonify({'error': 'No data provided'}), 400
+            data = request.get_json()
+            if not data:
+                return jsonify({'error': 'No data provided'}), 400
 
-                success = self._update_feed_subscription(feed_id, data)
-                if not success:
-                    return jsonify({'error': 'Feed not found'}), 404
+            success = self._update_feed_subscription(feed_id, data)
+            if not success:
+                return jsonify({'error': 'Feed not found'}), 404
 
-                return jsonify({'success': True})
-            except Exception as e:
-                self.logger.error(f"Error updating feed: {e}")
-                return jsonify({'error': str(e)}), 500
+            return jsonify({'success': True})
 
         @self.app.route('/api/feeds/<int:feed_id>', methods=['DELETE'])
+        @self._api_errors('Error deleting feed')
         def api_delete_feed(feed_id):
             """Delete a feed subscription"""
-            try:
-                success = self._delete_feed_subscription(feed_id)
-                if not success:
-                    return jsonify({'error': 'Feed not found'}), 404
+            success = self._delete_feed_subscription(feed_id)
+            if not success:
+                return jsonify({'error': 'Feed not found'}), 404
 
-                return jsonify({'success': True})
-            except Exception as e:
-                self.logger.error(f"Error deleting feed: {e}")
-                return jsonify({'error': str(e)}), 500
+            return jsonify({'success': True})
 
         @self.app.route('/api/feeds/default-format', methods=['GET'])
         def api_get_default_format():
@@ -4767,227 +4728,193 @@ class BotDataViewer:
                 return jsonify({'default_format': '{emoji} {body|truncate:100} - {date}\n{link|truncate:50}'})
 
         @self.app.route('/api/feeds/preview', methods=['POST'])
+        @self._api_errors('Error previewing feed')
         def api_preview_feed():
             """Preview feed items with custom output format"""
+            data = request.get_json()
+            if not data or 'feed_url' not in data:
+                return jsonify({'error': 'feed_url is required'}), 400
+
+            feed_url = data['feed_url']
+            feed_type = data.get('feed_type', 'rss')
+            output_format = data.get('output_format', '')
+            api_config = data.get('api_config', {})
+            filter_config = data.get('filter_config')
+            sort_config = data.get('sort_config')
+
+            # Get default format from config if not provided
+            if not output_format:
+                output_format = self.config.get('Feed_Manager', 'default_output_format',
+                                               fallback='{emoji} {body|truncate:100} - {date}\n{link|truncate:50}')
+
+            # Fetch and format feed items
             try:
-                data = request.get_json()
-                if not data or 'feed_url' not in data:
-                    return jsonify({'error': 'feed_url is required'}), 400
+                preview_items = self._preview_feed_items(feed_url, feed_type, output_format, api_config, filter_config, sort_config)
+            except ValueError as e:
+                # SSRF validation error - return 400
+                return jsonify({'error': str(e)}), 400
 
-                feed_url = data['feed_url']
-                feed_type = data.get('feed_type', 'rss')
-                output_format = data.get('output_format', '')
-                api_config = data.get('api_config', {})
-                filter_config = data.get('filter_config')
-                sort_config = data.get('sort_config')
-
-                # Get default format from config if not provided
-                if not output_format:
-                    output_format = self.config.get('Feed_Manager', 'default_output_format',
-                                                   fallback='{emoji} {body|truncate:100} - {date}\n{link|truncate:50}')
-
-                # Fetch and format feed items
-                try:
-                    preview_items = self._preview_feed_items(feed_url, feed_type, output_format, api_config, filter_config, sort_config)
-                except ValueError as e:
-                    # SSRF validation error - return 400
-                    return jsonify({'error': str(e)}), 400
-
-                return jsonify({
-                    'success': True,
-                    'items': preview_items
-                })
-            except Exception as e:
-                self.logger.error(f"Error previewing feed: {e}")
-                return jsonify({'error': str(e)}), 500
+            return jsonify({
+                'success': True,
+                'items': preview_items
+            })
 
         @self.app.route('/api/feeds/test', methods=['POST'])
+        @self._api_errors('Error testing feed')
         def api_test_feed():
             """Test a feed URL and return preview of recent items"""
-            try:
-                data = request.get_json()
-                if not data or 'url' not in data:
-                    return jsonify({'error': 'URL is required'}), 400
+            data = request.get_json()
+            if not data or 'url' not in data:
+                return jsonify({'error': 'URL is required'}), 400
 
-                url = data['url']
+            url = data['url']
 
-                # Validate URL for SSRF protection
-                if self.config.has_section('Feed_Command'):
-                    try:
-                        feed_command_allow_private = self.config.getboolean(
-                            'Feed_Command', 'allow_private_urls', fallback=False
-                        )
-                    except ValueError:
-                        feed_command_allow_private = False
-                else:
-                    feed_command_allow_private = False
-                allow_private_feeds = (
-                    self.config.getboolean(
-                        'Feed_Manager',
-                        'allow_private_urls',
-                        fallback=feed_command_allow_private,
+            # Validate URL for SSRF protection
+            if self.config.has_section('Feed_Command'):
+                try:
+                    feed_command_allow_private = self.config.getboolean(
+                        'Feed_Command', 'allow_private_urls', fallback=False
                     )
-                    if self.config.has_section('Feed_Manager')
-                    else feed_command_allow_private
+                except ValueError:
+                    feed_command_allow_private = False
+            else:
+                feed_command_allow_private = False
+            allow_private_feeds = (
+                self.config.getboolean(
+                    'Feed_Manager',
+                    'allow_private_urls',
+                    fallback=feed_command_allow_private,
                 )
-                if not validate_external_url(url, allow_private=allow_private_feeds):
-                    return jsonify({'error': 'Invalid or unsafe URL'}), 400
+                if self.config.has_section('Feed_Manager')
+                else feed_command_allow_private
+            )
+            if not validate_external_url(url, allow_private=allow_private_feeds):
+                return jsonify({'error': 'Invalid or unsafe URL'}), 400
 
-                return jsonify({'success': True, 'message': 'URL validated'})
-            except Exception as e:
-                self.logger.error(f"Error testing feed: {e}")
-                return jsonify({'error': str(e)}), 500
+            return jsonify({'success': True, 'message': 'URL validated'})
 
         @self.app.route('/api/feeds/stats')
+        @self._api_errors('Error getting feed stats')
         def api_feed_stats():
             """Get aggregate feed statistics"""
-            try:
-                stats = self._get_feed_statistics()
-                return jsonify(stats)
-            except Exception as e:
-                self.logger.error(f"Error getting feed stats: {e}")
-                return jsonify({'error': str(e)}), 500
+            stats = self._get_feed_statistics()
+            return jsonify(stats)
 
         @self.app.route('/api/feeds/<int:feed_id>/activity')
+        @self._api_errors('Error getting feed activity')
         def api_feed_activity(feed_id):
             """Get activity log for a specific feed"""
-            try:
-                activity = self._get_feed_activity(feed_id, limit=50)
-                return jsonify({'activity': activity})
-            except Exception as e:
-                self.logger.error(f"Error getting feed activity: {e}")
-                return jsonify({'error': str(e)}), 500
+            activity = self._get_feed_activity(feed_id, limit=50)
+            return jsonify({'activity': activity})
 
         @self.app.route('/api/feeds/<int:feed_id>/errors')
+        @self._api_errors('Error getting feed errors')
         def api_feed_errors(feed_id):
             """Get error history for a specific feed"""
-            try:
-                errors = self._get_feed_errors(feed_id, limit=20)
-                return jsonify({'errors': errors})
-            except Exception as e:
-                self.logger.error(f"Error getting feed errors: {e}")
-                return jsonify({'error': str(e)}), 500
+            errors = self._get_feed_errors(feed_id, limit=20)
+            return jsonify({'errors': errors})
 
         @self.app.route('/api/feeds/errors/reset', methods=['POST'])
+        @self._api_errors('Error resetting feed errors')
         def api_reset_all_feed_errors():
             """Clear recorded errors for every feed"""
-            try:
-                deleted = self._reset_feed_errors()
-                return jsonify({'success': True, 'deleted': deleted})
-            except Exception as e:
-                self.logger.error(f"Error resetting feed errors: {e}")
-                return jsonify({'error': str(e)}), 500
+            deleted = self._reset_feed_errors()
+            return jsonify({'success': True, 'deleted': deleted})
 
         @self.app.route('/api/feeds/<int:feed_id>/errors/reset', methods=['POST'])
+        @self._api_errors('Error resetting feed errors')
         def api_reset_feed_errors(feed_id):
             """Clear recorded errors for a single feed"""
-            try:
-                deleted = self._reset_feed_errors(feed_id)
-                return jsonify({'success': True, 'deleted': deleted})
-            except Exception as e:
-                self.logger.error(f"Error resetting feed errors: {e}")
-                return jsonify({'error': str(e)}), 500
+            deleted = self._reset_feed_errors(feed_id)
+            return jsonify({'success': True, 'deleted': deleted})
 
         @self.app.route('/api/feeds/<int:feed_id>/refresh', methods=['POST'])
+        @self._api_errors('Error refreshing feed')
         def api_refresh_feed(feed_id):
             """Manually trigger a feed check"""
-            try:
-                # This would trigger feed_manager to poll this feed immediately
-                # For now, just acknowledge the request
-                return jsonify({'success': True, 'message': 'Feed refresh queued'})
-            except Exception as e:
-                self.logger.error(f"Error refreshing feed: {e}")
-                return jsonify({'error': str(e)}), 500
+            # This would trigger feed_manager to poll this feed immediately
+            # For now, just acknowledge the request
+            return jsonify({'success': True, 'message': 'Feed refresh queued'})
 
         # Channel management API endpoints
         @self.app.route('/api/channels')
+        @self._api_errors('Error getting channels')
         def api_channels():
             """Get all configured channels"""
-            try:
-                channels = self._get_channels()
-                return jsonify({'channels': channels})
-            except Exception as e:
-                self.logger.error(f"Error getting channels: {e}")
-                return jsonify({'error': str(e)}), 500
+            channels = self._get_channels()
+            return jsonify({'channels': channels})
 
         @self.app.route('/api/channels', methods=['POST'])
+        @self._api_errors('Error creating channel')
         def api_create_channel():
             """Create a new channel (hashtag or custom)"""
-            try:
-                data = request.get_json()
-                if not data or 'name' not in data:
-                    return jsonify({'error': 'Channel name is required'}), 400
+            data = request.get_json()
+            if not data or 'name' not in data:
+                return jsonify({'error': 'Channel name is required'}), 400
 
-                channel_name = data.get('name', '').strip()
-                channel_idx = data.get('channel_idx')
-                channel_key = data.get('channel_key', '').strip()
+            channel_name = data.get('name', '').strip()
+            channel_idx = data.get('channel_idx')
+            channel_key = data.get('channel_key', '').strip()
 
-                if not channel_name:
-                    return jsonify({'error': 'Channel name cannot be empty'}), 400
+            if not channel_name:
+                return jsonify({'error': 'Channel name cannot be empty'}), 400
 
-                # If channel_idx not provided, find the lowest available index
+            # If channel_idx not provided, find the lowest available index
+            if channel_idx is None:
+                channel_idx = self._get_lowest_available_channel_index()
                 if channel_idx is None:
-                    channel_idx = self._get_lowest_available_channel_index()
-                    if channel_idx is None:
-                        max_channels = self.config.getint('Bot', 'max_channels', fallback=40)
-                        return jsonify({'error': f'No available channel slots. All {max_channels} channels are in use.'}), 400
+                    max_channels = self.config.getint('Bot', 'max_channels', fallback=40)
+                    return jsonify({'error': f'No available channel slots. All {max_channels} channels are in use.'}), 400
 
-                # Determine if it's a hashtag channel
-                is_hashtag = channel_name.startswith('#')
+            # Determine if it's a hashtag channel
+            is_hashtag = channel_name.startswith('#')
 
-                # Validate custom channel has key
-                if not is_hashtag and not channel_key:
-                    return jsonify({'error': 'Channel key is required for custom channels (channels without # prefix)'}), 400
+            # Validate custom channel has key
+            if not is_hashtag and not channel_key:
+                return jsonify({'error': 'Channel key is required for custom channels (channels without # prefix)'}), 400
 
-                # Validate key format if provided
-                if channel_key:
-                    if len(channel_key) != 32:
-                        return jsonify({'error': 'Channel key must be exactly 32 hexadecimal characters'}), 400
-                    if not all(c in '0123456789abcdefABCDEF' for c in channel_key):
-                        return jsonify({'error': 'Channel key must contain only hexadecimal characters (0-9, a-f, A-F)'}), 400
+            # Validate key format if provided
+            if channel_key:
+                if len(channel_key) != 32:
+                    return jsonify({'error': 'Channel key must be exactly 32 hexadecimal characters'}), 400
+                if not all(c in '0123456789abcdefABCDEF' for c in channel_key):
+                    return jsonify({'error': 'Channel key must contain only hexadecimal characters (0-9, a-f, A-F)'}), 400
 
-                # Try to create channel via bot's channel manager
-                result = self._add_channel_for_web(channel_idx, channel_name, channel_key if not is_hashtag else None)
+            # Try to create channel via bot's channel manager
+            result = self._add_channel_for_web(channel_idx, channel_name, channel_key if not is_hashtag else None)
 
-                if result.get('success'):
-                    if result.get('pending'):
-                        # Operation is queued, return operation_id for polling
-                        return jsonify({
-                            'success': True,
-                            'pending': True,
-                            'operation_id': result.get('operation_id'),
-                            'message': result.get('message', 'Channel operation queued')
-                        })
-                    else:
-                        return jsonify({'success': True, 'message': 'Channel created successfully'})
+            if result.get('success'):
+                if result.get('pending'):
+                    # Operation is queued, return operation_id for polling
+                    return jsonify({
+                        'success': True,
+                        'pending': True,
+                        'operation_id': result.get('operation_id'),
+                        'message': result.get('message', 'Channel operation queued')
+                    })
                 else:
-                    return jsonify({'error': result.get('error', 'Failed to create channel')}), 500
-
-            except Exception as e:
-                self.logger.error(f"Error creating channel: {e}")
-                return jsonify({'error': str(e)}), 500
+                    return jsonify({'success': True, 'message': 'Channel created successfully'})
+            else:
+                return jsonify({'error': result.get('error', 'Failed to create channel')}), 500
 
         @self.app.route('/api/channels/<int:channel_idx>', methods=['DELETE'])
+        @self._api_errors('Error deleting channel')
         def api_delete_channel(channel_idx):
             """Remove a channel"""
-            try:
-                result = self._remove_channel_for_web(channel_idx)
-                if result.get('success'):
-                    if result.get('pending'):
-                        # Operation is queued, return operation_id for polling
-                        return jsonify({
-                            'success': True,
-                            'pending': True,
-                            'operation_id': result.get('operation_id'),
-                            'message': result.get('message', 'Channel operation queued')
-                        })
-                    else:
-                        return jsonify({'success': True, 'message': 'Channel deleted successfully'})
+            result = self._remove_channel_for_web(channel_idx)
+            if result.get('success'):
+                if result.get('pending'):
+                    # Operation is queued, return operation_id for polling
+                    return jsonify({
+                        'success': True,
+                        'pending': True,
+                        'operation_id': result.get('operation_id'),
+                        'message': result.get('message', 'Channel operation queued')
+                    })
                 else:
-                    return jsonify({'error': result.get('error', 'Failed to delete channel')}), 500
-            except Exception as e:
-                self.logger.error(f"Error deleting channel: {e}")
-                return jsonify({'error': str(e)}), 500
+                    return jsonify({'success': True, 'message': 'Channel deleted successfully'})
+            else:
+                return jsonify({'error': result.get('error', 'Failed to delete channel')}), 500
 
         @self.app.route('/api/channel-operations/<int:operation_id>', methods=['GET'])
         def api_get_operation_status(operation_id):
@@ -5025,154 +4952,125 @@ class BotDataViewer:
                     conn.close()
 
         @self.app.route('/api/channels/validate', methods=['POST'])
+        @self._api_errors('Error validating channel')
         def api_validate_channel():
             """Validate if a channel exists or can be created"""
-            try:
-                data = request.get_json()
-                if not data or 'name' not in data:
-                    return jsonify({'error': 'Channel name is required'}), 400
+            data = request.get_json()
+            if not data or 'name' not in data:
+                return jsonify({'error': 'Channel name is required'}), 400
 
-                channel_name = data['name']
-                # Check if channel exists
-                channel_num = self._get_channel_number(channel_name)
+            channel_name = data['name']
+            # Check if channel exists
+            channel_num = self._get_channel_number(channel_name)
 
-                return jsonify({
-                    'exists': channel_num is not None,
-                    'channel_num': channel_num
-                })
-            except Exception as e:
-                self.logger.error(f"Error validating channel: {e}")
-                return jsonify({'error': str(e)}), 500
+            return jsonify({
+                'exists': channel_num is not None,
+                'channel_num': channel_num
+            })
 
         @self.app.route('/api/channels/<int:channel_idx>', methods=['PUT'])
+        @self._api_errors('Error updating channel')
         def api_update_channel(channel_idx):
             """Update channel name or configuration"""
-            try:
-                data = request.get_json()
-                if not data:
-                    return jsonify({'error': 'No data provided'}), 400
+            data = request.get_json()
+            if not data:
+                return jsonify({'error': 'No data provided'}), 400
 
-                # This would use channel_manager
-                return jsonify({'success': True, 'message': 'Channel update requires bot connection'})
-            except Exception as e:
-                self.logger.error(f"Error updating channel: {e}")
-                return jsonify({'error': str(e)}), 500
+            # This would use channel_manager
+            return jsonify({'success': True, 'message': 'Channel update requires bot connection'})
 
         @self.app.route('/api/channels/stats')
+        @self._api_errors('Error getting channel stats')
         def api_channel_stats():
             """Get channel statistics and usage data"""
-            try:
-                stats = self._get_channel_statistics()
-                return jsonify(stats)
-            except Exception as e:
-                self.logger.error(f"Error getting channel stats: {e}")
-                return jsonify({'error': str(e)}), 500
+            stats = self._get_channel_statistics()
+            return jsonify(stats)
 
         @self.app.route('/api/channels/<int:channel_idx>/feeds')
+        @self._api_errors('Error getting channel feeds')
         def api_channel_feeds(channel_idx):
             """Get all feed subscriptions for a specific channel"""
-            try:
-                feeds = self._get_feeds_by_channel(channel_idx)
-                return jsonify({'feeds': feeds})
-            except Exception as e:
-                self.logger.error(f"Error getting channel feeds: {e}")
-                return jsonify({'error': str(e)}), 500
+            feeds = self._get_feeds_by_channel(channel_idx)
+            return jsonify({'feeds': feeds})
 
         @self.app.route('/api/radio/status')
+        @self._api_errors('Error getting radio status')
         def api_radio_status():
             """Current radio connection state from bot_metadata."""
-            try:
-                value = self.db_manager.get_metadata('radio_connected')
-                connected = value == '1' if value is not None else None
-                return jsonify({'connected': connected, 'status_known': value is not None})
-            except Exception as e:
-                self.logger.error(f"Error getting radio status: {e}")
-                return jsonify({'error': str(e)}), 500
+            value = self.db_manager.get_metadata('radio_connected')
+            connected = value == '1' if value is not None else None
+            return jsonify({'connected': connected, 'status_known': value is not None})
 
         @self.app.route('/api/radio/reboot', methods=['POST'])
+        @self._api_errors('Error queuing radio reboot')
         def api_radio_reboot():
             """Queue a radio reboot (disconnect + reconnect)."""
-            try:
-                op_id = self._queue_operation('radio_reboot')
-                return jsonify({'success': True, 'operation_id': op_id, 'message': 'Radio reboot queued'})
-            except Exception as e:
-                self.logger.error(f"Error queuing radio reboot: {e}")
-                return jsonify({'error': str(e)}), 500
+            op_id = self._queue_operation('radio_reboot')
+            return jsonify({'success': True, 'operation_id': op_id, 'message': 'Radio reboot queued'})
 
         @self.app.route('/api/radio/connect', methods=['POST'])
+        @self._api_errors('Error queuing radio connect/disconnect')
         def api_radio_connect():
             """Queue radio connect or disconnect. Body: {'action': 'connect'|'disconnect'}"""
-            try:
-                data = request.get_json(silent=True) or {}
-                action = data.get('action', '')
-                if action not in ('connect', 'disconnect'):
-                    return jsonify({'error': "action must be 'connect' or 'disconnect'"}), 400
-                op_type = 'radio_connect' if action == 'connect' else 'radio_disconnect'
-                op_id = self._queue_operation(op_type)
-                return jsonify({'success': True, 'pending': True, 'operation_id': op_id})
-            except Exception as e:
-                self.logger.error(f"Error queuing radio connect/disconnect: {e}")
-                return jsonify({'error': str(e)}), 500
+            data = request.get_json(silent=True) or {}
+            action = data.get('action', '')
+            if action not in ('connect', 'disconnect'):
+                return jsonify({'error': "action must be 'connect' or 'disconnect'"}), 400
+            op_type = 'radio_connect' if action == 'connect' else 'radio_disconnect'
+            op_id = self._queue_operation(op_type)
+            return jsonify({'success': True, 'pending': True, 'operation_id': op_id})
 
         @self.app.route('/api/radio/firmware/config/read', methods=['POST'])
+        @self._api_errors('Error queuing firmware read')
         def api_firmware_config_read():
             """Queue a firmware config read (path hash mode). Poll /api/channel-operations/<id>."""
-            try:
-                op_id = self._queue_operation('firmware_read')
-                return jsonify({'success': True, 'operation_id': op_id})
-            except Exception as e:
-                self.logger.error(f"Error queuing firmware read: {e}")
-                return jsonify({'error': str(e)}), 500
+            op_id = self._queue_operation('firmware_read')
+            return jsonify({'success': True, 'operation_id': op_id})
 
         @self.app.route('/api/radio/firmware/config/write', methods=['POST'])
+        @self._api_errors('Error queuing firmware write')
         def api_firmware_config_write():
             """Queue a firmware config write. Body may carry ``path_hash_mode``
             and/or ``default_flood_scope`` (a region name, or empty/null to
             clear the radio's default). Poll /api/channel-operations/<id>."""
-            try:
-                data = request.get_json(silent=True) or {}
-                allowed = {'path_hash_mode', 'default_flood_scope'}
-                payload = {k: v for k, v in data.items() if k in allowed}
-                if not payload:
-                    return jsonify({
-                        'error': 'No valid fields provided '
-                                 '(path_hash_mode, default_flood_scope)'
-                    }), 400
-                if 'path_hash_mode' in payload:
-                    mode = int(payload['path_hash_mode'])
-                    if not (0 <= mode <= 2):
-                        return jsonify({'error': 'path_hash_mode must be 0-2 (bytes per hop = mode + 1)'}), 400
-                    payload['path_hash_mode'] = mode
-                if 'default_flood_scope' in payload:
-                    raw = str(payload['default_flood_scope'] or '').strip()
-                    try:
-                        # A global marker means "no default scope", which the
-                        # radio spells as a cleared field, so both arrive here
-                        # as the empty string.
-                        canonical = (
-                            '' if flood_scope.is_global_marker(raw)
-                            else flood_scope.validate_device_scope_name(raw)
-                        )
-                    except ValueError as exc:
-                        return jsonify({'error': str(exc)}), 400
-                    payload['default_flood_scope'] = canonical
-                op_id = self._queue_operation('firmware_write', payload)
-                return jsonify({'success': True, 'operation_id': op_id})
-            except Exception as e:
-                self.logger.error(f"Error queuing firmware write: {e}")
-                return jsonify({'error': str(e)}), 500
+            data = request.get_json(silent=True) or {}
+            allowed = {'path_hash_mode', 'default_flood_scope'}
+            payload = {k: v for k, v in data.items() if k in allowed}
+            if not payload:
+                return jsonify({
+                    'error': 'No valid fields provided '
+                             '(path_hash_mode, default_flood_scope)'
+                }), 400
+            if 'path_hash_mode' in payload:
+                mode = int(payload['path_hash_mode'])
+                if not (0 <= mode <= 2):
+                    return jsonify({'error': 'path_hash_mode must be 0-2 (bytes per hop = mode + 1)'}), 400
+                payload['path_hash_mode'] = mode
+            if 'default_flood_scope' in payload:
+                raw = str(payload['default_flood_scope'] or '').strip()
+                try:
+                    # A global marker means "no default scope", which the
+                    # radio spells as a cleared field, so both arrive here
+                    # as the empty string.
+                    canonical = (
+                        '' if flood_scope.is_global_marker(raw)
+                        else flood_scope.validate_device_scope_name(raw)
+                    )
+                except ValueError as exc:
+                    return jsonify({'error': str(exc)}), 400
+                payload['default_flood_scope'] = canonical
+            op_id = self._queue_operation('firmware_write', payload)
+            return jsonify({'success': True, 'operation_id': op_id})
 
         @self.app.route('/api/radio/params', methods=['GET'])
+        @self._api_errors('Error queuing radio params read')
         def api_radio_params_read():
             """Queue a radio parameter read (freq, bw, sf, cr, tx_power). Poll /api/channel-operations/<id>."""
-            try:
-                op_id = self._queue_operation('radio_params_read')
-                return jsonify({'success': True, 'operation_id': op_id})
-            except Exception as e:
-                self.logger.error(f"Error queuing radio params read: {e}")
-                return jsonify({'error': str(e)}), 500
+            op_id = self._queue_operation('radio_params_read')
+            return jsonify({'success': True, 'operation_id': op_id})
 
         @self.app.route('/api/radio/params', methods=['POST'])
+        @self._api_errors('Error queuing radio params write')
         def api_radio_params_write():
             """Queue a radio/node parameter write. Body may mix: freq/bw/sf/cr
             (together), tx_power, name, lat/lon (together), adv_loc_policy,
@@ -5180,112 +5078,105 @@ class BotDataViewer:
             (together). manual_add_contacts is deliberately not writable here —
             it is owned by [Bot] auto_manage_contacts in config.ini.
             Poll /api/channel-operations/<id> for result."""
-            try:
-                data = request.get_json(silent=True) or {}
-                allowed = {
-                    'freq', 'bw', 'sf', 'cr', 'tx_power',
-                    'name', 'lat', 'lon', 'adv_loc_policy',
-                    'multi_acks',
-                    'telemetry_mode_base', 'telemetry_mode_loc', 'telemetry_mode_env',
-                    'rx_delay', 'airtime_factor',
-                }
-                payload = {k: v for k, v in data.items() if k in allowed}
-                if not payload:
-                    return jsonify({'error': f"No valid fields (expected one of: {', '.join(sorted(allowed))})"}), 400
+            data = request.get_json(silent=True) or {}
+            allowed = {
+                'freq', 'bw', 'sf', 'cr', 'tx_power',
+                'name', 'lat', 'lon', 'adv_loc_policy',
+                'multi_acks',
+                'telemetry_mode_base', 'telemetry_mode_loc', 'telemetry_mode_env',
+                'rx_delay', 'airtime_factor',
+            }
+            payload = {k: v for k, v in data.items() if k in allowed}
+            if not payload:
+                return jsonify({'error': f"No valid fields (expected one of: {', '.join(sorted(allowed))})"}), 400
 
-                if 'freq' in payload:
-                    freq = float(payload['freq'])
-                    if not (100.0 <= freq <= 1700.0):
-                        return jsonify({'error': 'freq must be 100–1700 MHz'}), 400
-                    payload['freq'] = freq
-                if 'bw' in payload:
-                    bw = float(payload['bw'])
-                    if bw not in (62.5, 125.0, 250.0, 500.0):
-                        return jsonify({'error': 'bw must be 62.5, 125, 250, or 500 kHz'}), 400
-                    payload['bw'] = bw
-                if 'sf' in payload:
-                    sf = int(payload['sf'])
-                    if not (5 <= sf <= 12):
-                        return jsonify({'error': 'sf must be 5–12'}), 400
-                    payload['sf'] = sf
-                if 'cr' in payload:
-                    cr = int(payload['cr'])
-                    if not (5 <= cr <= 8):
-                        return jsonify({'error': 'cr must be 5–8'}), 400
-                    payload['cr'] = cr
-                if 'tx_power' in payload:
-                    tx = int(payload['tx_power'])
-                    if not (1 <= tx <= 30):
-                        return jsonify({'error': 'tx_power must be 1–30 dBm'}), 400
-                    payload['tx_power'] = tx
-                if 'name' in payload:
-                    name = str(payload['name']).strip()
-                    if not name or len(name.encode('utf-8')) > 32:
-                        return jsonify({'error': 'name must be 1–32 bytes'}), 400
-                    payload['name'] = name
-                if ('lat' in payload) != ('lon' in payload):
-                    return jsonify({'error': 'lat and lon must be provided together'}), 400
-                if 'lat' in payload:
-                    lat = float(payload['lat'])
-                    lon = float(payload['lon'])
-                    if not (-90.0 <= lat <= 90.0):
-                        return jsonify({'error': 'lat must be -90 to 90'}), 400
-                    if not (-180.0 <= lon <= 180.0):
-                        return jsonify({'error': 'lon must be -180 to 180'}), 400
-                    payload['lat'] = lat
-                    payload['lon'] = lon
-                if 'adv_loc_policy' in payload:
-                    policy = int(payload['adv_loc_policy'])
-                    if policy not in (0, 1):
-                        return jsonify({'error': 'adv_loc_policy must be 0 (private) or 1 (share)'}), 400
-                    payload['adv_loc_policy'] = policy
-                if 'multi_acks' in payload:
-                    acks = int(payload['multi_acks'])
-                    if not (0 <= acks <= 3):
-                        return jsonify({'error': 'multi_acks must be 0–3'}), 400
-                    payload['multi_acks'] = acks
-                for telem_key in ('telemetry_mode_base', 'telemetry_mode_loc', 'telemetry_mode_env'):
-                    if telem_key in payload:
-                        mode = int(payload[telem_key])
-                        if not (0 <= mode <= 2):
-                            return jsonify({'error': f'{telem_key} must be 0 (deny), 1 (per-contact), or 2 (allow all)'}), 400
-                        payload[telem_key] = mode
-                if ('rx_delay' in payload) != ('airtime_factor' in payload):
-                    return jsonify({'error': 'rx_delay and airtime_factor must be provided together'}), 400
-                if 'rx_delay' in payload:
-                    rx_delay = float(payload['rx_delay'])
-                    airtime_factor = float(payload['airtime_factor'])
-                    if not (0.0 <= rx_delay <= 20.0):
-                        return jsonify({'error': 'rx_delay must be 0–20 seconds'}), 400
-                    if not (0.0 <= airtime_factor <= 9.0):
-                        return jsonify({'error': 'airtime_factor must be 0–9'}), 400
-                    payload['rx_delay'] = rx_delay
-                    payload['airtime_factor'] = airtime_factor
+            if 'freq' in payload:
+                freq = float(payload['freq'])
+                if not (100.0 <= freq <= 1700.0):
+                    return jsonify({'error': 'freq must be 100–1700 MHz'}), 400
+                payload['freq'] = freq
+            if 'bw' in payload:
+                bw = float(payload['bw'])
+                if bw not in (62.5, 125.0, 250.0, 500.0):
+                    return jsonify({'error': 'bw must be 62.5, 125, 250, or 500 kHz'}), 400
+                payload['bw'] = bw
+            if 'sf' in payload:
+                sf = int(payload['sf'])
+                if not (5 <= sf <= 12):
+                    return jsonify({'error': 'sf must be 5–12'}), 400
+                payload['sf'] = sf
+            if 'cr' in payload:
+                cr = int(payload['cr'])
+                if not (5 <= cr <= 8):
+                    return jsonify({'error': 'cr must be 5–8'}), 400
+                payload['cr'] = cr
+            if 'tx_power' in payload:
+                tx = int(payload['tx_power'])
+                if not (1 <= tx <= 30):
+                    return jsonify({'error': 'tx_power must be 1–30 dBm'}), 400
+                payload['tx_power'] = tx
+            if 'name' in payload:
+                name = str(payload['name']).strip()
+                if not name or len(name.encode('utf-8')) > 32:
+                    return jsonify({'error': 'name must be 1–32 bytes'}), 400
+                payload['name'] = name
+            if ('lat' in payload) != ('lon' in payload):
+                return jsonify({'error': 'lat and lon must be provided together'}), 400
+            if 'lat' in payload:
+                lat = float(payload['lat'])
+                lon = float(payload['lon'])
+                if not (-90.0 <= lat <= 90.0):
+                    return jsonify({'error': 'lat must be -90 to 90'}), 400
+                if not (-180.0 <= lon <= 180.0):
+                    return jsonify({'error': 'lon must be -180 to 180'}), 400
+                payload['lat'] = lat
+                payload['lon'] = lon
+            if 'adv_loc_policy' in payload:
+                policy = int(payload['adv_loc_policy'])
+                if policy not in (0, 1):
+                    return jsonify({'error': 'adv_loc_policy must be 0 (private) or 1 (share)'}), 400
+                payload['adv_loc_policy'] = policy
+            if 'multi_acks' in payload:
+                acks = int(payload['multi_acks'])
+                if not (0 <= acks <= 3):
+                    return jsonify({'error': 'multi_acks must be 0–3'}), 400
+                payload['multi_acks'] = acks
+            for telem_key in ('telemetry_mode_base', 'telemetry_mode_loc', 'telemetry_mode_env'):
+                if telem_key in payload:
+                    mode = int(payload[telem_key])
+                    if not (0 <= mode <= 2):
+                        return jsonify({'error': f'{telem_key} must be 0 (deny), 1 (per-contact), or 2 (allow all)'}), 400
+                    payload[telem_key] = mode
+            if ('rx_delay' in payload) != ('airtime_factor' in payload):
+                return jsonify({'error': 'rx_delay and airtime_factor must be provided together'}), 400
+            if 'rx_delay' in payload:
+                rx_delay = float(payload['rx_delay'])
+                airtime_factor = float(payload['airtime_factor'])
+                if not (0.0 <= rx_delay <= 20.0):
+                    return jsonify({'error': 'rx_delay must be 0–20 seconds'}), 400
+                if not (0.0 <= airtime_factor <= 9.0):
+                    return jsonify({'error': 'airtime_factor must be 0–9'}), 400
+                payload['rx_delay'] = rx_delay
+                payload['airtime_factor'] = airtime_factor
 
-                radio_fields = {'freq', 'bw', 'sf', 'cr'}
-                if radio_fields & set(payload) and not radio_fields <= set(payload):
-                    return jsonify({'error': 'freq, bw, sf, and cr must all be provided together'}), 400
+            radio_fields = {'freq', 'bw', 'sf', 'cr'}
+            if radio_fields & set(payload) and not radio_fields <= set(payload):
+                return jsonify({'error': 'freq, bw, sf, and cr must all be provided together'}), 400
 
-                op_id = self._queue_operation('radio_params_write', payload)
-                return jsonify({'success': True, 'operation_id': op_id})
-            except Exception as e:
-                self.logger.error(f"Error queuing radio params write: {e}")
-                return jsonify({'error': str(e)}), 500
+            op_id = self._queue_operation('radio_params_write', payload)
+            return jsonify({'success': True, 'operation_id': op_id})
 
         @self.app.route('/api/radio/advert', methods=['POST'])
+        @self._api_errors('Error queuing radio advert')
         def api_radio_advert():
             """Queue a self-advertisement. Body: {flood: bool} (default false =
             zero-hop). Poll /api/channel-operations/<id> for result."""
-            try:
-                data = request.get_json(silent=True) or {}
-                flood = data.get('flood', False)
-                if not isinstance(flood, bool):
-                    return jsonify({'error': 'flood must be true or false'}), 400
-                op_id = self._queue_operation('radio_advert', {'flood': flood})
-                return jsonify({'success': True, 'operation_id': op_id})
-            except Exception as e:
-                self.logger.error(f"Error queuing radio advert: {e}")
-                return jsonify({'error': str(e)}), 500
+            data = request.get_json(silent=True) or {}
+            flood = data.get('flood', False)
+            if not isinstance(flood, bool):
+                return jsonify({'error': 'flood must be true or false'}), 400
+            op_id = self._queue_operation('radio_advert', {'flood': flood})
+            return jsonify({'success': True, 'operation_id': op_id})
 
     def _setup_socketio_handlers(self):
         """Setup SocketIO event handlers using modern patterns"""
