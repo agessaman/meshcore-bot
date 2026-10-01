@@ -108,3 +108,28 @@ def test_noaa_hourly_text(name):
         cmd = _wx()
         results = {f"len{n}": cmd.format_hourly_forecast(periods, max_length=n) for n in (130, 200)}
     assert_golden(f"noaa_wx_hourly_{name}", results)
+
+
+LONG_FORECASTS = [
+    "Chance Showers And Thunderstorms then Mostly Sunny",
+    "Slight Chance Rain Showers And Patchy Fog then Partly Sunny With Breezy Winds",
+    "Rain And Snow Showers Likely Becoming Mostly Cloudy",
+    "Areas Of Fog then Sunny",
+    "Patchy Smoke Followed By Hazy Sunshine And Light Winds",
+]
+
+
+@pytest.mark.parametrize("name", ["miami", "seattle"])
+def test_noaa_forecast_text_with_long_forecasts(name):
+    data = copy.deepcopy(_load(name))
+    for i, period in enumerate(data["forecast"]["properties"]["periods"][1:]):
+        period["shortForecast"] = LONG_FORECASTS[i % len(LONG_FORECASTS)]
+    lat, lon = _latlon(data)
+    results = {}
+    with patch("modules.commands.wx_command.datetime", _FrozenDateTime):
+        for drop in (0, 1, 2, 3):
+            for max_length in (130, 160, 200):
+                cmd = _wx()
+                cmd.noaa_session, _ = _session(data, drop_periods=drop)
+                results[f"drop{drop}-len{max_length}"] = cmd.get_noaa_weather(lat, lon, max_length=max_length)[0]
+    assert_golden(f"noaa_wx_long_{name}", results)
