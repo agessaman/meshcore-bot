@@ -18,11 +18,8 @@ import struct
 import threading
 import time
 from collections.abc import Callable
-from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any
-
-import colorlog
 
 # Import the official meshcore package
 import meshcore
@@ -34,6 +31,7 @@ from .command_manager import CommandManager
 from .db_manager import AsyncDBManager, DBManager
 from .feed_manager import FeedManager
 from .i18n import Translator
+from .logging_setup import configure_bot_logging, configure_meshcore_loggers, meshcore_log_level
 from .message_handler import MessageHandler
 
 # Import our modules
@@ -45,26 +43,6 @@ from .solar_conditions import set_config
 from .transmission_tracker import TransmissionTracker
 from .utils import resolve_path
 from .web_viewer.integration import WebViewerIntegration
-
-
-class _JsonFormatter(logging.Formatter):
-    """Emit one JSON object per line for log aggregation pipelines (Loki, Elasticsearch, etc.)."""
-
-    def format(self, record: logging.LogRecord) -> str:
-        ts = time.strftime('%Y-%m-%dT%H:%M:%S', time.gmtime(record.created))
-        ms = int(record.msecs)
-        obj: dict[str, Any] = {
-            'timestamp': f'{ts}.{ms:03d}Z',
-            'level': record.levelname,
-            'logger': record.name,
-            'message': record.getMessage(),
-        }
-        if record.exc_info:
-            obj['exc_info'] = self.formatException(record.exc_info)
-        if record.stack_info:
-            obj['stack_info'] = self.formatStack(record.stack_info)
-        return json.dumps(obj, ensure_ascii=False)
-
 
 # True while the current task holds the radio through MeshCoreBot.radio_session(),
 # so the frames it sends don't try to take the (non-reentrant) lock again.
@@ -1001,156 +979,12 @@ class MeshCoreBot:
     def setup_logging(self) -> None:
         """Setup logging configuration.
 
-        Configures the logging system based on settings in the config file.
-        Sets up console and file handlers, formatters, and log levels for
-        both the bot and the underlying meshcore library.
+        Configures the logging system based on settings in the config file (see
+        :func:`modules.logging_setup.configure_bot_logging`), then installs the
+        shutdown signal handlers.
         If [Logging] section is missing, uses defaults (console/journal only, no file).
         """
-        if self.config.has_section('Logging'):
-            log_level = getattr(logging, self.config.get('Logging', 'log_level', fallback='INFO'))
-            colored_output = self.config.getboolean('Logging', 'colored_output', fallback=True)
-            log_file = self.config.get('Logging', 'log_file', fallback='meshcore_bot.log')
-            meshcore_log_level = getattr(logging, self.config.get('Logging', 'meshcore_log_level', fallback='INFO'))
-            json_logging = self.config.getboolean('Logging', 'json_logging', fallback=False)
-        else:
-            log_level = logging.INFO
-            colored_output = True
-            log_file = ''  # Console/journal only when no [Logging] section
-            meshcore_log_level = logging.INFO
-            json_logging = False
-
-        # Create formatter
-        if json_logging:
-            formatter: logging.Formatter = _JsonFormatter()
-        elif colored_output:
-            formatter = colorlog.ColoredFormatter(
-                '%(log_color)s%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-                datefmt='%Y-%m-%d %H:%M:%S',
-                log_colors={
-                    'DEBUG': 'cyan',
-                    'INFO': 'green',
-                    'WARNING': 'yellow',
-                    'ERROR': 'red',
-                    'CRITICAL': 'red,bg_white',
-                }
-            )
-        else:
-            formatter = logging.Formatter(
-                '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-                datefmt='%Y-%m-%d %H:%M:%S'
-            )
-
-        # Normalize root logger early to avoid duplicate/basicConfig output from dependencies.
-        # We intentionally keep root handlerless; modules that want logging should attach
-        # handlers explicitly (MeshCoreBot and meshcore loggers below).
-        root_logger = logging.getLogger()
-        root_logger.handlers.clear()
-        root_logger.setLevel(log_level)
-
-        # Setup logger
-        self.logger = logging.getLogger('MeshCoreBot')
-        self.logger.setLevel(log_level)
-
-        # Clear any existing handlers to prevent duplicates
-        self.logger.handlers.clear()
-
-        # Console handler
-        console_handler = logging.StreamHandler()
-        console_handler.setFormatter(formatter)
-        self.logger.addHandler(console_handler)
-
-        # File handler
-        # Strip whitespace and check if empty
-        log_file = log_file.strip() if log_file else ''
-
-        # If log_file is empty, skip file logging (console only)
-        if not log_file:
-            self.logger.info("No log file specified, using console logging only")
-        else:
-            # Resolve log file path (relative paths resolved from bot root, absolute paths used as-is)
-            log_file = resolve_path(log_file, self.bot_root)
-
-            # Ensure the log directory exists
-            log_dir = Path(log_file).parent
-            if not log_dir.exists():
-                try:
-                    log_dir.mkdir(parents=True, exist_ok=True)
-                except (OSError, PermissionError) as e:
-                    self.logger.warning(f"Could not create log directory {log_dir}: {e}. Using console logging only.")
-                    log_file = None
-
-            if log_file:
-                try:
-                    log_max_bytes = self.config.getint('Logging', 'log_max_bytes', fallback=5 * 1024 * 1024)
-                    log_backup_count = self.config.getint('Logging', 'log_backup_count', fallback=3)
-                    file_handler = RotatingFileHandler(
-                        log_file,
-                        maxBytes=log_max_bytes,
-                        backupCount=log_backup_count,
-                        encoding='utf-8',
-                    )
-                    file_handler.setFormatter(formatter)
-                    self.logger.addHandler(file_handler)
-                except (OSError, PermissionError) as e:
-                    self.logger.warning(f"Could not open log file {log_file}: {e}. Using console logging only.")
-
-        # Prevent propagation to root logger to avoid duplicate output
-        self.logger.propagate = False
-
-        # Save formatter for reuse (e.g. _configure_meshcore_debug_logging)
-        self._log_formatter = formatter
-
-        # Configure meshcore library logging (separate from bot logging)
-        # Configure all possible meshcore-related loggers
-        meshcore_loggers = [
-            'meshcore',
-            'meshcore_cli',
-            'meshcore.meshcore',
-            'meshcore_cli.meshcore_cli',
-            'meshcore_cli.commands',
-            'meshcore_cli.connection'
-        ]
-
-        for logger_name in meshcore_loggers:
-            logger = logging.getLogger(logger_name)
-            logger.setLevel(meshcore_log_level)
-            # Remove any existing handlers to prevent duplicate output
-            logger.handlers.clear()
-            # Add our formatter
-            if not logger.handlers:
-                handler = logging.StreamHandler()
-                handler.setFormatter(formatter)
-                logger.addHandler(handler)
-            # Prevent duplicate output if root is later configured elsewhere.
-            logger.propagate = False
-
-        # Silence noisy third-party loggers that can emit unformatted console output.
-        # APScheduler: keep INFO (but route through our formatter) and prevent propagation.
-        # tzlocal: keep WARNING+ (it can be very chatty at DEBUG).
-        apsched_logger_names = (
-            "apscheduler",
-            "apscheduler.scheduler",
-            "apscheduler.executors",
-            "apscheduler.jobstores",
-        )
-        for name in apsched_logger_names:
-            third = logging.getLogger(name)
-            third.handlers.clear()
-            third.setLevel(logging.INFO)
-            third.propagate = False
-            if not third.handlers:
-                handler = logging.StreamHandler()
-                handler.setFormatter(formatter)
-                third.addHandler(handler)
-
-        tzlocal_logger = logging.getLogger("tzlocal")
-        tzlocal_logger.handlers.clear()
-        tzlocal_logger.setLevel(logging.WARNING)
-        tzlocal_logger.propagate = False
-
-        # Log the configuration for debugging
-        mode = 'json' if json_logging else ('colored' if colored_output else 'plain')
-        self.logger.info(f"Logging configured - Bot: {logging.getLevelName(log_level)}, MeshCore: {logging.getLevelName(meshcore_log_level)}, format: {mode}")
+        self.logger, self._log_formatter = configure_bot_logging(self.config, self.bot_root)
 
         # Setup signal handlers for graceful shutdown
         self._setup_signal_handlers()
@@ -1165,33 +999,10 @@ class MeshCoreBot:
         When *enable* is False the loggers revert to the ``meshcore_log_level``
         from config with a console-only StreamHandler (same as setup_logging).
         """
-        meshcore_log_level = getattr(
-            logging,
-            self.config.get('Logging', 'meshcore_log_level', fallback='INFO')
-            if self.config.has_section('Logging') else 'INFO',
-        )
-        level = logging.DEBUG if enable else meshcore_log_level
-        loggers_to_configure = [
-            'meshcore', 'meshcore_cli', 'meshcore.meshcore',
-            'meshcore_cli.meshcore_cli', 'meshcore_cli.commands',
-            'meshcore_cli.connection',
-        ]
-        formatter = getattr(self, '_log_formatter', None)
-        for name in loggers_to_configure:
-            mc_logger = logging.getLogger(name)
-            mc_logger.setLevel(level)
-            mc_logger.handlers.clear()
-            mc_logger.propagate = False
-            if enable:
-                # Share the bot's handlers so debug output goes to the log file too
-                for h in self.logger.handlers:
-                    mc_logger.addHandler(h)
-            else:
-                # Revert to console-only StreamHandler (same as setup_logging baseline)
-                h = logging.StreamHandler()
-                if formatter:
-                    h.setFormatter(formatter)
-                mc_logger.addHandler(h)
+        if enable:
+            configure_meshcore_loggers(logging.DEBUG, None, shared_handlers=list(self.logger.handlers))
+        else:
+            configure_meshcore_loggers(meshcore_log_level(self.config), getattr(self, '_log_formatter', None))
 
     def _setup_signal_handlers(self) -> None:
         """Setup signal handlers for graceful shutdown.

@@ -26,7 +26,7 @@ class BotAdminServer(threading.Thread):
 
     def run(self) -> None:
         try:
-            from flask import Flask, Response, jsonify
+            from flask import Flask, jsonify
             from flask import request as flask_request
 
             app = Flask("bot_admin")
@@ -34,14 +34,14 @@ class BotAdminServer(threading.Thread):
             import logging as _logging
             _logging.getLogger("werkzeug").setLevel(_logging.ERROR)
 
-            def _check_auth() -> Response | None:
+            def _check_auth() -> Any:
                 auth = flask_request.headers.get("Authorization", "")
                 if not auth.startswith("Bearer ") or auth[7:] != self._token:
                     return jsonify({"error": "unauthorized"}), 401
                 return None
 
             @app.post("/api/admin/reload")
-            def reload_config():  # type: ignore[no-untyped-def]
+            def reload_config() -> Any:
                 denied = _check_auth()
                 if denied is not None:
                     return denied
@@ -50,7 +50,7 @@ class BotAdminServer(threading.Thread):
                 return jsonify({"success": success, "message": msg}), status
 
             @app.get("/api/admin/health")
-            def health():  # type: ignore[no-untyped-def]
+            def health() -> Any:
                 denied = _check_auth()
                 if denied is not None:
                     return denied

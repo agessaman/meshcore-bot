@@ -55,7 +55,7 @@ def _count_log_errors_last_24h(log_path: Path) -> tuple[int | str, int | str]:
     """Count ERROR / CRITICAL log lines from the last 24 hours.
 
     Supports default text format (`YYYY-MM-DD HH:MM:SS - name - LEVEL - msg`) and
-    JSON lines from json_logging (`_JsonFormatter` in core).
+    JSON lines from json_logging (`JsonFormatter` in logging_setup).
     """
     cutoff_local = datetime.datetime.now() - datetime.timedelta(hours=24)
     cutoff_utc = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=24)
