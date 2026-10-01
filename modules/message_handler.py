@@ -13,6 +13,7 @@ from hashlib import sha256
 from typing import Any, TypedDict
 
 from . import packet_decode, scope_gate
+from .contacts_repo import unique_recent_repeater_key
 from .enums import AdvertFlags, DeviceRole, PayloadType, RouteType
 from .graph_trace_helper import update_mesh_graph_from_trace_data
 from .meshcore_payload_decode import channel_hash_for_key, decrypt_group_text
@@ -2387,38 +2388,18 @@ class MessageHandler:
         for node_prefix in path_nodes:
             try:
                 # First check if prefix is unique in database (within recency window)
-                count_query = f"""
-                    SELECT COUNT(DISTINCT public_key) as count
-                    FROM complete_contact_tracking
-                    WHERE public_key LIKE ?
-                    AND role IN ('repeater', 'roomserver')
-                    AND COALESCE(last_advert_timestamp, last_heard) >= datetime('now', '-{recency_days} days')
-                """
-                prefix_pattern = f"{node_prefix}%"
-                count_results = self.bot.db_manager.execute_query(count_query, (prefix_pattern,))
-
-                if count_results and count_results[0].get("count", 0) == 1:
+                match_count, unique_key = unique_recent_repeater_key(self.bot.db_manager, node_prefix, recency_days)
+                if match_count == 1:
                     # Prefix is unique within recency window - safe to use database lookup
-                    query = f"""
-                        SELECT public_key
-                        FROM complete_contact_tracking
-                        WHERE public_key LIKE ?
-                        AND role IN ('repeater', 'roomserver')
-                        AND COALESCE(last_advert_timestamp, last_heard) >= datetime('now', '-{recency_days} days')
-                        ORDER BY is_starred DESC, COALESCE(last_advert_timestamp, last_heard) DESC
-                        LIMIT 1
-                    """
-                    results = self.bot.db_manager.execute_query(query, (prefix_pattern,))
-                    if results and results[0].get("public_key"):
-                        node_keys[node_prefix] = results[0]["public_key"]
+                    if unique_key:
+                        node_keys[node_prefix] = unique_key
                         self.logger.debug(
-                            f"Mesh graph: Found unique public key for prefix {node_prefix} from database: {results[0]['public_key'][:16]}..."
+                            f"Mesh graph: Found unique public key for prefix {node_prefix} from database: {unique_key[:16]}..."
                         )
                 else:
                     # Prefix collision or no recent matches - don't use database lookup (would risk wrong public key)
-                    count = count_results[0].get("count", 0) if count_results else 0
                     self.logger.debug(
-                        f"Mesh graph: Prefix {node_prefix} has {count} recent matches in database, skipping public key lookup (not unique or stale)"
+                        f"Mesh graph: Prefix {node_prefix} has {match_count} recent matches in database, skipping public key lookup (not unique or stale)"
                     )
             except Exception as e:
                 self.logger.debug(f"Error looking up public key for prefix {node_prefix}: {e}")
@@ -2730,37 +2711,17 @@ class MessageHandler:
         # For the first hop, we can only be certain if the prefix is unique (and recent)
         try:
             # Check if first_hop prefix is unique within recency window (only then can we be certain of the public key)
-            count_query = f"""
-                SELECT COUNT(DISTINCT public_key) as count
-                FROM complete_contact_tracking
-                WHERE public_key LIKE ?
-                AND role IN ('repeater', 'roomserver')
-                AND COALESCE(last_advert_timestamp, last_heard) >= datetime('now', '-{recency_days} days')
-            """
-            prefix_pattern = f"{first_hop}%"
-            count_results = self.bot.db_manager.execute_query(count_query, (prefix_pattern,))
-
-            if count_results and count_results[0].get("count", 0) == 1:
+            match_count, unique_key = unique_recent_repeater_key(self.bot.db_manager, first_hop, recency_days)
+            if match_count == 1:
                 # Prefix is unique within recency window - safe to use database lookup
-                query = f"""
-                    SELECT public_key
-                    FROM complete_contact_tracking
-                    WHERE public_key LIKE ?
-                    AND role IN ('repeater', 'roomserver')
-                    AND COALESCE(last_advert_timestamp, last_heard) >= datetime('now', '-{recency_days} days')
-                    ORDER BY is_starred DESC, COALESCE(last_advert_timestamp, last_heard) DESC
-                    LIMIT 1
-                """
-                results = self.bot.db_manager.execute_query(query, (prefix_pattern,))
-                if results and results[0].get("public_key"):
-                    first_hop_key = results[0]["public_key"]
+                if unique_key:
+                    first_hop_key = unique_key
                     self.logger.debug(
                         f"Mesh graph: Found unique public key for first hop {first_hop}: {first_hop_key[:16]}..."
                     )
             else:
-                count = count_results[0].get("count", 0) if count_results else 0
                 self.logger.debug(
-                    f"Mesh graph: First hop prefix {first_hop} has {count} recent matches, cannot be certain of public key"
+                    f"Mesh graph: First hop prefix {first_hop} has {match_count} recent matches, cannot be certain of public key"
                 )
         except Exception as e:
             self.logger.debug(f"Error checking uniqueness for first hop {first_hop}: {e}")
@@ -2839,61 +2800,21 @@ class MessageHandler:
 
             # Check if from_node prefix is unique within recency window
             try:
-                count_query = f"""
-                    SELECT COUNT(DISTINCT public_key) as count
-                    FROM complete_contact_tracking
-                    WHERE public_key LIKE ?
-                    AND role IN ('repeater', 'roomserver')
-                    AND COALESCE(last_advert_timestamp, last_heard) >= datetime('now', '-{recency_days} days')
-                """
-                prefix_pattern = f"{from_node}%"
-                count_results = self.bot.db_manager.execute_query(count_query, (prefix_pattern,))
-
-                if count_results and count_results[0].get("count", 0) == 1:
-                    query = f"""
-                        SELECT public_key
-                        FROM complete_contact_tracking
-                        WHERE public_key LIKE ?
-                        AND role IN ('repeater', 'roomserver')
-                        AND COALESCE(last_advert_timestamp, last_heard) >= datetime('now', '-{recency_days} days')
-                        ORDER BY is_starred DESC, COALESCE(last_advert_timestamp, last_heard) DESC
-                        LIMIT 1
-                    """
-                    results = self.bot.db_manager.execute_query(query, (prefix_pattern,))
-                    if results and results[0].get("public_key"):
-                        from_node_key = results[0]["public_key"]
-                        self.logger.debug(
-                            f"Mesh graph: Found unique public key for {from_node}: {from_node_key[:16]}..."
-                        )
+                _, unique_key = unique_recent_repeater_key(self.bot.db_manager, from_node, recency_days)
+                if unique_key:
+                    from_node_key = unique_key
+                    self.logger.debug(
+                        f"Mesh graph: Found unique public key for {from_node}: {from_node_key[:16]}..."
+                    )
             except Exception as e:
                 self.logger.debug(f"Error checking uniqueness for {from_node}: {e}")
 
             # Check if to_node prefix is unique within recency window
             try:
-                count_query = f"""
-                    SELECT COUNT(DISTINCT public_key) as count
-                    FROM complete_contact_tracking
-                    WHERE public_key LIKE ?
-                    AND role IN ('repeater', 'roomserver')
-                    AND COALESCE(last_advert_timestamp, last_heard) >= datetime('now', '-{recency_days} days')
-                """
-                prefix_pattern = f"{to_node}%"
-                count_results = self.bot.db_manager.execute_query(count_query, (prefix_pattern,))
-
-                if count_results and count_results[0].get("count", 0) == 1:
-                    query = f"""
-                        SELECT public_key
-                        FROM complete_contact_tracking
-                        WHERE public_key LIKE ?
-                        AND role IN ('repeater', 'roomserver')
-                        AND COALESCE(last_advert_timestamp, last_heard) >= datetime('now', '-{recency_days} days')
-                        ORDER BY is_starred DESC, COALESCE(last_advert_timestamp, last_heard) DESC
-                        LIMIT 1
-                    """
-                    results = self.bot.db_manager.execute_query(query, (prefix_pattern,))
-                    if results and results[0].get("public_key"):
-                        to_node_key = results[0]["public_key"]
-                        self.logger.debug(f"Mesh graph: Found unique public key for {to_node}: {to_node_key[:16]}...")
+                _, unique_key = unique_recent_repeater_key(self.bot.db_manager, to_node, recency_days)
+                if unique_key:
+                    to_node_key = unique_key
+                    self.logger.debug(f"Mesh graph: Found unique public key for {to_node}: {to_node_key[:16]}...")
             except Exception as e:
                 self.logger.debug(f"Error checking uniqueness for {to_node}: {e}")
 

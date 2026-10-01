@@ -7,6 +7,8 @@ Shared by message_handler (on RX) and trace command (when TRACE_DATA is received
 import time
 from typing import Any, Optional
 
+from .contacts_repo import unique_recent_repeater_key
+
 
 def update_mesh_graph_from_trace_data(
     bot: Any,
@@ -96,28 +98,9 @@ def update_mesh_graph_from_trace_data(
         neighbor_prefix = path_hashes[0].lower()
         neighbor_key = None
         try:
-            count_query = f"""
-                SELECT COUNT(DISTINCT public_key) as count
-                FROM complete_contact_tracking
-                WHERE public_key LIKE ?
-                AND role IN ('repeater', 'roomserver')
-                AND COALESCE(last_advert_timestamp, last_heard) >= datetime('now', '-{recency_days} days')
-            """
-            prefix_pattern = f"{neighbor_prefix}%"
-            count_results = bot.db_manager.execute_query(count_query, (prefix_pattern,))
-            if count_results and count_results[0].get("count", 0) == 1:
-                query = f"""
-                    SELECT public_key
-                    FROM complete_contact_tracking
-                    WHERE public_key LIKE ?
-                    AND role IN ('repeater', 'roomserver')
-                    AND COALESCE(last_advert_timestamp, last_heard) >= datetime('now', '-{recency_days} days')
-                    ORDER BY is_starred DESC, COALESCE(last_advert_timestamp, last_heard) DESC
-                    LIMIT 1
-                """
-                results = bot.db_manager.execute_query(query, (prefix_pattern,))
-                if results and results[0].get("public_key"):
-                    neighbor_key = results[0]["public_key"]
+            _, unique_key = unique_recent_repeater_key(bot.db_manager, neighbor_prefix, recency_days)
+            if unique_key:
+                neighbor_key = unique_key
         except Exception as e:
             bot.logger.debug(f"Error checking uniqueness for immediate neighbor {neighbor_prefix}: {e}")
 
@@ -173,28 +156,9 @@ def update_mesh_graph_from_trace_data(
     geographic_distance = None
     last_node_key = None
     try:
-        count_query = f"""
-            SELECT COUNT(DISTINCT public_key) as count
-            FROM complete_contact_tracking
-            WHERE public_key LIKE ?
-            AND role IN ('repeater', 'roomserver')
-            AND COALESCE(last_advert_timestamp, last_heard) >= datetime('now', '-{recency_days} days')
-        """
-        prefix_pattern = f"{last_node}%"
-        count_results = bot.db_manager.execute_query(count_query, (prefix_pattern,))
-        if count_results and count_results[0].get("count", 0) == 1:
-            query = f"""
-                SELECT public_key
-                FROM complete_contact_tracking
-                WHERE public_key LIKE ?
-                AND role IN ('repeater', 'roomserver')
-                AND COALESCE(last_advert_timestamp, last_heard) >= datetime('now', '-{recency_days} days')
-                ORDER BY is_starred DESC, COALESCE(last_advert_timestamp, last_heard) DESC
-                LIMIT 1
-            """
-            results = bot.db_manager.execute_query(query, (prefix_pattern,))
-            if results and results[0].get("public_key"):
-                last_node_key = results[0]["public_key"]
+        _, unique_key = unique_recent_repeater_key(bot.db_manager, last_node, recency_days)
+        if unique_key:
+            last_node_key = unique_key
     except Exception as e:
         bot.logger.debug(f"Error checking uniqueness for trace last_node {last_node}: {e}")
 
@@ -246,31 +210,12 @@ def update_mesh_graph_from_trace_data(
         to_node_key = None
         for node, key_var in [(from_node, "from_node_key"), (to_node, "to_node_key")]:
             try:
-                count_query = f"""
-                    SELECT COUNT(DISTINCT public_key) as count
-                    FROM complete_contact_tracking
-                    WHERE public_key LIKE ?
-                    AND role IN ('repeater', 'roomserver')
-                    AND COALESCE(last_advert_timestamp, last_heard) >= datetime('now', '-{recency_days} days')
-                """
-                prefix_pattern = f"{node}%"
-                count_results = bot.db_manager.execute_query(count_query, (prefix_pattern,))
-                if count_results and count_results[0].get("count", 0) == 1:
-                    query = f"""
-                        SELECT public_key
-                        FROM complete_contact_tracking
-                        WHERE public_key LIKE ?
-                        AND role IN ('repeater', 'roomserver')
-                        AND COALESCE(last_advert_timestamp, last_heard) >= datetime('now', '-{recency_days} days')
-                        ORDER BY is_starred DESC, COALESCE(last_advert_timestamp, last_heard) DESC
-                        LIMIT 1
-                    """
-                    results = bot.db_manager.execute_query(query, (prefix_pattern,))
-                    if results and results[0].get("public_key"):
-                        if key_var == "from_node_key":
-                            from_node_key = results[0]["public_key"]
-                        else:
-                            to_node_key = results[0]["public_key"]
+                _, unique_key = unique_recent_repeater_key(bot.db_manager, node, recency_days)
+                if unique_key:
+                    if key_var == "from_node_key":
+                        from_node_key = unique_key
+                    else:
+                        to_node_key = unique_key
             except Exception as e:
                 bot.logger.debug(f"Error checking uniqueness for trace node {node}: {e}")
 
