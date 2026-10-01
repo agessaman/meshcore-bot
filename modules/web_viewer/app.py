@@ -5790,7 +5790,6 @@ class BotDataViewer:
                             # Process new data
                             for row in rows:
                                 try:
-                                    row[0]
                                     data_json = row[1]
                                     data_type = row[2]
                                     data = json.loads(data_json)
@@ -8793,7 +8792,6 @@ class BotDataViewer:
                     items_data = [items_data]
 
                 # Get items (we'll filter and limit later)
-                parser_config.get('id_field', 'id')
                 title_field = parser_config.get('title_field', 'title')
                 description_field = parser_config.get('description_field', 'description')
                 timestamp_field = parser_config.get('timestamp_field', 'created_at')

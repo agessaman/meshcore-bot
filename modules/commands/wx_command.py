@@ -846,7 +846,6 @@ class WxCommand(BaseCommand):
 
                 # Send the special weather statement (already formatted with prioritization)
                 alert_text = weather_data[2]
-                weather_data[3]
                 await self.send_response(message, alert_text)
             elif forecast_type == "multiday":
                 # Use message splitting for multi-day forecasts
@@ -1587,7 +1586,6 @@ class WxCommand(BaseCommand):
             for period in future_periods:
                 start_time_str = period.get('startTime', '')
                 temp = period.get('temperature', '')
-                period.get('temperatureUnit', 'F')
                 short_forecast = period.get('shortForecast', '')
                 wind_speed = period.get('windSpeed', '')
                 wind_direction = period.get('windDirection', '')
@@ -2509,7 +2507,6 @@ class WxCommand(BaseCommand):
                     nws_headline = alert.get('nws_headline', '')
                     summary = alert.get('summary', '')
                     effective = alert.get('effective', '')
-                    alert.get('expires', '')
 
                     # Try to extract unique distinguishing details
                     distinguishing_detail = ""

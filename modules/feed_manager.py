@@ -344,7 +344,6 @@ class FeedManager:
         feed_id = feed['id']
         feed_type = feed['feed_type']
         feed_url = feed['feed_url']
-        feed['channel_name']
 
         try:
             # Validate URL for SSRF protection

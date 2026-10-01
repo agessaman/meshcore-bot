@@ -1020,13 +1020,11 @@ class GlobalWxCommand(BaseCommand):
 
             # Check units in response to verify API is respecting our unit requests
             current_units = data.get('current_units', {})
-            current_units.get('temperature_2m', '°F')
             visibility_unit = current_units.get('visibility', 'm')
 
             # Extract current conditions
             current = data.get('current', {})
             daily = data.get('daily', {})
-            data.get('hourly', {})
 
             # Current conditions - API should return in Fahrenheit when requested
             temp = int(current.get('temperature_2m', 0))

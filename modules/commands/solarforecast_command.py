@@ -652,7 +652,6 @@ class SolarforecastCommand(BaseCommand):
                         lat: float = None, lon: float = None) -> str:
         """Format forecast data to fit 130 characters with user-friendly labels"""
         watt_hours_day = result.get('watt_hours_day', {})
-        result.get('num_days', 0)
 
         if not watt_hours_day:
             return self.translate('commands.solarforecast.no_data')

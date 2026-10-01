@@ -1389,7 +1389,6 @@ class PrefixCommand(BaseCommand):
         include_all = data.get('include_all', True)  # Default to True for API responses
 
         # Get bot name for database responses
-        self.bot.config.get('Bot', 'bot_name', fallback='Bot')
 
         # Handle pluralization
         plural = 's' if node_count != 1 else ''
