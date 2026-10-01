@@ -6,19 +6,28 @@ Processes incoming messages and routes them to appropriate command handlers
 
 import asyncio
 import copy
-import hmac as hmac_mod
 import time
 from collections import OrderedDict
 from collections.abc import Callable, Iterable
 from hashlib import sha256
 from typing import Any, TypedDict
 
+from . import scope_gate
 from .enums import AdvertFlags, DeviceRole, PayloadType, PayloadVersion, RouteType
 from .graph_trace_helper import update_mesh_graph_from_trace_data
 from .meshcore_payload_decode import channel_hash_for_key, decrypt_group_text
 from .models import MeshMessage
 from .neighbors_discovery import upsert_zero_hop_observed_path_via_manager
-from .region_warning import VERDICT_GLOBAL, VERDICT_SCOPED, VERDICT_UNKNOWN
+from .rf_match import (  # noqa: F401 - re-exported for callers and tests
+    RF_MATCH_CHANNEL_AUTHENTICATED,
+    RF_MATCH_EXACT,
+    RF_MATCH_FALLBACK,
+    RF_MATCH_KEY,
+    RF_MATCH_PARTIAL,
+    RF_MATCH_PAYLOAD,
+    RF_MATCH_PUBKEY,
+    rf_data_is_correlated,
+)
 from .security_utils import sanitize_input, sanitize_name
 from .utils import (
     calculate_packet_hash,
@@ -27,32 +36,9 @@ from .utils import (
     format_elapsed_display,
 )
 
-# How a cached RF entry was matched to a message, recorded on the dict returned by
-# MessageHandler.find_recent_rf_data. Anything other than a fallback is known to be
-# this message's own packet; a fallback is merely the most recent packet heard, so its
-# route belongs to some other transmission and must not be attributed (issue #80).
 # Stand-in used when a channel message carries no "Name: " prefix to extract a
 # sender from. It is not a node: every such message would share this identity.
 CHANNEL_SENDER_FALLBACK = "Channel User"
-
-RF_MATCH_KEY = "_rf_match"
-RF_MATCH_EXACT = "exact"
-RF_MATCH_PUBKEY = "pubkey"
-RF_MATCH_PARTIAL = "partial"
-# Verified against the decoded message payload's own fields rather than a packet
-# prefix. Channel messages have no prefix to match on, so this is the only positive
-# correlation available to them (see _rf_data_matches_chan_payload).
-RF_MATCH_PAYLOAD = "payload"
-RF_MATCH_CHANNEL_AUTHENTICATED = "channel_authenticated"
-RF_MATCH_FALLBACK = "fallback"
-
-
-def rf_data_is_correlated(rf_data: dict | None) -> bool:
-    """True when rf_data is known to be this message's packet, not a fallback guess."""
-    if not rf_data:
-        return False
-    return rf_data.get(RF_MATCH_KEY, RF_MATCH_FALLBACK) != RF_MATCH_FALLBACK
-
 
 class PendingMessageEntry(TypedDict):
     data: dict[str, Any]
@@ -146,51 +132,9 @@ class MessageHandler:
 
         self.logger.info(f"RF Data Correlation: timeout={self.rf_data_timeout}s, enhanced={self.enhanced_correlation}")
 
-    @staticmethod
-    def _match_scope(
-        transport_code: int, payload_type: int, pkt_payload: bytes, scope_keys: dict[str, bytes]
-    ) -> str | None:
-        """Return the scope name whose HMAC matches transport_code, or None.
+    _match_scope = staticmethod(scope_gate.match_scope)
 
-        Mirrors the firmware's TransportKey::calcTransportCode: computes
-        HMAC-SHA256(scope_key, [payload_type_byte] + pkt_payload)[0:2] as uint16_le
-        and compares it against transport_code (transport_codes[0] from TC_FLOOD header).
-        """
-        if not scope_keys:
-            return None
-        check_data = bytes([payload_type]) + pkt_payload
-        for name, key in scope_keys.items():
-            digest = hmac_mod.new(key, check_data, sha256).digest()
-            computed = int.from_bytes(digest[:2], "little")
-            if computed == 0:
-                computed = 1
-            elif computed == 0xFFFF:
-                computed = 0xFFFE
-            if computed == transport_code:
-                return name
-        return None
-
-    @staticmethod
-    def _scope_fields_from_packet_info(
-        packet_info: dict[str, Any] | None,
-    ) -> tuple[int | None, int | None, int | None, str]:
-        """Extract TC_FLOOD scope-match inputs from decode_meshcore_packet output."""
-        if not packet_info:
-            return None, None, None, ""
-        rt = packet_info.get("route_type")
-        if rt is not None and hasattr(rt, "value"):
-            rt = rt.value
-        pt = packet_info.get("payload_type")
-        if pt is not None and hasattr(pt, "value"):
-            pt = int(pt.value)
-        elif pt is not None:
-            pt = int(pt)
-        tc_code1 = None
-        transport_codes = packet_info.get("transport_codes")
-        if isinstance(transport_codes, dict):
-            tc_code1 = transport_codes.get("code1")
-        payload_hex = (packet_info.get("payload_hex") or "") or ""
-        return rt, tc_code1, pt, payload_hex
+    _scope_fields_from_packet_info = staticmethod(scope_gate.scope_fields_from_packet_info)
 
     def _resolve_reply_scope_from_rf_data(
         self,
@@ -198,228 +142,17 @@ class MessageHandler:
         packet_info: dict[str, Any] | None,
         scope_keys: dict[str, bytes],
     ) -> str | None:
-        """Match incoming TC_FLOOD to flood_scopes, preferring decoded packet over stale cache."""
-        rt = recent_rf_data.get("route_type_int")
-        tc_code1 = recent_rf_data.get("transport_code1")
-        scope_payload_type = recent_rf_data.get("payload_type_int")
-        scope_payload_hex = recent_rf_data.get("scope_payload_hex") or ""
+        return scope_gate.resolve_reply_scope_from_rf_data(recent_rf_data, packet_info, scope_keys, self.logger)
 
-        dec_rt, dec_tc, dec_pt, dec_hex = self._scope_fields_from_packet_info(packet_info)
-        used_decode_fallback = False
-        if dec_rt == 0:
-            if rt != 0:
-                used_decode_fallback = True
-            rt = 0
-            if dec_tc is not None:
-                if tc_code1 != dec_tc:
-                    used_decode_fallback = True
-                tc_code1 = dec_tc
-            if dec_pt is not None:
-                if scope_payload_type != dec_pt:
-                    used_decode_fallback = True
-                scope_payload_type = dec_pt
-            if dec_hex:
-                if scope_payload_hex != dec_hex:
-                    used_decode_fallback = True
-                scope_payload_hex = dec_hex
+    _effective_route_type_int = staticmethod(scope_gate.effective_route_type_int)
 
-        if used_decode_fallback:
-            self.logger.debug(
-                "TC_FLOOD scope fields from packet decode (cache had route_type=%s tc=%s)",
-                recent_rf_data.get("route_type_int"),
-                recent_rf_data.get("transport_code1"),
-            )
+    _grp_txt_payload_type_int = staticmethod(scope_gate.grp_txt_payload_type_int)
 
-        if not (
-            rt == 0
-            and tc_code1 is not None
-            and scope_payload_type is not None
-            and scope_payload_hex
-        ):
-            if scope_keys:
-                self.logger.debug(
-                    "Scope check: route_type=%s (need 0=TC_FLOOD), "
-                    "tc_code1=%s, payload_type=%s, payload_hex=%s",
-                    rt,
-                    "set" if tc_code1 is not None else "None",
-                    scope_payload_type,
-                    "set" if scope_payload_hex else "empty",
-                )
-            return None
+    _is_confirmed_global_flood = staticmethod(scope_gate.is_confirmed_global_flood)
 
-        try:
-            pkt_payload_bytes = bytes.fromhex(scope_payload_hex)
-        except ValueError:
-            self.logger.debug("Scope check: invalid scope_payload_hex on correlated RF data")
-            return None
+    _is_rf_data_scope_eligible = staticmethod(scope_gate.is_rf_data_scope_eligible)
 
-        reply_scope = self._match_scope(tc_code1, scope_payload_type, pkt_payload_bytes, scope_keys)
-        if reply_scope:
-            self.logger.info(
-                "Incoming TC_FLOOD matched scope '%s' (tc_code1=%s); reply will use same scope",
-                reply_scope,
-                tc_code1,
-            )
-        elif scope_keys:
-            self.logger.debug(
-                "TC_FLOOD scope not matched: tc_code1=%s payload_type=%s "
-                "(configured scopes: %s)",
-                tc_code1,
-                scope_payload_type,
-                ", ".join(sorted(scope_keys.keys())),
-            )
-        return reply_scope
-
-    def _effective_route_type_int(
-        self,
-        recent_rf_data: dict[str, Any] | None,
-        packet_info: dict[str, Any] | None,
-    ) -> int | None:
-        """Route type for allowlist gate, preferring decode when it indicates TC_FLOOD."""
-        if not recent_rf_data:
-            return None
-        rt = recent_rf_data.get("route_type_int")
-        dec_rt, _, _, _ = self._scope_fields_from_packet_info(packet_info)
-        if dec_rt == 0:
-            return 0
-        return rt
-
-    @staticmethod
-    def _grp_txt_payload_type_int() -> int:
-        """Payload type used for channel text on TC_FLOOD (GRP_TXT)."""
-        return int(PayloadType.GRP_TXT.value)
-
-    def _is_confirmed_global_flood(
-        self,
-        rf_data: dict[str, Any] | None,
-        packet_info: dict[str, Any] | None = None,
-        *,
-        scoped_traffic_in_window: bool = True,
-    ) -> bool:
-        """True only when this message is proven *not* to be a scoped regional flood.
-
-        Used to decide whether a '*' entry in flood_scopes authorizes a reply. '*'
-        permits unscoped global traffic, so it needs positive evidence, and there
-        are two independent ways to get it:
-
-        * RF data correlated to *this* message showing RouteType.FLOOD.
-        * No scope-eligible packet anywhere in the RF window
-          (``scoped_traffic_in_window=False``). A scoped message travels as
-          TRANSPORT_FLOOD GRP_TXT, so if the radio heard no such packet while this
-          message arrived, the message cannot have been scoped. That conclusion is
-          window-wide, so unlike a route type read off a fallback row it does not
-          depend on having picked the right cached packet.
-
-        The second route is what makes '*' usable on a channel: MeshCore's CHAN
-        payload carries neither raw_hex nor a pubkey prefix, so a channel message
-        has no correlation key at all and always lands on the most-recent-packet
-        fallback. Requiring correlation alone rejected *every* channel message.
-
-        An empty RF window still fails closed: with no observed traffic there is
-        no evidence either way.
-        """
-        if not rf_data:
-            return False
-
-        if rf_data_is_correlated(rf_data):
-            route_type = rf_data.get("route_type_int")
-            dec_rt, _tc, _pt, _hex = self._scope_fields_from_packet_info(packet_info)
-            if dec_rt is not None:
-                route_type = dec_rt
-            return route_type == RouteType.FLOOD.value
-
-        # Uncorrelated: this row describes some other packet, so its route type
-        # proves nothing about the message. Only the absence of scoped traffic does.
-        return not scoped_traffic_in_window
-
-    def _is_rf_data_scope_eligible(
-        self,
-        rf_data: dict[str, Any] | None,
-        packet_info: dict[str, Any] | None = None,
-    ) -> bool:
-        """True when RF row has fields needed for TC_FLOOD regional scope HMAC matching."""
-        if not rf_data:
-            return False
-        rt = rf_data.get("route_type_int")
-        tc_code1 = rf_data.get("transport_code1")
-        payload_type = rf_data.get("payload_type_int")
-        scope_payload_hex = rf_data.get("scope_payload_hex") or ""
-
-        dec_rt, dec_tc, dec_pt, dec_hex = self._scope_fields_from_packet_info(packet_info)
-        if dec_rt == 0:
-            rt = 0
-            if dec_tc is not None:
-                tc_code1 = dec_tc
-            if dec_pt is not None:
-                payload_type = dec_pt
-            if dec_hex:
-                scope_payload_hex = dec_hex
-
-        if rt != int(RouteType.TRANSPORT_FLOOD.value):
-            return False
-        if tc_code1 is None or payload_type is None or not scope_payload_hex:
-            return False
-        return int(payload_type) == self._grp_txt_payload_type_int()
-
-    def _classify_channel_flood_scope(
-        self,
-        *,
-        reply_scope: str | None,
-        recent_rf_data: dict[str, Any] | None,
-        packet_info: dict[str, Any] | None,
-        scope_rf_data: dict[str, Any] | None,
-        scope_packet_info: dict[str, Any] | None,
-    ) -> str:
-        """Classify a channel message's flood scope as scoped, global, or unknown.
-
-        "Scoped" means the message carried a region code (a TC_FLOOD transport
-        code), whether or not that code matches one of ours. "Global" means it
-        was proven to be an ordinary unscoped FLOOD. Anything else is unknown.
-
-        Every test here needs RF data correlated to *this* message, and the
-        scoped tests run before the global one, so both kinds of ambiguity
-        resolve away from ``global``. That direction matters: ``global`` is the
-        verdict that can spend airtime telling someone to fix their config, and
-        a message whose scope the radio did not witness is not evidence that the
-        sender omitted a region.
-
-        In particular this does **not** use ``_is_confirmed_global_flood``'s
-        second route, which infers "unscoped" from the absence of any
-        scope-eligible packet in the window. That inference is sound enough to
-        decide whether a ``*`` entry in ``flood_scopes`` authorizes a reply — the
-        cost of being wrong is one reply the operator broadly wanted — but it is
-        an argument from absence, and the cost of being wrong here is an
-        unsolicited message accusing someone of a misconfiguration they may not
-        have. Channel messages still correlate through
-        ``_find_rf_row_matching_chan_payload`` (payload type, path length and
-        SNR all agreeing), so the ordinary case is unaffected.
-        """
-        if reply_scope:
-            return VERDICT_SCOPED
-
-        # A correlated scope-eligible row *is* a TC_FLOOD GRP_TXT for this
-        # message: it carried a transport code, so a region was set even though
-        # it is not one this bot has keys for.
-        if (
-            scope_rf_data
-            and rf_data_is_correlated(scope_rf_data)
-            and self._is_rf_data_scope_eligible(scope_rf_data, scope_packet_info)
-        ):
-            return VERDICT_SCOPED
-
-        if recent_rf_data and rf_data_is_correlated(recent_rf_data):
-            route_type = self._effective_route_type_int(recent_rf_data, packet_info)
-            if route_type == int(RouteType.TRANSPORT_FLOOD.value):
-                return VERDICT_SCOPED
-
-        if rf_data_is_correlated(recent_rf_data) and self._is_confirmed_global_flood(
-            recent_rf_data,
-            packet_info,
-            scoped_traffic_in_window=scope_rf_data is not None,
-        ):
-            return VERDICT_GLOBAL
-
-        return VERDICT_UNKNOWN
+    _classify_channel_flood_scope = staticmethod(scope_gate.classify_channel_flood_scope)
 
     async def _observe_flood_scope(
         self,
