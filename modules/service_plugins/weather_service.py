@@ -943,15 +943,11 @@ class WeatherService(BaseServicePlugin):
         """
         self.logger.info(f"Starting weather alerts polling (interval: {self.poll_weather_alerts_interval}s)")
 
-        while self._running:
-            try:
-                await self._check_weather_alerts()
-                await asyncio.sleep(self.poll_weather_alerts_interval)
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                self.logger.error(f"Error in weather alerts polling loop: {e}")
-                await asyncio.sleep(60)  # Wait 1 minute on error before retrying
+        await self.run_periodic(
+            self._check_weather_alerts,
+            lambda: self.poll_weather_alerts_interval,
+            "Error in weather alerts polling loop",
+        )
 
     async def _check_weather_alerts(self) -> None:
         """Check for new weather alerts (US-only via NOAA API).
@@ -1097,15 +1093,11 @@ class WeatherService(BaseServicePlugin):
             f"Starting rain nowcast polling (interval: {self.poll_rain_nowcast_interval}s, "
             f"lead: {self.rain_nowcast_lead_minutes}min)"
         )
-        while self._running:
-            try:
-                await self._check_rain_nowcast()
-                await asyncio.sleep(self.poll_rain_nowcast_interval)
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                self.logger.error(f"Error in rain nowcast polling loop: {e}")
-                await asyncio.sleep(60)  # Wait 1 minute on error before retrying
+        await self.run_periodic(
+            self._check_rain_nowcast,
+            lambda: self.poll_rain_nowcast_interval,
+            "Error in rain nowcast polling loop",
+        )
 
     async def _check_rain_nowcast(self) -> None:
         """Fetch the precip nowcast for the bot's position and push if rain is incoming."""
@@ -1396,15 +1388,11 @@ class WeatherService(BaseServicePlugin):
         """
         self.logger.info(f"Starting lightning aggregation (interval: {self.blitz_collection_interval}s)")
 
-        while self._running:
-            try:
-                await self._process_lightning_buffer()
-                await asyncio.sleep(self.blitz_collection_interval)
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                self.logger.error(f"Error in lightning aggregation loop: {e}")
-                await asyncio.sleep(60)  # Wait 1 minute on error before retrying
+        await self.run_periodic(
+            self._process_lightning_buffer,
+            lambda: self.blitz_collection_interval,
+            "Error in lightning aggregation loop",
+        )
 
     async def _process_lightning_buffer(self) -> None:
         """Process buffered lightning strikes and send alerts if threshold met.

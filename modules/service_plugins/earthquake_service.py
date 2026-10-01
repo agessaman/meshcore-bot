@@ -178,15 +178,9 @@ class EarthquakeService(BaseServicePlugin):
             self.poll_interval_seconds,
             self.time_window_minutes,
         )
-        while self._running:
-            try:
-                await self._check_earthquakes()
-                await asyncio.sleep(self.poll_interval_seconds)
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                self.logger.error("Error in earthquake poll loop: %s", e)
-                await asyncio.sleep(60)
+        await self.run_periodic(
+            self._check_earthquakes, lambda: self.poll_interval_seconds, "Error in earthquake poll loop"
+        )
 
     async def _check_earthquakes(self) -> None:
         end_time = datetime.now(timezone.utc)

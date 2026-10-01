@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 from abc import ABC, abstractmethod
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any, Optional
 
@@ -233,6 +234,30 @@ class BaseServicePlugin(ABC):
         - Close any open resources
         """
         pass
+
+    async def run_periodic(
+        self,
+        work: Callable[[], Awaitable[Any]],
+        interval: Callable[[], float],
+        error_message: str,
+        error_delay: float = 60,
+    ) -> None:
+        """Run ``work`` every ``interval()`` seconds while the service runs.
+
+        An exception is logged as ``"<error_message>: <error>"`` and followed by
+        ``error_delay`` seconds before the next try; cancellation ends the loop.
+        ``interval`` is read before every sleep, so a changed setting applies on
+        the next round.
+        """
+        while self._running:
+            try:
+                await work()
+                await asyncio.sleep(interval())
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                self.logger.error("%s: %s", error_message, e)
+                await asyncio.sleep(error_delay)
 
     def _subscribe(self, meshcore: Any, event_type: Any, handler: Any) -> Any:
         """Subscribe *handler* to a meshcore event and remember it for ``_unsubscribe_all``.
