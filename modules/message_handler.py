@@ -60,6 +60,31 @@ class PendingMessageEntry(TypedDict):
     processed: bool
 
 
+def _signal_value(
+    payload: dict[str, Any],
+    metadata: dict[str, Any] | None,
+    payload_keys: tuple[str, ...],
+    metadata_keys: tuple[str, ...],
+    convert: Callable[[Any], Any],
+) -> Any:
+    """Read a signal metric (SNR or RSSI) from an event payload, else its metadata.
+
+    The first of ``payload_keys`` present in the payload decides, even when its
+    value is None; metadata is consulted only when no payload key is present.
+    A present value is passed through ``convert``.
+    """
+    for key in payload_keys:
+        if key in payload:
+            raw = payload.get(key)
+            return convert(raw) if raw is not None else None
+    if metadata:
+        for key in metadata_keys:
+            if key in metadata:
+                raw = metadata.get(key)
+                return convert(raw) if raw is not None else None
+    return None
+
+
 def split_path_hex(path_hex: str, hex_chars: int) -> list[str]:
     """Split a hex path into lowercase node IDs of ``hex_chars`` each.
 
@@ -694,26 +719,7 @@ class MessageHandler:
             rssi: int | None = None
 
             # Try to get SNR from payload first - check multiple possible field names
-            if "SNR" in payload:
-                _snr = payload.get("SNR")
-                snr = float(_snr) if _snr is not None else None
-            elif "snr" in payload:
-                _snr = payload.get("snr")
-                snr = float(_snr) if _snr is not None else None
-            elif "signal_to_noise" in payload:
-                _snr = payload.get("signal_to_noise")
-                snr = float(_snr) if _snr is not None else None
-            elif "signal_noise_ratio" in payload:
-                _snr = payload.get("signal_noise_ratio")
-                snr = float(_snr) if _snr is not None else None
-            # Try to get SNR from event metadata if available
-            elif metadata:
-                if "snr" in metadata:
-                    _snr = metadata.get("snr")
-                    snr = float(_snr) if _snr is not None else None
-                elif "SNR" in metadata:
-                    _snr = metadata.get("SNR")
-                    snr = float(_snr) if _snr is not None else None
+            snr = _signal_value(payload, metadata, ("SNR", "snr", "signal_to_noise", "signal_noise_ratio"), ("snr", "SNR"), float)
 
             # If still no SNR, try to get it from the cache using pubkey prefix from payload
             if snr is None:
@@ -723,23 +729,7 @@ class MessageHandler:
                     self.logger.debug(f"Retrieved cached SNR {snr} for pubkey {pubkey_prefix}")
 
             # Try to get RSSI from payload first
-            if "RSSI" in payload:
-                _rssi = payload.get("RSSI")
-                rssi = int(_rssi) if _rssi is not None else None
-            elif "rssi" in payload:
-                _rssi = payload.get("rssi")
-                rssi = int(_rssi) if _rssi is not None else None
-            elif "signal_strength" in payload:
-                _rssi = payload.get("signal_strength")
-                rssi = int(_rssi) if _rssi is not None else None
-            # Try to get RSSI from event metadata if available
-            elif metadata:
-                if "rssi" in metadata:
-                    _rssi = metadata.get("rssi")
-                    rssi = int(_rssi) if _rssi is not None else None
-                elif "RSSI" in metadata:
-                    _rssi = metadata.get("RSSI")
-                    rssi = int(_rssi) if _rssi is not None else None
+            rssi = _signal_value(payload, metadata, ("RSSI", "rssi", "signal_strength"), ("rssi", "RSSI"), int)
 
             # If still no RSSI, try to get it from the cache using pubkey prefix from payload
             if rssi is None:
@@ -2549,20 +2539,7 @@ class MessageHandler:
             rssi: int | None = None
 
             # Try to get SNR from payload first
-            if "SNR" in payload:
-                _snr = payload.get("SNR")
-                snr = float(_snr) if _snr is not None else None
-            elif "snr" in payload:
-                _snr = payload.get("snr")
-                snr = float(_snr) if _snr is not None else None
-            # Try to get SNR from event metadata if available
-            elif metadata:
-                if "snr" in metadata:
-                    _snr = metadata.get("snr")
-                    snr = float(_snr) if _snr is not None else None
-                elif "SNR" in metadata:
-                    _snr = metadata.get("SNR")
-                    snr = float(_snr) if _snr is not None else None
+            snr = _signal_value(payload, metadata, ("SNR", "snr"), ("snr", "SNR"), float)
 
             # If still no SNR, try to get it from the cache using pubkey prefix from payload
             if snr is None:
@@ -2572,23 +2549,7 @@ class MessageHandler:
                     self.logger.debug(f"Retrieved cached SNR {snr} for pubkey {pubkey_prefix}")
 
             # Try to get RSSI from payload first
-            if "RSSI" in payload:
-                _rssi = payload.get("RSSI")
-                rssi = int(_rssi) if _rssi is not None else None
-            elif "rssi" in payload:
-                _rssi = payload.get("rssi")
-                rssi = int(_rssi) if _rssi is not None else None
-            elif "signal_strength" in payload:
-                _rssi = payload.get("signal_strength")
-                rssi = int(_rssi) if _rssi is not None else None
-            # Try to get RSSI from event metadata if available
-            elif metadata:
-                if "rssi" in metadata:
-                    _rssi = metadata.get("rssi")
-                    rssi = int(_rssi) if _rssi is not None else None
-                elif "RSSI" in metadata:
-                    _rssi = metadata.get("RSSI")
-                    rssi = int(_rssi) if _rssi is not None else None
+            rssi = _signal_value(payload, metadata, ("RSSI", "rssi", "signal_strength"), ("rssi", "RSSI"), int)
 
             # If still no RSSI, try to get it from the cache using pubkey prefix from payload
             if rssi is None:
