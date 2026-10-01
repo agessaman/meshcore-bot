@@ -1117,7 +1117,6 @@ class TestRadioOfflineRecovery:
 
     def test_cancelling_a_reply_does_not_strand_its_successful_trial(self, tmp_path):
         import time as real_time
-
         from concurrent.futures import ThreadPoolExecutor
 
         bot = self._offline_bot(tmp_path)
