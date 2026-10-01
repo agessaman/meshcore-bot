@@ -1578,21 +1578,58 @@ class RepeaterManager:
 
         return None
 
+    def _recent_geocode_age(self, packet_hash: Optional[str]) -> Optional[float]:
+        """Seconds since *packet_hash* was geocoded, if within the cache window; else None."""
+        if not packet_hash or packet_hash == "0000000000000000":
+            return None
+        cached_at = self.geocoding_cache.get(packet_hash)
+        if cached_at is None:
+            return None
+        cache_age = time.time() - cached_at
+        return cache_age if cache_age < self.geocoding_cache_window else None
+
+    def _city_from_address(self, address: dict, latitude: float, longitude: float) -> Optional[str]:
+        """City name from a Nominatim address, county as a rural fallback, with neighborhood for large cities."""
+        # Get city name from various fields (in order of preference)
+        city = (address.get('city') or
+               address.get('town') or
+               address.get('village') or
+               address.get('hamlet') or
+               address.get('municipality') or
+               address.get('suburb'))
+
+        # If no city found, try county as fallback (for rural areas)
+        # Keep "County" in the name to disambiguate from cities with the same name
+        if not city:
+            county = address.get('county')
+            if county:
+                # Keep full county name to distinguish from cities (e.g., "Snohomish County" vs "Snohomish" city)
+                city = county  # Keep "County" suffix to avoid ambiguity
+                self.logger.debug(f"Using county '{county}' as location name for coordinates {latitude}, {longitude}")
+
+        if not city:
+            return None
+        # For large cities, try to get neighborhood information
+        neighborhood = self._get_neighborhood_for_large_city(address, city)
+        return f"{neighborhood}, {city}" if neighborhood else city
+
+    @staticmethod
+    def _state_from_address(address: dict) -> Optional[str]:
+        """State, province or region from a Nominatim address."""
+        return (address.get('state') or
+                address.get('province') or
+                address.get('region'))
+
     def _get_state_country_from_coordinates(self, latitude: float, longitude: float, packet_hash: Optional[str] = None) -> tuple[Optional[str], Optional[str]]:
         """Get state and country from coordinates using reverse geocoding"""
         # Check packet hash cache first to prevent duplicate API calls
-        if packet_hash and packet_hash != "0000000000000000":
-            current_time = time.time()
-            cached_at = self.geocoding_cache.get(packet_hash)
-            if cached_at is not None:
-                cache_age = current_time - cached_at
-                if cache_age < self.geocoding_cache_window:
-                    # Check database for state/country data
-                    existing_data = self._get_existing_geocoded_data(latitude, longitude)
-                    if existing_data:
-                        return existing_data.get('state'), existing_data.get('country')
-                    # If no data in database, return None (don't make API call)
-                    return None, None
+        if self._recent_geocode_age(packet_hash) is not None:
+            # Check database for state/country data
+            existing_data = self._get_existing_geocoded_data(latitude, longitude)
+            if existing_data:
+                return existing_data.get('state'), existing_data.get('country')
+            # If no data in database, return None (don't make API call)
+            return None, None
 
         # Check database first to avoid duplicate API calls
         existing_data = self._get_existing_geocoded_data(latitude, longitude)
@@ -1607,10 +1644,7 @@ class RepeaterManager:
             if location:
                 address = location.raw.get('address', {})
 
-                # Get state/province
-                state = (address.get('state') or
-                        address.get('province') or
-                        address.get('region'))
+                state = self._state_from_address(address)
 
                 # Get country
                 country = address.get('country')
@@ -1625,18 +1659,13 @@ class RepeaterManager:
     def _get_city_from_coordinates(self, latitude: float, longitude: float, packet_hash: Optional[str] = None) -> Optional[str]:
         """Get city name from coordinates using reverse geocoding, with neighborhood for large cities"""
         # Check packet hash cache first to prevent duplicate API calls
-        if packet_hash and packet_hash != "0000000000000000":
-            current_time = time.time()
-            cached_at = self.geocoding_cache.get(packet_hash)
-            if cached_at is not None:
-                cache_age = current_time - cached_at
-                if cache_age < self.geocoding_cache_window:
-                    # Check database for city data
-                    existing_data = self._get_existing_geocoded_data(latitude, longitude)
-                    if existing_data and existing_data.get('city'):
-                        return existing_data.get('city')
-                    # If no city in database, return None (don't make API call)
-                    return None
+        if self._recent_geocode_age(packet_hash) is not None:
+            # Check database for city data
+            existing_data = self._get_existing_geocoded_data(latitude, longitude)
+            if existing_data and existing_data.get('city'):
+                return existing_data.get('city')
+            # If no city in database, return None (don't make API call)
+            return None
 
         # Check database first to avoid duplicate API calls
         existing_data = self._get_existing_geocoded_data(latitude, longitude)
@@ -1650,31 +1679,9 @@ class RepeaterManager:
             )
             if location:
                 address = location.raw.get('address', {})
-
-                # Get city name from various fields (in order of preference)
-                city = (address.get('city') or
-                       address.get('town') or
-                       address.get('village') or
-                       address.get('hamlet') or
-                       address.get('municipality') or
-                       address.get('suburb'))
-
-                # If no city found, try county as fallback (for rural areas)
-                # Keep "County" in the name to disambiguate from cities with the same name
-                if not city:
-                    county = address.get('county')
-                    if county:
-                        # Keep full county name to distinguish from cities (e.g., "Snohomish County" vs "Snohomish" city)
-                        city = county  # Keep "County" suffix to avoid ambiguity
-                        self.logger.debug(f"Using county '{county}' as location name for coordinates {latitude}, {longitude}")
-
+                city = self._city_from_address(address, latitude, longitude)
                 if city:
-                    # For large cities, try to get neighborhood information
-                    neighborhood = self._get_neighborhood_for_large_city(address, city)
-                    if neighborhood:
-                        return f"{neighborhood}, {city}"
-                    else:
-                        return city
+                    return city
 
             return None
 
@@ -1702,19 +1709,15 @@ class RepeaterManager:
                 return location_info
 
             # Check packet hash cache first (before database check)
-            if packet_hash and packet_hash != "0000000000000000":
-                current_time = time.time()
-                cached_at = self.geocoding_cache.get(packet_hash)
-                if cached_at is not None:
-                    cache_age = current_time - cached_at
-                    if cache_age < self.geocoding_cache_window:
-                        self.logger.debug(f"📍 Skipping geocoding API call for packet_hash {packet_hash[:16]}... (geocoded {cache_age:.1f}s ago)")
-                        # Still check database for location data
-                        existing_data = self._get_existing_geocoded_data(latitude, longitude)
-                        if existing_data:
-                            return existing_data
-                        # If no database data, return empty (don't make API call)
-                        return location_info
+            cache_age = self._recent_geocode_age(packet_hash)
+            if cache_age is not None:
+                self.logger.debug(f"📍 Skipping geocoding API call for packet_hash {(packet_hash or '')[:16]}... (geocoded {cache_age:.1f}s ago)")
+                # Still check database for location data
+                existing_data = self._get_existing_geocoded_data(latitude, longitude)
+                if existing_data:
+                    return existing_data
+                # If no database data, return empty (don't make API call)
+                return location_info
 
             # Check database first for existing geocoded data
             existing_data = self._get_existing_geocoded_data(latitude, longitude)
@@ -1739,36 +1742,13 @@ class RepeaterManager:
                 address = location.raw.get('address', {})
                 self.logger.debug(f"Geocoding API returned address data: {list(address.keys())}")
 
-                # Get city name from various fields (in order of preference)
-                city = (address.get('city') or
-                       address.get('town') or
-                       address.get('village') or
-                       address.get('hamlet') or
-                       address.get('municipality') or
-                       address.get('suburb'))
-
-                # If no city found, try county as fallback (for rural areas)
-                # Keep "County" in the name to disambiguate from cities with the same name
-                if not city:
-                    county = address.get('county')
-                    if county:
-                        # Keep full county name to distinguish from cities (e.g., "Snohomish County" vs "Snohomish" city)
-                        city = county  # Keep "County" suffix to avoid ambiguity
-                        self.logger.debug(f"Using county '{county}' as location name for coordinates {latitude}, {longitude}")
-
+                city = self._city_from_address(address, latitude, longitude)
                 if city:
-                    # For large cities, try to get neighborhood information
-                    neighborhood = self._get_neighborhood_for_large_city(address, city)
-                    if neighborhood:
-                        location_info['city'] = f"{neighborhood}, {city}"
-                    else:
-                        location_info['city'] = city
+                    location_info['city'] = city
                     self.logger.debug(f"Extracted city: {location_info['city']}")
 
                 # Get state/province information (don't use county here since we may have used it for city)
-                state = (address.get('state') or
-                        address.get('province') or
-                        address.get('region'))
+                state = self._state_from_address(address)
                 if state:
                     location_info['state'] = state
                     self.logger.debug(f"Extracted state: {state}")
