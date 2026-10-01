@@ -317,11 +317,6 @@ class BotDataViewer:
         self._clients_lock = threading.Lock()  # Thread safety for connected_clients
         self.max_clients = 10
 
-        # Database connection pooling with thread safety
-        self._db_connection = None
-        self._db_lock = threading.Lock()
-        self._db_last_used = 0
-        self._db_timeout = 300  # 5 minutes connection timeout
         # SQLite pragma handling (including the once-per-section WAL setup)
         # lives in DBManager; see _configure_db_connection.
 

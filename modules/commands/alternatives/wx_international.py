@@ -22,7 +22,6 @@ from ...utils import (
     format_temperature_high_low,
     geocode_city_sync,
     geocode_zipcode_sync,
-    get_nominatim_geocoder,
     rate_limited_nominatim_reverse_sync,
 )
 from ..base_command import BaseCommand
@@ -95,9 +94,6 @@ class GlobalWxCommand(BaseCommand):
         if self.precipitation_unit not in ['inch', 'mm']:
             self.logger.warning(f"Invalid precipitation_unit '{self.precipitation_unit}', using 'inch'")
             self.precipitation_unit = 'inch'
-
-        # Initialize geocoder (will use rate-limited helpers for actual calls)
-        self.geolocator = get_nominatim_geocoder()
 
         # Get database manager for geocoding cache
         self.db_manager = bot.db_manager

@@ -24,7 +24,6 @@ from ..location import (
 from ..models import MeshMessage
 from ..utils import (
     abbreviate_location,
-    get_nominatim_geocoder,
     is_valid_timezone,
     normalize_us_state,
 )
@@ -87,9 +86,6 @@ class AqiCommand(BaseCommand):
             if timezone_str:
                 self.logger.warning("Invalid timezone '%s', using system timezone", timezone_str)
             self.timezone = "America/Los_Angeles" if not timezone_str else "UTC"
-
-        # Initialize geocoder (will use rate-limited helpers for actual calls)
-        self.geolocator = get_nominatim_geocoder()
 
         # Get database manager for geocoding cache
         self.db_manager = bot.db_manager
