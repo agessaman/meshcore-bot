@@ -1622,6 +1622,7 @@ class TestDMAckTimeoutFloor:
             ("0", 0.0),
             ("-1", 8.0),
             ("soon", 8.0),
+            ("8000", 60.0),
         ],
     )
     async def test_min_timeout_passed_to_retry(self, cm_bot, configured, expected):
@@ -1633,7 +1634,7 @@ class TestDMAckTimeoutFloor:
         assert kwargs["timeout"] == 0
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize(("floor", "delivered"), [("0", False), ("0.6", True)])
+    @pytest.mark.parametrize(("floor", "delivered"), [("0", False), ("1.5", True)])
     async def test_late_ack_counts_once_the_floor_covers_it(self, cm_bot, floor, delivered):
         """Real meshcore retry loop: an ACK slower than the radio's estimate.
 

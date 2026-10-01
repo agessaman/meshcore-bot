@@ -46,6 +46,7 @@ from .models import (
 # Default for [Bot] dm_min_ack_timeout: the shortest per-attempt wait for a DM's
 # ACK, in seconds. See CommandManager._dm_min_ack_timeout.
 DM_MIN_ACK_TIMEOUT_DEFAULT = 8.0
+DM_MIN_ACK_TIMEOUT_MAX = 60.0
 
 # Links the bot puts on the air, for keeping them intact across a chunk boundary.
 # Explicit schemes and "www." only: matching bare "host.tld/path" would take
@@ -1291,10 +1292,10 @@ class CommandManager:
 
         ``send_msg_with_retry`` otherwise waits 1.2x the radio's
         ``suggested_timeout``, which the firmware derives from the packet's
-        airtime alone. The round trip also carries fixed costs that do not
-        shrink with airtime: the recipient's ACK delay, each repeater's
-        retransmit and rx delays, the radio's TX queue, and the host link. On a
-        fast preset a zero-hop estimate is barely over a second, so the ACK of
+        airtime and hop count with only ~750 ms of fixed allowance. The round
+        trip also carries fixed costs that do not shrink with airtime: the
+        recipient's ACK delay, each repeater's retransmit and rx delays, the
+        radio's TX queue, and the host link. On a fast preset a zero-hop estimate is barely over a second, so the ACK of
         a message that arrived lands after the last attempt has given up, and
         the send reports a failure for a delivered message. A floor only
         lengthens the wait before declaring failure; an ACK still ends it at
@@ -1306,7 +1307,10 @@ class CommandManager:
             )
         except ValueError:
             return DM_MIN_ACK_TIMEOUT_DEFAULT
-        return value if value >= 0 else DM_MIN_ACK_TIMEOUT_DEFAULT
+        if value < 0:
+            return DM_MIN_ACK_TIMEOUT_DEFAULT
+        # A value meant as milliseconds would otherwise hold one DM for hours.
+        return min(value, DM_MIN_ACK_TIMEOUT_MAX)
 
     async def _send_dm_payload(
         self,
