@@ -237,8 +237,10 @@ class EarthquakeService(BaseServicePlugin):
                     )
                     url_detail = props.get("url", "")
                     if self.send_link and url_detail:
+                        # Second part of the same post: the reply limiter already let the first through.
                         await self.bot.command_manager.send_channel_message(
-                            self.channel, url_detail, scope=self.get_mesh_flood_scope()
+                            self.channel, url_detail, scope=self.get_mesh_flood_scope(),
+                            skip_user_rate_limit=True,
                         )
                     self.logger.info("Earthquake alert sent: %s", event_id)
                 self.seen_event_ids.add(event_id)

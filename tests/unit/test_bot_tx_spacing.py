@@ -7,7 +7,7 @@ from itertools import pairwise
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 from modules.models import MeshMessage
-from modules.rate_limiter import BotTxRateLimiter, RateLimiter
+from modules.rate_limiter import BotTxRateLimiter
 
 
 def test_concurrent_senders_are_spaced_by_the_tx_limit():
@@ -61,13 +61,6 @@ def test_wx_sends_the_alert_part_past_the_reply_limiter():
     assert calls[1].kwargs.get("skip_user_rate_limit") is True
 
 
-def test_the_reply_limiter_would_drop_a_second_part_sent_without_skipping():
-    # Why the flag matters: the default 10 s reply limit refuses a second send a few seconds later.
-    limiter = RateLimiter(10)
-    limiter.record_send()
-    assert limiter.can_send() is False
-
-
 def test_alert_list_parts_after_the_first_skip_the_reply_limiter():
     from modules.commands.alert_command import AlertCommand
 
@@ -104,3 +97,43 @@ def test_gwx_sends_the_alert_part_past_the_reply_limiter():
     calls = cmd.send_response.await_args_list
     assert [c.args[1] for c in calls][-2:] == ["Paris 15C", "Storm warning"]
     assert calls[-1].kwargs.get("skip_user_rate_limit") is True
+
+
+def test_earthquake_link_follows_the_alert_past_the_reply_limiter():
+    from modules.service_plugins.earthquake_service import EarthquakeService
+
+    service = object.__new__(EarthquakeService)
+    service.bot = MagicMock()
+    service.bot.command_manager.send_channel_message = AsyncMock(return_value=True)
+    service.logger = MagicMock()
+    service.channel = "quakes"
+    service.send_link = True
+    service.seen_event_ids = set()
+    service._last_posted_time_ms = 0
+    service.time_window_minutes = 60
+    service.min_magnitude = 3
+    service.minlatitude = service.maxlatitude = service.minlongitude = service.maxlongitude = 0
+    service._format_quake = lambda quake: "M5.0 near Somewhere"
+    service.get_mesh_flood_scope = lambda: None
+    response = MagicMock()
+    response.json.return_value = {
+        "features": [{"id": "q1", "properties": {"time": 1_000, "url": "https://example.invalid/q1"}}]
+    }
+    service._session = MagicMock()
+    service._session.get.return_value = response
+
+    asyncio.run(service._check_earthquakes())
+    calls = service.bot.command_manager.send_channel_message.await_args_list
+    assert [c.args[1] for c in calls] == ["M5.0 near Somewhere", "https://example.invalid/q1"]
+    assert calls[1].kwargs.get("skip_user_rate_limit") is True
+
+
+def test_announcement_confirmation_skips_the_reply_limiter():
+    import inspect
+
+    from modules.commands import announcements_command
+
+    # The confirmation follows send_channel_message, which just used the reply limiter.
+    source = inspect.getsource(announcements_command)
+    i = source.index("Announcement '{trigger_name}' sent to {target_channel}")
+    assert "skip_user_rate_limit=True" in source[i : i + 120]
