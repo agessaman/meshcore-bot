@@ -30,7 +30,7 @@ semantic versioning.
 
 ### Fixed
 
-- Database migrations are applied atomically again. The runner wraps pending migrations in one transaction and rolls back on failure, but nine migrations used `executescript`, which commits implicitly first, so a failure partway through left every earlier migration (and its `schema_version` row) committed. Migrations now run their SQL statement by statement inside the runner's transaction; the resulting schema is unchanged.
+- Database migrations are applied atomically again. The runner wraps pending migrations in one transaction and rolls back on failure, but nine migrations used `executescript`, which commits implicitly first, so a failure partway through left every earlier migration (and its `schema_version` row) committed. Migrations now run their SQL statement by statement inside the runner's transaction, and a migration that tries to manage the transaction itself is refused; the resulting schema is unchanged. One consequence: the database write lock is now held for the whole pending-migration run rather than released after each script, so a long index build at startup blocks other writers until all migrations finish.
 
 - The web viewer login no longer redirects off-site after sign-in. The `next`
   check let `///host` and `/\host` through, which browsers treat as another

@@ -525,3 +525,48 @@ class TestMigrationAtomicity:
             """,
         )
         assert [r[0] for r in conn.execute("SELECT v FROM t ORDER BY v")] == ["a;b", "c"]
+
+
+    def test_trailing_comment_after_last_statement(self):
+        import sqlite3
+
+        from modules.db_migrations import _execute_statements
+
+        conn = sqlite3.connect(":memory:")
+        _execute_statements(conn.cursor(), "CREATE TABLE t (v TEXT);\n-- trailing note; with semicolon\n")
+        _execute_statements(conn.cursor(), "CREATE TABLE u (v TEXT);\n-- trailing\n;")
+        assert {r[0] for r in conn.execute("SELECT name FROM sqlite_master")} == {"t", "u"}
+
+    @pytest.mark.parametrize("stmt", ["COMMIT", "BEGIN IMMEDIATE", "ROLLBACK", "VACUUM", "-- note\nEND"])
+    def test_transaction_control_is_refused(self, stmt):
+        import sqlite3
+
+        from modules.db_migrations import _execute_statements
+
+        conn = sqlite3.connect(":memory:")
+        with pytest.raises(ValueError, match="break the runner's transaction"):
+            _execute_statements(conn.cursor(), f"CREATE TABLE t (v TEXT);\n{stmt};")
+
+    def test_failure_rolls_back_column_added_to_an_existing_table(self):
+        """Legacy databases: ALTER TABLE on a pre-existing table is undone too."""
+        import sqlite3
+        from unittest.mock import Mock, patch
+
+        from modules import db_migrations
+
+        conn = sqlite3.connect(":memory:")
+        db_migrations.MigrationRunner(conn, Mock()).run()
+        before = {r[1] for r in conn.execute("PRAGMA table_info(packet_stream)")}
+        applied_before = conn.execute("SELECT COUNT(*) FROM schema_version").fetchone()[0]
+
+        def _add_then_boom(cursor):
+            db_migrations._add_column(cursor, "packet_stream", "zz_probe", "TEXT")
+            db_migrations._execute_statements(cursor, "CREATE INDEX IF NOT EXISTS zz_idx ON packet_stream(zz_probe);")
+            raise RuntimeError("late failure")
+
+        extra = list(db_migrations.MIGRATIONS) + [(9998, "adds then fails", _add_then_boom)]
+        with patch.object(db_migrations, "MIGRATIONS", extra):
+            with pytest.raises(RuntimeError, match="late failure"):
+                db_migrations.MigrationRunner(conn, Mock()).run()
+        assert {r[1] for r in conn.execute("PRAGMA table_info(packet_stream)")} == before
+        assert conn.execute("SELECT COUNT(*) FROM schema_version").fetchone()[0] == applied_before

@@ -72,15 +72,37 @@ def _execute_statements(cursor: sqlite3.Cursor, script: str) -> None:
         buffer += piece + ";"
         if sqlite3.complete_statement(buffer):
             if _has_sql(buffer):
-                cursor.execute(buffer)
+                _execute_in_transaction(cursor, buffer)
             buffer = ""
     remainder = buffer[:-1]  # drop the ';' re-added after the final piece
     if _has_sql(remainder):
-        cursor.execute(remainder)
+        _execute_in_transaction(cursor, remainder)
+
+
+_TRANSACTION_BREAKERS = ("BEGIN", "COMMIT", "END", "ROLLBACK", "VACUUM", "SAVEPOINT", "RELEASE")
+
+
+def _execute_in_transaction(cursor: sqlite3.Cursor, statement: str) -> None:
+    """Execute one migration statement, refusing any that would end or escape the transaction."""
+    words = [w for w in _strip_line_comments(statement).split() if w]
+    if words and words[0].upper().rstrip(";") in _TRANSACTION_BREAKERS:
+        raise ValueError(
+            f"Migration statement {words[0]!r} would break the runner's transaction; "
+            "migrations must not manage transactions themselves"
+        )
+    cursor.execute(statement)
+
+
+def _strip_line_comments(text: str) -> str:
+    return "\n".join(line for line in text.splitlines() if not line.strip().startswith("--"))
 
 
 def _has_sql(text: str) -> bool:
-    """True when *text* holds more than whitespace and ``--`` comments."""
+    """True when *text* holds more than whitespace and whole-line ``--`` comments.
+
+    Block comments are not recognized; a comment-only statement that slips
+    through is accepted by SQLite as a no-op.
+    """
     return any(line.strip() and not line.strip().startswith("--") for line in text.splitlines())
 
 
