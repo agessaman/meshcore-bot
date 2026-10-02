@@ -590,8 +590,8 @@ class WXSIMParser:
         parts = []
         for period in forecast.periods[:num_days]:
             # Convert temps
-            high = self._convert_temp(period.high_temp, temp_unit) if period.high_temp else None
-            low = self._convert_temp(period.low_temp, temp_unit) if period.low_temp else None
+            high = self._convert_temp(period.high_temp, temp_unit) if period.high_temp is not None else None
+            low = self._convert_temp(period.low_temp, temp_unit) if period.low_temp is not None else None
             temp_symbol = "°F" if temp_unit == 'fahrenheit' else "°C"
 
             # Format day

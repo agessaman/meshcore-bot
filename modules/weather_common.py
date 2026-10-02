@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import asyncio
 import re
+from collections.abc import Iterable
+from datetime import datetime
 from typing import Any, Optional, Union
 
 from .clients.mqtt_weather import (
@@ -138,6 +140,43 @@ class WeatherCommandMixin:
     def _count_display_width(self, text: str) -> int:
         """Count UTF-8 byte length of text. Matches RF packet byte limit from get_max_message_length()."""
         return len(text.encode('utf-8'))
+
+    @staticmethod
+    def _hour_label(start_time_str: str) -> str:
+        """12-hour label for an ISO start time; empty when missing or unparseable."""
+        if not start_time_str:
+            return ""
+        try:
+            hour = datetime.fromisoformat(start_time_str.replace('Z', '+00:00')).hour
+        except (ValueError, TypeError):
+            return ""
+        return f"{hour % 12 or 12}{'AM' if hour < 12 else 'PM'}"
+
+    @staticmethod
+    def _without_arrow(direction: str) -> str:
+        """A wind direction label without its leading arrow emoji ("↖️WNW" -> "WNW").
+
+        Hourly lines drop the arrow to keep an extra hour in the reply; the
+        letters (translated or not) stay.
+        """
+        return re.sub(r"^\W+", "", direction)
+
+    @staticmethod
+    def _short_hourly_description(description: str) -> str:
+        """Long hourly descriptions keep their first three words, or 18 characters."""
+        if len(description) > 18:
+            words = description.split()
+            return ' '.join(words[:3]) if len(words) > 3 else description[:18]
+        return description
+
+    def _pack_hourly_lines(self, hourly_lines: Iterable[str], max_length: int) -> str:
+        """Pack consecutive whole hours into one UTF-8 byte budget."""
+        lines: list[str] = []
+        for line in hourly_lines:
+            if self._count_display_width("\n".join(lines + [line])) > max_length:
+                break
+            lines.append(line)
+        return "\n".join(lines) or self.translate(f'{self.translation_ns}.hourly_not_available')
 
     async def _send_multiday_forecast(self, message: Any, forecast_text: str) -> None:
         """Send a multi-day forecast, packing whole lines into as few messages as fit.

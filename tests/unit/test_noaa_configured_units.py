@@ -192,3 +192,13 @@ def test_celsius_hourly_uses_si_and_converts_nothing_else():
         text, _ = cmd.get_noaa_hourly_weather(*_latlon())
     assert any("forecast/hourly" in u and "units=si" in u for u in asked)
     assert "km/h" not in text
+
+
+@pytest.mark.parametrize(("units", "shown"), [({}, "WNW10"), ({"wind_speed_unit": "kmh"}, "WNW16")])
+def test_hourly_wind_keeps_its_full_direction_and_follows_the_wind_unit(units, shown):
+    periods = copy.deepcopy(US["hourly"]["properties"]["periods"])
+    for p in periods:
+        p["windSpeed"], p["windDirection"] = "10 mph", "WNW"
+    with patch("modules.commands.wx_command.datetime", _Clock):
+        text = _wx(units).format_hourly_forecast(periods, max_length=200)
+    assert text.split("\n")[0].endswith(f" {shown}")
