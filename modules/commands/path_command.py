@@ -553,266 +553,11 @@ class PathCommand(BaseCommand):
             # Query the database for repeaters with matching prefixes
             # Node IDs are the configured prefix of the public key (see Bot.prefix_bytes)
             for node_id in node_ids:
-                # Test dependency injection: use provided lookup when available
-                if lookup_func is not None:
-                    results = lookup_func(node_id)
-                    # Normalize to expected format (create_test_repeater already matches)
-                    if results:
-                        results = [
-                            {
-                                'name': r['name'],
-                                'public_key': r['public_key'],
-                                'device_type': r.get('device_type', 'repeater'),
-                                'last_seen': r.get('last_seen', r.get('last_heard')),
-                                'last_heard': r.get('last_heard', r.get('last_seen')),
-                                'last_advert_timestamp': r.get('last_advert_timestamp'),
-                                'is_active': r.get('is_active', True),
-                                'latitude': r.get('latitude'),
-                                'longitude': r.get('longitude'),
-                                'city': r.get('city'),
-                                'state': r.get('state'),
-                                'country': r.get('country'),
-                                'advert_count': r.get('advert_count', 1),
-                                'signal_strength': r.get('signal_strength'),
-                                'snr': r.get('snr'),
-                                'hop_count': r.get('hop_count'),
-                                'role': r.get('role', 'repeater'),
-                                'is_starred': bool(r.get('is_starred', False)),
-                            }
-                            for r in results
-                        ]
-                else:
-                    # First try complete tracking database (all heard contacts, filtered by role)
-                    results = []
-                    if hasattr(self.bot, 'repeater_manager'):
-                        try:
-                            # Get repeater devices from complete database (repeaters and roomservers)
-                            complete_db = await self.bot.repeater_manager.get_repeater_devices(include_historical=True)
-
-                            for row in complete_db:
-                                if public_key_has_prefix(row['public_key'], node_id):
-                                    results.append({
-                                        'name': row['name'],
-                                        'public_key': row['public_key'],
-                                        'device_type': row['device_type'],
-                                        'last_seen': row['last_heard'],
-                                        'last_heard': row['last_heard'],  # Include last_heard for recency calculation
-                                        'last_advert_timestamp': row.get('last_advert_timestamp'),  # Include last_advert_timestamp for recency calculation
-                                        'is_active': row['is_currently_tracked'],
-                                        'latitude': row['latitude'],
-                                        'longitude': row['longitude'],
-                                        'city': row['city'],
-                                        'state': row['state'],
-                                        'country': row['country'],
-                                        'advert_count': row['advert_count'],
-                                        'signal_strength': row['signal_strength'],
-                                        'snr': row.get('snr'),  # Include SNR for zero-hop bonus
-                                        'hop_count': row['hop_count'],
-                                        'role': row['role'],
-                                        'is_starred': bool(row.get('is_starred', 0))  # Include star status for bias
-                                    })
-                        except Exception as e:
-                            self.logger.debug(f"Error getting complete database: {e}")
-                            results = []
-
-                    # If complete tracking database failed, try direct query to complete_contact_tracking
-                    if not results:
-                        try:
-                            # Build query with age filtering if configured
-                            # Use last_advert_timestamp if available, otherwise fall back to last_heard
-                            if self.max_repeater_age_days > 0:
-                                query = f'''
-                                    SELECT name, public_key, device_type, last_heard, last_heard as last_seen,
-                                           last_advert_timestamp, latitude, longitude, city, state, country,
-                                           advert_count, signal_strength, snr, hop_count, role, is_starred
-                                    FROM complete_contact_tracking
-                                    WHERE public_key LIKE ? AND role IN ('repeater', 'roomserver')
-                                    AND (
-                                        (last_advert_timestamp IS NOT NULL AND last_advert_timestamp >= datetime('now', '-{self.max_repeater_age_days} days'))
-                                        OR (last_advert_timestamp IS NULL AND last_heard >= datetime('now', '-{self.max_repeater_age_days} days'))
-                                    )
-                                    ORDER BY COALESCE(last_advert_timestamp, last_heard) DESC
-                                '''
-                            else:
-                                query = '''
-                                    SELECT name, public_key, device_type, last_heard, last_heard as last_seen,
-                                           last_advert_timestamp, latitude, longitude, city, state, country,
-                                           advert_count, signal_strength, snr, hop_count, role, is_starred
-                                    FROM complete_contact_tracking
-                                    WHERE public_key LIKE ? AND role IN ('repeater', 'roomserver')
-                                    ORDER BY COALESCE(last_advert_timestamp, last_heard) DESC
-                                '''
-
-                            prefix_pattern = f"{node_id}%"
-                            results = self.bot.db_manager.execute_query(query, (prefix_pattern,))
-
-                            # Convert results to expected format
-                            if results:
-                                results = [
-                                    {
-                                        'name': row['name'],
-                                        'public_key': row['public_key'],
-                                        'device_type': row['device_type'],
-                                        'last_seen': row['last_seen'],
-                                        'last_heard': row.get('last_heard', row['last_seen']),
-                                        'last_advert_timestamp': row.get('last_advert_timestamp'),
-                                        'is_active': True,
-                                        'latitude': row['latitude'],
-                                        'longitude': row['longitude'],
-                                        'city': row['city'],
-                                        'state': row['state'],
-                                        'country': row['country'],
-                                        'advert_count': row.get('advert_count', 0),
-                                        'signal_strength': row.get('signal_strength'),
-                                        'snr': row.get('snr'),
-                                        'hop_count': row.get('hop_count'),
-                                        'role': row.get('role'),
-                                        'is_starred': bool(row.get('is_starred', 0))
-                                    } for row in results
-                                ]
-                        except Exception as e:
-                            self.logger.debug(f"Error querying complete_contact_tracking directly: {e}")
-                            results = []
-
+                results = await self._repeater_candidates(node_id, lookup_func)
                 if results:
-                    # Build repeaters_data with the fields the selection engine needs. hop_count is
-                    # intentionally omitted (this preserves prior behavior: the bot path's graph
-                    # selection never applied the zero-hop bonus through this code path).
-                    repeaters_data = [
-                        {
-                            'name': row['name'],
-                            'public_key': row['public_key'],
-                            'device_type': row['device_type'],
-                            'last_seen': row['last_seen'],
-                            'last_heard': row.get('last_heard', row['last_seen']),  # Include last_heard for recency calculation
-                            'last_advert_timestamp': row.get('last_advert_timestamp'),  # Include last_advert_timestamp for recency calculation
-                            'is_active': row['is_active'],
-                            'latitude': row['latitude'],
-                            'longitude': row['longitude'],
-                            'city': row['city'],
-                            'state': row['state'],
-                            'country': row['country'],
-                            'snr': row.get('snr'),  # Include SNR for zero-hop bonus
-                            'is_starred': row.get('is_starred', False)  # Include star status for bias
-                        } for row in results
-                    ]
-
-                    # Delegate recency filtering, graph-based disambiguation, and geographic
-                    # proximity to the shared engine (modules.path_inference). Candidate gathering
-                    # (above), output shaping, and the device-contacts fallback (below) stay here.
-                    selection = select_node_repeater(
-                        node_id, repeaters_data, node_ids, self._inference_config(),
-                        mesh_graph=getattr(self.bot, 'mesh_graph', None),
-                        db_manager=self.bot.db_manager,
-                        logger=self.logger,
-                        graph_n=getattr(self.bot, 'prefix_hex_chars', 2),
-                        sender_location=sender_location,
-                        # Deliberately NOT passing node_index: repeater_info below
-                        # is keyed by node_id, so a repeated 1-byte prefix shares
-                        # one entry. Resolving each occurrence separately would
-                        # make the later hop overwrite the earlier one's display.
-                        # Fixing that needs repeater_info re-keyed by hop index.
-                    )
-
-                    if selection.status == 'resolved':
-                        # High confidence selection (graph or geographic)
-                        selected_repeater = selection.repeater
-                        repeater_info[node_id] = {
-                            'name': selected_repeater['name'],
-                            'public_key': selected_repeater['public_key'],
-                            'device_type': selected_repeater['device_type'],
-                            'last_seen': selected_repeater['last_seen'],
-                            'is_active': selected_repeater['is_active'],
-                            'found': True,
-                            'collision': False,
-                            'geographic_guess': (selection.method == 'geographic'),
-                            'graph_guess': (selection.method == 'graph'),
-                            'confidence': selection.confidence,
-                            # Carried through for {path_distance}; without these the
-                            # distance calculation can never find a coordinate.
-                            'latitude': selected_repeater.get('latitude'),
-                            'longitude': selected_repeater.get('longitude'),
-                        }
-                    elif selection.status == 'collision':
-                        # Low confidence or no selection method - show collision warning
-                        repeater_info[node_id] = {
-                            'found': True,
-                            'collision': True,
-                            'matches': selection.matches,
-                            'node_id': node_id,
-                            'repeaters': selection.recent_repeaters
-                        }
-                    elif selection.status == 'single':
-                        # Single recent match after filtering - no choice made, so no confidence indicator
-                        repeater = selection.repeater
-                        repeater_info[node_id] = {
-                            'name': repeater['name'],
-                            'public_key': repeater['public_key'],
-                            'device_type': repeater['device_type'],
-                            'last_seen': repeater['last_seen'],
-                            'is_active': repeater['is_active'],
-                            'found': True,
-                            'collision': False,
-                            'latitude': repeater.get('latitude'),
-                            'longitude': repeater.get('longitude'),
-                        }
-                    else:
-                        # All repeaters filtered out (too old) - show as not found
-                        repeater_info[node_id] = {
-                            'found': False,
-                            'node_id': node_id
-                        }
+                    self._resolve_repeater_candidates(node_id, results, node_ids, sender_location, repeater_info)
                 else:
-                    # Also check device contacts for active repeaters
-                    device_matches = []
-                    if hasattr(self.bot.meshcore, 'contacts'):
-                        for contact_key, contact_data in self.bot.meshcore.contacts.items():
-                            public_key = contact_data.get('public_key', contact_key)
-                            if public_key_has_prefix(public_key, node_id):
-                                # Check if this is a repeater
-                                if hasattr(self.bot, 'repeater_manager') and self.bot.repeater_manager._is_repeater_device(contact_data):
-                                    name = contact_data.get('adv_name', contact_data.get('name', self.translate('commands.path.unknown_name')))
-                                    device_matches.append({
-                                        'name': name,
-                                        'public_key': public_key,
-                                        'device_type': contact_data.get('type', 'Unknown'),
-                                        'last_seen': 'Active',
-                                        'is_active': True,
-                                        'source': 'device',
-                                        'latitude': contact_data.get('adv_lat'),
-                                        'longitude': contact_data.get('adv_lon'),
-                                    })
-
-                    if device_matches:
-                        if len(device_matches) > 1:
-                            # Multiple device matches - show collision warning
-                            repeater_info[node_id] = {
-                                'found': True,
-                                'collision': True,
-                                'matches': len(device_matches),
-                                'node_id': node_id,
-                                'repeaters': device_matches
-                            }
-                        else:
-                            # Single device match
-                            match = device_matches[0]
-                            repeater_info[node_id] = {
-                                'name': match['name'],
-                                'public_key': match['public_key'],
-                                'device_type': match['device_type'],
-                                'last_seen': match['last_seen'],
-                                'is_active': match['is_active'],
-                                'found': True,
-                                'collision': False,
-                                'source': 'device',
-                                'latitude': match.get('latitude'),
-                                'longitude': match.get('longitude'),
-                            }
-                    else:
-                        repeater_info[node_id] = {
-                            'found': False,
-                            'node_id': node_id
-                        }
+                    self._resolve_from_device_contacts(node_id, repeater_info)
 
         except Exception as e:
             self.logger.error(f"Error looking up repeater names: {e}")
@@ -825,6 +570,275 @@ class PathCommand(BaseCommand):
                 }
 
         return repeater_info
+
+    async def _repeater_candidates(self, node_id, lookup_func):
+        """Candidate repeaters for a path prefix: the injected test lookup, else the
+        complete tracking database, else a direct complete_contact_tracking query.
+        """
+        # Test dependency injection: use provided lookup when available
+        if lookup_func is not None:
+            results = lookup_func(node_id)
+            # Normalize to expected format (create_test_repeater already matches)
+            if results:
+                results = [
+                    {
+                        'name': r['name'],
+                        'public_key': r['public_key'],
+                        'device_type': r.get('device_type', 'repeater'),
+                        'last_seen': r.get('last_seen', r.get('last_heard')),
+                        'last_heard': r.get('last_heard', r.get('last_seen')),
+                        'last_advert_timestamp': r.get('last_advert_timestamp'),
+                        'is_active': r.get('is_active', True),
+                        'latitude': r.get('latitude'),
+                        'longitude': r.get('longitude'),
+                        'city': r.get('city'),
+                        'state': r.get('state'),
+                        'country': r.get('country'),
+                        'advert_count': r.get('advert_count', 1),
+                        'signal_strength': r.get('signal_strength'),
+                        'snr': r.get('snr'),
+                        'hop_count': r.get('hop_count'),
+                        'role': r.get('role', 'repeater'),
+                        'is_starred': bool(r.get('is_starred', False)),
+                    }
+                    for r in results
+                ]
+        else:
+            # First try complete tracking database (all heard contacts, filtered by role)
+            results = []
+            if hasattr(self.bot, 'repeater_manager'):
+                try:
+                    # Get repeater devices from complete database (repeaters and roomservers)
+                    complete_db = await self.bot.repeater_manager.get_repeater_devices(include_historical=True)
+
+                    for row in complete_db:
+                        if public_key_has_prefix(row['public_key'], node_id):
+                            results.append({
+                                'name': row['name'],
+                                'public_key': row['public_key'],
+                                'device_type': row['device_type'],
+                                'last_seen': row['last_heard'],
+                                'last_heard': row['last_heard'],  # Include last_heard for recency calculation
+                                'last_advert_timestamp': row.get('last_advert_timestamp'),  # Include last_advert_timestamp for recency calculation
+                                'is_active': row['is_currently_tracked'],
+                                'latitude': row['latitude'],
+                                'longitude': row['longitude'],
+                                'city': row['city'],
+                                'state': row['state'],
+                                'country': row['country'],
+                                'advert_count': row['advert_count'],
+                                'signal_strength': row['signal_strength'],
+                                'snr': row.get('snr'),  # Include SNR for zero-hop bonus
+                                'hop_count': row['hop_count'],
+                                'role': row['role'],
+                                'is_starred': bool(row.get('is_starred', 0))  # Include star status for bias
+                            })
+                except Exception as e:
+                    self.logger.debug(f"Error getting complete database: {e}")
+                    results = []
+
+            # If complete tracking database failed, try direct query to complete_contact_tracking
+            if not results:
+                try:
+                    # Build query with age filtering if configured
+                    # Use last_advert_timestamp if available, otherwise fall back to last_heard
+                    if self.max_repeater_age_days > 0:
+                        query = f'''
+                                    SELECT name, public_key, device_type, last_heard, last_heard as last_seen,
+                                           last_advert_timestamp, latitude, longitude, city, state, country,
+                                           advert_count, signal_strength, snr, hop_count, role, is_starred
+                                    FROM complete_contact_tracking
+                                    WHERE public_key LIKE ? AND role IN ('repeater', 'roomserver')
+                                    AND (
+                                        (last_advert_timestamp IS NOT NULL AND last_advert_timestamp >= datetime('now', '-{self.max_repeater_age_days} days'))
+                                        OR (last_advert_timestamp IS NULL AND last_heard >= datetime('now', '-{self.max_repeater_age_days} days'))
+                                    )
+                                    ORDER BY COALESCE(last_advert_timestamp, last_heard) DESC
+                                '''
+                    else:
+                        query = '''
+                                    SELECT name, public_key, device_type, last_heard, last_heard as last_seen,
+                                           last_advert_timestamp, latitude, longitude, city, state, country,
+                                           advert_count, signal_strength, snr, hop_count, role, is_starred
+                                    FROM complete_contact_tracking
+                                    WHERE public_key LIKE ? AND role IN ('repeater', 'roomserver')
+                                    ORDER BY COALESCE(last_advert_timestamp, last_heard) DESC
+                                '''
+
+                    prefix_pattern = f"{node_id}%"
+                    results = self.bot.db_manager.execute_query(query, (prefix_pattern,))
+
+                    # Convert results to expected format
+                    if results:
+                        results = [
+                            {
+                                'name': row['name'],
+                                'public_key': row['public_key'],
+                                'device_type': row['device_type'],
+                                'last_seen': row['last_seen'],
+                                'last_heard': row.get('last_heard', row['last_seen']),
+                                'last_advert_timestamp': row.get('last_advert_timestamp'),
+                                'is_active': True,
+                                'latitude': row['latitude'],
+                                'longitude': row['longitude'],
+                                'city': row['city'],
+                                'state': row['state'],
+                                'country': row['country'],
+                                'advert_count': row.get('advert_count', 0),
+                                'signal_strength': row.get('signal_strength'),
+                                'snr': row.get('snr'),
+                                'hop_count': row.get('hop_count'),
+                                'role': row.get('role'),
+                                'is_starred': bool(row.get('is_starred', 0))
+                            } for row in results
+                        ]
+                except Exception as e:
+                    self.logger.debug(f"Error querying complete_contact_tracking directly: {e}")
+                    results = []
+        return results
+
+    def _resolve_repeater_candidates(self, node_id, results, node_ids, sender_location, repeater_info):
+        """Set ``repeater_info[node_id]`` from the shared selection engine's verdict on *results*."""
+        # Build repeaters_data with the fields the selection engine needs. hop_count is
+        # intentionally omitted (this preserves prior behavior: the bot path's graph
+        # selection never applied the zero-hop bonus through this code path).
+        repeaters_data = [
+            {
+                'name': row['name'],
+                'public_key': row['public_key'],
+                'device_type': row['device_type'],
+                'last_seen': row['last_seen'],
+                'last_heard': row.get('last_heard', row['last_seen']),  # Include last_heard for recency calculation
+                'last_advert_timestamp': row.get('last_advert_timestamp'),  # Include last_advert_timestamp for recency calculation
+                'is_active': row['is_active'],
+                'latitude': row['latitude'],
+                'longitude': row['longitude'],
+                'city': row['city'],
+                'state': row['state'],
+                'country': row['country'],
+                'snr': row.get('snr'),  # Include SNR for zero-hop bonus
+                'is_starred': row.get('is_starred', False)  # Include star status for bias
+            } for row in results
+        ]
+
+        # Delegate recency filtering, graph-based disambiguation, and geographic
+        # proximity to the shared engine (modules.path_inference). Candidate gathering
+        # (above), output shaping, and the device-contacts fallback (below) stay here.
+        selection = select_node_repeater(
+            node_id, repeaters_data, node_ids, self._inference_config(),
+            mesh_graph=getattr(self.bot, 'mesh_graph', None),
+            db_manager=self.bot.db_manager,
+            logger=self.logger,
+            graph_n=getattr(self.bot, 'prefix_hex_chars', 2),
+            sender_location=sender_location,
+            # Deliberately NOT passing node_index: repeater_info below
+            # is keyed by node_id, so a repeated 1-byte prefix shares
+            # one entry. Resolving each occurrence separately would
+            # make the later hop overwrite the earlier one's display.
+            # Fixing that needs repeater_info re-keyed by hop index.
+        )
+
+        if selection.status == 'resolved':
+            # High confidence selection (graph or geographic)
+            selected_repeater = selection.repeater
+            repeater_info[node_id] = {
+                'name': selected_repeater['name'],
+                'public_key': selected_repeater['public_key'],
+                'device_type': selected_repeater['device_type'],
+                'last_seen': selected_repeater['last_seen'],
+                'is_active': selected_repeater['is_active'],
+                'found': True,
+                'collision': False,
+                'geographic_guess': (selection.method == 'geographic'),
+                'graph_guess': (selection.method == 'graph'),
+                'confidence': selection.confidence,
+                # Carried through for {path_distance}; without these the
+                # distance calculation can never find a coordinate.
+                'latitude': selected_repeater.get('latitude'),
+                'longitude': selected_repeater.get('longitude'),
+            }
+        elif selection.status == 'collision':
+            # Low confidence or no selection method - show collision warning
+            repeater_info[node_id] = {
+                'found': True,
+                'collision': True,
+                'matches': selection.matches,
+                'node_id': node_id,
+                'repeaters': selection.recent_repeaters
+            }
+        elif selection.status == 'single':
+            # Single recent match after filtering - no choice made, so no confidence indicator
+            repeater = selection.repeater
+            repeater_info[node_id] = {
+                'name': repeater['name'],
+                'public_key': repeater['public_key'],
+                'device_type': repeater['device_type'],
+                'last_seen': repeater['last_seen'],
+                'is_active': repeater['is_active'],
+                'found': True,
+                'collision': False,
+                'latitude': repeater.get('latitude'),
+                'longitude': repeater.get('longitude'),
+            }
+        else:
+            # All repeaters filtered out (too old) - show as not found
+            repeater_info[node_id] = {
+                'found': False,
+                'node_id': node_id
+            }
+
+    def _resolve_from_device_contacts(self, node_id, repeater_info):
+        """Set ``repeater_info[node_id]`` from the radio's own contacts when no database candidate matched."""
+        # Also check device contacts for active repeaters
+        device_matches = []
+        if hasattr(self.bot.meshcore, 'contacts'):
+            for contact_key, contact_data in self.bot.meshcore.contacts.items():
+                public_key = contact_data.get('public_key', contact_key)
+                if public_key_has_prefix(public_key, node_id):
+                    # Check if this is a repeater
+                    if hasattr(self.bot, 'repeater_manager') and self.bot.repeater_manager._is_repeater_device(contact_data):
+                        name = contact_data.get('adv_name', contact_data.get('name', self.translate('commands.path.unknown_name')))
+                        device_matches.append({
+                            'name': name,
+                            'public_key': public_key,
+                            'device_type': contact_data.get('type', 'Unknown'),
+                            'last_seen': 'Active',
+                            'is_active': True,
+                            'source': 'device',
+                            'latitude': contact_data.get('adv_lat'),
+                            'longitude': contact_data.get('adv_lon'),
+                        })
+
+        if device_matches:
+            if len(device_matches) > 1:
+                # Multiple device matches - show collision warning
+                repeater_info[node_id] = {
+                    'found': True,
+                    'collision': True,
+                    'matches': len(device_matches),
+                    'node_id': node_id,
+                    'repeaters': device_matches
+                }
+            else:
+                # Single device match
+                match = device_matches[0]
+                repeater_info[node_id] = {
+                    'name': match['name'],
+                    'public_key': match['public_key'],
+                    'device_type': match['device_type'],
+                    'last_seen': match['last_seen'],
+                    'is_active': match['is_active'],
+                    'found': True,
+                    'collision': False,
+                    'source': 'device',
+                    'latitude': match.get('latitude'),
+                    'longitude': match.get('longitude'),
+                }
+        else:
+            repeater_info[node_id] = {
+                'found': False,
+                'node_id': node_id
+            }
 
     def _get_sender_location(
         self, message: Optional[MeshMessage] = None
