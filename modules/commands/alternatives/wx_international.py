@@ -437,9 +437,12 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
         if option_word:
             parts.append(option_word)
 
-        location_parts, forecast_type, num_days = self._parse_forecast_suffix(
-            parts[1:], GWX_MULTIDAY_MAX_DAYS, allow_hourly=True
-        )
+        if len(parts) == 2 and self._is_custom_source_name(parts[1]):
+            location_parts, forecast_type, num_days = parts[1:], "default", 7
+        else:
+            location_parts, forecast_type, num_days = self._parse_forecast_suffix(
+                parts[1:], GWX_MULTIDAY_MAX_DAYS, allow_hourly=True
+            )
         if len(parts) > 2 and parts[-1].lower() == "alerts":
             location_parts, forecast_type = parts[1:-1], "alerts"
 

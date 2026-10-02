@@ -62,6 +62,7 @@ class WeatherCommandMixin:
     translate: Any
     send_response: Any
     get_max_message_length: Any
+    _get_custom_wxsim_source: Any
 
     @staticmethod
     def _coordinates_query(lat: float, lon: float) -> str:
@@ -112,14 +113,26 @@ class WeatherCommandMixin:
                         location_parts = location_parts[:-1]
         return location_parts, forecast_type, num_days
 
+    def _is_custom_source_name(self, word: str) -> bool:
+        """Whether *word* names a configured custom.wxsim.* or custom.mqtt_weather.* source.
+
+        Such a name is a place even when it looks like an option ("custom.wxsim.hourly").
+        """
+        return bool(self._get_custom_mqtt_weather_topic(word) or self._get_custom_wxsim_source(word))
+
     def _split_option_only(self, parts: list[str], max_days: int) -> tuple[list[str], Optional[str], str, int]:
-        """Pull a forecast option given without a location ("wx hourly", "gwx 5d").
+        """Pull a forecast option given without a location ("wx hourly", "gwx 5d", "wx alerts").
 
         Returns (parts without it, the option word or None, forecast type, days), so the
         no-location fallbacks (custom default source, the sender's position, default_city,
         the bot's position) can apply the option instead of showing usage.
         """
         if len(parts) == 2:
+            word = parts[1]
+            if self._is_custom_source_name(word):
+                return parts, None, "default", 7
+            if word.lower() == "alerts":
+                return parts[:1], word, "alerts", 7
             rest, forecast_type, num_days = self._parse_forecast_suffix(parts[1:], max_days, allow_hourly=True)
             if not rest and forecast_type != "default":
                 return parts[:1], parts[1], forecast_type, num_days

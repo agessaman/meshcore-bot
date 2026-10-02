@@ -71,7 +71,7 @@ def test_a_zip_code_is_still_a_location(cls):
 @pytest.mark.parametrize("cls", CLASSES)
 def test_the_default_wxsim_source_answers_the_option(cls):
     cmd = _cmd(cls)
-    cmd._get_custom_wxsim_source = Mock(return_value="https://example.test/wxsim")
+    cmd._get_custom_wxsim_source = Mock(side_effect=lambda name=None: None if name else "https://example.test/wxsim")
     cmd._get_wxsim_weather = Mock(return_value="Tomorrow: sunny")
     cmd._get_wxsim_weather_async = AsyncMock(return_value="Tomorrow: sunny")
     assert _say(cmd, f"{cmd.keywords[0]} tomorrow")
@@ -89,8 +89,43 @@ def test_a_refused_send_from_a_default_source_is_reported(cls, source):
         cmd._get_custom_mqtt_weather_topic = Mock(return_value="weather/station")
         cmd._mqtt_weather_line = Mock(return_value="12°C")
     else:
-        cmd._get_custom_wxsim_source = Mock(return_value="https://example.test/wxsim")
+        cmd._get_custom_wxsim_source = Mock(side_effect=lambda name=None: None if name else "https://example.test/wxsim")
         cmd._get_wxsim_weather = Mock(return_value="12°C")
         cmd._get_wxsim_weather_async = AsyncMock(return_value="12°C")
     cmd.send_response = AsyncMock(return_value=False)
     assert _say(cmd, cmd.keywords[0]) is False
+
+
+@pytest.mark.parametrize("cls", CLASSES)
+def test_alerts_alone_uses_the_fallback_location(cls):
+    cmd = _cmd(cls, default_city="Seattle")
+    cmd._send_full_alert_list = AsyncMock(return_value=True)
+    cmd.city_to_lat_lon = Mock(return_value=(47.6, -122.3, {}))
+    _say(cmd, f"{cmd.keywords[0]} alerts")
+    if cls is WxCommand:
+        cmd._send_full_alert_list.assert_awaited_once()
+        cmd.city_to_lat_lon.assert_called_once_with("Seattle")
+    else:  # Open-Meteo has no alerts
+        cmd.send_response.assert_awaited_once()
+        assert cmd.send_response.await_args.args[1] == "commands.gwx.source_option_not_available"
+    cmd.get_weather_for_location.assert_not_awaited()
+
+
+@pytest.mark.parametrize("cls", CLASSES)
+def test_a_custom_source_named_like_an_option_is_that_source(cls):
+    cmd = _cmd(cls)
+    cmd._get_custom_mqtt_weather_topic = Mock(side_effect=lambda name=None: {"hourly": "weather/hourly", None: "weather/default"}.get(name))
+    cmd._mqtt_weather_line = Mock(return_value="12°C")
+    _say(cmd, f"{cmd.keywords[0]} hourly")
+    assert cmd._mqtt_weather_line.call_args.args[0] == "weather/hourly"
+
+
+def test_a_refused_first_alert_message_ends_the_list():
+    cmd = _cmd(WxCommand)
+    cmd._get_weather_alerts_noaa_async = AsyncMock(return_value=([{"x": 1}] * 3, 3))
+    cmd._format_alert_full = Mock(side_effect=lambda alert, index: "x" * 100)
+    cmd.get_max_message_length = Mock(return_value=130)
+    cmd.send_response = AsyncMock(return_value=False)
+    message = SimpleNamespace(content="wx", sender_id="u", sender_pubkey="pk", channel="general", is_dm=False)
+    assert asyncio.run(cmd._send_full_alert_list(message, 47.6, -122.3)) is False
+    assert cmd.send_response.await_count == 1

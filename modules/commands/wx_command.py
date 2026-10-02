@@ -736,7 +736,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
 
         forecast_type = "alerts" if show_full_alerts else "default"
         num_days = 7  # Default for multi-day forecast
-        if not show_full_alerts:
+        if not show_full_alerts and not (len(parts) == 2 and self._is_custom_source_name(parts[1])):
             location_parts, forecast_type, num_days = self._parse_forecast_suffix(
                 location_parts, WX_MULTIDAY_MAX_DAYS, allow_hourly=True
             )
@@ -836,8 +836,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                         return True
 
                 # Get and display full alert list
-                await self._send_full_alert_list(message, lat, lon)
-                return True
+                return await self._send_full_alert_list(message, lat, lon)
 
             # Get weather data for the location
             weather_data = await self.get_weather_for_location(location, location_type, forecast_type, num_days, message, using_companion_location=using_companion_location)
@@ -2404,24 +2403,24 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
 
         return " ".join(parts)
 
-    async def _send_full_alert_list(self, message: MeshMessage, lat: float, lon: float):
-        """Send full list of alerts with details, splitting across multiple messages if needed"""
+    async def _send_full_alert_list(self, message: MeshMessage, lat: float, lon: float) -> bool:
+        """Send full list of alerts with details, splitting across multiple messages if needed.
+
+        Returns whether every message was sent; a refused first message ends the list.
+        """
         # Get full alert data
         alerts_result = await self._get_weather_alerts_noaa_async(
             lat, lon, return_full_data=True
         )
         if alerts_result == self.ERROR_FETCHING_DATA:
-            await self.send_response(message, self.translate('commands.wx.error_fetching'))
-            return
+            return bool(await self.send_response(message, self.translate('commands.wx.error_fetching')))
         elif alerts_result == self.NO_ALERTS:
-            await self.send_response(message, "No weather alerts")
-            return
+            return bool(await self.send_response(message, "No weather alerts"))
 
         alerts, alert_count = alerts_result
 
         if not alerts:
-            await self.send_response(message, "No weather alerts")
-            return
+            return bool(await self.send_response(message, "No weather alerts"))
 
         # Format each alert with full details
         alert_lines = []
@@ -2461,9 +2460,11 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
 
         # Send all messages (per-user rate limit applies only to first; skip for continuations)
         for i, msg in enumerate(messages):
-            await self.send_response(message, msg, skip_user_rate_limit=(i > 0))
+            if not await self.send_response(message, msg, skip_user_rate_limit=(i > 0)):
+                return False
             if i < len(messages) - 1:
                 await self._pace_reply(message, sleep_time)
+        return True
 
     def abbreviate_city_name(self, city: str) -> str:
         """Abbreviate city names for compact display (e.g., Seattle -> SEA)"""
