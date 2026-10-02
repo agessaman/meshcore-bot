@@ -157,7 +157,7 @@ async def test_custom_sources_reject_unsupported_options(command_class, keyword,
 def test_wxsim_direct_call_rejects_before_fetch(command_class, option):
     cmd = _command(command_class, language="de")
     cmd.wxsim_parser = Mock()
-    assert cmd._get_wxsim_weather("https://example.test/weather", option) == "Not available for this weather source"
+    assert cmd._get_wxsim_weather("https://example.test/weather", option) == "Für diese Wetterquelle nicht verfügbar"
     cmd.wxsim_parser.fetch_from_url.assert_not_called()
 
 

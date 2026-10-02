@@ -230,7 +230,9 @@
       "mqtt_weather_no_subscriber": "MQTT-подписчик погоды не активен (включите [MqttWeather] и custom.mqtt_weather.* темы)",
       "mqtt_weather_no_data": "Сообщение MQTT-погоды для этой темы ещё не получено",
       "mqtt_weather_stale": "Данные MQTT-погоды слишком старые",
-      "mqtt_weather_payload_error": "Ошибка полезной нагрузки MQTT-погоды: {detail}"
+      "mqtt_weather_payload_error": "Ошибка полезной нагрузки MQTT-погоды: {detail}",
+      "hourly_not_available": "Почасовой прогноз недоступен",
+      "source_option_not_available": "Недоступно для этого источника погоды"
     },
     "gwx": {
       "description": "Получить погоду для любой точки мира (использование: gwx Tokyo)",
@@ -311,7 +313,9 @@
         "heavy_snow": "⚠️ Сильный снегопад",
         "high_winds": "⚠️ Сильный ветер ({wind_speed} м/ч)"
       },
-      "pressure_unit": "mmhg"
+      "pressure_unit": "mmhg",
+      "hourly_not_available": "Почасовой прогноз недоступен",
+      "source_option_not_available": "Недоступно для этого источника погоды"
     },
     "sports": {
       "description": "Получить спортивные результаты (использование: sports [команда/лига])",

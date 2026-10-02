@@ -185,7 +185,14 @@
       "tomorrow_not_available": "Tomorrow's forecast not available",
       "tomorrow_error": "Error formatting tomorrow's forecast",
       "multiday_not_available": "{num_days}-day forecast not available",
-      "multiday_error": "Error formatting {num_days}-day forecast"
+      "multiday_error": "Error formatting {num_days}-day forecast",
+      "hourly_not_available": "Previsão por hora não disponível",
+      "source_option_not_available": "Não disponível para esta fonte meteorológica",
+      "mqtt_forecast_not_supported": "A previsão estendida não está disponível para fontes meteorológicas MQTT",
+      "mqtt_weather_no_data": "Nenhuma mensagem meteorológica MQTT foi recebida para este tópico ainda",
+      "mqtt_weather_no_subscriber": "O assinante meteorológico MQTT não está ativo (ative [MqttWeather] e os tópicos custom.mqtt_weather.*)",
+      "mqtt_weather_payload_error": "Erro nos dados meteorológicos MQTT: {detail}",
+      "mqtt_weather_stale": "Os dados meteorológicos MQTT estão muito antigos"
     },
     "gwx": {
       "description": "Ver informações do tempo pra qualquer lugar do mundo (uso: gwx Tokyo)",
@@ -243,7 +250,24 @@
         "thunderstorms": "⚠️ Tempestades",
         "heavy_snow": "⚠️ Nevasca",
         "high_winds": "⚠️ Ventos fortes ({wind_speed} mph)"
-      }
+      },
+      "day_abbrev": {
+        "Monday": "Seg",
+        "Tuesday": "Ter",
+        "Wednesday": "Qua",
+        "Thursday": "Qui",
+        "Friday": "Sex",
+        "Saturday": "Sáb",
+        "Sunday": "Dom"
+      },
+      "feels_like": "(sensação {value}{unit})",
+      "hourly_not_available": "Previsão por hora não disponível",
+      "source_option_not_available": "Não disponível para esta fonte meteorológica",
+      "mqtt_forecast_not_supported": "A previsão estendida não está disponível para fontes meteorológicas MQTT",
+      "mqtt_weather_no_data": "Nenhuma mensagem meteorológica MQTT foi recebida para este tópico ainda",
+      "mqtt_weather_no_subscriber": "O assinante meteorológico MQTT não está ativo (ative [MqttWeather] e os tópicos custom.mqtt_weather.*)",
+      "mqtt_weather_payload_error": "Erro nos dados meteorológicos MQTT: {detail}",
+      "mqtt_weather_stale": "Os dados meteorológicos MQTT estão muito antigos"
     },
     "sports": {
       "description": "Ver placares e horários de esportes (uso: esportes [time/liga])",
@@ -1034,6 +1058,24 @@
         "November": "Novembro",
         "December": "Dezembro"
       }
+    },
+    "wind_directions": {
+      "N": "N",
+      "NNE": "NNE",
+      "NE": "NE",
+      "ENE": "ENE",
+      "E": "L",
+      "ESE": "ESE",
+      "SE": "SE",
+      "SSE": "SSE",
+      "S": "S",
+      "SSW": "SSO",
+      "SW": "SO",
+      "WSW": "OSO",
+      "W": "O",
+      "WNW": "ONO",
+      "NW": "NO",
+      "NNW": "NNO"
     }
   },
   "categories": {

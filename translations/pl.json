@@ -207,7 +207,14 @@
       "tomorrow_not_available": "Prognoza na jutro niedostępna",
       "tomorrow_error": "Błąd formatowania prognozy na jutro",
       "multiday_not_available": "{num_days}-dniowa prognoza niedostępna",
-      "multiday_error": "Błąd formatowania {num_days}-dniowej prognozy"
+      "multiday_error": "Błąd formatowania {num_days}-dniowej prognozy",
+      "hourly_not_available": "Prognoza godzinowa niedostępna",
+      "source_option_not_available": "Niedostępne dla tego źródła pogody",
+      "mqtt_forecast_not_supported": "Prognoza rozszerzona nie jest dostępna dla źródeł pogody MQTT",
+      "mqtt_weather_no_data": "Nie otrzymano jeszcze żadnej wiadomości pogodowej MQTT dla tego tematu",
+      "mqtt_weather_no_subscriber": "Odbiornik pogody MQTT nie jest aktywny (włącz [MqttWeather] i tematy custom.mqtt_weather.*)",
+      "mqtt_weather_payload_error": "Błąd danych pogodowych MQTT: {detail}",
+      "mqtt_weather_stale": "Dane pogodowe MQTT są zbyt stare"
     },
     "gwx": {
       "description": "Pobierz informacje pogodowe dla globalnego obszaru (użycie: gwx Warszawa, Poland)",
@@ -265,7 +272,24 @@
         "thunderstorms": "⚠️ Burza z piorunami",
         "heavy_snow": "⚠️ Śnieżyca",
         "high_winds": "⚠️ Silne wiatry ({wind_speed} km/h)"
-      }
+      },
+      "day_abbrev": {
+        "Monday": "Pn",
+        "Tuesday": "Wt",
+        "Wednesday": "Śr",
+        "Thursday": "Cz",
+        "Friday": "Pt",
+        "Saturday": "So",
+        "Sunday": "Nd"
+      },
+      "feels_like": "(odczuwalna {value}{unit})",
+      "hourly_not_available": "Prognoza godzinowa niedostępna",
+      "source_option_not_available": "Niedostępne dla tego źródła pogody",
+      "mqtt_forecast_not_supported": "Prognoza rozszerzona nie jest dostępna dla źródeł pogody MQTT",
+      "mqtt_weather_no_data": "Nie otrzymano jeszcze żadnej wiadomości pogodowej MQTT dla tego tematu",
+      "mqtt_weather_no_subscriber": "Odbiornik pogody MQTT nie jest aktywny (włącz [MqttWeather] i tematy custom.mqtt_weather.*)",
+      "mqtt_weather_payload_error": "Błąd danych pogodowych MQTT: {detail}",
+      "mqtt_weather_stale": "Dane pogodowe MQTT są zbyt stare"
     },
     "sports": {
       "description": "Pobiera wyniki sportowe i harmonogram meczów (użycie: sports [drużyna/liga])",

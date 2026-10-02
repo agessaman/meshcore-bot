@@ -260,7 +260,14 @@
       "tomorrow_not_available": "Tomorrow's forecast not available",
       "tomorrow_error": "Error formatting tomorrow's forecast",
       "multiday_not_available": "{num_days}-day forecast not available",
-      "multiday_error": "Error formatting {num_days}-day forecast"
+      "multiday_error": "Error formatting {num_days}-day forecast",
+      "hourly_not_available": "Prévisions horaires non disponibles",
+      "source_option_not_available": "Non disponible pour cette source météo",
+      "mqtt_forecast_not_supported": "Les prévisions étendues ne sont pas disponibles pour les sources météo MQTT",
+      "mqtt_weather_no_data": "Aucun message météo MQTT reçu pour ce sujet pour le moment",
+      "mqtt_weather_no_subscriber": "L'abonné météo MQTT n'est pas actif (activez [MqttWeather] et les sujets custom.mqtt_weather.*)",
+      "mqtt_weather_payload_error": "Erreur dans les données météo MQTT : {detail}",
+      "mqtt_weather_stale": "Les données météo MQTT sont trop anciennes"
     },
     "gwx": {
       "description": "Obtenir les informations météo pour n'importe quel endroit dans le monde (utilisation : gwx Tokyo)",
@@ -318,7 +325,24 @@
         "thunderstorms": "⚠️ Orages",
         "heavy_snow": "⚠️ Neige abondante",
         "high_winds": "⚠️ Vents violents ({wind_speed} mph)"
-      }
+      },
+      "day_abbrev": {
+        "Monday": "Lu",
+        "Tuesday": "Ma",
+        "Wednesday": "Me",
+        "Thursday": "Je",
+        "Friday": "Ve",
+        "Saturday": "Sa",
+        "Sunday": "Di"
+      },
+      "feels_like": "(ressenti {value}{unit})",
+      "hourly_not_available": "Prévisions horaires non disponibles",
+      "source_option_not_available": "Non disponible pour cette source météo",
+      "mqtt_forecast_not_supported": "Les prévisions étendues ne sont pas disponibles pour les sources météo MQTT",
+      "mqtt_weather_no_data": "Aucun message météo MQTT reçu pour ce sujet pour le moment",
+      "mqtt_weather_no_subscriber": "L'abonné météo MQTT n'est pas actif (activez [MqttWeather] et les sujets custom.mqtt_weather.*)",
+      "mqtt_weather_payload_error": "Erreur dans les données météo MQTT : {detail}",
+      "mqtt_weather_stale": "Les données météo MQTT sont trop anciennes"
     },
     "sports": {
       "description": "Obtenir les scores et horaires sportifs (utilisation : sports [équipe/ligue])",
@@ -1111,6 +1135,24 @@
         "November": "Novembre",
         "December": "Décembre"
       }
+    },
+    "wind_directions": {
+      "N": "N",
+      "NNE": "NNE",
+      "NE": "NE",
+      "ENE": "ENE",
+      "E": "E",
+      "ESE": "ESE",
+      "SE": "SE",
+      "SSE": "SSE",
+      "S": "S",
+      "SSW": "SSO",
+      "SW": "SO",
+      "WSW": "OSO",
+      "W": "O",
+      "WNW": "ONO",
+      "NW": "NO",
+      "NNW": "NNO"
     }
   },
   "categories": {
