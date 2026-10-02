@@ -45,6 +45,98 @@ _COMPASS_16 = (
 )
 _ARROWS_8 = ("⬆️", "↗️", "➡️", "↘️", "⬇️", "↙️", "⬅️", "↖️")
 
+# Forecast-text patterns for the extract_* readers, tried in order.
+# extract_humidity: "humidity 45%" or "45% humidity"
+_HUMIDITY_PATTERNS = (
+    r'humidity\s+(\d+)%',
+    r'(\d+)%\s+humidity',
+    r'relative humidity\s+(\d+)%',
+    r'(\d+)%\s+relative humidity',
+)
+
+# extract_precip_chance: "20% chance" or "chance of rain 30%"
+_PRECIP_CHANCE_PATTERNS = (
+    r'(\d+)%\s+chance',
+    r'chance\s+of\s+\w+\s+(\d+)%',
+    r'(\d+)%\s+probability',
+    r'probability\s+of\s+\w+\s+(\d+)%',
+)
+
+# extract_uv_index
+_UV_INDEX_PATTERNS = (
+    r'uv\s+index\s+(\d+)',
+    r'uv\s+(\d+)',
+    r'ultraviolet\s+index\s+(\d+)',
+)
+
+# extract_dew_point
+_DEW_POINT_PATTERNS = (
+    r'dew point\s+(\d+)',
+    r'dewpoint\s+(\d+)',
+    r'dew\s+point\s+(\d+)°',
+)
+
+# extract_visibility
+_VISIBILITY_PATTERNS = (
+    r'visibility\s+(\d+)\s+miles',
+    r'visibility\s+(\d+)\s+mi',
+    r'(\d+)\s+mile\s+visibility',
+    r'(\d+)\s+mi\s+visibility',
+)
+
+# extract_precip_probability
+_PRECIP_PROBABILITY_PATTERNS = (
+    r'(\d+)%\s+chance\s+of\s+(?:rain|precipitation|showers)',
+    r'chance\s+of\s+(?:rain|precipitation|showers)\s+(\d+)%',
+    r'(\d+)%\s+probability\s+of\s+(?:rain|precipitation|showers)',
+    r'probability\s+of\s+(?:rain|precipitation|showers)\s+(\d+)%',
+    r'(\d+)%\s+chance',
+    r'chance\s+(\d+)%',
+)
+
+# extract_wind_gusts
+_WIND_GUST_PATTERNS = (
+    r'gusts\s+to\s+(\d+)\s+mph',
+    r'gusts\s+up\s+to\s+(\d+)\s+mph',
+    r'wind\s+gusts\s+to\s+(\d+)\s+mph',
+    r'wind\s+gusts\s+up\s+to\s+(\d+)\s+mph',
+    r'gusts\s+(\d+)\s+mph',
+    r'wind\s+gusts\s+(\d+)\s+mph',
+)
+
+# extract_pressure
+_PRESSURE_PATTERNS = (
+    r'pressure\s+(\d+)\s*hpa',
+    r'pressure\s+(\d+)\s*mb',
+    r'barometric\s+pressure\s+(\d+)\s*hpa',
+    r'barometric\s+pressure\s+(\d+)\s*mb',
+    r'(\d+)\s*hpa',
+    r'(\d+)\s*mb\s+pressure',
+)
+
+
+def _first_match(text: str, patterns: tuple[str, ...], low: int | None = None, high: int | None = None) -> str:
+    """Group 1 of the first pattern found in the lowercased *text*, within [low, high] when given.
+
+    Each pattern is tried at its first match only; a value out of range moves on
+    to the next pattern, not to a later match of the same one.
+    """
+    if not text:
+        return ""
+    lowered = text.lower()
+    for pattern in patterns:
+        match = re.search(pattern, lowered)
+        if match:
+            value = match.group(1)
+            if low is None or high is None:
+                return value
+            try:
+                if low <= int(value) <= high:
+                    return value
+            except ValueError:
+                continue
+    return ""
+
 
 class WxCommand(WeatherCommandMixin, BaseCommand):
     """Handles weather commands with zipcode support"""
@@ -2320,43 +2412,11 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
 
     def extract_humidity(self, text: str) -> str:
         """Extract humidity percentage from forecast text"""
-        if not text:
-            return ""
-
-        # Look for patterns like "humidity 45%" or "45% humidity"
-        humidity_patterns = [
-            r'humidity\s+(\d+)%',
-            r'(\d+)%\s+humidity',
-            r'relative humidity\s+(\d+)%',
-            r'(\d+)%\s+relative humidity'
-        ]
-
-        for pattern in humidity_patterns:
-            match = re.search(pattern, text.lower())
-            if match:
-                return match.group(1)
-
-        return ""
+        return _first_match(text, _HUMIDITY_PATTERNS)
 
     def extract_precip_chance(self, text: str) -> str:
         """Extract precipitation chance from forecast text"""
-        if not text:
-            return ""
-
-        # Look for patterns like "20% chance" or "chance of rain 30%"
-        precip_patterns = [
-            r'(\d+)%\s+chance',
-            r'chance\s+of\s+\w+\s+(\d+)%',
-            r'(\d+)%\s+probability',
-            r'probability\s+of\s+\w+\s+(\d+)%'
-        ]
-
-        for pattern in precip_patterns:
-            match = re.search(pattern, text.lower())
-            if match:
-                return match.group(1)
-
-        return ""
+        return _first_match(text, _PRECIP_CHANCE_PATTERNS)
 
     def extract_high_low(self, text: str, units_str: str = "°F") -> str:
         """Extract high/low temperatures from forecast text; format via [Weather] templates."""
@@ -2423,165 +2483,27 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
 
     def extract_uv_index(self, text: str) -> str:
         """Extract UV index from forecast text"""
-        if not text:
-            return ""
-
-        # Look for UV index patterns
-        uv_patterns = [
-            r'uv\s+index\s+(\d+)',
-            r'uv\s+(\d+)',
-            r'ultraviolet\s+index\s+(\d+)'
-        ]
-
-        for pattern in uv_patterns:
-            match = re.search(pattern, text.lower())
-            if match:
-                uv_val = match.group(1)
-                # Validate UV index (0-11+ is reasonable)
-                try:
-                    if 0 <= int(uv_val) <= 15:
-                        return uv_val
-                except ValueError:
-                    continue
-
-        return ""
+        return _first_match(text, _UV_INDEX_PATTERNS, 0, 15)
 
     def extract_dew_point(self, text: str) -> str:
         """Extract dew point temperature from forecast text"""
-        if not text:
-            return ""
-
-        # Look for dew point patterns
-        dew_point_patterns = [
-            r'dew point\s+(\d+)',
-            r'dewpoint\s+(\d+)',
-            r'dew\s+point\s+(\d+)°'
-        ]
-
-        for pattern in dew_point_patterns:
-            match = re.search(pattern, text.lower())
-            if match:
-                dp_val = match.group(1)
-                # Validate dew point (reasonable range -20 to 80°F)
-                try:
-                    if -20 <= int(dp_val) <= 80:
-                        return dp_val
-                except ValueError:
-                    continue
-
-        return ""
+        return _first_match(text, _DEW_POINT_PATTERNS, -20, 80)
 
     def extract_visibility(self, text: str) -> str:
         """Extract visibility from forecast text"""
-        if not text:
-            return ""
-
-        # Look for visibility patterns
-        visibility_patterns = [
-            r'visibility\s+(\d+)\s+miles',
-            r'visibility\s+(\d+)\s+mi',
-            r'(\d+)\s+mile\s+visibility',
-            r'(\d+)\s+mi\s+visibility'
-        ]
-
-        for pattern in visibility_patterns:
-            match = re.search(pattern, text.lower())
-            if match:
-                vis_val = match.group(1)
-                # Validate visibility (reasonable range 0-20 miles)
-                try:
-                    if 0 <= int(vis_val) <= 20:
-                        return vis_val
-                except ValueError:
-                    continue
-
-        return ""
+        return _first_match(text, _VISIBILITY_PATTERNS, 0, 20)
 
     def extract_precip_probability(self, text: str) -> str:
         """Extract precipitation probability from forecast text"""
-        if not text:
-            return ""
-
-        # Look for precipitation probability patterns
-        precip_prob_patterns = [
-            r'(\d+)%\s+chance\s+of\s+(?:rain|precipitation|showers)',
-            r'chance\s+of\s+(?:rain|precipitation|showers)\s+(\d+)%',
-            r'(\d+)%\s+probability\s+of\s+(?:rain|precipitation|showers)',
-            r'probability\s+of\s+(?:rain|precipitation|showers)\s+(\d+)%',
-            r'(\d+)%\s+chance',
-            r'chance\s+(\d+)%'
-        ]
-
-        for pattern in precip_prob_patterns:
-            match = re.search(pattern, text.lower())
-            if match:
-                prob_val = match.group(1)
-                # Validate probability (0-100%)
-                try:
-                    if 0 <= int(prob_val) <= 100:
-                        return prob_val
-                except ValueError:
-                    continue
-
-        return ""
+        return _first_match(text, _PRECIP_PROBABILITY_PATTERNS, 0, 100)
 
     def extract_wind_gusts(self, text: str) -> str:
         """Extract wind gusts from forecast text"""
-        if not text:
-            return ""
-
-        # Look for wind gust patterns
-        gust_patterns = [
-            r'gusts\s+to\s+(\d+)\s+mph',
-            r'gusts\s+up\s+to\s+(\d+)\s+mph',
-            r'wind\s+gusts\s+to\s+(\d+)\s+mph',
-            r'wind\s+gusts\s+up\s+to\s+(\d+)\s+mph',
-            r'gusts\s+(\d+)\s+mph',
-            r'wind\s+gusts\s+(\d+)\s+mph'
-        ]
-
-        for pattern in gust_patterns:
-            match = re.search(pattern, text.lower())
-            if match:
-                gust_val = match.group(1)
-                # Validate wind gust (reasonable range 10-100 mph)
-                try:
-                    if 10 <= int(gust_val) <= 100:
-                        return gust_val
-                except ValueError:
-                    continue
-
-        return ""
+        return _first_match(text, _WIND_GUST_PATTERNS, 10, 100)
 
     def extract_pressure(self, text: str) -> str:
         """Extract barometric pressure from forecast text"""
-        if not text:
-            return ""
-
-        # Look for pressure patterns (hPa, mb, inches of mercury)
-        pressure_patterns = [
-            r'pressure\s+(\d+)\s*hpa',
-            r'pressure\s+(\d+)\s*mb',
-            r'barometric\s+pressure\s+(\d+)\s*hpa',
-            r'barometric\s+pressure\s+(\d+)\s*mb',
-            r'(\d+)\s*hpa',
-            r'(\d+)\s*mb\s+pressure'
-        ]
-
-        for pattern in pressure_patterns:
-            match = re.search(pattern, text.lower())
-            if match:
-                pressure_val = match.group(1)
-                # Validate pressure (reasonable range 600-1100 hPa/mb)
-                # Normal sea level is ~1013 hPa, but high elevation locations can be lower
-                try:
-                    pressure_int = int(pressure_val)
-                    if 600 <= pressure_int <= 1100:
-                        return pressure_val
-                except ValueError:
-                    continue
-
-        return ""
+        return _first_match(text, _PRESSURE_PATTERNS, 600, 1100)
 
     def get_observation_data(self, points_data: dict) -> dict:
         """Get observation station data from NOAA and return as a dict
