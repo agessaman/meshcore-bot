@@ -160,67 +160,75 @@ channels #general
 
 ---
 
-### `wx <zipcode>`
+### `wx [location] [option]`
 
-Get weather information for a US zip code using NOAA data.
+Weather from NOAA for US locations: current conditions with today's forecast, plus a separate message when weather alerts are active. With `[Weather] weather_provider = openmeteo`, `wx` answers like `gwx` instead.
 
 **Aliases:** `weather`, `wxa`, `wxalert`
 
 **Usage:**
 ```
-wx <zipcode>
-weather <zipcode>
-wxa <zipcode>
-wxalert <zipcode>
+wx <zipcode | city | lat,lon> [tomorrow | hourly | Nd | alerts]
+wx [tomorrow | hourly | Nd]
 ```
 
 **Examples:**
 ```
 wx 98101
-weather 90210
-wxa 10001
+wx Seattle
+wx Portland, OR tomorrow
+wx 47.6062,-122.3321 hourly
+wx Spokane 5d
+wx 98101 alerts
+wx
 ```
 
-**Response:** Current weather conditions, forecast for tonight/tomorrow, and active weather alerts. Includes:
-- Current conditions (temperature, humidity, wind, etc.)
-- Short-term forecast (tonight, tomorrow)
-- Weather alerts if any are active
+**Options:**
+- `tomorrow`: tomorrow's day and night periods.
+- `hourly`: the coming hours, as many as fit in one message.
+- `Nd` (or a bare number, or `7day`): an N-day forecast starting tomorrow, one line per day, for 2 to 16 days (NOAA publishes about 7).
+- `alerts`: every active alert for the location.
 
-**Note:** Weather alerts are automatically included when available.
+**With no location,** `wx` uses, in order: a `custom.wxsim.default` or `custom.mqtt_weather.default` source, the sender's last advertised position, `[Weather] default_city`, and the bot's own position when `[Wx_Command] use_bot_location_when_no_location = true`.
+
+**Units** follow `[Weather] temperature_unit` and `wind_speed_unit` (`[Wx_Command]` overrides them for `wx`). The default is °F and mph.
+
+**The place is named** in the reply only when it adds information: for a position (the sender's, the bot's or typed coordinates) when a place is found for it, and for a city in another state than `[Weather] default_state`. ZIP codes are not named.
 
 ---
 
-### `gwx <location>`
+### `gwx [location] [option]`
 
-Get global weather information for any location worldwide using Open-Meteo API.
+Weather from Open-Meteo for any location worldwide: current conditions with today's high and low, plus a separate message for extreme heat, cold, wind, heavy rain or snow, or thunderstorms.
 
 **Aliases:** `globalweather`, `gwxa`
 
 **Usage:**
 ```
-gwx <location>
-globalweather <location>
-gwxa <location>
+gwx <city | city, country | zipcode | lat,lon> [tomorrow | hourly | Nd]
+gwx [tomorrow | hourly | Nd]
 ```
 
 **Examples:**
 ```
 gwx Tokyo
 gwx Paris, France
-gwx London
-globalweather New York
-gwx 35.6762,139.6503
+gwx London tomorrow
+gwx 35.6762,139.6503 hourly
+gwx Reykjavik 10d
 ```
 
-**Response:** Current weather conditions and forecast for the specified location, including:
-- Current temperature and conditions
-- Feels-like temperature
-- Wind speed and direction
-- Humidity
-- Dew point
-- Visibility
-- Pressure
-- Forecast for today/tonight and tomorrow
+**Options:** `tomorrow`, `hourly` and `Nd` (2 to 16 days) work as for `wx`. Open-Meteo has no official alerts, so `gwx <location> alerts` says it is not available.
+
+**With no location,** `gwx` uses the same order as `wx`.
+
+**Units** follow `[Weather] temperature_unit`, `wind_speed_unit` and `precipitation_unit`.
+
+**The place is named** in the reply when it adds information: a city in another country than `[Weather] default_country` (in the US, another state than `default_state`), or a position a place was found for. A city in the bot's own region and ZIP codes are not named.
+
+**Custom sources:** a `custom.wxsim.<name>` or `custom.mqtt_weather.<name>` key in `[Weather]` answers `wx <name>` and `gwx <name>` from that station. WXSIM sources answer current conditions, `tomorrow` and `Nd`; MQTT sources answer current conditions only. Options a source cannot answer (`hourly` and `alerts` for both) reply that they are not available instead of sending the current conditions.
+
+**Scheduled messages:** both commands can be used in `{cmd:...}` placeholders, for example `{cmd:gwx Paris}`.
 
 ---
 
@@ -892,8 +900,7 @@ Some commands use location data:
 - **`sun` and `moon`** - Use the bot's configured default location (`bot_latitude` and `bot_longitude` in config.ini), not the user's location from their advert
 - **`solar`** - Does not require location (provides global solar conditions)
 - **`solarforecast`** - Requires a location parameter (location name, repeater name, coordinates, or zipcode)
-- **`wx`** - Requires a zipcode parameter
-- **`gwx`** - Requires a location parameter
+- **`wx`** and **`gwx`** - Use the given location, or fall back to the sender's advertised position, `default_city` or the bot's position (see each command above)
 - **`aqi`** - Requires a location parameter
 
 ### API Keys
@@ -904,9 +911,9 @@ Some commands require API keys to be configured in `config.ini`:
 
 ### Weather Data
 
-- `wx` uses NOAA API (US locations only)
-- `gwx` uses Open-Meteo API (global locations)
-- Both provide current conditions and forecasts
+- `wx` uses the NOAA API (US locations only), or Open-Meteo with `weather_provider = openmeteo`
+- `gwx` uses the Open-Meteo API (global locations)
+- Both provide current conditions, tomorrow, hourly and multi-day forecasts, in the configured units
 
 ### Command Categories
 

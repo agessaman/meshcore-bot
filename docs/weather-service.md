@@ -218,7 +218,7 @@ Inherited from `[Weather]` section (see Weather command docs):
 [Weather]
 # fahrenheit or celsius
 temperature_unit = fahrenheit
-# mph, ms, kn
+# mph, kmh, ms or kn
 wind_speed_unit = mph
 # inch or mm
 precipitation_unit = inch
@@ -309,7 +309,7 @@ A: Daily forecasts work worldwide. Weather alerts are currently US-only (NOAA). 
 A: Open-Meteo uses data from national weather services (NOAA, DWD, etc.). Accuracy varies by location.
 
 **Q: Can I change temperature units?**
-A: Yes, set `temperature_unit` in the `[Weather]` section (used by wx command too).
+A: Yes, set `temperature_unit` (and `wind_speed_unit`, `precipitation_unit`) in the `[Weather]` section. The `wx` and `gwx` commands use the same settings, NOAA replies included.
 
 **Q: Does lightning detection work worldwide?**
 A: Yes. Blitzortung has global coverage.

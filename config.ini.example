@@ -901,15 +901,17 @@ weather_provider = noaa
 
 # Default state for city name disambiguation
 # When users type "wx seattle", it will search for "seattle, WA, USA"
+# Replies for a city in this state leave out the place name; other states name it.
 # Use 2-letter state abbreviation (e.g., WA, CA, NY, TX)
 default_state = WA
 
 # Default country for city name disambiguation (for international weather plugin)
+# gwx replies for a city in another country name it ("Paris, FR: ...").
 # Use 2-letter country code (e.g., US, CA, GB, AU)
 default_country = US
 
 # When true, a bare "wx" or "gwx" (no location) uses bot_latitude/bot_longitude from [Bot]
-# if there is no default WXSIM source and no companion location in the database.
+# if there is no default custom source, no companion location in the database and no default_city.
 # Default: false (show usage instead)
 use_bot_location_when_no_location = false
 
@@ -920,7 +922,7 @@ use_bot_location_when_no_location = false
 temperature_unit = fahrenheit
 
 # Wind speed unit for weather display (wx, gwx, the weather service)
-# Options: mph, kmh, ms (meters per second)
+# Options: mph, kmh, ms (meters per second), kn (knots)
 # Default: mph
 wind_speed_unit = mph
 
