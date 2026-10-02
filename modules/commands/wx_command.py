@@ -14,6 +14,11 @@ from typing import Callable, Optional, ParamSpec, TypeVar
 import requests
 
 from .. import alert_format
+from ..clients.mqtt_weather import (  # noqa: F401  re-exported
+    get_mqtt_weather_topic,
+    load_mqtt_weather_format_config,
+    mqtt_weather_display_for_topic,
+)
 
 # First-party modules with only required dependencies; they always import.
 from ..clients.wxsim_parser import WXSIMParser
@@ -25,6 +30,7 @@ from ..utils import (
     format_temperature_high_low,
     geocode_city_sync,
     geocode_zipcode_sync,
+    get_nominatim_geocoder,  # noqa: F401
     normalize_us_state,
 )
 from ..weather_common import WeatherCommandMixin

@@ -11,12 +11,19 @@ from typing import Any, Optional, Union
 
 import requests
 
+from ...clients.mqtt_weather import (  # noqa: F401  re-exported
+    get_mqtt_weather_topic,
+    load_mqtt_weather_format_config,
+    mqtt_weather_display_for_topic,
+)
 from ...clients.wxsim_parser import WXSIMParser
 from ...location import get_bot_lat_lon, get_companion_lat_lon
 from ...models import MeshMessage
-from ...utils import (
+from ...utils import (  # noqa: F401  format_temperature_high_low and get_nominatim_geocoder re-exported
+    format_temperature_high_low,
     geocode_city_sync,
     geocode_zipcode_sync,
+    get_nominatim_geocoder,
     rate_limited_nominatim_reverse_sync,
 )
 from ...weather_common import WeatherCommandMixin, load_open_meteo_model

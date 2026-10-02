@@ -14,12 +14,19 @@ from typing import Any, TypedDict
 
 from . import packet_decode, scope_gate
 from .contacts_repo import unique_recent_repeater_key
-from .enums import AdvertFlags, DeviceRole, PayloadType, RouteType
+from .enums import (
+    AdvertFlags,
+    DeviceRole,
+    PayloadType,
+    PayloadVersion,  # noqa: F401
+    RouteType,
+)
 from .graph_trace_helper import update_mesh_graph_from_trace_data
 from .meshcore_payload_decode import channel_hash_for_key, decrypt_group_text
 from .models import MeshMessage
 from .neighbors_discovery import upsert_zero_hop_observed_path_via_manager
 from .packet_decode import split_path_hex
+from .region_warning import VERDICT_GLOBAL, VERDICT_SCOPED, VERDICT_UNKNOWN  # noqa: F401  re-exported
 from .rf_match import (  # noqa: F401 - re-exported for callers and tests
     RF_MATCH_CHANNEL_AUTHENTICATED,
     RF_MATCH_EXACT,
@@ -33,6 +40,7 @@ from .rf_match import (  # noqa: F401 - re-exported for callers and tests
 from .security_utils import sanitize_input, sanitize_name
 from .utils import (
     calculate_packet_hash,
+    decode_path_len_byte,  # noqa: F401
     encode_path_len_byte,
     format_elapsed_display,
 )

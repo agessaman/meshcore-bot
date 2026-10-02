@@ -24,6 +24,7 @@ from ..location import (
 from ..models import MeshMessage
 from ..utils import (
     abbreviate_location,
+    get_nominatim_geocoder,  # noqa: F401
     is_valid_timezone,
     normalize_us_state,
 )

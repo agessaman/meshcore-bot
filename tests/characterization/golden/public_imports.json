@@ -1,0 +1,635 @@
+{
+ "modules/clients/espn_client.py": [
+  "format_clean_date",
+  "format_clean_date_time",
+  "get_team_abbreviation"
+ ],
+ "modules/clients/mqtt_weather.py": [
+  "sanitize_input"
+ ],
+ "modules/clients/thesportsdb_client.py": [
+  "format_clean_date",
+  "format_clean_date_time",
+  "get_team_abbreviation_from_name",
+  "is_soccer"
+ ],
+ "modules/clients/worldcup_data.py": [
+  "WORLD_CUP_NATIONS"
+ ],
+ "modules/command_manager.py": [
+  "BaseCommand",
+  "CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD",
+  "DM_BODY_LIMIT",
+  "MeshMessage",
+  "PUBLIC_CHANNEL_KEY_HEX",
+  "PUBLIC_CHANNEL_OVERRIDE_KEY",
+  "PluginLoader",
+  "channel_body_limit",
+  "check_internet_connectivity_async",
+  "decode_escape_sequences",
+  "format_keyword_response_with_placeholders",
+  "is_global_marker",
+  "load_command_prefix_settings",
+  "normalize_command_content_text",
+  "normalize_scope_name",
+  "parse_command_prefixes",
+  "sanitize_name",
+  "strip_optional_quotes",
+  "validate_safe_path"
+ ],
+ "modules/commands/advert_command.py": [
+  "BaseCommand",
+  "MeshMessage"
+ ],
+ "modules/commands/airplanes_command.py": [
+  "BaseCommand",
+  "MeshMessage",
+  "calculate_distance",
+  "sanitize_name"
+ ],
+ "modules/commands/alert_command.py": [
+  "BaseCommand",
+  "MeshMessage",
+  "calculate_distance",
+  "geocode_city_sync",
+  "geocode_zipcode_sync",
+  "rate_limited_nominatim_reverse_sync"
+ ],
+ "modules/commands/alternatives/wx_international.py": [
+  "BaseCommand",
+  "MeshMessage",
+  "format_temperature_high_low",
+  "geocode_city_sync",
+  "geocode_zipcode_sync",
+  "get_mqtt_weather_topic",
+  "get_nominatim_geocoder",
+  "load_mqtt_weather_format_config",
+  "mqtt_weather_display_for_topic",
+  "rate_limited_nominatim_reverse_sync"
+ ],
+ "modules/commands/announcements_command.py": [
+  "BaseCommand",
+  "MeshMessage",
+  "validate_pubkey_format"
+ ],
+ "modules/commands/aqi_command.py": [
+  "BaseCommand",
+  "MeshMessage",
+  "OPTIONS_AQI",
+  "ResolveOptions",
+  "abbreviate_location",
+  "geocode_city_best_effort",
+  "get_nominatim_geocoder",
+  "is_valid_timezone",
+  "location_neighborhood_queries",
+  "normalize_us_state",
+  "resolve_location"
+ ],
+ "modules/commands/aurora_command.py": [
+  "BaseCommand",
+  "MeshMessage",
+  "NOAAAuroraClient",
+  "geocode_city_sync",
+  "geocode_zipcode_sync",
+  "get_config_timezone"
+ ],
+ "modules/commands/base_command.py": [
+  "CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD",
+  "DECORATIVE_PREFIX_CHARS",
+  "DM_BODY_LIMIT",
+  "LEGACY_ENABLED_ALIASES",
+  "MeshMessage",
+  "channel_body_limit",
+  "find_matching_prefix",
+  "format_elapsed_display",
+  "get_config_timezone",
+  "get_packet_hash_placeholder",
+  "load_command_prefix_settings",
+  "message_hop_count",
+  "normalize_command_content",
+  "validate_pubkey_format"
+ ],
+ "modules/commands/catfact_command.py": [
+  "BaseCommand",
+  "MeshMessage"
+ ],
+ "modules/commands/channelpause_command.py": [
+  "BaseCommand",
+  "MeshMessage",
+  "normalize_command_content"
+ ],
+ "modules/commands/channels_command.py": [
+  "BaseCommand",
+  "MeshMessage"
+ ],
+ "modules/commands/cmd_command.py": [
+  "BaseCommand",
+  "MeshMessage"
+ ],
+ "modules/commands/contact_command.py": [
+  "BaseCommand",
+  "MeshMessage"
+ ],
+ "modules/commands/dadjoke_command.py": [
+  "BaseCommand",
+  "MeshMessage"
+ ],
+ "modules/commands/dice_command.py": [
+  "BaseCommand",
+  "MeshMessage"
+ ],
+ "modules/commands/feed_command.py": [
+  "BaseCommand",
+  "MeshMessage",
+  "sanitize_input",
+  "sanitize_name",
+  "validate_external_url"
+ ],
+ "modules/commands/greeter_command.py": [
+  "BaseCommand",
+  "MeshMessage",
+  "decode_escape_sequences"
+ ],
+ "modules/commands/hacker_command.py": [
+  "BaseCommand",
+  "MeshMessage"
+ ],
+ "modules/commands/hello_command.py": [
+  "BaseCommand",
+  "MeshMessage",
+  "get_config_timezone",
+  "sanitize_name"
+ ],
+ "modules/commands/help_command.py": [
+  "BaseCommand",
+  "MeshMessage"
+ ],
+ "modules/commands/hfcond_command.py": [
+  "BaseCommand",
+  "MeshMessage",
+  "hf_band_conditions"
+ ],
+ "modules/commands/joke_command.py": [
+  "BaseCommand",
+  "MeshMessage"
+ ],
+ "modules/commands/magic8_command.py": [
+  "BaseCommand",
+  "MeshMessage"
+ ],
+ "modules/commands/moon_command.py": [
+  "BaseCommand",
+  "MeshMessage",
+  "get_moon"
+ ],
+ "modules/commands/multitest_command.py": [
+  "BaseCommand",
+  "MeshMessage",
+  "calculate_packet_hash",
+  "parse_path_string"
+ ],
+ "modules/commands/neighbors_command.py": [
+  "BaseCommand",
+  "MeshMessage"
+ ],
+ "modules/commands/path_command.py": [
+  "BaseCommand",
+  "MeshMessage",
+  "PathInferenceConfig",
+  "bytes_per_hop_from_routing_and_nodes",
+  "calculate_distance",
+  "format_piped_template_async",
+  "parse_path_string",
+  "public_key_has_prefix",
+  "select_node_repeater",
+  "select_repeater_by_graph"
+ ],
+ "modules/commands/ping_command.py": [
+  "BaseCommand",
+  "MeshMessage"
+ ],
+ "modules/commands/prefix_command.py": [
+  "BaseCommand",
+  "MeshMessage",
+  "abbreviate_location",
+  "calculate_distance",
+  "format_location_for_display",
+  "geocode_city",
+  "geocode_zipcode"
+ ],
+ "modules/commands/rain_command.py": [
+  "BaseCommand",
+  "MeshMessage",
+  "REGION_DEFAULT_NOTE",
+  "US_STATE_ABBRS",
+  "city_display_name",
+  "geocode_city_sync",
+  "geocode_zipcode_sync",
+  "join_location",
+  "location_zip_to_city_string",
+  "region_capital_query",
+  "reverse_geocode_region",
+  "titlecase_location",
+  "truncate_to_bytes"
+ ],
+ "modules/commands/reload_command.py": [
+  "BaseCommand",
+  "MeshMessage"
+ ],
+ "modules/commands/repeater_command.py": [
+  "BaseCommand",
+  "MeshMessage"
+ ],
+ "modules/commands/roll_command.py": [
+  "BaseCommand",
+  "MeshMessage"
+ ],
+ "modules/commands/satpass_command.py": [
+  "BaseCommand",
+  "MeshMessage",
+  "get_next_satellite_pass"
+ ],
+ "modules/commands/schedule_command.py": [
+  "BaseCommand",
+  "MeshMessage"
+ ],
+ "modules/commands/solar_command.py": [
+  "BaseCommand",
+  "MeshMessage",
+  "solar_conditions"
+ ],
+ "modules/commands/solarforecast_command.py": [
+  "BaseCommand",
+  "MeshMessage",
+  "abbreviate_location",
+  "geocode_city",
+  "geocode_zipcode",
+  "get_config_timezone",
+  "get_nominatim_geocoder",
+  "rate_limited_nominatim_reverse",
+  "sanitize_name"
+ ],
+ "modules/commands/sports_command.py": [
+  "BaseCommand",
+  "ESPNClient",
+  "LEAGUE_MAPPINGS",
+  "MeshMessage",
+  "SPORT_EMOJIS",
+  "TEAM_MAPPINGS",
+  "TheSportsDBClient",
+  "WorldCupData"
+ ],
+ "modules/commands/stats_command.py": [
+  "BaseCommand",
+  "MeshMessage"
+ ],
+ "modules/commands/status_command.py": [
+  "BaseCommand",
+  "MeshMessage"
+ ],
+ "modules/commands/sun_command.py": [
+  "BaseCommand",
+  "MeshMessage",
+  "get_sun"
+ ],
+ "modules/commands/test_command.py": [
+  "BaseCommand",
+  "MeshMessage",
+  "calculate_distance",
+  "decode_escape_sequences",
+  "extract_path_node_ids_from_message",
+  "format_piped_template"
+ ],
+ "modules/commands/trace_command.py": [
+  "BaseCommand",
+  "MeshMessage",
+  "RunTraceResult",
+  "run_trace",
+  "update_mesh_graph_from_trace_data"
+ ],
+ "modules/commands/version_command.py": [
+  "BaseCommand",
+  "MeshMessage",
+  "resolve_application_version"
+ ],
+ "modules/commands/webviewer_command.py": [
+  "BaseCommand",
+  "MeshMessage"
+ ],
+ "modules/commands/worldcup_command.py": [
+  "BaseCommand",
+  "ESPNClient",
+  "MeshMessage",
+  "SPORT_EMOJIS",
+  "WorldCupData",
+  "espn_dates_for_local_day",
+  "filter_events_local_day",
+  "get_config_timezone"
+ ],
+ "modules/commands/wx_command.py": [
+  "BaseCommand",
+  "MeshMessage",
+  "alert_format",
+  "format_temperature_high_low",
+  "geocode_city_sync",
+  "geocode_zipcode_sync",
+  "get_mqtt_weather_topic",
+  "get_nominatim_geocoder",
+  "load_mqtt_weather_format_config",
+  "mqtt_weather_display_for_topic",
+  "normalize_us_state",
+  "nws_http_means_no_coverage"
+ ],
+ "modules/config_schema.py": [
+  "CANONICAL_NON_COMMAND_SECTIONS",
+  "REQUIRED_SECTIONS",
+  "SEVERITY_WARNING"
+ ],
+ "modules/core.py": [
+  "AsyncDBManager",
+  "BotTxRateLimiter",
+  "ChannelManager",
+  "ChannelRateLimiter",
+  "CommandManager",
+  "DBManager",
+  "FeedManager",
+  "MessageHandler",
+  "MessageScheduler",
+  "NominatimRateLimiter",
+  "PerUserRateLimiter",
+  "RateLimiter",
+  "RepeaterManager",
+  "ServicePluginLoader",
+  "Translator",
+  "TransmissionTracker",
+  "WebViewerIntegration",
+  "resolve_path",
+  "set_config"
+ ],
+ "modules/database_restore.py": [
+  "MIGRATIONS"
+ ],
+ "modules/db_manager.py": [
+  "MigrationRunner",
+  "VALID_JOURNAL_MODES",
+  "delete_timestamp_rows_in_chunks",
+  "retention_delete_settings"
+ ],
+ "modules/feed_format.py": [
+  "get_nested_value",
+  "parse_microsoft_date",
+  "sanitize_input",
+  "shorten_url_sync"
+ ],
+ "modules/feed_manager.py": [
+  "SafeAiohttpResolver",
+  "SafeUrlPolicy",
+  "UnsafeUrlError",
+  "apply_feed_field_function",
+  "feed_format_auto_base_value",
+  "feed_format_auto_slots",
+  "format_feed_message",
+  "format_relative_timestamp",
+  "get_nested_value",
+  "item_passes_filter_config",
+  "parse_microsoft_date",
+  "safe_aiohttp_request",
+  "sort_feed_items",
+  "truncate_to_budget"
+ ],
+ "modules/location.py": [
+  "REGION_DEFAULT_NOTE",
+  "abbreviate_location",
+  "geocode_city_sync",
+  "geocode_zipcode_sync",
+  "normalize_us_state",
+  "rate_limited_nominatim_geocode_sync",
+  "rate_limited_nominatim_reverse_sync",
+  "region_capital_query"
+ ],
+ "modules/maintenance.py": [
+  "validate_external_url"
+ ],
+ "modules/message_handler.py": [
+  "AdvertFlags",
+  "DeviceRole",
+  "MeshMessage",
+  "PayloadType",
+  "PayloadVersion",
+  "RouteType",
+  "VERDICT_GLOBAL",
+  "VERDICT_SCOPED",
+  "VERDICT_UNKNOWN",
+  "calculate_packet_hash",
+  "channel_hash_for_key",
+  "decode_path_len_byte",
+  "decrypt_group_text",
+  "encode_path_len_byte",
+  "format_elapsed_display",
+  "sanitize_input",
+  "sanitize_name",
+  "update_mesh_graph_from_trace_data",
+  "upsert_zero_hop_observed_path_via_manager"
+ ],
+ "modules/neighbors_discovery.py": [
+  "AdvertFlags"
+ ],
+ "modules/path_inference.py": [
+  "calculate_distance"
+ ],
+ "modules/plugin_loader.py": [
+  "BaseCommand"
+ ],
+ "modules/region_warning.py": [
+  "CHANNEL_BODY_FLOOR",
+  "truncate_to_bytes",
+  "validate_scope_name"
+ ],
+ "modules/repeater_manager.py": [
+  "rate_limited_nominatim_reverse_sync",
+  "sanitize_name",
+  "validate_pubkey_format"
+ ],
+ "modules/response_template.py": [
+  "message_hop_count",
+  "message_path_bytes_per_hop",
+  "shorten_url_sync"
+ ],
+ "modules/scheduled_message_admin.py": [
+  "parse_schedule_key",
+  "parse_scheduled_message_value"
+ ],
+ "modules/scheduler.py": [
+  "CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD",
+  "MaintenanceRunner",
+  "channel_body_limit",
+  "decode_escape_sequences",
+  "format_keyword_response_with_placeholders",
+  "get_config_timezone",
+  "is_valid_legacy_hhmm",
+  "parse_schedule_key",
+  "parse_scheduled_message_value",
+  "scope_key_hex",
+  "validate_external_url"
+ ],
+ "modules/service_plugin_loader.py": [
+  "BaseServicePlugin"
+ ],
+ "modules/service_plugins/__init__.py": [
+  "BaseServicePlugin"
+ ],
+ "modules/service_plugins/darc_mowas_service.py": [
+  "BaseServicePlugin",
+  "i18n"
+ ],
+ "modules/service_plugins/discord_bridge_service.py": [
+  "BaseServicePlugin",
+  "DISCORD_WEBHOOK_ALLOWED_MENTIONS",
+  "censor",
+  "contains_profanity",
+  "neutralize_discord_mention_content",
+  "sanitize_name"
+ ],
+ "modules/service_plugins/earthquake_service.py": [
+  "BaseServicePlugin"
+ ],
+ "modules/service_plugins/map_uploader_service.py": [
+  "AdvertFlags",
+  "BaseServicePlugin",
+  "PayloadType",
+  "bytes_to_hex",
+  "decode_path_len_byte",
+  "hex_to_bytes",
+  "read_private_key_file",
+  "resolve_path"
+ ],
+ "modules/service_plugins/mqtt_weather_service.py": [
+  "BaseServicePlugin",
+  "MqttWeatherCache",
+  "iter_mqtt_weather_topics"
+ ],
+ "modules/service_plugins/packet_capture_service.py": [
+  "BaseServicePlugin",
+  "ChannelKeyStore",
+  "DEFAULT_PUBLIC_CHANNEL_KEY",
+  "MAX_INTERVAL_HOURS",
+  "MIN_CYCLE_GAP_SECONDS",
+  "MIN_INTERVAL_HOURS",
+  "NeighborsConfig",
+  "PayloadType",
+  "PayloadVersion",
+  "RouteType",
+  "STATUS_RESPONDED",
+  "build_neighbors_message",
+  "calculate_packet_hash",
+  "collect_scopes",
+  "create_auth_token_async",
+  "decode_path_len_byte",
+  "decode_payload",
+  "discover_neighbors",
+  "fetch_self_scopes",
+  "parse_trace_payload_route_hashes",
+  "read_private_key_file",
+  "record_neighbors",
+  "resolve_application_version",
+  "verify_meshcore_advert_ed25519"
+ ],
+ "modules/service_plugins/repeater_prefix_collision_service.py": [
+  "BaseServicePlugin"
+ ],
+ "modules/service_plugins/telegram_bridge_service.py": [
+  "BaseServicePlugin",
+  "censor",
+  "contains_profanity"
+ ],
+ "modules/service_plugins/weather_service.py": [
+  "BaseServicePlugin",
+  "alert_format",
+  "analyze_precip_nowcast",
+  "decide_rain_notification",
+  "episode_probability_temp",
+  "fetch_precip_series",
+  "fetch_precip_series_nws",
+  "format_amount_estimate",
+  "format_temperature_high_low",
+  "get_config_timezone",
+  "join_location",
+  "nws_http_means_no_coverage",
+  "precip_descriptor",
+  "reverse_geocode_region",
+  "shorten_url_sync"
+ ],
+ "modules/service_plugins/webhook_service.py": [
+  "BaseServicePlugin",
+  "DM_BODY_LIMIT"
+ ],
+ "modules/service_plugins/worldcup_service.py": [
+  "BaseServicePlugin",
+  "ESPNClient",
+  "WorldCupData",
+  "WorldCupFastcastClient",
+  "espn_dates_for_local_day",
+  "filter_events_local_day",
+  "get_config_timezone"
+ ],
+ "modules/settings_store.py": [
+  "update_ini_values"
+ ],
+ "modules/web_viewer/__init__.py": [
+  "BotDataViewer",
+  "BotIntegration",
+  "WebViewerIntegration"
+ ],
+ "modules/web_viewer/app.py": [
+  "CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD",
+  "CONFIG_PANELS",
+  "DEFAULT_MAX_FEED_RESPONSE_BYTES",
+  "DEFAULT_MAX_PARSED_FEED_ITEMS",
+  "DEFAULT_MAX_RESTORE_BYTES",
+  "DashboardStatsService",
+  "DatabaseRestoreError",
+  "IniValueError",
+  "MaintenanceRunner",
+  "PANEL_CATEGORIES",
+  "RepeaterManager",
+  "SCHEDULED_MESSAGES_SECTION",
+  "SERIES_METRICS",
+  "SafeUrlPolicy",
+  "TOP_KINDS",
+  "build_plugin_settings_view",
+  "channel_body_limit",
+  "compose_value",
+  "config_to_redacted_sections",
+  "create_safe_requests_session",
+  "delete_timestamp_rows_in_chunks",
+  "describe_schedule",
+  "flood_scope",
+  "format_feed_message",
+  "get_nested_value",
+  "get_settings_store",
+  "humanize_span",
+  "item_passes_filter_config",
+  "normalized_web_viewer_password",
+  "parse_microsoft_date",
+  "read_entries",
+  "region_warning",
+  "resolve_application_version",
+  "resolve_path",
+  "retention_delete_settings",
+  "safe_requests_request",
+  "sort_feed_items",
+  "stage_database_restore",
+  "to_config_string",
+  "update_ini_values",
+  "validate_entry",
+  "validate_external_url",
+  "validate_field",
+  "validate_repeater_tables",
+  "validate_sql_identifier"
+ ],
+ "modules/web_viewer/integration.py": [
+  "delete_timestamp_rows_in_chunks",
+  "resolve_path",
+  "retention_delete_settings"
+ ]
+}

@@ -19,6 +19,7 @@ from ..utils import (
     geocode_city,
     geocode_zipcode,
     get_config_timezone,
+    get_nominatim_geocoder,  # noqa: F401
     rate_limited_nominatim_reverse,
 )
 from .base_command import BaseCommand

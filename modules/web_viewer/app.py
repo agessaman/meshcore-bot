@@ -83,6 +83,7 @@ from modules.version_info import resolve_application_version
 from modules.web_viewer.dashboard_stats import (
     SERIES_METRICS,
     TOP_KINDS,
+    DashboardStatsService,  # noqa: F401  kept for modules.web_viewer.app.DashboardStatsService
     humanize_span,  # noqa: F401  kept for modules.web_viewer.app.humanize_span
 )
 
@@ -139,9 +140,17 @@ from modules.config_snapshot import config_to_redacted_sections
 
 # Imported for the feed helpers that moved to modules.web_viewer.feeds; kept so
 # modules.web_viewer.app.<name> (and patches of it) keep resolving.
-from modules.feed_filter_eval import item_passes_filter_config  # noqa: F401
+from modules.feed_filter_eval import (  # noqa: F401
+    get_nested_value,
+    item_passes_filter_config,  # noqa: F401
+    parse_microsoft_date,
+)
 from modules.feed_format import format_feed_message, sort_feed_items  # noqa: F401
-from modules.feed_manager import _useful_feed_content_type  # noqa: F401
+from modules.feed_manager import (  # noqa: F401
+    DEFAULT_MAX_FEED_RESPONSE_BYTES,
+    DEFAULT_MAX_PARSED_FEED_ITEMS,
+    _useful_feed_content_type,  # noqa: F401
+)
 from modules.feed_parse import (  # noqa: F401
     api_item_fields,
     feed_allow_private_urls,
