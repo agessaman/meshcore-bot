@@ -311,6 +311,7 @@ class MeshCoreBot(ServiceSupervisorMixin, RadioLinkMixin, RadioOfflineBreaker):
         self.last_advert_time = None
 
         # Clock sync tracking
+        self.last_clock_sync_time = None
 
         # Shutdown event for graceful shutdown
         self._shutdown_event = threading.Event()
@@ -905,6 +906,7 @@ class MeshCoreBot(ServiceSupervisorMixin, RadioLinkMixin, RadioOfflineBreaker):
                 result = await self.meshcore.commands.set_time(current_time)
                 if result.type == EventType.OK:
                     self.logger.info(f"✓ Radio clock updated to: {current_time}")
+                    self.last_clock_sync_time = current_time
                     return True
                 else:
                     self.logger.warning(f"Failed to update radio clock: {result}")
