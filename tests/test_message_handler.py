@@ -19,6 +19,7 @@ from modules.message_handler import (
     rf_data_is_correlated,
 )
 from modules.models import MeshMessage
+from modules.transmission_tracker import TransmissionTracker
 from tests.conftest import mock_message as make_message
 
 
@@ -1920,6 +1921,24 @@ class TestAuthenticatedChannelCorrelation:
         packet_info["payload_hex"] = payload.hex()
 
         assert handler._decode_authenticated_channel_identity(packet_info) is None
+
+    def test_transmission_evidence_carries_the_decrypted_text(self, handler):
+        self._setup(
+            handler,
+            {1: {"channel_idx": 1, "channel_secret": self.SECRET_1}},
+        )
+        packet_hex, _group_payload = _make_group_text_packet(
+            self.SECRET_1, self.SENDER_TIMESTAMP, self.TEXT
+        )
+        packet_info = handler.decode_meshcore_packet(packet_hex)
+        evidence = handler._transmission_evidence(packet_info)
+        assert evidence["payload_type"] == 5
+        assert evidence["channel_idx"] == 1
+        assert evidence["channel_text"] == self.TEXT.split(": ", 1)[1]
+        record = TransmissionTracker(handler.bot).record_transmission(
+            self.TEXT.split(": ", 1)[1], "general", "channel", channel_idx=1
+        )
+        assert record.content == evidence["channel_text"]
 
     @pytest.mark.asyncio
     async def test_channel_index_disambiguates_same_timestamp_and_text(self, handler):

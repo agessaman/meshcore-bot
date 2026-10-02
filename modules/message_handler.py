@@ -526,9 +526,13 @@ class MessageHandler:
         return result
 
     def _decode_authenticated_channel_identity(
-        self, packet_info: dict[str, Any] | None
+        self, packet_info: dict[str, Any] | None, *, include_text: bool = False
     ) -> dict[str, Any] | None:
-        """Authenticate a decoded GRP_TXT packet and derive its CHAN identity."""
+        """Authenticate a decoded GRP_TXT packet and derive its CHAN identity.
+
+        ``include_text`` adds the decrypted text without its sender prefix as
+        ``channel_text``.
+        """
         if not packet_info or packet_info.get("payload_type") != self._grp_txt_payload_type_int():
             return None
         payload_hex = packet_info.get("payload_hex")
@@ -559,12 +563,27 @@ class MessageHandler:
             )
             if identity is None:
                 return None
-            return {
+            result = {
                 "channel_message_id": identity,
                 "channel_idx": channel_idx,
                 "channel_attempt": int(decrypted["flags"]) & 0x03,
             }
+            if include_text:
+                result["channel_text"] = decrypted["text"]
+            return result
         return None
+
+    def _transmission_evidence(self, packet_info: dict[str, Any]) -> dict[str, Any]:
+        """What a received packet says about itself, for TransmissionTracker to recognize our own."""
+        evidence: dict[str, Any] = {
+            "payload_type": packet_info.get("payload_type"),
+            "payload_hex": packet_info.get("payload_hex") or "",
+        }
+        channel = self._decode_authenticated_channel_identity(packet_info, include_text=True)
+        if channel:
+            evidence["channel_idx"] = channel["channel_idx"]
+            evidence["channel_text"] = channel["channel_text"]
+        return evidence
 
     def _cache_authenticated_channel_rf_data(
         self,
@@ -1355,7 +1374,9 @@ class MessageHandler:
                                         )
 
                                     # Try to match this packet hash to a transmission
-                                    record = self.bot.transmission_tracker.match_packet_hash(packet_hash, current_time)
+                                    record = self.bot.transmission_tracker.match_packet_hash(
+                                        packet_hash, current_time, self._transmission_evidence(decoded_packet)
+                                    )
 
                                     if record:
                                         # This is one of our transmissions - check for repeats
@@ -1385,7 +1406,9 @@ class MessageHandler:
                                             # Still count as a repeat (heard by our radio)
                                             self.bot.transmission_tracker.record_repeat(packet_hash, None)
                                 else:
-                                    record = self.bot.transmission_tracker.match_packet_hash(packet_hash, current_time)
+                                    record = self.bot.transmission_tracker.match_packet_hash(
+                                        packet_hash, current_time, self._transmission_evidence(decoded_packet)
+                                    )
                                     if record:
                                         self.logger.debug(
                                             "📡 TRACE packet matched our transmission; skipping repeater prefix "

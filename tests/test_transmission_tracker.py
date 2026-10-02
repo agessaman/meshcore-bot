@@ -11,6 +11,11 @@ import pytest
 from modules.transmission_tracker import TransmissionRecord, TransmissionTracker
 
 
+def _chan(text, idx=0):
+    """A received GRP_TXT that decrypted on channel ``idx`` to ``text``."""
+    return {"payload_type": 5, "payload_hex": "", "channel_idx": idx, "channel_text": text}
+
+
 @pytest.fixture
 def mock_bot(mock_logger):
     """Minimal bot mock for TransmissionTracker."""
@@ -67,7 +72,7 @@ class TestRecordTransmission:
         assert rec.message_type == "channel"
 
     def test_stores_in_pending(self, tracker):
-        rec = tracker.record_transmission("msg", "ch", "channel")
+        rec = tracker.record_transmission("msg", "ch", "channel", channel_idx=0)
         key = int(rec.timestamp)
         assert key in tracker.pending_transmissions
         assert rec in tracker.pending_transmissions[key]
@@ -93,24 +98,24 @@ class TestMatchPacketHash:
         assert tracker.match_packet_hash("0000000000000000", time.time()) is None
 
     def test_matches_pending_transmission(self, tracker):
-        rec = tracker.record_transmission("msg", "general", "channel")
-        result = tracker.match_packet_hash("deadbeef", rec.timestamp + 1)
+        rec = tracker.record_transmission("msg", "general", "channel", channel_idx=0)
+        result = tracker.match_packet_hash("deadbeef", rec.timestamp + 1, _chan("msg"))
         assert result is not None
         assert result.packet_hash == "deadbeef"
 
     def test_already_confirmed_returned_immediately(self, tracker):
-        rec = tracker.record_transmission("msg", "ch", "channel")
+        rec = tracker.record_transmission("msg", "ch", "channel", channel_idx=0)
         # First match confirms it
-        tracker.match_packet_hash("abc123", rec.timestamp)
+        tracker.match_packet_hash("abc123", rec.timestamp, _chan("msg"))
         # Second call returns same confirmed record
         result2 = tracker.match_packet_hash("abc123", time.time())
         assert result2 is not None
         assert result2.packet_hash == "abc123"
 
     def test_no_match_outside_window(self, tracker):
-        rec = tracker.record_transmission("msg", "ch", "channel")
+        rec = tracker.record_transmission("msg", "ch", "channel", channel_idx=0)
         # RF timestamp far in the future
-        result = tracker.match_packet_hash("deadbeef", rec.timestamp + 9999)
+        result = tracker.match_packet_hash("deadbeef", rec.timestamp + 9999, _chan("msg"))
         assert result is None
 
 
@@ -122,9 +127,9 @@ class TestRecordRepeat:
         assert tracker.record_repeat("0000000000000000") is False
 
     def test_repeat_increments_count(self, tracker):
-        rec = tracker.record_transmission("msg", "ch", "channel")
+        rec = tracker.record_transmission("msg", "ch", "channel", channel_idx=0)
         # First confirm the hash
-        tracker.match_packet_hash("hash01", rec.timestamp)
+        tracker.match_packet_hash("hash01", rec.timestamp, _chan("msg"))
         # Now record a repeat
         result = tracker.record_repeat("hash01", repeater_prefix="7e")
         assert result is True
@@ -132,16 +137,16 @@ class TestRecordRepeat:
         assert "7e" in rec.repeater_prefixes
 
     def test_repeat_without_prefix(self, tracker):
-        rec = tracker.record_transmission("msg", "ch", "channel")
-        tracker.match_packet_hash("hash02", rec.timestamp)
+        rec = tracker.record_transmission("msg", "ch", "channel", channel_idx=0)
+        tracker.match_packet_hash("hash02", rec.timestamp, _chan("msg"))
         result = tracker.record_repeat("hash02")
         assert result is True
         assert rec.repeat_count == 1
         assert rec.repeater_counts.get("_unknown") == 1
 
     def test_multiple_repeats_same_repeater(self, tracker):
-        rec = tracker.record_transmission("msg", "ch", "channel")
-        tracker.match_packet_hash("hash03", rec.timestamp)
+        rec = tracker.record_transmission("msg", "ch", "channel", channel_idx=0)
+        tracker.match_packet_hash("hash03", rec.timestamp, _chan("msg"))
         tracker.record_repeat("hash03", repeater_prefix="01")
         tracker.record_repeat("hash03", repeater_prefix="01")
         assert rec.repeat_count == 2
@@ -162,16 +167,16 @@ class TestGetRepeatInfo:
         assert info["repeater_counts"] == {}
 
     def test_lookup_by_packet_hash(self, tracker):
-        rec = tracker.record_transmission("msg", "ch", "channel")
-        tracker.match_packet_hash("hashXX", rec.timestamp)
+        rec = tracker.record_transmission("msg", "ch", "channel", channel_idx=0)
+        tracker.match_packet_hash("hashXX", rec.timestamp, _chan("msg"))
         tracker.record_repeat("hashXX", repeater_prefix="7e")
         info = tracker.get_repeat_info(packet_hash="hashXX")
         assert info["repeat_count"] == 1
         assert "7e" in info["repeater_prefixes"]
 
     def test_lookup_by_command_id(self, tracker):
-        rec = tracker.record_transmission("msg", "ch", "channel", command_id="cmd-99")
-        tracker.match_packet_hash("hashYY", rec.timestamp)
+        rec = tracker.record_transmission("msg", "ch", "channel", command_id="cmd-99", channel_idx=0)
+        tracker.match_packet_hash("hashYY", rec.timestamp, _chan("msg"))
         tracker.record_repeat("hashYY", repeater_prefix="ab")
         info = tracker.get_repeat_info(command_id="cmd-99")
         assert info["repeat_count"] == 1
@@ -571,3 +576,59 @@ class TestMaybeCleanup:
         # Recording a new transmission should trigger cleanup
         tracker.record_transmission("new msg", "general", "channel")
         assert old_key not in tracker.pending_transmissions
+
+
+class TestOnlyOurOwnPacketsMatch:
+    """A pending transmission is claimed only by a packet carrying its identity."""
+
+    def test_an_unrelated_packet_does_not_claim_a_channel_send(self, tracker):
+        rec = tracker.record_transmission("hello", "general", "channel", channel_idx=0)
+        assert tracker.match_packet_hash("aaaa", rec.timestamp + 1, {"payload_type": 4, "payload_hex": "c1" * 40}) is None
+        assert tracker.match_packet_hash("bbbb", rec.timestamp + 1, _chan("someone else's text")) is None
+        assert tracker.match_packet_hash("cccc", rec.timestamp + 1, _chan("hello", idx=1)) is None
+        assert rec.packet_hash is None
+        assert tracker.match_packet_hash("dddd", rec.timestamp + 2, _chan("hello")) is rec
+        assert tracker.record_repeat("dddd", "7e") is True
+
+    def test_a_hash_without_packet_evidence_is_only_looked_up(self, tracker):
+        rec = tracker.record_transmission("hello", "general", "channel", channel_idx=0)
+        assert tracker.match_packet_hash("eeee", rec.timestamp + 1) is None
+        assert tracker.record_repeat("eeee", "7e") is False
+        assert rec.repeat_count == 0
+
+    def test_a_dm_is_matched_by_recipient_and_sender_hash(self, mock_bot):
+        mock_bot.meshcore = Mock(self_info={"public_key": "ab" + "00" * 31})
+        tracker = TransmissionTracker(mock_bot)
+        rec = tracker.record_transmission("hi", "Alice", "dm", recipient_key="c4" + "11" * 31)
+        other_recipient = {"payload_type": 2, "payload_hex": "d5ab" + "00" * 20}
+        other_sender = {"payload_type": 2, "payload_hex": "c4ee" + "00" * 20}
+        ours = {"payload_type": 2, "payload_hex": "c4ab" + "00" * 20}
+        assert tracker.match_packet_hash("1111", rec.timestamp, other_recipient) is None
+        assert tracker.match_packet_hash("2222", rec.timestamp, other_sender) is None
+        assert tracker.match_packet_hash("3333", rec.timestamp, ours) is rec
+
+    def test_a_trace_is_matched_by_its_tag(self, tracker):
+        tag = 0x12345678
+        rec = tracker.record_transmission("trace", "", "trace", command_id=str(tag), trace_tag=tag)
+        other = {"payload_type": 9, "payload_hex": (0x0BADF00D).to_bytes(4, "little").hex() + "00" * 5}
+        ours = {"payload_type": 9, "payload_hex": tag.to_bytes(4, "little").hex() + "00" * 5}
+        assert tracker.match_packet_hash("4444", rec.timestamp, other) is None
+        assert tracker.match_packet_hash("5555", rec.timestamp, ours) is rec
+
+    def test_a_record_without_identity_is_never_claimed(self, tracker):
+        rec = tracker.record_transmission("msg", "ch", "channel")
+        assert tracker.match_packet_hash("6666", rec.timestamp, _chan("msg")) is None
+
+
+class TestRepeatCountWrites:
+    async def test_repeat_count_is_written_off_the_event_loop(self, tracker, monkeypatch):
+        import threading
+
+        threads = []
+        monkeypatch.setattr(tracker, "_update_command_in_database", lambda rec: threads.append(threading.current_thread().name))
+        tracker.bot.web_viewer_integration = Mock()
+        rec = tracker.record_transmission("msg", "ch", "channel", command_id="cmd-1", channel_idx=0)
+        tracker.match_packet_hash("7777", rec.timestamp, _chan("msg"))
+        assert tracker.record_repeat("7777", "7e") is True
+        tracker._db_executor.shutdown(wait=True)
+        assert threads and threads[0] != threading.current_thread().name

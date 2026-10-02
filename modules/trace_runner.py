@@ -52,6 +52,7 @@ async def _run_trace_attempt(
                 target="",
                 message_type="trace",
                 command_id=str(tag),
+                trace_tag=tag,
             )
     except Exception as e:
         bot.logger.debug(f"Trace runner: failed to record transmission: {e}")
