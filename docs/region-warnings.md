@@ -68,7 +68,7 @@ Run it in dry run for a few days first. Because dry run spends the same budget, 
 ### Delivery
 
 - **Direct message** (default) — the sender alone sees it, and it is the cheaper of the two. Only sent to a name the radio already has a contact for; see [Who the sender is](#who-the-sender-is). If your bot does not keep contacts, use channel delivery instead.
-- **Channel reply** — sent at **global** scope on purpose. The recipient is by definition outside any region your bot replies under, so a scoped reply would never reach them. Everyone on the channel sees it.
+- **Channel reply** — everyone on the channel sees it. It goes out at the same flood scope as the bot's other proactive channel sends: `[Region_Warnings] flood_scope` if set, then `[Channels] flood_scope.<channel>`, then `[Channels] outgoing_flood_scope_override`, and global flood if none of those is set. A scoped warning still reaches the sender: a companion radio accepts a regional flood whatever region it has set itself, so only the repeaters carrying it decide how far it goes. Set `flood_scope = *` here to send warnings at global scope while the rest of the bot stays regional.
 
 ### Limits
 
@@ -89,7 +89,7 @@ Both cooldowns and the cap read from the database rather than from memory, so re
 
 ### Message
 
-`{sender}` and `{channel}` are substituted. Keep it short: a DM body is 158 UTF-8 bytes and a channel reply is smaller still (160 minus your bot's name), and anything longer is truncated. The page shows the byte count live against whichever limit applies.
+`{sender}` and `{channel}` are substituted. Keep it short: a DM body is 158 UTF-8 bytes and a channel reply is smaller still (155 minus your bot's name and the `: ` after it, and 10 bytes less again when the reply goes out under a region), and anything longer is truncated. The page shows the byte count live against whichever limit applies.
 
 For channel delivery, include `@[{sender}]` so the person you are addressing sees it.
 
@@ -109,9 +109,12 @@ min_unscoped_messages = 3
 per_sender_cooldown_hours = 168
 mesh_cooldown_minutes = 30
 max_warnings_per_day = 6
+# flood_scope = #west
 ```
 
 `channels` is an allowlist; empty means every channel the bot hears. The leading `#` is optional and case does not matter.
+
+`flood_scope` only affects channel delivery and is not on the page; set it in `config.ini`. Leave it unset to follow the `[Channels]` scope settings.
 
 Saving from the Web Viewer queues a hot config reload, so changes take effect without a restart.
 
@@ -127,6 +130,8 @@ Both are pruned by `[Data_Retention] region_warning_retention_days` (default 90)
 Set `track_traffic = false` to stop writing tallies. Warnings still work; you just lose the evidence the page is built on.
 
 ## Relationship to `flood_scopes`
+
+See [Region scopes](region-scopes.md) for how scoped replies and `flood_scopes` work.
 
 `[Channels] flood_scopes` decides which messages the bot will *reply* to. Region warnings observe every channel message regardless, and the observation runs before that allowlist — an unscoped message is exactly what a scoped allowlist drops, so measuring after the gate would blind the monitor to the traffic it exists to measure.
 
