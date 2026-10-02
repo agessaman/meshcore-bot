@@ -77,9 +77,33 @@
   "requests": 1,
   "text": "<commands.gwx.periods.today>: ⛅<commands.gwx.weather_descriptions.2> 14°C ↙️<common.wind_directions.SW>5<commands.gwx.gust[('value', 11)]> <commands.gwx.humidity[('value', 78)]> | <common.temp_high_label>:20°C <common.temp_low_label>:13°C"
  },
- "no_current-default": "<commands.gwx.periods.today>: ☀️<commands.gwx.weather_descriptions.0> 0°C <commands.gwx.humidity[('value', 0)]> | <common.temp_high_label>:20°C <common.temp_low_label>:13°C",
- "no_current-default-budget260": "<commands.gwx.periods.today>: ☀️<commands.gwx.weather_descriptions.0> 0°C <commands.gwx.humidity[('value', 0)]> | <common.temp_high_label>:20°C <common.temp_low_label>:13°C",
- "no_current-default-budget600": "<commands.gwx.periods.today>: ☀️<commands.gwx.weather_descriptions.0> 0°C <commands.gwx.humidity[('value', 0)]> | <common.temp_high_label>:20°C <common.temp_low_label>:13°C | <commands.gwx.periods.tomorrow>: ☁️ <common.temp_high_label>:21°C <common.temp_low_label>:14°C",
+ "no_current-default": [
+  "<commands.gwx.error_fetching>",
+  [
+   [
+    "warning",
+    "Open-Meteo response has no current temperature"
+   ]
+  ]
+ ],
+ "no_current-default-budget260": [
+  "<commands.gwx.error_fetching>",
+  [
+   [
+    "warning",
+    "Open-Meteo response has no current temperature"
+   ]
+  ]
+ ],
+ "no_current-default-budget600": [
+  "<commands.gwx.error_fetching>",
+  [
+   [
+    "warning",
+    "Open-Meteo response has no current temperature"
+   ]
+  ]
+ ],
  "no_current-multiday": "<commands.gwx.day_abbrev.Friday>: ☁️<commands.gwx.wea... <common.temp_high_label>:21°C <common.temp_low_label>:14°C\n<commands.gwx.day_abbrev.Saturday>: 🌫️<commands.gwx.wea... <common.temp_high_label>:19°C <common.temp_low_label>:14°C\n<commands.gwx.day_abbrev.Sunday>: ☁️<commands.gwx.wea... <common.temp_high_label>:19°C <common.temp_low_label>:14°C\n<commands.gwx.day_abbrev.Monday>: 🌦️<commands.gwx.wea... <common.temp_high_label>:18°C <common.temp_low_label>:12°C\n<commands.gwx.day_abbrev.Tuesday>: 🌦️<commands.gwx.wea... <common.temp_high_label>:14°C <common.temp_low_label>:10°C",
  "no_current-tomorrow": "<commands.gwx.periods.tomorrow>: ☁️<commands.gwx.weather_descriptions.3> <common.temp_high_label>:21°C <common.temp_low_label>:14°C 9<commands.gwx.gust[('value', 19)]>",
  "no_daily-default": "<commands.gwx.periods.today>: ⛅<commands.gwx.weather_descriptions.2> 14°C ↙️<common.wind_directions.SW>5<commands.gwx.gust[('value', 11)]> <commands.gwx.humidity[('value', 78)]>",
@@ -140,8 +164,8 @@
   "<commands.gwx.error_fetching>",
   [
    [
-    "error",
-    "Error fetching Open-Meteo weather: int() argument must be a string, a bytes-like object or a real number, not 'NoneType'"
+    "warning",
+    "Open-Meteo response has no current temperature"
    ]
   ]
  ],
@@ -149,8 +173,8 @@
   "<commands.gwx.error_fetching>",
   [
    [
-    "error",
-    "Error fetching Open-Meteo weather: int() argument must be a string, a bytes-like object or a real number, not 'NoneType'"
+    "warning",
+    "Open-Meteo response has no current temperature"
    ]
   ]
  ],
@@ -158,8 +182,8 @@
   "<commands.gwx.error_fetching>",
   [
    [
-    "error",
-    "Error fetching Open-Meteo weather: int() argument must be a string, a bytes-like object or a real number, not 'NoneType'"
+    "warning",
+    "Open-Meteo response has no current temperature"
    ]
   ]
  ],
