@@ -98,6 +98,7 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
         self.default_city = self.bot.config.get('Weather', 'default_city', fallback='').strip()
         self.default_state = self.bot.config.get('Weather', 'default_state', fallback='')
         self.default_country = self.bot.config.get('Weather', 'default_country', fallback='US')
+        self.always_show_location = self.bot.config.getboolean('Weather', 'always_show_location', fallback=False)
 
         # Get unit preferences from config
         self.temperature_unit = self.bot.config.get('Weather', 'temperature_unit', fallback='fahrenheit').lower()
@@ -662,7 +663,19 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
                     timeout=10
                 )
                 if lat is not None and lon is not None:
-                    # A ZIP code is not named in the reply (as in wx), so no reverse lookup.
+                    # A ZIP code is not named in the reply (as in wx), so no reverse lookup,
+                    # unless [Weather] always_show_location asks for every place to be named.
+                    if not self.always_show_location:
+                        return lat, lon, {}, None
+                    try:
+                        reverse_location = rate_limited_nominatim_reverse_sync(
+                            self.bot, f"{lat}, {lon}", timeout=10
+                        )
+                    except Exception as e:
+                        self.logger.debug(f"Reverse geocoding failed for ZIP code {location}: {e}")
+                        reverse_location = None
+                    if reverse_location:
+                        return lat, lon, reverse_location.raw.get('address', {}) or {}, reverse_location
                     return lat, lon, {}, None
                 # Invalid or unknown US ZIP; do not fall through to city (avoids foreign matches)
                 return None, None, None, None
@@ -707,14 +720,19 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
         place was found for them. A ZIP code is not named. A city is named when it
         resolved to another country than [Weather] default_country or, in the US, to
         another state than default_state (or no default_state is set).
+
+        With [Weather] always_show_location, any place a lookup found is named.
         """
-        if self._ZIP_RE.match(location.strip()):
-            return False
         if not address_info:
             return False
-        if self._COORDINATES_RE.match(location):
-            # Without a place name the label would only repeat the coordinates.
+        is_zip = bool(self._ZIP_RE.match(location.strip()))
+        if is_zip and not self.always_show_location:
+            return False
+        if is_zip or self._COORDINATES_RE.match(location):
+            # Without a place name the label would only repeat the ZIP code or coordinates.
             return any(address_info.get(field) for field in ('city', 'town', 'village', 'municipality', 'city_district'))
+        if self.always_show_location:
+            return True
         country = (address_info.get('country_code') or '').upper()
         default_country = (self.default_country or '').strip().upper()
         if country and default_country and country != default_country:

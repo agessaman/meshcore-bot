@@ -10,10 +10,13 @@ from modules.commands.alternatives.wx_international import GlobalWxCommand
 MODULE = "modules.commands.alternatives.wx_international"
 
 
-def _gwx(default_country="US", default_state=""):
+def _gwx(default_country="US", default_state="", always=None):
+    weather = {"default_country": default_country, "default_state": default_state}
+    if always is not None:
+        weather["always_show_location"] = str(always).lower()
     config = configparser.ConfigParser()
     config.read_dict({
-        "Weather": {"default_country": default_country, "default_state": default_state},
+        "Weather": weather,
         "Gwx_Command": {},
         "Bot": {},
     })
@@ -74,3 +77,44 @@ def test_an_unnamed_reply_keeps_the_whole_budget():
     cmd = _gwx("GB")
     _reply(cmd, "London", LONDON)
     assert cmd._get_open_meteo_weather_with_conditions.call_args.kwargs["location_prefix_len"] == 0
+
+
+@pytest.mark.parametrize(("location", "address", "expected"), [
+    ("Seattle", SEATTLE, "Seattle, WA: Clear 20°C"),  # inside the default state
+    ("London", LONDON, "London, GB: Clear 20°C"),
+    ("98104", SEATTLE, "Seattle, WA: Clear 20°C"),
+    ("98104", {}, "Clear 20°C"),  # the reverse lookup failed
+    ("98104", {"country_code": "us", "state": "Washington"}, "Clear 20°C"),  # no place name
+    ("47.60620,-122.33210", {"country_code": "us", "state": "Washington"}, "Clear 20°C"),
+])
+def test_always_show_location_names_every_place_found(location, address, expected):
+    assert _reply(_gwx("US", "WA", always=True), location, address) == expected
+
+
+@pytest.mark.parametrize("always", [None, False])
+def test_always_show_location_is_off_by_default(always):
+    assert _reply(_gwx("US", "WA", always=always), "Seattle", SEATTLE) == "Clear 20°C"
+
+
+def test_always_show_location_reverse_geocodes_a_zip_code():
+    cmd = _gwx("US", "WA", always=True)
+    place = Mock(raw={"address": SEATTLE})
+    with patch(f"{MODULE}.geocode_zipcode_sync", return_value=(47.6, -122.3)), patch(
+        f"{MODULE}.rate_limited_nominatim_reverse_sync", return_value=place
+    ) as reverse:
+        assert cmd.geocode_location("98104") == (47.6, -122.3, SEATTLE, place)
+    reverse.assert_called_once()
+
+
+def test_always_show_location_survives_a_failed_zip_reverse_lookup():
+    cmd = _gwx("US", "WA", always=True)
+    with patch(f"{MODULE}.geocode_zipcode_sync", return_value=(47.6, -122.3)), patch(
+        f"{MODULE}.rate_limited_nominatim_reverse_sync", side_effect=TimeoutError
+    ):
+        assert cmd.geocode_location("98104") == (47.6, -122.3, {}, None)
+
+
+def test_a_named_place_comes_out_of_the_budget():
+    cmd = _gwx("US", "WA", always=True)
+    _reply(cmd, "Seattle", SEATTLE)
+    assert cmd._get_open_meteo_weather_with_conditions.call_args.kwargs["location_prefix_len"] == len("Seattle, WA: ")

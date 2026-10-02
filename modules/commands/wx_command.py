@@ -222,6 +222,11 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
          "default": "", "help": "2-letter state for city disambiguation (e.g. WA). Shared weather setting."},
         {"key": "default_country", "label": "Default country", "type": "str", "section": "Weather",
          "default": "US", "help": "2-letter country code (e.g. US). Shared weather setting."},
+        {"key": "always_show_location", "label": "Always name the location", "type": "bool", "section": "Weather",
+         "default": False,
+         "help": "Name the place in every wx/gwx reply a place is found for, not only when it is outside the "
+                 "default state or country. Costs message length, and a reverse lookup for ZIP codes. "
+                 "Shared weather setting."},
     ]
 
     # Error constants
@@ -265,6 +270,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             self.default_city = self.bot.config.get('Weather', 'default_city', fallback='').strip()
             self.default_state = self.bot.config.get('Weather', 'default_state', fallback='')
             self.default_country = self.bot.config.get('Weather', 'default_country', fallback='US')
+            self.always_show_location = self.bot.config.getboolean('Weather', 'always_show_location', fallback=False)
 
             # Initialize geocoder (will use rate-limited helpers for actual calls)
             # Keep geolocator for backwards compatibility, but prefer rate-limited helpers
@@ -984,9 +990,9 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                 states_different = (actual_state != self.default_state and
                                   actual_state != default_state_full)
                 # Always show location if using companion location, or if state is different
-                if using_companion_location or states_different:
+                if using_companion_location or states_different or self.always_show_location:
                     location_prefix = f"{actual_city}, {actual_state}: " if actual_state else f"{actual_city}: "
-            elif location_type == "zipcode" and using_companion_location:
+            elif location_type == "zipcode" and (using_companion_location or self.always_show_location):
                 # For zipcode with companion location, try to get city name from reverse geocoding
                 location_str = self._coordinates_to_location_string(lat, lon)
                 if location_str:

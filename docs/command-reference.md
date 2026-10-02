@@ -193,7 +193,7 @@ wx
 
 **Units** follow `[Weather] temperature_unit` and `wind_speed_unit` (`[Wx_Command]` overrides them for `wx`). The default is °F and mph.
 
-**The place is named** in the reply only when it adds information: for a position (the sender's, the bot's or typed coordinates) when a place is found for it, and for a city in another state than `[Weather] default_state` (or any city, when `default_state` is not set). ZIP codes are not named.
+**The place is named** in the reply only when it adds information: for a position (the sender's, the bot's or typed coordinates) when a place is found for it, and for a city in another state than `[Weather] default_state` (or any city, when `default_state` is not set). ZIP codes are not named. With `[Weather] always_show_location = true`, every city, ZIP code and position a place is found for is named; the name takes message length from the forecast, and a ZIP code costs one extra reverse lookup.
 
 ---
 
@@ -224,7 +224,7 @@ gwx Reykjavik 10d
 
 **Units** follow `[Weather] temperature_unit`, `wind_speed_unit` and `precipitation_unit`.
 
-**The place is named** in the reply when it adds information: a city in another country than `[Weather] default_country` (in the US, another state than `default_state`, or any US city when `default_state` is not set), or a position a place was found for. A city in the bot's own region and ZIP codes are not named.
+**The place is named** in the reply when it adds information: a city in another country than `[Weather] default_country` (in the US, another state than `default_state`, or any US city when `default_state` is not set), or a position a place was found for. A city in the bot's own region and ZIP codes are not named. `[Weather] always_show_location = true` names every place a lookup finds, as for `wx`.
 
 **Custom sources:** a `custom.wxsim.<name>` or `custom.mqtt_weather.<name>` key in `[Weather]` answers `wx <name>` and `gwx <name>` from that station. WXSIM sources answer current conditions, `tomorrow` and `Nd`; MQTT sources answer current conditions only. Options a source cannot answer (`hourly` and `alerts` for both) reply that they are not available instead of sending the current conditions.
 

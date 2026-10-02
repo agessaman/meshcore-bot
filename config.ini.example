@@ -915,6 +915,13 @@ default_country = US
 # Default: false (show usage instead)
 use_bot_location_when_no_location = false
 
+# When true, wx and gwx name the place in every reply a place is found for ("Lake Stevens, WA: ...").
+# When false, they name it only when it adds information: a city outside default_state or
+# default_country, or a position (the sender's, the bot's or typed coordinates).
+# The name takes message length from the forecast, and a ZIP code costs one extra reverse lookup.
+# Default: false
+always_show_location = false
+
 # Temperature unit for weather display (wx, gwx, the weather service)
 # Options: fahrenheit, celsius
 # Celsius also switches distances (visibility) to kilometers.

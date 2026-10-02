@@ -8,6 +8,7 @@ semantic versioning.
 
 ### Added
 
+- `[Weather] always_show_location` (default `false`): when `true`, `wx` and `gwx` name the place in every reply a place is found for (`Lake Stevens, WA: …`), including ZIP codes and cities in the bot's own state or country, instead of only when the name adds information. The name takes message length from the forecast, and a ZIP code costs one extra reverse lookup. It's also in the web viewer's `wx` settings.
 - `gwx <place> hourly`: the next hours from Open-Meteo, packed into one reply like `wx`'s NOAA hourly forecast (time, condition, chance of precipitation, temperature, wind), in the configured units and translated. `gwx` listed `hourly` in its help but read it as part of the place name. `wx` with `weather_provider = openmeteo` gets it too.
 - Web viewer admin role when `web_viewer_password` is set: Dashboard, Contacts,
   and Mesh Graph are readable anonymously; Radio, Config, Logs, and all
