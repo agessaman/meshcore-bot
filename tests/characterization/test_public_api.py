@@ -74,9 +74,10 @@ def test_no_public_name_was_removed():
     import os
 
     current = _public_names()
-    if os.environ.get("UPDATE_GOLDEN") == "1" or not GOLDEN.exists():
+    if os.environ.get("UPDATE_GOLDEN") == "1":
         GOLDEN.write_text(json.dumps(current, indent=1, sort_keys=True) + "\n", encoding="utf-8")
         return
+    assert GOLDEN.exists(), f"{GOLDEN} missing; generate it with UPDATE_GOLDEN=1"
     recorded = json.loads(GOLDEN.read_text(encoding="utf-8"))
     missing = []
     for module, names in recorded.items():
@@ -91,9 +92,10 @@ def test_no_public_name_was_removed():
 def test_no_imported_public_name_was_dropped():
     import os
 
-    if os.environ.get("UPDATE_GOLDEN") == "1" or not IMPORTS_GOLDEN.exists():
+    if os.environ.get("UPDATE_GOLDEN") == "1":
         IMPORTS_GOLDEN.write_text(json.dumps(_public_imports(), indent=1, sort_keys=True) + "\n", encoding="utf-8")
         return
+    assert IMPORTS_GOLDEN.exists(), f"{IMPORTS_GOLDEN} missing; generate it with UPDATE_GOLDEN=1"
     recorded = json.loads(IMPORTS_GOLDEN.read_text(encoding="utf-8"))
     missing = [
         f"{module}: {name}"
