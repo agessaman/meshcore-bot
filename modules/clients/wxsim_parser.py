@@ -533,7 +533,7 @@ class WXSIMParser:
         Args:
             forecast: Parsed forecast data
             temp_unit: Temperature unit ('celsius' or 'fahrenheit')
-            wind_unit: Wind speed unit ('kph', 'mph', or 'ms')
+            wind_unit: Wind speed unit ('kph', 'mph', 'ms' or 'kn')
 
         Returns:
             str: Formatted current conditions string
@@ -579,7 +579,7 @@ class WXSIMParser:
             forecast: Parsed forecast data
             num_days: Number of days to include
             temp_unit: Temperature unit ('celsius' or 'fahrenheit')
-            wind_unit: Wind speed unit ('kph', 'mph', or 'ms')
+            wind_unit: Wind speed unit ('kph', 'mph', 'ms' or 'kn')
 
         Returns:
             str: Formatted forecast summary
@@ -632,7 +632,7 @@ class WXSIMParser:
 
         Args:
             wind_kph: Wind speed in km/h (WXSIM default unit)
-            unit: Target unit ('kph', 'mph', or 'ms')
+            unit: Target unit ('kph', 'mph', 'ms' or 'kn')
 
         Returns:
             float: Converted wind speed
@@ -643,13 +643,15 @@ class WXSIMParser:
             return round(wind_kph * 0.621371, 1)
         elif unit == 'ms':
             return round(wind_kph / 3.6, 1)
+        elif unit == 'kn':
+            return round(wind_kph * 0.539957, 1)
         return float(wind_kph)
 
     def _get_wind_unit_str(self, unit: str) -> str:
         """Get wind speed unit string.
 
         Args:
-            unit: Wind unit ('kph', 'mph', or 'ms')
+            unit: Wind unit ('kph', 'mph', 'ms' or 'kn')
 
         Returns:
             str: Unit string
@@ -657,7 +659,8 @@ class WXSIMParser:
         unit_map = {
             'kph': 'km/h',
             'mph': 'mph',
-            'ms': 'm/s'
+            'ms': 'm/s',
+            'kn': 'kn'
         }
         return unit_map.get(unit, 'km/h')
 

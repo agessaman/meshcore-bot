@@ -202,6 +202,8 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             "options": [
                 {"value": "mph", "label": "Miles per hour (mph)"},
                 {"value": "kmh", "label": "Kilometers per hour (km/h)"},
+                {"value": "ms", "label": "Meters per second (m/s)"},
+                {"value": "kn", "label": "Knots (kn)"},
             ],
             "default": "mph",
             "help": "Unit used when reporting wind speed.",
@@ -292,7 +294,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             'Wx_Command', 'wind_speed_unit', fallback='mph', value_type='str')).lower()
         if temp not in ('fahrenheit', 'celsius'):
             temp = 'fahrenheit'
-        if wind not in ('mph', 'kmh', 'ms'):
+        if wind not in ('mph', 'kmh', 'ms', 'kn'):
             wind = 'mph'
         return temp, wind
 
@@ -314,7 +316,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         if source == target:
             return number
         mph = int(number) if source == 'mph' else int(number) / 1.609344
-        value = {'mph': mph, 'kmh': mph * 1.609344, 'ms': mph * 0.44704}[target]
+        value = {'mph': mph, 'kmh': mph * 1.609344, 'ms': mph * 0.44704, 'kn': mph * 0.868976}[target]
         return str(int(round(value)))
 
     @staticmethod
@@ -2675,7 +2677,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                     wind_gust_val = wind_gust_val / 3.6
                 # Shown only above 10 mph, whatever unit it is shown in.
                 if int(wind_gust_val * 2.237) > 10:
-                    factor = {'mph': 2.237, 'kmh': 3.6, 'ms': 1.0}[wind_unit]
+                    factor = {'mph': 2.237, 'kmh': 3.6, 'ms': 1.0, 'kn': 1.944}[wind_unit]
                     obs_data_dict['wind_gusts'] = str(int(wind_gust_val * factor))
 
             pressure_val = props.get('barometricPressure', {}).get('value')

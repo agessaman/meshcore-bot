@@ -202,3 +202,18 @@ def test_hourly_wind_keeps_its_full_direction_and_follows_the_wind_unit(units, s
     with patch("modules.commands.wx_command.datetime", _Clock):
         text = _wx(units).format_hourly_forecast(periods, max_length=200)
     assert text.split("\n")[0].endswith(f" {shown}")
+
+
+def test_knots_are_a_wind_unit_everywhere():
+    from modules.clients.wxsim_parser import WXSIMParser
+    from modules.commands.alternatives.wx_international import GlobalWxCommand
+
+    assert _wx({"wind_speed_unit": "kn"})._noaa_units() == ("fahrenheit", "kn")
+    assert _wx({"wind_speed_unit": "kn"})._noaa_wind_convert("23", "23 mph") == "20"
+    config = configparser.ConfigParser()
+    config.read_dict({"Weather": {"wind_speed_unit": "kn"}, "Gwx_Command": {}, "Bot": {}})
+    bot = Mock()
+    bot.config = config
+    assert GlobalWxCommand(bot).wind_speed_unit == "kn"
+    parser = WXSIMParser()
+    assert (parser._convert_wind(37, "kn"), parser._get_wind_unit_str("kn")) == (20.0, "kn")

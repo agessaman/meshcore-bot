@@ -108,7 +108,7 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
         if self.temperature_unit not in ['fahrenheit', 'celsius']:
             self.logger.warning(f"Invalid temperature_unit '{self.temperature_unit}', using 'fahrenheit'")
             self.temperature_unit = 'fahrenheit'
-        if self.wind_speed_unit not in ['mph', 'kmh', 'ms']:
+        if self.wind_speed_unit not in ['mph', 'kmh', 'ms', 'kn']:
             self.logger.warning(f"Invalid wind_speed_unit '{self.wind_speed_unit}', using 'mph'")
             self.wind_speed_unit = 'mph'
         if self.precipitation_unit not in ['inch', 'mm']:
@@ -1449,7 +1449,7 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
             warnings.append(self.translate('commands.gwx.warnings.heavy_snow'))
 
         # Sustained wind only, as before; the warning's number is in mph like its threshold.
-        wind_factor = {'mph': 1, 'kmh': MI_TO_KM, 'ms': 0.44704}[self.wind_speed_unit]
+        wind_factor = {'mph': 1, 'kmh': MI_TO_KM, 'ms': 0.44704, 'kn': 0.868976}[self.wind_speed_unit]
         wind_speed = (current.get('wind_speed_10m') or 0) / wind_factor
         if wind_speed >= 30:
             warnings.append(self.translate('commands.gwx.warnings.high_winds', wind_speed=int(wind_speed)))

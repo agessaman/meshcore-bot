@@ -87,7 +87,7 @@ def test_temperature_thresholds(temperature_unit, fahrenheit, expected):
     _assert_warning(result, expected)
 
 
-@pytest.mark.parametrize("wind_unit, factor", [("mph", 1), ("kmh", 1.609344), ("ms", 0.44704)])
+@pytest.mark.parametrize("wind_unit, factor", [("mph", 1), ("kmh", 1.609344), ("ms", 0.44704), ("kn", 0.868976)])
 @pytest.mark.parametrize("mph, expected", [
     (29.9, None), (30, "⚠️ High winds (30 mph)"),
     (30.1, "⚠️ High winds (30 mph)"), (40, "⚠️ High winds (40 mph)"),
