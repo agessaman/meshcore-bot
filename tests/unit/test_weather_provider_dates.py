@@ -136,3 +136,27 @@ def test_gwx_today_or_tonight_follows_the_locations_clock():
     morning, _ = _gwx_run("default", data=_open_meteo(current_time="2026-10-02T09:00"))
     assert evening.startswith("<commands.gwx.periods.tonight>")
     assert morning.startswith("<commands.gwx.periods.today>")
+
+
+def test_wx_today_is_the_locations_date_even_when_the_first_period_began_yesterday():
+    # 01:00 on Oct 2 in Seattle: the first period is still "Tonight", which started Oct 1 at 18:00.
+    after_midnight = datetime(2026, 10, 2, 1, 0, tzinfo=ZoneInfo("America/Los_Angeles"))
+    wx = WxCommand(_bot())
+    periods = SEATTLE["forecast"]["properties"]["periods"]
+    with patch("modules.commands.wx_command.datetime", _clock(after_midnight)):
+        tomorrow = wx.format_tomorrow_forecast(periods)
+        lines = wx.format_multiday_forecast(periods, num_days=2).split("\n")
+    assert tomorrow.startswith("Sat: ")
+    assert [line.split(":")[0] for line in lines] == ["Sa", "Su"]
+
+
+def test_wx_an_undated_period_keeps_its_place():
+    periods = copy.deepcopy(SEATTLE["forecast"]["properties"]["periods"])
+    friday = next(p for p in periods if p["name"] == "Friday")
+    del friday["startTime"]
+    wx = WxCommand(_bot())
+    with patch("modules.commands.wx_command.datetime", _clock(SEATTLE_EVENING)):
+        tomorrow = wx.format_tomorrow_forecast(periods)
+        lines = wx.format_multiday_forecast(periods, num_days=2).split("\n")
+    assert tomorrow.startswith("Fri: ") and "Fri Night" in tomorrow
+    assert lines[0].startswith("F:") and "70°F" in lines[0]  # Friday's high, not Friday night's low

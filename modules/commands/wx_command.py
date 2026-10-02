@@ -1564,16 +1564,58 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         except ValueError:
             return None
 
+    def _forecast_today(self, forecast: list):
+        """Today's date at the forecast's location, or the bot's date when no period has an offset.
+
+        The location's "now" is the current instant in the UTC offset NOAA writes on
+        its period times. The first period's own date is not enough: at 1 AM the
+        first period can still be the night that started yesterday evening.
+        """
+        for period in forecast:
+            start = period.get('startTime') if isinstance(period, dict) else None
+            if not isinstance(start, str):
+                continue
+            try:
+                start_dt = self._parse_noaa_start_time(start)
+            except (ValueError, TypeError):
+                continue
+            if start_dt.tzinfo is not None:
+                return datetime.now(timezone.utc).astimezone(start_dt.tzinfo).date()
+        return datetime.now().date()
+
+    def _period_dates(self, forecast: list) -> list:
+        """Each period's local date: its startTime date, or inferred from its neighbors when it has none.
+
+        NOAA periods alternate day and night in order, so an undated period is the
+        same date as a preceding daytime period when it is a night, else the day after.
+        """
+        dates = [self._period_date(p) for p in forecast]
+
+        def is_night(period) -> bool:
+            day = period.get('isDaytime') if isinstance(period, dict) else None
+            if day is not None:
+                return not day
+            return 'night' in str(period.get('name', '') if isinstance(period, dict) else '').lower()
+
+        for i in range(1, len(dates)):
+            if dates[i] is None and dates[i - 1] is not None:
+                same_day = not is_night(forecast[i - 1]) and is_night(forecast[i])
+                dates[i] = dates[i - 1] if same_day else dates[i - 1] + timedelta(days=1)
+        for i in range(len(dates) - 2, -1, -1):
+            if dates[i] is None and dates[i + 1] is not None:
+                same_day = not is_night(forecast[i]) and is_night(forecast[i + 1])
+                dates[i] = dates[i + 1] if same_day else dates[i + 1] - timedelta(days=1)
+        return dates
+
     def _find_tomorrow_periods(self, forecast: list) -> list:
-        """Tomorrow's NOAA periods: those starting on the day after the first period's date;
+        """Tomorrow's NOAA periods: those dated the day after today at the location;
         without dates, those named "Tomorrow", else named for tomorrow's weekday, else the
         (up to two) periods after today's.
         """
-        # The forecast's own first period says what "today" is at the location.
-        today = self._period_date(forecast[0]) if forecast else None
-        if today is not None:
-            tomorrow = today + timedelta(days=1)
-            dated = [p for p in forecast if self._period_date(p) == tomorrow]
+        # Dated periods: tomorrow is the day after today at the location.
+        if any(self._period_date(p) for p in forecast):
+            tomorrow = self._forecast_today(forecast) + timedelta(days=1)
+            dated = [p for p, d in zip(forecast, self._period_dates(forecast), strict=True) if d == tomorrow]
             if dated:
                 return dated
 
@@ -1761,18 +1803,17 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             return self.translate('commands.wx.multiday_error', num_days=num_days)
 
     def _multiday_lines_by_date(self, forecast: list, num_days: int) -> list[str]:
-        """One line per local date after the forecast's first date, up to *num_days*.
+        """One line per local date after today at the location, up to *num_days*.
 
         Grouping by startTime date (instead of weekday name against the bot's
         clock) keeps holiday-named periods ("Christmas Day") and does not depend
         on the bot sharing the location's time zone. A daytime period wins over
         that date's night period.
         """
-        today = self._period_date(forecast[0]) if forecast else None
+        today = self._forecast_today(forecast)
         days: dict = {}
-        for period in forecast:
-            day = self._period_date(period)
-            if day is None or (today is not None and day <= today):
+        for period, day in zip(forecast, self._period_dates(forecast), strict=True):
+            if day is None or day <= today:
                 continue
             temp = period.get('temperature', '')
             high_low = self.extract_high_low(
