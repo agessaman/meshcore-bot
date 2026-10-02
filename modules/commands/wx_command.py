@@ -284,16 +284,27 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
 
             self._nws_no_coverage = NWSNoCoverageCache()
 
+    def _unit_setting(self, key: str, fallback: str) -> str:
+        """A unit setting: [Wx_Command] when it overrides, else the shared [Weather] one.
+
+        Read directly rather than through get_config_value, whose [Weather] fallback
+        logs a notice to move the setting into [Wx_Command]; for units, [Weather] is
+        where they belong.
+        """
+        config = self.bot.config
+        for section in ('Wx_Command', 'Weather'):
+            if config.has_section(section) and config.has_option(section, key):
+                return str(config.get(section, key)).strip().lower()
+        return fallback
+
     def _noaa_units(self) -> tuple[str, str]:
         """Configured (temperature_unit, wind_speed_unit) for NOAA replies.
 
         Same lookup as the WXSIM path: [Wx_Command], falling back to [Weather].
         Invalid values fall back to fahrenheit/mph, as gwx does.
         """
-        temp = str(self.get_config_value(
-            'Wx_Command', 'temperature_unit', fallback='fahrenheit', value_type='str')).lower()
-        wind = str(self.get_config_value(
-            'Wx_Command', 'wind_speed_unit', fallback='mph', value_type='str')).lower()
+        temp = self._unit_setting('temperature_unit', 'fahrenheit')
+        wind = self._unit_setting('wind_speed_unit', 'mph')
         if temp not in ('fahrenheit', 'celsius'):
             temp = 'fahrenheit'
         if wind not in ('mph', 'kmh', 'ms', 'kn'):
@@ -482,10 +493,8 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
 
         # Get unit preferences from config. Canonical section is [Wx_Command];
         # get_config_value falls back to legacy [Weather] for existing setups.
-        temp_unit = self.get_config_value(
-            'Wx_Command', 'temperature_unit', fallback='fahrenheit', value_type='str').lower()
-        wind_unit = self.get_config_value(
-            'Wx_Command', 'wind_speed_unit', fallback='mph', value_type='str').lower()
+        temp_unit = self._unit_setting('temperature_unit', 'fahrenheit')
+        wind_unit = self._unit_setting('wind_speed_unit', 'mph')
 
         # Format based on forecast type
         if forecast_type == "tomorrow":
@@ -624,15 +633,17 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         # Track if we're using companion location (so we always show location in response)
         using_companion_location = False
 
+        # An option alone ("wx hourly") applies to the no-location fallbacks below.
+        parts, option_word, option_type, option_days = self._split_option_only(parts, WX_MULTIDAY_MAX_DAYS)
+
         # If no location specified, check custom MQTT then WXSIM default sources
         if len(parts) < 2:
             mqtt_topic = self._get_custom_mqtt_weather_topic(None)
             if mqtt_topic:
                 try:
                     self.record_execution(message.sender_id)
-                    weather_data = self._mqtt_weather_line(mqtt_topic, "default", None)
-                    await self.send_response(message, weather_data)
-                    return True
+                    weather_data = self._mqtt_weather_line(mqtt_topic, option_type, None)
+                    return bool(await self.send_response(message, weather_data))
                 except Exception as e:
                     self.logger.error(f"Error reading MQTT weather: {e}")
                     await self.send_response(message, self.translate("commands.wx.error", error=str(e)))
@@ -644,10 +655,11 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                 try:
                     self.record_execution(message.sender_id)
                     weather_data = await self._get_wxsim_weather_async(
-                        wxsim_source, "default", 7, message
+                        wxsim_source, option_type, option_days, message
                     )
-                    await self.send_response(message, weather_data)
-                    return True
+                    if option_type == "multiday":
+                        return await self._send_multiday_forecast(message, weather_data)
+                    return bool(await self.send_response(message, weather_data))
                 except Exception as e:
                     self.logger.error(f"Error fetching WXSIM weather: {e}")
                     await self.send_response(message, self.translate('commands.wx.error', error=str(e)))
@@ -710,6 +722,9 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                             self.logger.debug("No companion/default city location found, showing usage")
                         await self.send_response(message, self.translate('commands.wx.usage'))
                         return True
+
+        if option_word:
+            parts.append(option_word)
 
         # Check for "alerts" keyword first (special handling)
         show_full_alerts = False
@@ -838,7 +853,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                 rate_limit = self.bot.config.getfloat('Bot', 'bot_tx_rate_limit_seconds', fallback=1.0)
                 # Use a conservative sleep time to avoid rate limiting
                 sleep_time = max(rate_limit + 1.0, 2.0)  # At least 2 seconds, or rate_limit + 1 second
-                await asyncio.sleep(sleep_time)
+                await self._pace_reply(message, sleep_time)
 
                 # Send the special weather statement (already formatted with prioritization)
                 alert_text = weather_data[2]
@@ -2448,7 +2463,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         for i, msg in enumerate(messages):
             await self.send_response(message, msg, skip_user_rate_limit=(i > 0))
             if i < len(messages) - 1:
-                await asyncio.sleep(sleep_time)
+                await self._pace_reply(message, sleep_time)
 
     def abbreviate_city_name(self, city: str) -> str:
         """Abbreviate city names for compact display (e.g., Seattle -> SEA)"""
@@ -2706,15 +2721,16 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         condition_lower = condition.lower()
 
         # Weather condition emojis
-        # Order matters: thunderstorms outrank rain, precipitation outranks cloud
-        # ("Chance Rain Showers then Mostly Cloudy" is a rain forecast), and a specific
-        # phrase has to be tested before a word it contains ("partly cloudy" before "cloudy").
-        if any(word in condition_lower for word in ['sunny', 'clear']):
+        # Order matters: thunderstorms outrank everything, even sun ("Sunny then Slight
+        # Chance Showers And Thunderstorms"); precipitation outranks cloud ("Chance Rain
+        # Showers then Mostly Cloudy" is a rain forecast); and a specific phrase has to be
+        # tested before a word it contains ("partly cloudy" before "cloudy").
+        if any(word in condition_lower for word in ['thunderstorm', 't-storm']):
+            return "⛈️"
+        elif any(word in condition_lower for word in ['sunny', 'clear']):
             return "☀️"
         elif any(word in condition_lower for word in ['heavy rain', 'heavy showers', 'excessive rain']):
             return "🌧️"  # Cloud with rain - more rain, less sun
-        elif any(word in condition_lower for word in ['thunderstorm', 't-storm']):
-            return "⛈️"
         elif any(word in condition_lower for word in ['rain', 'showers']):
             return "🌦️"
         elif any(word in condition_lower for word in ['snow', 'snow showers']):

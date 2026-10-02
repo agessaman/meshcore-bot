@@ -112,6 +112,19 @@ class WeatherCommandMixin:
                         location_parts = location_parts[:-1]
         return location_parts, forecast_type, num_days
 
+    def _split_option_only(self, parts: list[str], max_days: int) -> tuple[list[str], Optional[str], str, int]:
+        """Pull a forecast option given without a location ("wx hourly", "gwx 5d").
+
+        Returns (parts without it, the option word or None, forecast type, days), so the
+        no-location fallbacks (custom default source, the sender's position, default_city,
+        the bot's position) can apply the option instead of showing usage.
+        """
+        if len(parts) == 2:
+            rest, forecast_type, num_days = self._parse_forecast_suffix(parts[1:], max_days, allow_hourly=True)
+            if not rest and forecast_type != "default":
+                return parts[:1], parts[1], forecast_type, num_days
+        return parts, None, "default", 7
+
     def _format_high_low(self, high: Optional[Number], low: Optional[Number], temp_symbol: str) -> str:
         """Format high/low using [Weather] temperature_*_format templates."""
         return format_temperature_high_low(self.bot.config, high, low, temp_symbol, self.logger,
@@ -186,6 +199,16 @@ class WeatherCommandMixin:
             lines.append(line)
         return "\n".join(lines) or self.translate(f'{self.translation_ns}.hourly_not_available')
 
+    @staticmethod
+    async def _pace_reply(message: Any, seconds: float) -> None:
+        """Wait between the parts of a reply so the TX limiter lets the next through.
+
+        A scheduled {cmd:...} render collects the parts without transmitting, so it
+        does not wait: the pause would only eat into its render timeout.
+        """
+        if getattr(message, 'capture_sink', None) is None:
+            await asyncio.sleep(seconds)
+
     async def _send_multiday_forecast(self, message: Any, forecast_text: str) -> bool:
         """Send a multi-day forecast, packing whole lines into as few messages as fit.
 
@@ -217,7 +240,7 @@ class WeatherCommandMixin:
         sent_all = True
         for i, part in enumerate(parts):
             if i > 0:
-                await asyncio.sleep(2.0)
+                await self._pace_reply(message, 2.0)
             sent = await self.send_response(message, part, skip_user_rate_limit=(i > 0))
             if not sent:
                 sent_all = False

@@ -357,15 +357,17 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
         # Parse the command to extract location and forecast type
         parts = content.split()
 
+        # An option alone ("gwx hourly") applies to the no-location fallbacks below.
+        parts, option_word, option_type, option_days = self._split_option_only(parts, GWX_MULTIDAY_MAX_DAYS)
+
         # If no location specified, check custom MQTT then WXSIM default sources
         if len(parts) < 2:
             mqtt_topic = self._get_custom_mqtt_weather_topic(None)
             if mqtt_topic:
                 try:
                     self.record_execution(message.sender_id)
-                    weather_data = self._mqtt_weather_line(mqtt_topic, "default", None)
-                    await self.send_response(message, weather_data)
-                    return True
+                    weather_data = self._mqtt_weather_line(mqtt_topic, option_type, None)
+                    return bool(await self.send_response(message, weather_data))
                 except Exception as e:
                     self.logger.error(f"Error reading MQTT weather: {e}")
                     await self.send_response(message, self.translate("commands.gwx.error", error=str(e)))
@@ -378,10 +380,11 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
                     self.record_execution(message.sender_id)
                     # Blocking HTTP fetch of the WXSIM plaintext file.
                     weather_data = await asyncio.to_thread(
-                        self._get_wxsim_weather, wxsim_source, "default", 7, message
+                        self._get_wxsim_weather, wxsim_source, option_type, option_days, message
                     )
-                    await self.send_response(message, weather_data)
-                    return True
+                    if option_type == "multiday":
+                        return await self._send_multiday_forecast(message, weather_data)
+                    return bool(await self.send_response(message, weather_data))
                 except Exception as e:
                     self.logger.error(f"Error fetching WXSIM weather: {e}")
                     await self.send_response(message, self.translate('commands.gwx.error', error=str(e)))
@@ -430,6 +433,9 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
                             self.logger.debug("No companion/default city location found, showing usage")
                         await self.send_response(message, self.translate('commands.gwx.usage'))
                         return True
+
+        if option_word:
+            parts.append(option_word)
 
         location_parts, forecast_type, num_days = self._parse_forecast_suffix(
             parts[1:], GWX_MULTIDAY_MAX_DAYS, allow_hourly=True
@@ -499,7 +505,7 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
                 # Wait for bot TX rate limiter
                 rate_limit = self.bot.config.getfloat('Bot', 'bot_tx_rate_limit_seconds', fallback=1.0)
                 sleep_time = max(rate_limit + 1.0, 2.0)
-                await asyncio.sleep(sleep_time)
+                await self._pace_reply(message, sleep_time)
 
                 # Send alerts
                 # Second part of the same reply: the reply limiter already let the first through.
@@ -912,7 +918,7 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
             data = response.json()
 
             if forecast_type == "tomorrow":
-                return self.format_tomorrow_forecast(data), {}
+                return self.format_tomorrow_forecast(data, max_length), {}
             if forecast_type == "multiday":
                 return self.format_multiday_forecast(data, num_days), {}
             if forecast_type == "hourly":
@@ -1165,11 +1171,13 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
                 return None
         return None
 
-    def format_tomorrow_forecast(self, data: dict) -> str:
+    def format_tomorrow_forecast(self, data: dict, max_length: Optional[int] = None) -> str:
         """Format a detailed forecast for tomorrow.
 
         Args:
             data: Weather data dictionary from Open-Meteo.
+            max_length: UTF-8 byte budget; details are left out, least important
+                first, until the reply fits. None keeps every detail.
 
         Returns:
             str: Formatted tomorrow forecast string.
@@ -1190,6 +1198,7 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
 
             # Get wind info if available
             wind_info = ""
+            gust_info = ""
             if len(daily.get('wind_speed_10m_max', [])) > 1:
                 wind_speed = int(daily['wind_speed_10m_max'][1])
                 if wind_speed >= 3:
@@ -1197,11 +1206,11 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
                     if len(daily.get('wind_gusts_10m_max', [])) > 1:
                         wind_gusts = int(daily['wind_gusts_10m_max'][1])
                         if wind_gusts > wind_speed + 3:
-                            gust_str = self.translate('commands.gwx.gust', value=wind_gusts)
-                            wind_info += gust_str
+                            gust_info = self.translate('commands.gwx.gust', value=wind_gusts)
 
             # Get precipitation probability and amount
             precip_info = ""
+            precip_chance = ""
             if len(daily.get('precipitation_probability_max', [])) > 1:
                 precip_prob = daily['precipitation_probability_max'][1]
                 if precip_prob is not None and precip_prob >= 30:
@@ -1211,6 +1220,7 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
                         precip_amount = daily['precipitation_sum'][1]
 
                     # Format precipitation info
+                    precip_chance = f" 🌦️{precip_prob}%"
                     if precip_amount is not None and precip_amount > 0:
                         # Show both probability and amount
                         precip_unit = "in" if self.precipitation_unit == 'inch' else "mm"
@@ -1221,7 +1231,22 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
 
             tomorrow_period = self.translate('commands.gwx.periods.tomorrow')
             hl = self._format_high_low(tomorrow_high, tomorrow_low, temp_symbol)
-            return f"{tomorrow_period}: {tomorrow_emoji}{tomorrow_desc} {hl}{wind_info}{precip_info}"
+            head = f"{tomorrow_period}: {tomorrow_emoji}"
+            # Least important detail first: precipitation amount, gusts, wind, chance, description.
+            candidates = [
+                f"{head}{tomorrow_desc} {hl}{wind_info}{gust_info}{precip_info}",
+                f"{head}{tomorrow_desc} {hl}{wind_info}{gust_info}{precip_chance}",
+                f"{head}{tomorrow_desc} {hl}{wind_info}{precip_chance}",
+                f"{head}{tomorrow_desc} {hl}{precip_chance}",
+                f"{head}{tomorrow_desc} {hl}",
+                f"{head} {hl}",
+            ]
+            if max_length is None:
+                return candidates[0]
+            for candidate in candidates:
+                if self._count_display_width(candidate) <= max_length:
+                    return candidate
+            return candidates[-1]
 
         except Exception as e:
             self.logger.error(f"Error formatting tomorrow forecast: {e}")

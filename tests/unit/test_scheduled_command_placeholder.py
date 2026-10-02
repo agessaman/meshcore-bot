@@ -569,3 +569,32 @@ class TestRenderGwx:
         assert rendered and all(part in rendered for part in parts)  # the warning part too
         mgr.send_dm.assert_not_called()
         mgr.send_channel_message.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_two_part_reply_renders_without_waiting_for_the_tx_limiter(self, command_mock_bot):
+        # A 30 s TX limit used to pace the parts by 31 s, past the render timeout.
+        from modules.command_manager import CommandManager
+        from modules.commands.alternatives.wx_international import GlobalWxCommand
+
+        command_mock_bot.config.set("Bot", "bot_tx_rate_limit_seconds", "30")
+        gwx = GlobalWxCommand(command_mock_bot)
+        gwx._get_custom_mqtt_weather_topic = MagicMock(return_value=None)
+        gwx._get_custom_wxsim_source = MagicMock(return_value=None)
+        gwx.get_weather_for_location = AsyncMock(
+            return_value=("multi_message", "Paris, FR: Today: ⛈️Thunderstorm 31°C", "⚠️ Thunderstorms")
+        )
+
+        mgr = object.__new__(CommandManager)
+        mgr.bot = command_mock_bot
+        mgr.logger = MagicMock()
+        mgr.commands = {"gwx": gwx}
+        mgr._last_response = None
+        mgr.send_dm = AsyncMock()
+        mgr.send_channel_message = AsyncMock()
+        command_mock_bot.command_manager.send_response = (
+            lambda message, content, **kw: CommandManager.send_response(mgr, message, content, **kw)
+        )
+
+        rendered = await mgr.render_command_output("gwx Paris", channel="#general", timeout=1.0)
+
+        assert rendered and rendered.endswith("⚠️ Thunderstorms")

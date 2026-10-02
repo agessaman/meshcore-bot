@@ -5,13 +5,12 @@ from pathlib import Path
 
 import pytest
 
-CATALOGS = sorted((Path(__file__).resolve().parents[2] / "translations").glob("*.json"))
+TRANSLATIONS = Path(__file__).resolve().parents[2] / "translations"
+CATALOGS = sorted(TRANSLATIONS.glob("*.json"))
+ENGLISH = json.loads((TRANSLATIONS / "en.json").read_text(encoding="utf-8"))
 DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-REQUIRED = (
-    [f"commands.gwx.day_abbrev.{day}" for day in DAYS]
-    + [f"commands.{ns}.{key}" for ns in ("wx", "gwx") for key in ("hourly_not_available", "source_option_not_available")]
-)
-# Replies a user sees when a forecast is missing; a catalog must not leave them in English.
+POINTS = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"]
+# Replies a user sees when a forecast is missing or fails.
 REPLIES = [
     f"commands.{ns}.{key}"
     for ns in ("wx", "gwx")
@@ -21,7 +20,12 @@ REPLIES = [
         "mqtt_weather_no_subscriber", "mqtt_weather_payload_error", "mqtt_weather_stale",
     )
 ]
-ENGLISH = json.loads((Path(__file__).resolve().parents[2] / "translations" / "en.json").read_text(encoding="utf-8"))
+LABELS = (
+    [f"commands.{ns}.day_abbrev.{day}" for ns in ("wx", "gwx") for day in DAYS]
+    + ["commands.gwx.feels_like", "commands.gwx.warnings.high_winds"]
+)
+# Catalogs that use the English catalog's wind letters on purpose.
+INTERNATIONAL_WIND_LETTERS = {"en", "en-GB", "pl"}
 
 
 def _get(catalog, key):
@@ -33,20 +37,32 @@ def _get(catalog, key):
     return node
 
 
-@pytest.mark.parametrize("path", CATALOGS, ids=lambda p: p.stem)
-def test_weather_keys_are_translated(path):
-    catalog = json.loads(path.read_text(encoding="utf-8"))
-    assert [key for key in REQUIRED if _get(catalog, key) is None] == []
+def _load(path):
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 @pytest.mark.parametrize("path", CATALOGS, ids=lambda p: p.stem)
-def test_wind_directions_are_complete_where_present(path):
-    directions = _get(json.loads(path.read_text(encoding="utf-8")), "common.wind_directions")
-    if directions is not None:  # Polish keeps the international letters from the English catalog
-        assert len(directions) == 16 and len(set(directions.values())) == 16
+def test_weather_keys_are_present(path):
+    catalog = _load(path)
+    assert [key for key in REPLIES + LABELS if _get(catalog, key) is None] == []
 
 
 @pytest.mark.parametrize("path", [p for p in CATALOGS if not p.stem.startswith("en")], ids=lambda p: p.stem)
 def test_weather_replies_are_not_left_in_english(path):
-    catalog = json.loads(path.read_text(encoding="utf-8"))
-    assert [key for key in REPLIES if _get(catalog, key) == _get(ENGLISH, key)] == []
+    catalog = _load(path)
+    assert [key for key in REPLIES + ["commands.gwx.feels_like"] if _get(catalog, key) == _get(ENGLISH, key)] == []
+
+
+@pytest.mark.parametrize("path", CATALOGS, ids=lambda p: p.stem)
+def test_wind_directions_are_complete(path):
+    directions = _get(_load(path), "common.wind_directions")
+    if path.stem in INTERNATIONAL_WIND_LETTERS and path.stem != "en":
+        assert directions is None or set(directions) == set(POINTS)
+        return
+    assert directions is not None and set(directions) == set(POINTS)
+    assert len(set(directions.values())) == 16
+
+
+@pytest.mark.parametrize("path", CATALOGS, ids=lambda p: p.stem)
+def test_the_high_wind_warning_names_its_unit(path):
+    assert "{unit}" in _get(_load(path), "commands.gwx.warnings.high_winds")

@@ -24,6 +24,8 @@ def _run(cmd, data, forecast_type="default", *, budget=None, failure=None, num_d
     elif failure == "json":
         response.json.side_effect = ValueError("edge invalid JSON")
     kwargs = {}
+    if budget is None and forecast_type == "tomorrow":
+        budget = 600  # the details, not the trimming, are what these cases check
     if budget is not None:
         cmd.get_max_message_length = Mock(return_value=budget)
         kwargs["message"] = Mock()

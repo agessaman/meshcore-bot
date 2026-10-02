@@ -49,7 +49,9 @@ def test_gwx_and_wx_agree_on_arrows_for_the_same_compass_point():
     ("Mostly Cloudy then Chance Snow", "❄️"),
     ("Heavy Rain", "🌧️"),
     ("Sunny", "☀️"),
-    ("Sunny then Slight Chance Showers And Thunderstorms", "☀️"),
+    ("Sunny then Slight Chance Showers And Thunderstorms", "⛈️"),
+    ("Mostly Sunny then Chance Showers And Thunderstorms", "⛈️"),
+    ("Sunny then Chance Rain Showers", "☀️"),
 ])
 def test_noaa_emoji_matches_the_strongest_condition(forecast, emoji):
     assert WxCommand(_bot()).get_weather_emoji(forecast) == emoji

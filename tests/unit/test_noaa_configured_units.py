@@ -218,3 +218,10 @@ def test_knots_are_a_wind_unit_everywhere():
     assert GlobalWxCommand(bot).wind_speed_unit == "kn"
     parser = WXSIMParser()
     assert (parser._convert_wind(37, "kn"), parser._get_wind_unit_str("kn")) == (20.0, "kn")
+
+
+def test_shared_weather_units_log_no_migration_notice():
+    cmd = _wx({"temperature_unit": "celsius", "wind_speed_unit": "kmh"})
+    cmd.logger = Mock()
+    assert cmd._noaa_units() == ("celsius", "kmh")
+    cmd.logger.info.assert_not_called()

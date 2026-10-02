@@ -186,10 +186,10 @@ wx
 **Options:**
 - `tomorrow`: tomorrow's day and night periods.
 - `hourly`: the coming hours, as many as fit in one message.
-- `Nd` (or a bare number, or `7day`): an N-day forecast starting tomorrow, one line per day, for 2 to 16 days (NOAA publishes about 7).
+- `Nd` (or a bare number, or `7day`): an N-day forecast starting tomorrow, one line per day, for 2 to 16 days. The forecast ends where the provider's does: about 7 days for NOAA, 15 after today for Open-Meteo.
 - `alerts`: every active alert for the location.
 
-**With no location,** `wx` uses, in order: a `custom.wxsim.default` or `custom.mqtt_weather.default` source, the sender's last advertised position, `[Weather] default_city`, and the bot's own position when `[Wx_Command] use_bot_location_when_no_location = true`.
+**With no location** (an option alone, such as `wx hourly`, is fine), `wx` uses, in order: a `custom.wxsim.default` or `custom.mqtt_weather.default` source, the sender's last advertised position, `[Weather] default_city`, and the bot's own position when `[Wx_Command] use_bot_location_when_no_location = true`.
 
 **Units** follow `[Weather] temperature_unit` and `wind_speed_unit` (`[Wx_Command]` overrides them for `wx`). The default is °F and mph.
 
