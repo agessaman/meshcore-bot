@@ -1703,32 +1703,53 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                 emoji = self.get_weather_emoji(short_forecast)
                 period_str = f"{period_name}: {emoji}{short_forecast} {temp}°{temp_unit}"
 
-                # Add wind info
+                # Wind info, which goes first when the reply is too long
+                wind = ""
                 if wind_speed and wind_direction:
                     wind_match = re.search(r'(\d+)', wind_speed)
                     if wind_match:
                         wind_num = self._noaa_wind_convert(wind_match.group(1), wind_speed)
                         wind_dir = self.abbreviate_wind_direction(wind_direction)
                         if wind_dir:
-                            period_str += f" {wind_dir}{wind_num}"
+                            wind = f" {wind_dir}{wind_num}"
 
                 # Try to extract high/low
                 high_low = self.extract_high_low(
                     detailed_forecast, self._noaa_period_temp_symbol(period)
                 )
-                if high_low and '°' not in period_str.split()[-1]:  # Avoid duplicate temp
+                if high_low and '°' not in (period_str + wind).split()[-1]:  # Avoid duplicate temp
                     period_str = period_str.replace(f" {temp}°{temp_unit}", f" {high_low}")
 
-                parts.append(period_str)
+                parts.append((period_str + wind, period_str))
 
             if not parts:
                 return self.translate('commands.wx.tomorrow_not_available')
 
-            return " | ".join(parts)
+            return self._fit_tomorrow_parts(parts, max_length)
 
         except Exception as e:
             self.logger.error(f"Error formatting tomorrow forecast: {e}")
             return self.translate('commands.wx.tomorrow_error')
+
+    def _fit_tomorrow_parts(self, parts: list[tuple[str, str]], max_length: int) -> str:
+        """Join tomorrow's periods within *max_length* UTF-8 bytes.
+
+        Each part is (with wind, without wind). Wind goes first, the later
+        period's before the first's, then the later periods themselves. When
+        even the first period alone does not fit, it is sent anyway (the send
+        path splits it) rather than leaving the reply empty.
+        """
+        full = [with_wind for with_wind, _ in parts]
+        bare = [without for _, without in parts]
+        candidates = [full]
+        if len(parts) > 1:
+            candidates.append(full[:1] + bare[1:])
+        candidates += [bare, full[:1], bare[:1]]
+        for candidate in candidates:
+            text = " | ".join(candidate)
+            if self._count_display_width(text) <= max_length:
+                return text
+        return bare[0]
 
     def format_multiday_forecast(self, forecast: list, num_days: int = 7, max_length: int = 130) -> str:
         """Format a less detailed multi-day forecast summary"""

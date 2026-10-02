@@ -83,8 +83,8 @@
  "multiday7-drop1": "F: ☀️Patchy Freezing Fog th... <common.temp_high_label>:42°F\nSa: 🌦️Chance Rain And Snow <common.temp_high_label>:44°F\nSu: 🌦️Light Rain Likely <common.temp_high_label>:45°F\nM: 🌦️Light Rain Likely <common.temp_high_label>:49°F\nT: 🌦️Chance Light Rain <common.temp_high_label>:49°F\nW: 🌦️Chance Light Rain <common.temp_high_label>:47°F",
  "multiday7-drop2": "F: ☀️Patchy Freezing Fog th... <common.temp_high_label>:42°F\nSa: 🌦️Chance Rain And Snow <common.temp_high_label>:44°F\nSu: 🌦️Light Rain Likely <common.temp_high_label>:45°F\nM: 🌦️Light Rain Likely <common.temp_high_label>:49°F\nT: 🌦️Chance Light Rain <common.temp_high_label>:49°F\nW: 🌦️Chance Light Rain <common.temp_high_label>:47°F",
  "multiday7-drop3": "F: ☀️Mostly Clear <common.temp_low_label>:29°F\nSa: 🌦️Chance Rain And Snow <common.temp_high_label>:44°F\nSu: 🌦️Light Rain Likely <common.temp_high_label>:45°F\nM: 🌦️Light Rain Likely <common.temp_high_label>:49°F\nT: 🌦️Chance Light Rain <common.temp_high_label>:49°F\nW: 🌦️Chance Light Rain <common.temp_high_label>:47°F",
- "tomorrow-drop0": "Fri: ☀️Patchy Freezing Fog then Sunny <common.temp_high_label>:42°F ↗️NE5 | Fri Night: ☀️Mostly Clear <common.temp_low_label>:29°F ↗️NE5",
- "tomorrow-drop1": "Fri: ☀️Patchy Freezing Fog then Sunny <common.temp_high_label>:42°F ↗️NE5 | Fri Night: ☀️Mostly Clear <common.temp_low_label>:29°F ↗️NE5",
- "tomorrow-drop2": "Fri: ☀️Patchy Freezing Fog then Sunny <common.temp_high_label>:42°F ↗️NE5 | Fri Night: ☀️Mostly Clear <common.temp_low_label>:29°F ↗️NE5",
+ "tomorrow-drop0": "Fri: ☀️Patchy Freezing Fog then Sunny <common.temp_high_label>:42°F ↗️NE5",
+ "tomorrow-drop1": "Fri: ☀️Patchy Freezing Fog then Sunny <common.temp_high_label>:42°F ↗️NE5",
+ "tomorrow-drop2": "Fri: ☀️Patchy Freezing Fog then Sunny <common.temp_high_label>:42°F ↗️NE5",
  "tomorrow-drop3": "Fri Night: ☀️Mostly Clear <common.temp_low_label>:29°F ↗️NE5"
 }

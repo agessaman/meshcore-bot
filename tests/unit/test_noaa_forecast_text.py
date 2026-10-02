@@ -51,3 +51,44 @@ def test_noaa_precipitation_sentence_is_read():
 ])
 def test_noaa_gusts_as_high_as_are_read(text, wind_unit, shown):
     assert _wx({"wind_speed_unit": wind_unit})._forecast_text_gusts(text) == shown
+
+
+def _tomorrow(budget):
+    import copy
+    import json
+    from datetime import datetime
+    from pathlib import Path
+    from unittest.mock import patch
+    from zoneinfo import ZoneInfo
+
+    from modules.i18n import Translator
+
+    miami = json.loads((Path(__file__).resolve().parents[1] / "fixtures" / "noaa" / "miami.json").read_text())
+    now = datetime(2026, 10, 1, 15, 30, tzinfo=ZoneInfo("America/New_York"))
+
+    class _Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now.replace(tzinfo=None) if tz is None else now.astimezone(tz)
+
+    wx = _wx()
+    wx.bot.translator = Translator("en")
+    with patch("modules.commands.wx_command.datetime", _Clock):
+        return wx.format_tomorrow_forecast(copy.deepcopy(miami["forecast"]["properties"]["periods"]), max_length=budget)
+
+
+@pytest.mark.parametrize("budget", range(60, 200, 3))
+def test_tomorrow_fits_its_budget_when_it_can(budget):
+    text = _tomorrow(budget)
+    first_period_alone = _tomorrow(10_000).split(" | ")[0].rsplit(" ", 1)[0]  # without its wind
+    if len(first_period_alone.encode()) <= budget:
+        assert len(text.encode()) <= budget
+    else:
+        assert text == first_period_alone
+
+
+def test_tomorrow_drops_wind_before_a_period():
+    full = _tomorrow(10_000)
+    assert full.count(" | ") == 1 and "SE14" in full and "E15" in full
+    trimmed = _tomorrow(len(full.encode()) - 1)
+    assert trimmed.count(" | ") == 1 and "E15" not in trimmed and "SE14" in trimmed

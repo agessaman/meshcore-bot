@@ -83,8 +83,8 @@
  "multiday7-drop1": "F: ☀️Partly Sunny <common.temp_high_label>:70°F\nSa: ☀️Mostly Sunny <common.temp_high_label>:67°F\nSu: ☀️Mostly Sunny <common.temp_high_label>:70°F\nM: ☀️Mostly Sunny <common.temp_high_label>:68°F\nT: ☀️Partly Sunny <common.temp_high_label>:64°F\nW: ☀️Mostly Sunny <common.temp_high_label>:65°F",
  "multiday7-drop2": "F: ☀️Partly Sunny <common.temp_high_label>:70°F\nSa: ☀️Mostly Sunny <common.temp_high_label>:67°F\nSu: ☀️Mostly Sunny <common.temp_high_label>:70°F\nM: ☀️Mostly Sunny <common.temp_high_label>:68°F\nT: ☀️Partly Sunny <common.temp_high_label>:64°F\nW: ☀️Mostly Sunny <common.temp_high_label>:65°F",
  "multiday7-drop3": "F: ⛅Mostly Cloudy <common.temp_low_label>:54°F\nSa: ☀️Mostly Sunny <common.temp_high_label>:67°F\nSu: ☀️Mostly Sunny <common.temp_high_label>:70°F\nM: ☀️Mostly Sunny <common.temp_high_label>:68°F\nT: ☀️Partly Sunny <common.temp_high_label>:64°F\nW: ☀️Mostly Sunny <common.temp_high_label>:65°F",
- "tomorrow-drop0": "Fri: ☀️Partly Sunny <common.temp_high_label>:70°F ↙️SSW1 | Fri Night: ⛅Mostly Cloudy <common.temp_low_label>:54°F ⬆️NNW5",
- "tomorrow-drop1": "Fri: ☀️Partly Sunny <common.temp_high_label>:70°F ↙️SSW1 | Fri Night: ⛅Mostly Cloudy <common.temp_low_label>:54°F ⬆️NNW5",
- "tomorrow-drop2": "Fri: ☀️Partly Sunny <common.temp_high_label>:70°F ↙️SSW1 | Fri Night: ⛅Mostly Cloudy <common.temp_low_label>:54°F ⬆️NNW5",
+ "tomorrow-drop0": "Fri: ☀️Partly Sunny <common.temp_high_label>:70°F ↙️SSW1 | Fri Night: ⛅Mostly Cloudy <common.temp_low_label>:54°F",
+ "tomorrow-drop1": "Fri: ☀️Partly Sunny <common.temp_high_label>:70°F ↙️SSW1 | Fri Night: ⛅Mostly Cloudy <common.temp_low_label>:54°F",
+ "tomorrow-drop2": "Fri: ☀️Partly Sunny <common.temp_high_label>:70°F ↙️SSW1 | Fri Night: ⛅Mostly Cloudy <common.temp_low_label>:54°F",
  "tomorrow-drop3": "Fri Night: ⛅Mostly Cloudy <common.temp_low_label>:54°F ⬆️NNW5"
 }
