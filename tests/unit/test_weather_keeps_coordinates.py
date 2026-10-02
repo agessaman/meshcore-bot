@@ -124,3 +124,32 @@ def test_city_geocoding_keeps_a_zero_latitude(query):
     ):
         lat, lon, _ = utils.geocode_city_sync(bot, query, default_country="ST", include_address_info=True)
     assert (lat, lon) == (0.0, 6.73)
+
+
+@pytest.mark.parametrize(("query", "default_state", "found_by"), [
+    ("Equator Town, XQ", "", "Equator Town, XQ, ST"),
+    ("Equator Town", "Province", "Equator Town, Province, ST"),
+])
+@pytest.mark.parametrize("cached", [False, True])
+def test_state_lookups_keep_a_zero_latitude(query, default_state, found_by, cached):
+    from modules import utils
+
+    bot = Mock()
+    bot.db_manager.get_cached_geocoding = Mock(
+        side_effect=lambda q: (0.0, 6.73) if cached and q == found_by else (None, None)
+    )
+    bot.db_manager.get_cached_json = Mock(return_value={"city": "Equator Town"})
+    bot.config = configparser.ConfigParser()
+    bot.config.read_dict({"Weather": {"default_state": default_state, "default_country": "ST"}, "Bot": {}})
+    hit = Mock(latitude=0.0, longitude=6.73, raw={"address": {"city": "Equator Town"}})
+    # Only the state-qualified query finds the place.
+    forward = Mock(side_effect=lambda _bot, q, **k: hit if q == found_by and not cached else None)
+    with patch.object(utils, "rate_limited_nominatim_geocode_sync", forward), patch.object(
+        utils, "rate_limited_nominatim_reverse_sync", return_value=hit
+    ):
+        lat, lon, _ = utils.geocode_city_sync(
+            bot, query, default_state=default_state, default_country="ST", include_address_info=True
+        )
+    assert (lat, lon) == (0.0, 6.73)
+    if cached:
+        assert all(c.args[1] != found_by for c in forward.call_args_list)
