@@ -1044,6 +1044,20 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
     async def _city_to_lat_lon_async(self, city: str) -> tuple:
         return await self._run_sync_provider_async(self.city_to_lat_lon, city)
 
+    def _noaa_fetch(self, url: str, what: str):
+        """GET *url* through the NOAA session; None, after a warning naming *what*,
+        on an HTTP error status, a timeout or a connection error.
+        """
+        try:
+            response = self.noaa_session.get(url, timeout=self.url_timeout)
+            if not response.ok:
+                self.logger.warning(f"Error fetching {what} from NOAA: HTTP {response.status_code}")
+                return None
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+            self.logger.warning(f"Timeout/connection error fetching {what} from NOAA: {e}")
+            return None
+        return response
+
     def get_noaa_weather(self, lat: float, lon: float, return_periods: bool = False, max_length: int = 130) -> tuple:
         """Get weather forecast from NOAA and return both weather string and points data
 
@@ -1065,26 +1079,16 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             weather_api = f"https://api.weather.gov/points/{lat_rounded},{lon_rounded}"
 
             # Get the forecast URL (with retry logic)
-            try:
-                weather_data = self.noaa_session.get(weather_api, timeout=self.url_timeout)
-                if not weather_data.ok:
-                    self.logger.warning(f"Error fetching weather data from NOAA: HTTP {weather_data.status_code}")
-                    return self.ERROR_FETCHING_DATA, None
-            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
-                self.logger.warning(f"Timeout/connection error fetching weather data from NOAA: {e}")
+            weather_data = self._noaa_fetch(weather_api, "weather data")
+            if weather_data is None:
                 return self.ERROR_FETCHING_DATA, None
 
             weather_json = weather_data.json()
             forecast_url = weather_json['properties']['forecast']
 
             # Get the forecast (with retry logic)
-            try:
-                forecast_data = self.noaa_session.get(forecast_url, timeout=self.url_timeout)
-                if not forecast_data.ok:
-                    self.logger.warning(f"Error fetching weather forecast from NOAA: HTTP {forecast_data.status_code}")
-                    return self.ERROR_FETCHING_DATA, None
-            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
-                self.logger.warning(f"Timeout/connection error fetching weather forecast from NOAA: {e}")
+            forecast_data = self._noaa_fetch(forecast_url, "weather forecast")
+            if forecast_data is None:
                 return self.ERROR_FETCHING_DATA, None
 
             forecast_json = forecast_data.json()
@@ -1426,13 +1430,8 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             weather_api = f"https://api.weather.gov/points/{lat_rounded},{lon_rounded}"
 
             # Get the forecast URL (with retry logic)
-            try:
-                weather_data = self.noaa_session.get(weather_api, timeout=self.url_timeout)
-                if not weather_data.ok:
-                    self.logger.warning(f"Error fetching weather data from NOAA: HTTP {weather_data.status_code}")
-                    return self.ERROR_FETCHING_DATA, None
-            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
-                self.logger.warning(f"Timeout/connection error fetching weather data from NOAA: {e}")
+            weather_data = self._noaa_fetch(weather_api, "weather data")
+            if weather_data is None:
                 return self.ERROR_FETCHING_DATA, None
 
             weather_json = weather_data.json()
@@ -1443,13 +1442,8 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                 return self.ERROR_FETCHING_DATA, None
 
             # Get the hourly forecast (with retry logic)
-            try:
-                hourly_data = self.noaa_session.get(hourly_forecast_url, timeout=self.url_timeout)
-                if not hourly_data.ok:
-                    self.logger.warning(f"Error fetching hourly forecast from NOAA: HTTP {hourly_data.status_code}")
-                    return self.ERROR_FETCHING_DATA, None
-            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
-                self.logger.warning(f"Timeout/connection error fetching hourly forecast from NOAA: {e}")
+            hourly_data = self._noaa_fetch(hourly_forecast_url, "hourly forecast")
+            if hourly_data is None:
                 return self.ERROR_FETCHING_DATA, None
 
             hourly_json = hourly_data.json()
