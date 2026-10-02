@@ -1570,50 +1570,44 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                 line_parts.append(f"{wind_dir_abbrev}{wind_match.group(1)}")
         return " ".join(line_parts)
 
+    def _find_tomorrow_periods(self, forecast: list) -> list:
+        """Tomorrow's NOAA periods: named "Tomorrow", else named for tomorrow's weekday,
+        else the (up to two) periods after today's.
+        """
+        tomorrow_day_name = (datetime.now() + timedelta(days=1)).strftime('%A')
+
+        tomorrow_periods = [p for p in forecast if 'tomorrow' in p.get('name', '').lower()]
+        if tomorrow_periods:
+            return tomorrow_periods
+
+        for period in forecast:
+            period_name_lower = period.get('name', '').lower()
+            if tomorrow_day_name.lower() in period_name_lower:
+                # A name like "Monday" can also be today's; skip those.
+                today_day_name = datetime.now().strftime('%A')
+                if today_day_name.lower() not in period_name_lower:
+                    tomorrow_periods.append(period)
+        if tomorrow_periods:
+            return tomorrow_periods
+
+        # Generic names: take the periods after today's (Today, This Afternoon,
+        # This Evening, Tonight), usually tomorrow's day and night.
+        found_tonight = False
+        for period in forecast:
+            period_name = period.get('name', '').lower()
+            if any(word in period_name for word in ['today', 'this afternoon', 'this evening', 'tonight']):
+                found_tonight = True
+                continue
+            if found_tonight:
+                tomorrow_periods.append(period)
+                if len(tomorrow_periods) >= 2:
+                    break
+        return tomorrow_periods
+
     def format_tomorrow_forecast(self, forecast: list, max_length: int = 130) -> str:
         """Format a detailed forecast for tomorrow"""
         try:
-            # Find tomorrow's periods
-            # NOAA may use "Tomorrow", "Tomorrow Night" or day names like "Tuesday", "Tuesday Night"
-            tomorrow_periods = []
-            tomorrow_day_name = (datetime.now() + timedelta(days=1)).strftime('%A')
-
-            # First, try to find periods with "tomorrow" in the name
-            for period in forecast:
-                period_name = period.get('name', '').lower()
-                if 'tomorrow' in period_name:
-                    tomorrow_periods.append(period)
-
-            # If not found, look for tomorrow's day name (e.g., "Tuesday", "Tuesday Night")
-            if not tomorrow_periods:
-                for period in forecast:
-                    period_name = period.get('name', '')
-                    period_name_lower = period_name.lower()
-                    # Check if it contains tomorrow's day name
-                    if tomorrow_day_name.lower() in period_name_lower:
-                        # Make sure it's not today
-                        today_day_name = datetime.now().strftime('%A')
-                        if today_day_name.lower() not in period_name_lower:
-                            tomorrow_periods.append(period)
-
-            # If still not found, find periods after "Tonight" (skip current day periods)
-            # This handles cases where NOAA uses generic day names
-            if not tomorrow_periods:
-                found_tonight = False
-                current_day_periods = 0
-                for period in forecast:
-                    period_name = period.get('name', '').lower()
-                    # Count current day periods (Today, This Afternoon, Tonight, This Evening)
-                    if any(word in period_name for word in ['today', 'this afternoon', 'this evening', 'tonight']):
-                        current_day_periods += 1
-                        found_tonight = True
-                        continue
-                    if found_tonight:
-                        # This should be tomorrow's period
-                        tomorrow_periods.append(period)
-                        # Stop after collecting tomorrow's day and night periods (usually 2)
-                        if len(tomorrow_periods) >= 2:
-                            break
+            tomorrow_periods = self._find_tomorrow_periods(forecast)
 
             if not tomorrow_periods:
                 return self.translate('commands.wx.tomorrow_not_available')
