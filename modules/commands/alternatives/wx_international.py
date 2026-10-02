@@ -910,7 +910,7 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
             if self.weather_model:
                 params['models'] = self.weather_model
             if forecast_type == "hourly":
-                params['hourly'] += ',precipitation_probability'
+                params['hourly'] += ',precipitation_probability,is_day'
 
             response = requests.get(api_url, params=params, timeout=self.url_timeout)
 
@@ -966,7 +966,9 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
             code = value('weather_code')
             if temperature is None or code is None:
                 break
-            parts = [f"{self._hour_label(time_str)}:", self._get_weather_emoji(code)]
+            is_day = value('is_day')
+            daytime = bool(is_day) if is_day is not None else 6 <= start_time.hour < 18
+            parts = [f"{self._hour_label(time_str)}:", self._get_weather_emoji(code, is_day=daytime)]
             probability = value('precipitation_probability')
             if probability is not None and probability > 0:
                 parts.append(f"{int(probability)}%")

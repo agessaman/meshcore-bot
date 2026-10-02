@@ -73,6 +73,37 @@ def test_open_meteo_hourly_rolls_over_midnight():
     assert "11PM:" not in text
 
 
+
+def _hourly_clear(is_day=None):
+    data = _data("2035-06-01T17:45")
+    hours = [18, 19, 20, 21, 22]
+    data["hourly"] = {
+        "time": [f"2035-06-01T{hour:02d}:00" for hour in hours],
+        "temperature_2m": [60.0] * 5,
+        "weather_code": [0] * 5,
+        "wind_speed_10m": [3.0] * 5,
+        "wind_direction_10m": [180.0] * 5,
+    }
+    if is_day is not None:
+        data["hourly"]["is_day"] = is_day
+    cmd = _command()
+    with patch(f"{MODULE}.requests.get", return_value=_response(data)) as get:
+        text = cmd.get_open_meteo_weather(0, 0, "hourly", message=Mock())
+    return text.splitlines(), get.call_args.kwargs["params"]
+
+
+def test_open_meteo_hourly_shows_a_moon_for_clear_hours_after_sunset():
+    # June at high latitude: still light until 8 PM, dark from 9 PM.
+    lines, params = _hourly_clear(is_day=[1, 1, 1, 0, 0])
+    assert "is_day" in params["hourly"].split(",")
+    assert [line.split()[1] for line in lines] == ["☀️", "☀️", "☀️", "🌙", "🌙"]
+
+
+def test_open_meteo_hourly_without_is_day_uses_the_local_hour():
+    lines, _ = _hourly_clear()
+    # 6 PM onward counts as night without is_day.
+    assert [line.split()[1] for line in lines] == ["🌙"] * 5
+
 def test_hourly_preserves_zero_temperature_and_omits_null_optional_values():
     data = _data()
     data["hourly"]["temperature_2m"] = [0] * 6
