@@ -9,7 +9,7 @@ raw placeholder text into a broadcast.
 """
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -531,3 +531,41 @@ class TestScheduledSendFitsTheRfBudget:
         chunks = sched._split_to_budget(text, 20)
         assert all(len(c.encode("utf-8")) <= 20 for c in chunks)
         assert "".join(chunks) == text  # nothing lost or corrupted
+
+
+@pytest.mark.unit
+class TestRenderGwx:
+    """gwx is render_safe: its replies, including the two-part warning, render without transmitting."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("reply", [
+        "Paris, FR: Today: ☀️Clear 21°C",
+        ("multi_message", "Paris, FR: Today: ⛈️Thunderstorm 31°C", "⚠️ Thunderstorms"),
+    ])
+    async def test_gwx_renders_without_transmitting(self, command_mock_bot, reply):
+        from modules.command_manager import CommandManager
+        from modules.commands.alternatives.wx_international import GlobalWxCommand
+
+        gwx = GlobalWxCommand(command_mock_bot)
+        gwx._get_custom_mqtt_weather_topic = MagicMock(return_value=None)
+        gwx._get_custom_wxsim_source = MagicMock(return_value=None)
+        gwx.get_weather_for_location = AsyncMock(return_value=reply)
+
+        mgr = object.__new__(CommandManager)
+        mgr.bot = command_mock_bot
+        mgr.logger = MagicMock()
+        mgr.commands = {"gwx": gwx}
+        mgr._last_response = None
+        mgr.send_dm = AsyncMock()
+        mgr.send_channel_message = AsyncMock()
+        command_mock_bot.command_manager.send_response = (
+            lambda message, content, **kw: CommandManager.send_response(mgr, message, content, **kw)
+        )
+
+        with patch("asyncio.sleep", AsyncMock()):
+            rendered = await mgr.render_command_output("gwx Paris", channel="#general")
+
+        parts = [reply] if isinstance(reply, str) else list(reply[1:])
+        assert rendered and all(part in rendered for part in parts)  # the warning part too
+        mgr.send_dm.assert_not_called()
+        mgr.send_channel_message.assert_not_called()

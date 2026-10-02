@@ -52,6 +52,9 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
     """Handles global weather commands with city/location support"""
 
     # Plugin metadata
+    # Every reply goes through send_response, so a scheduled {cmd:gwx ...} renders
+    # without transmitting, as wx (which can delegate here) already does.
+    render_safe = True
     name = "gwx"
     translation_ns = "commands.gwx"
     keywords = ['gwx', 'globalweather', 'gwxa']
