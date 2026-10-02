@@ -1481,9 +1481,10 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             for period in future_periods:
                 line = self._hourly_line(period)
                 # Stop at the first hour that no longer fits.
-                if self._count_display_width("\n".join(lines + [line])) > max_length:
+                if self._count_display_width("\n".join(lines + [line])) <= max_length:
+                    lines.append(line)
+                else:
                     break
-                lines.append(line)
 
             if not lines:
                 return "Hourly forecast not available"
