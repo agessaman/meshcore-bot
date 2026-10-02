@@ -1003,10 +1003,6 @@ class MultitestCommand(BaseCommand):
                 response = (f"No matching packets found during {session.listening_duration}s window. "
                            f"Tracking hash: {tracking_hash}. ")
 
-        # Wait for bot TX rate limiter cooldown to expire before sending
-        # This ensures we respond even if another command put the bot on cooldown
-        await self.bot.bot_tx_rate_limiter.wait_for_tx()
-
         # Also wait for user rate limiter if needed
         if not self.bot.rate_limiter.can_send():
             wait_time = self.bot.rate_limiter.time_until_next()

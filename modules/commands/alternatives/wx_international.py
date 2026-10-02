@@ -510,7 +510,8 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
                 await asyncio.sleep(sleep_time)
 
                 # Send alerts
-                await self.send_response(message, weather_data[2])
+                # Second part of the same reply: the reply limiter already let the first through.
+                await self.send_response(message, weather_data[2], skip_user_rate_limit=True)
             elif forecast_type == "multiday":
                 # Use message splitting for multi-day forecasts
                 await self._send_multiday_forecast(message, weather_data)
