@@ -83,6 +83,8 @@ translation catalog is absent.
 
 ### outgoing_flood_scope_override vs flood_scopes
 
+[Region scopes](region-scopes.md) explains how regions work on the air and why the bot has to be told region names before it can answer inside one.
+
 These two options are independent and serve different purposes:
 
 | Option | Controls |
