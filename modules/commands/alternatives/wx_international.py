@@ -822,7 +822,9 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
 
             # Determine forecast_days based on type
             if forecast_type == "multiday":
-                forecast_days = min(num_days, 16)  # Open-Meteo supports up to 16 days
+                # Index 0 is today and the forecast starts tomorrow, so N days need N+1
+                # (Open-Meteo returns at most 16).
+                forecast_days = min(num_days + 1, 16)
             elif forecast_type == "tomorrow":
                 forecast_days = 2  # Need today and tomorrow
             else:
@@ -913,9 +915,9 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
         weather_desc = self._get_weather_description(weather_code)
         weather_emoji = self._get_weather_emoji(weather_code)
 
-        # Determine if it's day or night for forecast period name
-        now = datetime.now()
-        hour = now.hour
+        # Day or night at the location: Open-Meteo's current time is local there
+        # (timezone=auto); the bot's own clock is only the fallback.
+        hour = self._open_meteo_local_hour(current)
         if 6 <= hour < 18:
             period_name = self.translate('commands.gwx.periods.today')
         else:
@@ -1029,6 +1031,27 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
                             weather += precip_str
         return weather
 
+    @staticmethod
+    def _open_meteo_local_hour(current: dict) -> int:
+        """Hour of day at the location from Open-Meteo's current time ("2026-10-01T19:45"), else the bot's."""
+        stamp = current.get('time') if isinstance(current, dict) else None
+        if isinstance(stamp, str):
+            try:
+                return datetime.fromisoformat(stamp).hour
+            except ValueError:
+                pass
+        return datetime.now().hour
+
+    @staticmethod
+    def _open_meteo_date(dates: list, index: int):
+        """The date at *index* of Open-Meteo's daily time array, or None."""
+        if index < len(dates) and isinstance(dates[index], str):
+            try:
+                return datetime.strptime(dates[index][:10], '%Y-%m-%d')
+            except ValueError:
+                return None
+        return None
+
     def format_tomorrow_forecast(self, data: dict) -> str:
         """Format a detailed forecast for tomorrow.
 
@@ -1127,6 +1150,7 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
 
             parts = []
             today = datetime.now()
+            day_dates = daily.get('time') or []
 
             # Start from tomorrow (index 1)
             for i in range(1, min(num_days + 1, len(temps_max))):
@@ -1134,7 +1158,8 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
                 # (up to 9 of 16 with icon_seamless), so the forecast ends there.
                 if temps_max[i] is None or i >= len(temps_min) or temps_min[i] is None:
                     break
-                day_date = today + timedelta(days=i)
+                # Label from Open-Meteo's own (location-local) date when present.
+                day_date = self._open_meteo_date(day_dates, i) or (today + timedelta(days=i))
                 day_name = day_date.strftime('%A')
                 day_abbrev = day_abbrev_map.get(day_name, day_name[:2])
 

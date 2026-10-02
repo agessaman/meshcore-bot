@@ -80,7 +80,7 @@
    "wind_speed_unit": "mph"
   },
   "requests": 1,
-  "text": "<commands.gwx.periods.today>: ☀️<commands.gwx.weather_descriptions.0> 84°F ↙️<common.wind_directions.SW>4 <commands.gwx.humidity[('value', 32)]> | <common.temp_high_label>:93°F <common.temp_low_label>:69°F"
+  "text": "<commands.gwx.periods.tonight>: ☀️<commands.gwx.weather_descriptions.0> 84°F ↙️<common.wind_directions.SW>4 <commands.gwx.humidity[('value', 32)]> | <common.temp_high_label>:93°F <common.temp_low_label>:69°F"
  },
  "model-omitted-default-timeout": {
   "logs": [
@@ -399,7 +399,7 @@
    "wind_speed_unit": "mph"
   },
   "requests": 1,
-  "text": "<commands.gwx.periods.today>: ☀️<commands.gwx.weather_descriptions.0> 84°F ↙️<common.wind_directions.SW>4 <commands.gwx.humidity[('value', 32)]> | <common.temp_high_label>:93°F <common.temp_low_label>:69°F"
+  "text": "<commands.gwx.periods.tonight>: ☀️<commands.gwx.weather_descriptions.0> 84°F ↙️<common.wind_directions.SW>4 <commands.gwx.humidity[('value', 32)]> | <common.temp_high_label>:93°F <common.temp_low_label>:69°F"
  },
  "model-override-default-timeout": {
   "logs": [
@@ -729,7 +729,7 @@
    "wind_speed_unit": "mph"
   },
   "requests": 1,
-  "text": "<commands.gwx.periods.today>: ☀️<commands.gwx.weather_descriptions.0> 84°F ↙️<common.wind_directions.SW>4 <commands.gwx.humidity[('value', 32)]> | <common.temp_high_label>:93°F <common.temp_low_label>:69°F"
+  "text": "<commands.gwx.periods.tonight>: ☀️<commands.gwx.weather_descriptions.0> 84°F ↙️<common.wind_directions.SW>4 <commands.gwx.humidity[('value', 32)]> | <common.temp_high_label>:93°F <common.temp_low_label>:69°F"
  },
  "no-override-default-timeout": {
   "logs": [

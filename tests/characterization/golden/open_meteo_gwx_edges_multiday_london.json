@@ -4,7 +4,7 @@
   "params": {
    "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure",
    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max",
-   "forecast_days": 2,
+   "forecast_days": 3,
    "hourly": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
    "latitude": 51.51147,
    "longitude": -0.13078308,
@@ -15,14 +15,14 @@
    "wind_speed_unit": "kmh"
   },
   "requests": 1,
-  "text": "<commands.gwx.day_abbrev.Friday>: ☁️<ddddddddddddddddd> <common.temp_high_label>:21°C <common.temp_low_label>:14°C\n<commands.gwx.day_abbrev.Saturday>: 🌫️<ddddddddddddddddd> <common.temp_high_label>:19°C <common.temp_low_label>:14°C"
+  "text": "<commands.gwx.day_abbrev.Saturday>: ☁️<ddddddddddddddddd> <common.temp_high_label>:21°C <common.temp_low_label>:14°C\n<commands.gwx.day_abbrev.Sunday>: 🌫️<ddddddddddddddddd> <common.temp_high_label>:19°C <common.temp_low_label>:14°C"
  },
  "description-length20": {
   "logs": [],
   "params": {
    "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure",
    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max",
-   "forecast_days": 2,
+   "forecast_days": 3,
    "hourly": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
    "latitude": 51.51147,
    "longitude": -0.13078308,
@@ -33,14 +33,14 @@
    "wind_speed_unit": "kmh"
   },
   "requests": 1,
-  "text": "<commands.gwx.day_abbrev.Friday>: ☁️<dddddddddddddddddd> <common.temp_high_label>:21°C <common.temp_low_label>:14°C\n<commands.gwx.day_abbrev.Saturday>: 🌫️<dddddddddddddddddd> <common.temp_high_label>:19°C <common.temp_low_label>:14°C"
+  "text": "<commands.gwx.day_abbrev.Saturday>: ☁️<dddddddddddddddddd> <common.temp_high_label>:21°C <common.temp_low_label>:14°C\n<commands.gwx.day_abbrev.Sunday>: 🌫️<dddddddddddddddddd> <common.temp_high_label>:19°C <common.temp_low_label>:14°C"
  },
  "description-length21": {
   "logs": [],
   "params": {
    "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure",
    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max",
-   "forecast_days": 2,
+   "forecast_days": 3,
    "hourly": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
    "latitude": 51.51147,
    "longitude": -0.13078308,
@@ -51,14 +51,14 @@
    "wind_speed_unit": "kmh"
   },
   "requests": 1,
-  "text": "<commands.gwx.day_abbrev.Friday>: ☁️<dddddddddddddddd... <common.temp_high_label>:21°C <common.temp_low_label>:14°C\n<commands.gwx.day_abbrev.Saturday>: 🌫️<dddddddddddddddd... <common.temp_high_label>:19°C <common.temp_low_label>:14°C"
+  "text": "<commands.gwx.day_abbrev.Saturday>: ☁️<dddddddddddddddd... <common.temp_high_label>:21°C <common.temp_low_label>:14°C\n<commands.gwx.day_abbrev.Sunday>: 🌫️<dddddddddddddddd... <common.temp_high_label>:19°C <common.temp_low_label>:14°C"
  },
  "missing-friday-translation": {
   "logs": [],
   "params": {
    "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure",
    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max",
-   "forecast_days": 2,
+   "forecast_days": 3,
    "hourly": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
    "latitude": 51.51147,
    "longitude": -0.13078308,
@@ -69,14 +69,14 @@
    "wind_speed_unit": "kmh"
   },
   "requests": 1,
-  "text": "commands.gwx.day_abbrev.Friday: ☁️<commands.gwx.wea... <common.temp_high_label>:21°C <common.temp_low_label>:14°C\n<commands.gwx.day_abbrev.Saturday>: 🌫️<commands.gwx.wea... <common.temp_high_label>:19°C <common.temp_low_label>:14°C"
+  "text": "<commands.gwx.day_abbrev.Saturday>: ☁️<commands.gwx.wea... <common.temp_high_label>:21°C <common.temp_low_label>:14°C\n<commands.gwx.day_abbrev.Sunday>: 🌫️<commands.gwx.wea... <common.temp_high_label>:19°C <common.temp_low_label>:14°C"
  },
  "num-days2": {
   "logs": [],
   "params": {
    "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure",
    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max",
-   "forecast_days": 2,
+   "forecast_days": 3,
    "hourly": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
    "latitude": 51.51147,
    "longitude": -0.13078308,
@@ -87,7 +87,7 @@
    "wind_speed_unit": "kmh"
   },
   "requests": 1,
-  "text": "<commands.gwx.day_abbrev.Friday>: ☁️<commands.gwx.wea... <common.temp_high_label>:21°C <common.temp_low_label>:14°C\n<commands.gwx.day_abbrev.Saturday>: 🌫️<commands.gwx.wea... <common.temp_high_label>:19°C <common.temp_low_label>:14°C"
+  "text": "<commands.gwx.day_abbrev.Saturday>: ☁️<commands.gwx.wea... <common.temp_high_label>:21°C <common.temp_low_label>:14°C\n<commands.gwx.day_abbrev.Sunday>: 🌫️<commands.gwx.wea... <common.temp_high_label>:19°C <common.temp_low_label>:14°C"
  },
  "num-days20": {
   "logs": [],
@@ -105,14 +105,14 @@
    "wind_speed_unit": "kmh"
   },
   "requests": 1,
-  "text": "<commands.gwx.day_abbrev.Friday>: ☁️<commands.gwx.wea... <common.temp_high_label>:21°C <common.temp_low_label>:14°C\n<commands.gwx.day_abbrev.Saturday>: 🌫️<commands.gwx.wea... <common.temp_high_label>:19°C <common.temp_low_label>:14°C\n<commands.gwx.day_abbrev.Sunday>: ☁️<commands.gwx.wea... <common.temp_high_label>:19°C <common.temp_low_label>:14°C\n<commands.gwx.day_abbrev.Monday>: 🌦️<commands.gwx.wea... <common.temp_high_label>:18°C <common.temp_low_label>:12°C\n<commands.gwx.day_abbrev.Tuesday>: 🌦️<commands.gwx.wea... <common.temp_high_label>:14°C <common.temp_low_label>:10°C\n<commands.gwx.day_abbrev.Wednesday>: ☁️<commands.gwx.wea... <common.temp_high_label>:15°C <common.temp_low_label>:9°C\n<commands.gwx.day_abbrev.Thursday>: 🌧️<commands.gwx.wea... <common.temp_high_label>:15°C <common.temp_low_label>:9°C\n<commands.gwx.day_abbrev.Friday>: 🌦️<commands.gwx.wea... <common.temp_high_label>:15°C <common.temp_low_label>:9°C\n<commands.gwx.day_abbrev.Saturday>: 🌦️<commands.gwx.wea... <common.temp_high_label>:13°C <common.temp_low_label>:8°C\n<commands.gwx.day_abbrev.Sunday>: 🌤️<commands.gwx.wea... <common.temp_high_label>:13°C <common.temp_low_label>:7°C\n<commands.gwx.day_abbrev.Monday>: ☁️<commands.gwx.wea... <common.temp_high_label>:14°C <common.temp_low_label>:5°C\n<commands.gwx.day_abbrev.Tuesday>: 🌦️<commands.gwx.wea... <common.temp_high_label>:13°C <common.temp_low_label>:11°C\n<commands.gwx.day_abbrev.Wednesday>: ☁️<commands.gwx.wea... <common.temp_high_label>:16°C <common.temp_low_label>:7°C"
+  "text": "<commands.gwx.day_abbrev.Saturday>: ☁️<commands.gwx.wea... <common.temp_high_label>:21°C <common.temp_low_label>:14°C\n<commands.gwx.day_abbrev.Sunday>: 🌫️<commands.gwx.wea... <common.temp_high_label>:19°C <common.temp_low_label>:14°C\n<commands.gwx.day_abbrev.Monday>: ☁️<commands.gwx.wea... <common.temp_high_label>:19°C <common.temp_low_label>:14°C\n<commands.gwx.day_abbrev.Tuesday>: 🌦️<commands.gwx.wea... <common.temp_high_label>:18°C <common.temp_low_label>:12°C\n<commands.gwx.day_abbrev.Wednesday>: 🌦️<commands.gwx.wea... <common.temp_high_label>:14°C <common.temp_low_label>:10°C\n<commands.gwx.day_abbrev.Thursday>: ☁️<commands.gwx.wea... <common.temp_high_label>:15°C <common.temp_low_label>:9°C\n<commands.gwx.day_abbrev.Friday>: 🌧️<commands.gwx.wea... <common.temp_high_label>:15°C <common.temp_low_label>:9°C\n<commands.gwx.day_abbrev.Saturday>: 🌦️<commands.gwx.wea... <common.temp_high_label>:15°C <common.temp_low_label>:9°C\n<commands.gwx.day_abbrev.Sunday>: 🌦️<commands.gwx.wea... <common.temp_high_label>:13°C <common.temp_low_label>:8°C\n<commands.gwx.day_abbrev.Monday>: 🌤️<commands.gwx.wea... <common.temp_high_label>:13°C <common.temp_low_label>:7°C\n<commands.gwx.day_abbrev.Tuesday>: ☁️<commands.gwx.wea... <common.temp_high_label>:14°C <common.temp_low_label>:5°C\n<commands.gwx.day_abbrev.Wednesday>: 🌦️<commands.gwx.wea... <common.temp_high_label>:13°C <common.temp_low_label>:11°C\n<commands.gwx.day_abbrev.Thursday>: ☁️<commands.gwx.wea... <common.temp_high_label>:16°C <common.temp_low_label>:7°C"
  },
  "short-weather-codes": {
   "logs": [],
   "params": {
    "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure",
    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max",
-   "forecast_days": 4,
+   "forecast_days": 5,
    "hourly": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
    "latitude": 51.51147,
    "longitude": -0.13078308,
@@ -123,14 +123,14 @@
    "wind_speed_unit": "kmh"
   },
   "requests": 1,
-  "text": "<commands.gwx.day_abbrev.Friday>: ☁️<WMO 3> <common.temp_high_label>:21°C <common.temp_low_label>:14°C\n<commands.gwx.day_abbrev.Saturday>: ☀️<WMO 0> <common.temp_high_label>:19°C <common.temp_low_label>:14°C\n<commands.gwx.day_abbrev.Sunday>: ☀️<WMO 0> <common.temp_high_label>:19°C <common.temp_low_label>:14°C\n<commands.gwx.day_abbrev.Monday>: ☀️<WMO 0> <common.temp_high_label>:18°C <common.temp_low_label>:12°C"
+  "text": "<commands.gwx.day_abbrev.Saturday>: ☁️<WMO 3> <common.temp_high_label>:21°C <common.temp_low_label>:14°C\n<commands.gwx.day_abbrev.Sunday>: ☀️<WMO 0> <common.temp_high_label>:19°C <common.temp_low_label>:14°C\n<commands.gwx.day_abbrev.Monday>: ☀️<WMO 0> <common.temp_high_label>:19°C <common.temp_low_label>:14°C\n<commands.gwx.day_abbrev.Tuesday>: ☀️<WMO 0> <common.temp_high_label>:18°C <common.temp_low_label>:12°C"
  },
  "temperature_2m_max-null-end": {
   "logs": [],
   "params": {
    "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure",
    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max",
-   "forecast_days": 7,
+   "forecast_days": 8,
    "hourly": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
    "latitude": 51.51147,
    "longitude": -0.13078308,
@@ -141,14 +141,14 @@
    "wind_speed_unit": "kmh"
   },
   "requests": 1,
-  "text": "<commands.gwx.day_abbrev.Friday>: ☁️<commands.gwx.wea... <common.temp_high_label>:21°C <common.temp_low_label>:14°C\n<commands.gwx.day_abbrev.Saturday>: 🌫️<commands.gwx.wea... <common.temp_high_label>:19°C <common.temp_low_label>:14°C\n<commands.gwx.day_abbrev.Sunday>: ☁️<commands.gwx.wea... <common.temp_high_label>:19°C <common.temp_low_label>:14°C"
+  "text": "<commands.gwx.day_abbrev.Saturday>: ☁️<commands.gwx.wea... <common.temp_high_label>:21°C <common.temp_low_label>:14°C\n<commands.gwx.day_abbrev.Sunday>: 🌫️<commands.gwx.wea... <common.temp_high_label>:19°C <common.temp_low_label>:14°C\n<commands.gwx.day_abbrev.Monday>: ☁️<commands.gwx.wea... <common.temp_high_label>:19°C <common.temp_low_label>:14°C"
  },
  "temperature_2m_max-null-middle": {
   "logs": [],
   "params": {
    "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure",
    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max",
-   "forecast_days": 7,
+   "forecast_days": 8,
    "hourly": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
    "latitude": 51.51147,
    "longitude": -0.13078308,
@@ -159,14 +159,14 @@
    "wind_speed_unit": "kmh"
   },
   "requests": 1,
-  "text": "<commands.gwx.day_abbrev.Friday>: ☁️<commands.gwx.wea... <common.temp_high_label>:21°C <common.temp_low_label>:14°C\n<commands.gwx.day_abbrev.Saturday>: 🌫️<commands.gwx.wea... <common.temp_high_label>:19°C <common.temp_low_label>:14°C"
+  "text": "<commands.gwx.day_abbrev.Saturday>: ☁️<commands.gwx.wea... <common.temp_high_label>:21°C <common.temp_low_label>:14°C\n<commands.gwx.day_abbrev.Sunday>: 🌫️<commands.gwx.wea... <common.temp_high_label>:19°C <common.temp_low_label>:14°C"
  },
  "temperature_2m_min-null-end": {
   "logs": [],
   "params": {
    "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure",
    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max",
-   "forecast_days": 7,
+   "forecast_days": 8,
    "hourly": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
    "latitude": 51.51147,
    "longitude": -0.13078308,
@@ -177,14 +177,14 @@
    "wind_speed_unit": "kmh"
   },
   "requests": 1,
-  "text": "<commands.gwx.day_abbrev.Friday>: ☁️<commands.gwx.wea... <common.temp_high_label>:21°C <common.temp_low_label>:14°C\n<commands.gwx.day_abbrev.Saturday>: 🌫️<commands.gwx.wea... <common.temp_high_label>:19°C <common.temp_low_label>:14°C\n<commands.gwx.day_abbrev.Sunday>: ☁️<commands.gwx.wea... <common.temp_high_label>:19°C <common.temp_low_label>:14°C"
+  "text": "<commands.gwx.day_abbrev.Saturday>: ☁️<commands.gwx.wea... <common.temp_high_label>:21°C <common.temp_low_label>:14°C\n<commands.gwx.day_abbrev.Sunday>: 🌫️<commands.gwx.wea... <common.temp_high_label>:19°C <common.temp_low_label>:14°C\n<commands.gwx.day_abbrev.Monday>: ☁️<commands.gwx.wea... <common.temp_high_label>:19°C <common.temp_low_label>:14°C"
  },
  "temperature_2m_min-null-middle": {
   "logs": [],
   "params": {
    "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure",
    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max",
-   "forecast_days": 7,
+   "forecast_days": 8,
    "hourly": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
    "latitude": 51.51147,
    "longitude": -0.13078308,
@@ -195,6 +195,6 @@
    "wind_speed_unit": "kmh"
   },
   "requests": 1,
-  "text": "<commands.gwx.day_abbrev.Friday>: ☁️<commands.gwx.wea... <common.temp_high_label>:21°C <common.temp_low_label>:14°C\n<commands.gwx.day_abbrev.Saturday>: 🌫️<commands.gwx.wea... <common.temp_high_label>:19°C <common.temp_low_label>:14°C"
+  "text": "<commands.gwx.day_abbrev.Saturday>: ☁️<commands.gwx.wea... <common.temp_high_label>:21°C <common.temp_low_label>:14°C\n<commands.gwx.day_abbrev.Sunday>: 🌫️<commands.gwx.wea... <common.temp_high_label>:19°C <common.temp_low_label>:14°C"
  }
 }

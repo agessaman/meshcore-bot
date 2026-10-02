@@ -8,7 +8,7 @@ import asyncio
 import re
 import threading
 import xml.dom.minidom
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Callable, Optional, ParamSpec, TypeVar
 
 import requests
@@ -56,6 +56,8 @@ _COMPASS_16 = (
 )
 _ARROWS_8 = ("⬆️", "↗️", "➡️", "↘️", "⬇️", "↙️", "⬅️", "↖️")
 _WEEKDAYS_LOWER = ('monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday')
+# Multi-day line labels, Monday first (date.weekday() order).
+_DAY_ABBREVS = ('M', 'T', 'W', 'Th', 'F', 'Sa', 'Su')
 
 # Forecast-text patterns for the extract_* readers, tried in order.
 # extract_humidity: "humidity 45%" or "45% humidity"
@@ -1491,8 +1493,15 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         return datetime.fromisoformat(start_time_str)
 
     def _future_hourly_periods(self, hourly_periods: list) -> list:
-        """Periods starting after now (wall clock, ignoring the offset); unparseable or missing times are kept."""
-        now = datetime.now()
+        """Periods starting after now; unparseable or missing times are kept.
+
+        NOAA times carry the location's UTC offset, so they are compared as
+        absolute times. Dropping the offset compared the location's wall clock
+        with the bot's, which kept past hours or dropped future ones whenever
+        the two were in different time zones.
+        """
+        now_utc = datetime.now(timezone.utc)
+        now_naive = datetime.now()
         future_periods = []
         for period in hourly_periods:
             start_time_str = period.get('startTime', '')
@@ -1500,10 +1509,11 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                 future_periods.append(period)
                 continue
             try:
-                start_time = self._parse_noaa_start_time(start_time_str).replace(tzinfo=None)
+                start_time = self._parse_noaa_start_time(start_time_str)
             except (ValueError, TypeError):
                 future_periods.append(period)
                 continue
+            now = now_utc if start_time.tzinfo else now_naive
             if start_time > now:
                 future_periods.append(period)
         return future_periods
@@ -1552,10 +1562,77 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                 line_parts.append(f"{wind_dir_abbrev}{wind_match.group(1)}")
         return " ".join(line_parts)
 
-    def _find_tomorrow_periods(self, forecast: list) -> list:
-        """Tomorrow's NOAA periods: named "Tomorrow", else named for tomorrow's weekday,
-        else the (up to two) periods after today's.
+    @staticmethod
+    def _period_date(period: dict):
+        """The local calendar date a NOAA period starts on, from its startTime, or None.
+
+        NOAA writes startTime in the location's own offset ("2026-10-01T18:00:00-07:00"),
+        so its date part is the local date there, whatever the bot's clock says.
         """
+        start = period.get('startTime') if isinstance(period, dict) else None
+        if not isinstance(start, str) or len(start) < 10:
+            return None
+        try:
+            return datetime.strptime(start[:10], '%Y-%m-%d').date()
+        except ValueError:
+            return None
+
+    def _forecast_today(self, forecast: list):
+        """Today's date at the forecast's location, or the bot's date when no period has an offset.
+
+        The location's "now" is the current instant in the UTC offset NOAA writes on
+        its period times. The first period's own date is not enough: at 1 AM the
+        first period can still be the night that started yesterday evening.
+        """
+        for period in forecast:
+            start = period.get('startTime') if isinstance(period, dict) else None
+            if not isinstance(start, str):
+                continue
+            try:
+                start_dt = self._parse_noaa_start_time(start)
+            except (ValueError, TypeError):
+                continue
+            if start_dt.tzinfo is not None:
+                return datetime.now(timezone.utc).astimezone(start_dt.tzinfo).date()
+        return datetime.now().date()
+
+    def _period_dates(self, forecast: list) -> list:
+        """Each period's local date: its startTime date, or inferred from its neighbors when it has none.
+
+        NOAA periods alternate day and night in order, so an undated period is the
+        same date as a preceding daytime period when it is a night, else the day after.
+        """
+        dates = [self._period_date(p) for p in forecast]
+
+        def is_night(period) -> bool:
+            day = period.get('isDaytime') if isinstance(period, dict) else None
+            if day is not None:
+                return not day
+            return 'night' in str(period.get('name', '') if isinstance(period, dict) else '').lower()
+
+        for i in range(1, len(dates)):
+            if dates[i] is None and dates[i - 1] is not None:
+                same_day = not is_night(forecast[i - 1]) and is_night(forecast[i])
+                dates[i] = dates[i - 1] if same_day else dates[i - 1] + timedelta(days=1)
+        for i in range(len(dates) - 2, -1, -1):
+            if dates[i] is None and dates[i + 1] is not None:
+                same_day = not is_night(forecast[i]) and is_night(forecast[i + 1])
+                dates[i] = dates[i + 1] if same_day else dates[i + 1] - timedelta(days=1)
+        return dates
+
+    def _find_tomorrow_periods(self, forecast: list) -> list:
+        """Tomorrow's NOAA periods: those dated the day after today at the location;
+        without dates, those named "Tomorrow", else named for tomorrow's weekday, else the
+        (up to two) periods after today's.
+        """
+        # Dated periods: tomorrow is the day after today at the location.
+        if any(self._period_date(p) for p in forecast):
+            tomorrow = self._forecast_today(forecast) + timedelta(days=1)
+            dated = [p for p, d in zip(forecast, self._period_dates(forecast), strict=True) if d == tomorrow]
+            if dated:
+                return dated
+
+        # No usable startTime: fall back to period names and the bot's clock.
         tomorrow_day_name = (datetime.now() + timedelta(days=1)).strftime('%A')
 
         tomorrow_periods = [p for p in forecast if 'tomorrow' in p.get('name', '').lower()]
@@ -1642,6 +1719,13 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
     def format_multiday_forecast(self, forecast: list, num_days: int = 7, max_length: int = 130) -> str:
         """Format a less detailed multi-day forecast summary"""
         try:
+            if any(self._period_date(p) for p in forecast):
+                parts = self._multiday_lines_by_date(forecast, num_days)
+                if not parts:
+                    return self.translate('commands.wx.multiday_not_available', num_days=num_days)
+                return "\n".join(parts)
+
+            # No usable startTime: group by weekday name against the bot's clock.
             # One entry per weekday; a day period wins over a night one.
             days: dict[str, dict] = {}
             for period in forecast:
@@ -1730,6 +1814,48 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         except Exception as e:
             self.logger.error(f"Error formatting {num_days}-day forecast: {e}")
             return self.translate('commands.wx.multiday_error', num_days=num_days)
+
+    def _multiday_lines_by_date(self, forecast: list, num_days: int) -> list[str]:
+        """One line per local date after today at the location, up to *num_days*.
+
+        Grouping by startTime date (instead of weekday name against the bot's
+        clock) keeps holiday-named periods ("Christmas Day") and does not depend
+        on the bot sharing the location's time zone. A daytime period wins over
+        that date's night period.
+        """
+        today = self._forecast_today(forecast)
+        days: dict = {}
+        for period, day in zip(forecast, self._period_dates(forecast), strict=True):
+            if day is None or day <= today:
+                continue
+            temp = period.get('temperature', '')
+            high_low = self.extract_high_low(
+                period.get('detailedForecast', ''), self._noaa_period_temp_symbol(period)
+            )
+            if high_low:
+                temp_str = high_low
+            elif temp:
+                temp_str = f"{temp}°"
+            else:
+                continue
+            short_forecast = period.get('shortForecast', '')
+            if not short_forecast:
+                continue
+            is_day = period.get('isDaytime')
+            if is_day is None:
+                is_day = 'night' not in period.get('name', '').lower()
+            if day not in days or (is_day and not days[day]['is_day']):
+                days[day] = {'temp': temp_str, 'forecast': short_forecast, 'is_day': bool(is_day)}
+
+        parts = []
+        for day in sorted(days)[:num_days]:
+            data = days[day]
+            forecast_short = self.abbreviate_noaa(data['forecast'])
+            if len(forecast_short) > 25:
+                forecast_short = forecast_short[:22] + "..."
+            abbrev = _DAY_ABBREVS[day.weekday()]
+            parts.append(f"{abbrev}: {self.get_weather_emoji(data['forecast'])}{forecast_short} {data['temp']}")
+        return parts
 
     @staticmethod
     def _multiday_day_name(period_name_lower: str) -> str | None:
