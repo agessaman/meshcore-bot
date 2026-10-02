@@ -9,7 +9,7 @@ from unittest.mock import patch
 import pytest
 
 from modules import region_warning
-from modules.models import channel_body_limit
+from modules.models import CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD, channel_body_limit
 
 
 @pytest.fixture
@@ -84,6 +84,35 @@ class TestRegionWarningsApi:
         assert data["limits"]["dm"] == region_warning.DM_BODY_LIMIT
         # The API must report the same budget the send path uses, not its own copy.
         assert data["limits"]["channel"] == channel_body_limit("TestBot")
+
+    @pytest.mark.parametrize(
+        ("channels", "warnings", "regional"),
+        [
+            ({"outgoing_flood_scope_override": "#west"}, {}, True),
+            ({"flood_scope.general": "west"}, {}, True),
+            ({"outgoing_flood_scope_override": "*"}, {}, False),
+            ({}, {"flood_scope": "#west"}, True),
+            # An explicit global scope on the warning outranks a regional bot.
+            ({"outgoing_flood_scope_override": "#west"}, {"flood_scope": "*"}, False),
+        ],
+    )
+    def test_channel_limit_reserves_regional_overhead(self, viewer, channels, warnings, regional):
+        """The page must not promise bytes a scoped warning would lose."""
+        # The endpoint re-reads config.ini, so the scopes have to be on disk.
+        config = configparser.ConfigParser()
+        config.read(viewer.config_path)
+        for section, values in (("Channels", channels), (region_warning.CONFIG_SECTION, warnings)):
+            if values:
+                config.add_section(section)
+                for key, value in values.items():
+                    config.set(section, key, value)
+        with open(viewer.config_path, "w") as handle:
+            config.write(handle)
+        data = viewer.app.test_client().get("/api/region-warnings").get_json()
+        expected = channel_body_limit("TestBot")
+        if regional:
+            expected -= CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD
+        assert data["limits"]["channel"] == expected
 
     def test_traffic_reflects_seeded_tallies(self, viewer):
         _seed_tally(viewer)

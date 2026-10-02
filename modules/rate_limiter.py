@@ -138,11 +138,22 @@ class BotTxRateLimiter:
             self._total_tx += 1
 
     async def wait_for_tx(self):
-        """Wait until bot can transmit (async)"""
-        while not self.can_tx():
-            wait_time = self.time_until_next_tx()
-            if wait_time > 0:
-                await asyncio.sleep(wait_time + 0.05)  # Small buffer
+        """Wait for a transmit slot and claim it (async).
+
+        Claiming the slot here, rather than only when ``record_tx`` runs after
+        the radio confirms, keeps concurrent senders (two replies, a reply and a
+        scheduled message) spaced too; before, they all passed the check before
+        any of them recorded, and transmitted back to back.
+        """
+        while True:
+            with self._lock:
+                now = time.monotonic()
+                wait_time = self.seconds - (now - self.last_tx)
+                if wait_time <= 0:
+                    self.last_tx = now
+                    return
+                self._total_throttled += 1
+            await asyncio.sleep(wait_time + 0.05)  # Small buffer
 
     def get_stats(self) -> dict:
         """Get rate limiter statistics"""

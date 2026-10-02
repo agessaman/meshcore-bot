@@ -854,7 +854,8 @@ class WxCommand(BaseCommand):
                 # Send the special weather statement (already formatted with prioritization)
                 alert_text = weather_data[2]
                 weather_data[3]
-                await self.send_response(message, alert_text)
+                # Second part of the same reply: the reply limiter already let the first through.
+                await self.send_response(message, alert_text, skip_user_rate_limit=True)
             elif forecast_type == "multiday":
                 # Use message splitting for multi-day forecasts
                 await self._send_multiday_forecast(message, weather_data)
