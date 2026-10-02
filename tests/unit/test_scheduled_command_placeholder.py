@@ -565,6 +565,7 @@ class TestRenderGwx:
         with patch("asyncio.sleep", AsyncMock()):
             rendered = await mgr.render_command_output("gwx Paris", channel="#general")
 
-        assert rendered and "Paris, FR" in rendered
+        parts = [reply] if isinstance(reply, str) else list(reply[1:])
+        assert rendered and all(part in rendered for part in parts)  # the warning part too
         mgr.send_dm.assert_not_called()
         mgr.send_channel_message.assert_not_called()
