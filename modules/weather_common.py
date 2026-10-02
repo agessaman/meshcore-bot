@@ -186,51 +186,40 @@ class WeatherCommandMixin:
             lines.append(line)
         return "\n".join(lines) or self.translate(f'{self.translation_ns}.hourly_not_available')
 
-    async def _send_multiday_forecast(self, message: Any, forecast_text: str) -> None:
+    async def _send_multiday_forecast(self, message: Any, forecast_text: str) -> bool:
         """Send a multi-day forecast, packing whole lines into as few messages as fit.
 
-        A line too long for one message goes out on its own. Messages after the
-        first skip the per-user rate limit and are spaced 2 s apart.
+        A line too long for one message goes out on its own. The first message
+        goes through the per-user rate limit; the ones after it skip it and are
+        spaced 2 s apart. Returns whether every message was sent.
         """
         max_length = self.get_max_message_length(message)
         lines = [line.strip() for line in forecast_text.split('\n') if line.strip()]
         if not lines:
-            return
+            return False
         if self._count_display_width(forecast_text) <= max_length:
-            await self.send_response(message, forecast_text)
-            return
+            return bool(await self.send_response(message, forecast_text))
 
+        parts: list[str] = []
         current_message = ""
-        message_count = 0
-        for i, line in enumerate(lines):
-            if not line:
-                continue
+        for line in lines:
             test_message = current_message + "\n" + line if current_message else line
-            if self._count_display_width(test_message) > max_length:
-                if current_message:
-                    await self.send_response(
-                        message, current_message,
-                        skip_user_rate_limit=(message_count > 0)
-                    )
-                    message_count += 1
-                    if i < len(lines):
-                        await asyncio.sleep(2.0)
-                    current_message = line
-                else:
-                    # Single line is too long, send it anyway (will be truncated by bot)
-                    await self.send_response(
-                        message, line,
-                        skip_user_rate_limit=(message_count > 0)
-                    )
-                    message_count += 1
-                    if i < len(lines) - 1:
-                        await asyncio.sleep(2.0)
-                    current_message = ""
-            elif current_message:
-                current_message += "\n" + line
-            else:
-                current_message = line
-
-        # Last message is a continuation, so it skips the per-user rate limit
+            if self._count_display_width(test_message) <= max_length:
+                current_message = test_message
+                continue
+            if current_message:
+                parts.append(current_message)
+            # A single line too long for one message goes out anyway (the bot splits it).
+            current_message = line
         if current_message:
-            await self.send_response(message, current_message, skip_user_rate_limit=True)
+            parts.append(current_message)
+
+        sent_all = True
+        for i, part in enumerate(parts):
+            if i > 0:
+                await asyncio.sleep(2.0)
+            sent = await self.send_response(message, part, skip_user_rate_limit=(i > 0))
+            if not sent:
+                sent_all = False
+                break
+        return sent_all

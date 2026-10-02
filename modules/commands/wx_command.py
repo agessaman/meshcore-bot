@@ -739,10 +739,8 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                     mqtt_topic, forecast_type, location
                 )
                 if forecast_type == "multiday":
-                    await self._send_multiday_forecast(message, weather_data)
-                else:
-                    await self.send_response(message, weather_data)
-                return True
+                    return await self._send_multiday_forecast(message, weather_data)
+                return bool(await self.send_response(message, weather_data))
             except Exception as e:
                 self.logger.error(f"Error reading MQTT weather: {e}")
                 await self.send_response(message, self.translate("commands.wx.error", error=str(e)))
@@ -763,10 +761,8 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                     location_name=location,
                 )
                 if forecast_type == "multiday":
-                    await self._send_multiday_forecast(message, weather_data)
-                else:
-                    await self.send_response(message, weather_data)
-                return True
+                    return await self._send_multiday_forecast(message, weather_data)
+                return bool(await self.send_response(message, weather_data))
             except Exception as e:
                 self.logger.error(f"Error fetching WXSIM weather: {e}")
                 await self.send_response(message, self.translate('commands.wx.error', error=str(e)))
@@ -829,8 +825,10 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
 
             # Check if we need to send multiple messages
             if isinstance(weather_data, tuple) and weather_data[0] == "multi_message":
-                # Send weather data first
-                await self.send_response(message, weather_data[1])
+                # Send weather data first; if it was refused (rate limit, send failure),
+                # do not send its second part on its own.
+                if not await self.send_response(message, weather_data[1]):
+                    return False
 
                 # Wait for bot TX rate limiter to allow next message
                 rate_limit = self.bot.config.getfloat('Bot', 'bot_tx_rate_limit_seconds', fallback=1.0)
@@ -841,15 +839,12 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                 # Send the special weather statement (already formatted with prioritization)
                 alert_text = weather_data[2]
                 # Second part of the same reply: the reply limiter already let the first through.
-                await self.send_response(message, alert_text, skip_user_rate_limit=True)
-            elif forecast_type == "multiday":
+                return bool(await self.send_response(message, alert_text, skip_user_rate_limit=True))
+            if forecast_type == "multiday":
                 # Use message splitting for multi-day forecasts
-                await self._send_multiday_forecast(message, weather_data)
-            else:
-                # Send single message as usual
-                await self.send_response(message, weather_data)
-
-            return True
+                return await self._send_multiday_forecast(message, weather_data)
+            # Send single message as usual
+            return bool(await self.send_response(message, weather_data))
 
         except Exception as e:
             self.logger.error(f"Error in weather command: {e}")
