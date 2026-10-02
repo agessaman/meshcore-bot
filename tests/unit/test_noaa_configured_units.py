@@ -101,12 +101,12 @@ def test_celsius_shows_visibility_in_km_and_dew_point_in_celsius():
     observed = copy.deepcopy(US["observation"])
     observed["properties"]["visibility"] = {"value": 16090}
     observed["properties"]["dewpoint"] = {"value": 8.6}
-    observed["properties"]["windGust"] = {"value": 10.0}
+    observed["properties"]["windGust"] = {"unitCode": "wmoUnit:km_h-1", "value": 36.0}
     cmd.noaa_session, _ = _session(si=True, observation=observed)
     data = cmd.get_observation_data(US["points"])
     assert data["visibility"] == "16"  # km
     assert data["dew_point"] == "9"  # °C
-    assert data["wind_gusts"] == "36"  # km/h
+    assert data["wind_gusts"] == "36"  # km/h, as observed
 
 
 def test_fahrenheit_observations_are_as_before():
@@ -114,10 +114,47 @@ def test_fahrenheit_observations_are_as_before():
     observed = copy.deepcopy(US["observation"])
     observed["properties"]["visibility"] = {"value": 16090}
     observed["properties"]["dewpoint"] = {"value": 8.6}
-    observed["properties"]["windGust"] = {"value": 10.0}
+    observed["properties"]["windGust"] = {"unitCode": "wmoUnit:km_h-1", "value": 36.0}
     cmd.noaa_session, _ = _session(si=False, observation=observed)
     data = cmd.get_observation_data(US["points"])
+    # A 36 km/h gust is 22 mph; reading it as m/s showed 80.
     assert (data["visibility"], data["dew_point"], data["wind_gusts"]) == ("9", "47", "22")
+
+
+@pytest.mark.parametrize(("unit_code", "value", "wind_unit", "shown"), [
+    ("wmoUnit:km_h-1", 36.0, "ms", "10"),
+    ("wmoUnit:m_s-1", 10.0, "mph", "22"),
+    ("wmoUnit:m_s-1", 10.0, "kmh", "36"),
+    ("wmoUnit:km_h-1", 15.0, "mph", None),  # 9 mph: below the 10 mph floor for showing gusts
+])
+def test_observed_gusts_follow_their_declared_unit(unit_code, value, wind_unit, shown):
+    cmd = _wx({"wind_speed_unit": wind_unit})
+    observed = copy.deepcopy(US["observation"])
+    observed["properties"]["windGust"] = {"unitCode": unit_code, "value": value}
+    cmd.noaa_session, _ = _session(si=False, observation=observed)
+    assert cmd.get_observation_data(US["points"]).get("wind_gusts") == shown
+
+
+def test_a_zero_degree_period_is_kept():
+    periods = copy.deepcopy(SI["forecast"]["properties"]["periods"])
+    friday = next(p for p in periods if p["name"] == "Friday")
+    friday["temperature"] = 0
+    friday["detailedForecast"] = "Partly sunny."
+    cmd = _wx({"temperature_unit": "celsius", "wind_speed_unit": "kmh"})
+    with patch("modules.commands.wx_command.datetime", _Clock):
+        tomorrow = cmd.format_tomorrow_forecast(periods)
+    assert tomorrow.startswith("Fri: ") and " 0°C" in tomorrow
+    assert cmd._noaa_period_str(friday) is not None
+
+
+@pytest.mark.parametrize(("text", "wind_unit", "shown"), [
+    ("Wind gusts up to 30 mph.", "kmh", "48"),
+    ("Wind gusts up to 48 km/h.", "mph", "30"),
+    ("Wind gusts up to 48 km/h.", "kmh", "48"),
+    ("Wind gusts up to 30 mph.", "mph", "30"),
+])
+def test_forecast_text_gusts_are_converted(text, wind_unit, shown):
+    assert _wx({"wind_speed_unit": wind_unit})._forecast_text_gusts(text) == shown
 
 
 @pytest.mark.parametrize(

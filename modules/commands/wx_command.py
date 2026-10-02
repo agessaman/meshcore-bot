@@ -115,6 +115,9 @@ _WIND_GUST_PATTERNS = (
     r'wind\s+gusts\s+(\d+)\s+mph',
 )
 
+# extract_wind_gusts in SI forecast text ("Wind gusts up to 48 km/h")
+_WIND_GUST_KMH_PATTERNS = tuple(p.replace(r"\s+mph", r"\s*km/h") for p in _WIND_GUST_PATTERNS)
+
 # extract_pressure
 _PRESSURE_PATTERNS = (
     r'pressure\s+(\d+)\s*hpa',
@@ -124,6 +127,12 @@ _PRESSURE_PATTERNS = (
     r'(\d+)\s*hpa',
     r'(\d+)\s*mb\s+pressure',
 )
+
+
+
+def _has_temp(value) -> bool:
+    """Whether a NOAA temperature is present; 0° is a temperature (common in Celsius)."""
+    return value is not None and value != ''
 
 
 def _first_match(text: str, patterns: tuple[str, ...], low: int | None = None, high: int | None = None) -> str:
@@ -1367,7 +1376,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         period_name = self._noaa_period_display_name(period)
         period_temp = period.get('temperature', '')
         period_short = period.get('shortForecast', '')
-        if not (period_temp and period_short):
+        if not (_has_temp(period_temp) and period_short):
             return None
         period_high_low = self.extract_high_low(
             period.get('detailedForecast', ''), self._noaa_period_temp_symbol(period)
@@ -1577,7 +1586,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         if precip_prob is not None and precip_prob > 0:
             line_parts.append(f"{precip_prob}%")
         line_parts.append(forecast_short)
-        if temp:
+        if _has_temp(temp):
             line_parts.append(f"{temp}°")
         if wind_speed and wind_direction:
             wind_match = re.search(r'(\d+)', wind_speed)
@@ -1641,7 +1650,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                 wind_speed = period.get('windSpeed', '')
                 wind_direction = period.get('windDirection', '')
 
-                if not temp or not short_forecast:
+                if not _has_temp(temp) or not short_forecast:
                     continue
 
                 # Create period string
@@ -1694,7 +1703,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                 )
                 if high_low:
                     temp_str = high_low
-                elif temp:
+                elif _has_temp(temp):
                     temp_str = f"{temp}°"
                 else:
                     continue
@@ -1803,7 +1812,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         humidity = observed.get('humidity') or self.extract_humidity(detailed_forecast)
         dew_point = observed.get('dew_point') or self.extract_dew_point(detailed_forecast)
         visibility = observed.get('visibility') or self.extract_visibility(detailed_forecast)
-        wind_gusts = observed.get('wind_gusts') or self.extract_wind_gusts(detailed_forecast)
+        wind_gusts = observed.get('wind_gusts') or self._forecast_text_gusts(detailed_forecast)
         pressure = observed.get('pressure') or self.extract_pressure(detailed_forecast)
         # Precipitation probability only comes from the forecast text.
         precip_prob = self.extract_precip_probability(detailed_forecast)
@@ -2452,6 +2461,16 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         """Extract wind gusts from forecast text"""
         return _first_match(text, _WIND_GUST_PATTERNS, 10, 100)
 
+    def _forecast_text_gusts(self, text: str) -> str:
+        """Gusts from the forecast text ("gusts up to 30 mph" or "48 km/h") in the configured unit."""
+        mph = self.extract_wind_gusts(text)
+        if mph:
+            return self._noaa_wind_convert(mph, "mph")
+        kmh = _first_match(text, _WIND_GUST_KMH_PATTERNS, 16, 161)
+        if kmh:
+            return self._noaa_wind_convert(kmh, "km/h")
+        return ""
+
     def extract_pressure(self, text: str) -> str:
         """Extract barometric pressure from forecast text"""
         return _first_match(text, _PRESSURE_PATTERNS, 600, 1100)
@@ -2522,6 +2541,8 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                 obs_data_dict['dew_point'] = str(dewpoint)
 
             visibility_val = props.get('visibility', {}).get('value')
+            if visibility_val is not None and str(props.get('visibility', {}).get('unitCode', '')).endswith(':km'):
+                visibility_val *= 1000  # NOAA normally reports meters; handle km too
             if visibility_val is not None:
                 if self._noaa_metric_distance:
                     visibility = int(visibility_val / 1000)  # Convert m to km
@@ -2532,6 +2553,9 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
 
             wind_gust_val = props.get('windGust', {}).get('value')
             if wind_gust_val is not None:
+                # NOAA observations declare their unit; station gusts are usually km/h, not m/s.
+                if 'km_h' in str(props.get('windGust', {}).get('unitCode', '')):
+                    wind_gust_val = wind_gust_val / 3.6
                 # Shown only above 10 mph, whatever unit it is shown in.
                 if int(wind_gust_val * 2.237) > 10:
                     factor = {'mph': 2.237, 'kmh': 3.6, 'ms': 1.0}[wind_unit]
