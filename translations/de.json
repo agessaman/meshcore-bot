@@ -198,37 +198,46 @@
       "help": "Antwortet auf 'test' oder 't' mit Verbindungsinfo"
     },
     "wx": {
-      "description": "Wetterinfo für PLZ abrufen (Verwendung: wx 12345)",
-      "usage": "Verwendung: wx <plz|stadt> - Beispiel: wx 12345 oder wx seattle oder wx paris, tx",
+      "description": "US-Wetter für PLZ, Stadt oder Koordinaten (Verwendung: wx 98101)",
+      "usage": "Verwendung: wx <plz|stadt|lat,lon> [tomorrow|hourly|Nd|alerts] - Beispiel: wx 98101 oder wx seattle 5d",
       "error_fetching": "Fehler beim Abruf der Wetterdaten von NOAA",
       "no_location_zipcode": "Ort für PLZ {location} nicht gefunden",
       "no_location_city": "Stadt '{location}' in {state} nicht gefunden",
       "error": "Fehler beim Abruf der Wetterdaten: {error}",
       "alerts": "{count} Warnungen: {text}",
-      "tomorrow_not_available": "Tomorrow's forecast not available",
-      "tomorrow_error": "Error formatting tomorrow's forecast",
-      "multiday_not_available": "{num_days}-day forecast not available",
-      "multiday_error": "Error formatting {num_days}-day forecast",
+      "tomorrow_not_available": "Vorhersage für morgen nicht verfügbar",
+      "tomorrow_error": "Fehler beim Formatieren der Vorhersage für morgen",
+      "multiday_not_available": "{num_days}-Tage-Vorhersage nicht verfügbar",
+      "multiday_error": "Fehler beim Formatieren der {num_days}-Tage-Vorhersage",
       "hourly_not_available": "Stündliche Vorhersage nicht verfügbar",
       "source_option_not_available": "Für diese Wetterquelle nicht verfügbar",
       "mqtt_forecast_not_supported": "Erweiterte Vorhersage ist für MQTT-Wetterquellen nicht verfügbar",
       "mqtt_weather_no_data": "Für dieses Topic ist noch keine MQTT-Wettermeldung eingegangen",
       "mqtt_weather_no_subscriber": "MQTT-Wetterempfang ist nicht aktiv ([MqttWeather] und custom.mqtt_weather.*-Topics aktivieren)",
       "mqtt_weather_payload_error": "MQTT-Wetterdaten fehlerhaft: {detail}",
-      "mqtt_weather_stale": "MQTT-Wetterdaten sind zu alt"
+      "mqtt_weather_stale": "MQTT-Wetterdaten sind zu alt",
+      "day_abbrev": {
+        "Monday": "Mo",
+        "Tuesday": "Di",
+        "Wednesday": "Mi",
+        "Thursday": "Do",
+        "Friday": "Fr",
+        "Saturday": "Sa",
+        "Sunday": "So"
+      }
     },
     "gwx": {
       "description": "Wetterinfo für beliebigen Ort abrufen (Verwendung: gwx Tokyo)",
       "help": "Verwendung: gwx <ort> - Wetter für jeden Ort weltweit (Stadt, Land oder Koordinaten)",
-      "usage": "Verwendung: gwx <ort> - Beispiel: gwx Tokyo oder gwx Paris, France",
+      "usage": "Verwendung: gwx <ort|lat,lon> [tomorrow|hourly|Nd] - Beispiel: gwx Tokyo oder gwx Paris, France 5d",
       "error_fetching": "Fehler beim Abruf der Wetterdaten",
       "error_fetching_api": "Fehler beim Abruf der Wetterdaten von Open-Meteo",
       "no_location": "Ort '{location}' nicht gefunden",
       "error": "Fehler beim Abruf der Wetterdaten: {error}",
-      "tomorrow_not_available": "Tomorrow's forecast not available",
-      "tomorrow_error": "Error formatting tomorrow's forecast",
-      "multiday_not_available": "{num_days}-day forecast not available",
-      "multiday_error": "Error formatting {num_days}-day forecast",
+      "tomorrow_not_available": "Vorhersage für morgen nicht verfügbar",
+      "tomorrow_error": "Fehler beim Formatieren der Vorhersage für morgen",
+      "multiday_not_available": "{num_days}-Tage-Vorhersage nicht verfügbar",
+      "multiday_error": "Fehler beim Formatieren der {num_days}-Tage-Vorhersage",
       "periods": {
         "today": "Heute",
         "tonight": "Heute Nacht",
@@ -272,7 +281,7 @@
         "heavy_rain": "⚠️ Starkregen",
         "thunderstorms": "⚠️ Gewitter",
         "heavy_snow": "⚠️ Starker Schneefall",
-        "high_winds": "⚠️ Starker Wind ({wind_speed} mph)"
+        "high_winds": "⚠️ Starker Wind ({wind_speed} {unit})"
       },
       "day_abbrev": {
         "Monday": "Mo",

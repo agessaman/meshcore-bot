@@ -174,37 +174,46 @@
       "help": "Responde 'teste' ou 't' com info de conexão"
     },
     "wx": {
-      "description": "Obter informações meteorológicas para um CEP (uso: wx 12345)",
-      "usage": "Uso: wx <cep|cidade> - Exemplo: wx 12345 ou wx seattle ou wx paris, tx",
+      "description": "Meteorologia dos EUA por código postal, cidade ou coordenadas (uso: wx 98101)",
+      "usage": "Uso: wx <código|cidade|lat,lon> [tomorrow|hourly|Nd|alerts] - Exemplo: wx 98101 ou wx seattle 5d",
       "error_fetching": "Erro ao buscar dados meteorológicos do NOAA",
       "no_location_zipcode": "Não foi possível encontrar localização para CEP {location}",
       "no_location_city": "Não foi possível encontrar cidade '{location}' em {state}",
       "error": "Erro ao obter dados meteorológicos: {error}",
       "alerts": "{count} alertas: {text}",
-      "tomorrow_not_available": "Tomorrow's forecast not available",
-      "tomorrow_error": "Error formatting tomorrow's forecast",
-      "multiday_not_available": "{num_days}-day forecast not available",
-      "multiday_error": "Error formatting {num_days}-day forecast",
+      "tomorrow_not_available": "Previsão para amanhã não disponível",
+      "tomorrow_error": "Erro ao formatar a previsão para amanhã",
+      "multiday_not_available": "Previsão de {num_days} dias não disponível",
+      "multiday_error": "Erro ao formatar a previsão de {num_days} dias",
       "hourly_not_available": "Previsão horária não disponível",
       "source_option_not_available": "Não disponível para esta fonte meteorológica",
       "mqtt_forecast_not_supported": "A previsão alargada não está disponível para fontes meteorológicas MQTT",
       "mqtt_weather_no_data": "Ainda não foi recebida nenhuma mensagem meteorológica MQTT para este tópico",
       "mqtt_weather_no_subscriber": "O subscritor meteorológico MQTT não está ativo (ative [MqttWeather] e os tópicos custom.mqtt_weather.*)",
       "mqtt_weather_payload_error": "Erro nos dados meteorológicos MQTT: {detail}",
-      "mqtt_weather_stale": "Os dados meteorológicos MQTT são demasiado antigos"
+      "mqtt_weather_stale": "Os dados meteorológicos MQTT são demasiado antigos",
+      "day_abbrev": {
+        "Monday": "Seg",
+        "Tuesday": "Ter",
+        "Wednesday": "Qua",
+        "Thursday": "Qui",
+        "Friday": "Sex",
+        "Saturday": "Sáb",
+        "Sunday": "Dom"
+      }
     },
     "gwx": {
       "description": "Obter informações meteorológicas para qualquer localização global (uso: gwx Tokyo)",
       "help": "Uso: gwx <localização> - Obter tempo para qualquer localização global (cidade, país ou coordenadas)",
-      "usage": "Uso: gwx <localização> - Exemplo: gwx Tokyo ou gwx Paris, France",
+      "usage": "Uso: gwx <localização|lat,lon> [tomorrow|hourly|Nd] - Exemplo: gwx Tokyo ou gwx Paris, France 5d",
       "error_fetching": "Erro ao buscar dados meteorológicos",
       "error_fetching_api": "Erro ao buscar dados meteorológicos do Open-Meteo",
       "no_location": "Não foi possível encontrar localização '{location}'",
       "error": "Erro ao obter dados meteorológicos: {error}",
-      "tomorrow_not_available": "Tomorrow's forecast not available",
-      "tomorrow_error": "Error formatting tomorrow's forecast",
-      "multiday_not_available": "{num_days}-day forecast not available",
-      "multiday_error": "Error formatting {num_days}-day forecast",
+      "tomorrow_not_available": "Previsão para amanhã não disponível",
+      "tomorrow_error": "Erro ao formatar a previsão para amanhã",
+      "multiday_not_available": "Previsão de {num_days} dias não disponível",
+      "multiday_error": "Erro ao formatar a previsão de {num_days} dias",
       "periods": {
         "today": "Hoje",
         "tonight": "Esta Noite",
@@ -248,7 +257,7 @@
         "heavy_rain": "⚠️ Chuva forte",
         "thunderstorms": "⚠️ Tempestades",
         "heavy_snow": "⚠️ Neve forte",
-        "high_winds": "⚠️ Ventos fortes ({wind_speed} mph)"
+        "high_winds": "⚠️ Ventos fortes ({wind_speed} {unit})"
       },
       "day_abbrev": {
         "Monday": "Seg",

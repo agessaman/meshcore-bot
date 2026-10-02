@@ -1448,10 +1448,12 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
         if code in (75, 85, 86):
             warnings.append(self.translate('commands.gwx.warnings.heavy_snow'))
 
-        # Sustained wind only, as before; the warning's number is in mph like its threshold.
+        # Sustained wind only, as before. The threshold is 30 mph; the warning shows the
+        # speed in the configured unit, like the wind in the reply it follows.
         wind_factor = {'mph': 1, 'kmh': MI_TO_KM, 'ms': 0.44704, 'kn': 0.868976}[self.wind_speed_unit]
-        wind_speed = (current.get('wind_speed_10m') or 0) / wind_factor
-        if wind_speed >= 30:
-            warnings.append(self.translate('commands.gwx.warnings.high_winds', wind_speed=int(wind_speed)))
+        wind = current.get('wind_speed_10m') or 0
+        if wind / wind_factor >= 30:
+            unit = self.translate(f'services.weather_service.wind_speed_units.{self.wind_speed_unit}')
+            warnings.append(self.translate('commands.gwx.warnings.high_winds', wind_speed=int(wind), unit=unit))
 
         return " | ".join(warnings) if warnings else None

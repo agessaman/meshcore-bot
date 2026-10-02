@@ -51,8 +51,10 @@ _T = TypeVar("_T")
 
 
 _WEEKDAYS_LOWER = ('monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday')
-# Multi-day line labels, Monday first (date.weekday() order).
+# Multi-day line labels, Monday first (date.weekday() order); the catalog's
+# commands.wx.day_abbrev translates them, and these are the English fallback.
 _DAY_ABBREVS = ('M', 'T', 'W', 'Th', 'F', 'Sa', 'Su')
+_WEEKDAY_NAMES = ('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday')
 
 # Forecast-text patterns for the extract_* readers, tried in order.
 # extract_humidity: "humidity 45%" or "45% humidity"
@@ -1736,8 +1738,8 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
     def _fit_tomorrow_parts(self, parts: list[tuple[str, str]], max_length: int) -> str:
         """Join tomorrow's periods within *max_length* UTF-8 bytes.
 
-        Each part is (with wind, without wind). Wind goes first, the later
-        period's before the first's, then the later periods themselves. When
+        Each part is (with wind, without wind). The later periods' wind goes
+        first, then the first period's, then the later periods themselves. When
         even the first period alone does not fit, it is sent anyway (the send
         path splits it) rather than leaving the reply empty.
         """
@@ -1811,16 +1813,8 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                 ordered_days = day_order
 
             # Limit to requested number of days
-            # Map day names to 1-2 letter abbreviations
-            day_abbrev_map = {
-                'Monday': 'M',
-                'Tuesday': 'T',
-                'Wednesday': 'W',
-                'Thursday': 'Th',
-                'Friday': 'F',
-                'Saturday': 'Sa',
-                'Sunday': 'Su'
-            }
+            # Map day names to short abbreviations in the reply's language
+            day_abbrev_map = {name: self._day_abbrev(i) for i, name in enumerate(_WEEKDAY_NAMES)}
 
             # Collect days up to num_days, starting from tomorrow (skip today)
             days_collected = 0
@@ -1890,9 +1884,15 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             forecast_short = self.abbreviate_noaa(data['forecast'])
             if len(forecast_short) > 25:
                 forecast_short = forecast_short[:22] + "..."
-            abbrev = _DAY_ABBREVS[day.weekday()]
+            abbrev = self._day_abbrev(day.weekday())
             parts.append(f"{abbrev}: {self.get_weather_emoji(data['forecast'])}{forecast_short} {data['temp']}")
         return parts
+
+    def _day_abbrev(self, weekday: int) -> str:
+        """The multi-day label for a weekday (0 = Monday), translated (English "M", "Th", "Sa")."""
+        key = f'commands.wx.day_abbrev.{_WEEKDAY_NAMES[weekday]}'
+        label = self.translate(key)
+        return label if isinstance(label, str) and label and label != key else _DAY_ABBREVS[weekday]
 
     @staticmethod
     def _multiday_day_name(period_name_lower: str) -> str | None:
@@ -2470,24 +2470,31 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         # below, which turned "WNW" into "WN" and dropped the arrow.
         if direction in _COMPASS_16:
             arrow = _ARROWS_8[int(_COMPASS_16.index(direction) / 2 + 0.5) % 8]
-            return f"{arrow}{direction}"
+            return f"{arrow}{self._wind_letters(direction)}"
         replacements = {
-            "NORTHWEST": "↖️NW",
-            "NORTHEAST": "↗️NE",
-            "SOUTHWEST": "↙️SW",
-            "SOUTHEAST": "↘️SE",
-            "NORTH": "⬆️N",
-            "EAST": "➡️E",
-            "SOUTH": "⬇️S",
-            "WEST": "⬅️W"
+            "NORTHWEST": "NW",
+            "NORTHEAST": "NE",
+            "SOUTHWEST": "SW",
+            "SOUTHEAST": "SE",
+            "NORTH": "N",
+            "EAST": "E",
+            "SOUTH": "S",
+            "WEST": "W"
         }
 
-        for full, abbrev in replacements.items():
+        for full, point in replacements.items():
             if full in direction:
-                return abbrev
+                arrow = _ARROWS_8[_COMPASS_16.index(point) // 2]
+                return f"{arrow}{self._wind_letters(point)}"
 
         # If no match, return first 2 characters with generic wind emoji
         return f"💨{direction[:2]}" if len(direction) >= 2 else f"💨{direction}"
+
+    def _wind_letters(self, point: str) -> str:
+        """A 16-point compass abbreviation in the reply's language ("NE" is "NO" in German), as gwx shows it."""
+        key = f"common.wind_directions.{point}"
+        label = self.translate(key)
+        return label if isinstance(label, str) and label and label != key else point
 
     def extract_humidity(self, text: str) -> str:
         """Extract humidity percentage from forecast text"""

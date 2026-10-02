@@ -250,37 +250,46 @@
       "help": "Répond à 'test' ou 't' avec les informations de connexion"
     },
     "wx": {
-      "description": "Obtenir les informations météo pour un code postal (utilisation : wx 12345)",
-      "usage": "Utilisation : wx <code_postal|ville> - Exemple : wx 12345 ou wx seattle ou wx paris, tx",
+      "description": "Météo américaine par code postal, ville ou coordonnées (utilisation : wx 98101)",
+      "usage": "Utilisation : wx <code_postal|ville|lat,lon> [tomorrow|hourly|Nd|alerts] - Exemple : wx 98101 ou wx seattle 5d",
       "error_fetching": "Erreur lors de la récupération des données météo de NOAA",
       "no_location_zipcode": "Impossible de trouver l'emplacement pour le code postal {location}",
       "no_location_city": "Impossible de trouver la ville '{location}' dans {state}",
       "error": "Erreur lors de l'obtention des données météo : {error}",
       "alerts": "{count} alertes : {text}",
-      "tomorrow_not_available": "Tomorrow's forecast not available",
-      "tomorrow_error": "Error formatting tomorrow's forecast",
-      "multiday_not_available": "{num_days}-day forecast not available",
-      "multiday_error": "Error formatting {num_days}-day forecast",
+      "tomorrow_not_available": "Prévisions de demain non disponibles",
+      "tomorrow_error": "Erreur de mise en forme des prévisions de demain",
+      "multiday_not_available": "Prévisions sur {num_days} jours non disponibles",
+      "multiday_error": "Erreur de mise en forme des prévisions sur {num_days} jours",
       "hourly_not_available": "Prévisions horaires non disponibles",
       "source_option_not_available": "Non disponible pour cette source météo",
       "mqtt_forecast_not_supported": "Les prévisions étendues ne sont pas disponibles pour les sources météo MQTT",
       "mqtt_weather_no_data": "Aucun message météo MQTT reçu pour ce sujet pour le moment",
       "mqtt_weather_no_subscriber": "L'abonné météo MQTT n'est pas actif (activez [MqttWeather] et les sujets custom.mqtt_weather.*)",
       "mqtt_weather_payload_error": "Erreur dans les données météo MQTT : {detail}",
-      "mqtt_weather_stale": "Les données météo MQTT sont trop anciennes"
+      "mqtt_weather_stale": "Les données météo MQTT sont trop anciennes",
+      "day_abbrev": {
+        "Monday": "Lu",
+        "Tuesday": "Ma",
+        "Wednesday": "Me",
+        "Thursday": "Je",
+        "Friday": "Ve",
+        "Saturday": "Sa",
+        "Sunday": "Di"
+      }
     },
     "gwx": {
       "description": "Obtenir les informations météo pour n'importe quel endroit dans le monde (utilisation : gwx Tokyo)",
       "help": "Utilisation : gwx <lieu> - Obtenir la météo pour n'importe quel endroit (ville, pays ou coordonnées)",
-      "usage": "Utilisation : gwx <lieu> - Exemple : gwx Tokyo ou gwx Paris, France",
+      "usage": "Utilisation : gwx <lieu|lat,lon> [tomorrow|hourly|Nd] - Exemple : gwx Tokyo ou gwx Paris, France 5d",
       "error_fetching": "Erreur lors de la récupération des données météo",
       "error_fetching_api": "Erreur lors de la récupération des données météo depuis Open-Meteo",
       "no_location": "Impossible de trouver l'emplacement '{location}'",
       "error": "Erreur lors de l'obtention des données météo : {error}",
-      "tomorrow_not_available": "Tomorrow's forecast not available",
-      "tomorrow_error": "Error formatting tomorrow's forecast",
-      "multiday_not_available": "{num_days}-day forecast not available",
-      "multiday_error": "Error formatting {num_days}-day forecast",
+      "tomorrow_not_available": "Prévisions de demain non disponibles",
+      "tomorrow_error": "Erreur de mise en forme des prévisions de demain",
+      "multiday_not_available": "Prévisions sur {num_days} jours non disponibles",
+      "multiday_error": "Erreur de mise en forme des prévisions sur {num_days} jours",
       "periods": {
         "today": "Aujourd'hui",
         "tonight": "Ce soir",
@@ -324,7 +333,7 @@
         "heavy_rain": "⚠️ Pluie abondante",
         "thunderstorms": "⚠️ Orages",
         "heavy_snow": "⚠️ Neige abondante",
-        "high_winds": "⚠️ Vents violents ({wind_speed} mph)"
+        "high_winds": "⚠️ Vents violents ({wind_speed} {unit})"
       },
       "day_abbrev": {
         "Monday": "Lu",

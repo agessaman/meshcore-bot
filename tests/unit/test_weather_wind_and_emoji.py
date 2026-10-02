@@ -58,3 +58,25 @@ def test_noaa_emoji_matches_the_strongest_condition(forecast, emoji):
 @pytest.mark.parametrize("degrees", [float("nan"), float("inf"), float("-inf")])
 def test_gwx_non_finite_wind_direction_is_left_out(degrees):
     assert GlobalWxCommand(_bot())._degrees_to_direction(degrees) == ""
+
+
+def _bot_in(language):
+    from modules.i18n import Translator
+
+    bot = _bot()
+    bot.translator = Translator(language)
+    return bot
+
+
+@pytest.mark.parametrize(("noaa", "shown"), [("NE", "↗️NO"), ("ENE", "➡️ONO"), ("Northeast", "↗️NO"), ("SW", "↙️SW")])
+def test_wx_wind_letters_follow_the_language_like_gwx(noaa, shown):
+    wx = WxCommand(_bot_in("de"))
+    assert wx.abbreviate_wind_direction(noaa) == shown
+    if noaa in ("NE", "ENE", "SW"):
+        assert shown == GlobalWxCommand(_bot_in("de"))._degrees_to_direction({"NE": 45, "ENE": 67.5, "SW": 225}[noaa])
+
+
+def test_wx_weekday_labels_follow_the_language():
+    wx = WxCommand(_bot_in("de"))
+    assert [wx._day_abbrev(i) for i in range(7)] == ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
+    assert [WxCommand(_bot_in("en"))._day_abbrev(i) for i in range(7)] == ["M", "T", "W", "Th", "F", "Sa", "Su"]

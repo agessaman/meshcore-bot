@@ -17,6 +17,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from tests.characterization.golden_util import assert_golden
+from tests.helpers import key_name_translate
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "noaa"
 LOCATIONS = ["seattle", "denver", "miami", "anchorage"]
@@ -42,8 +43,9 @@ def _wx():
     bot.logger = Mock()
     bot.db_manager.get_cached_geocoding = Mock(return_value=(None, None))
     bot.command_manager.send_channel_message = AsyncMock()
-    bot.translator.translate.side_effect = lambda key, **kwargs: f"<{key}{sorted(kwargs.items()) or ''}>"
+    bot.translator.translate.side_effect = key_name_translate
     return WxCommand(bot)
+
 
 
 def _response(payload, ok=True):

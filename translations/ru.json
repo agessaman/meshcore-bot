@@ -197,8 +197,8 @@
       "help": "Отвечает на 'test' или 't' информацией о подключении"
     },
     "wx": {
-      "description": "Получить погоду по почтовому индексу (использование: wx 12345)",
-      "usage": "Использование: wx <индекс|город> - Пример: wx 12345 или wx seattle или wx paris, tx",
+      "description": "Погода в США по индексу, городу или координатам (wx 98101)",
+      "usage": "Формат: wx <индекс|город|lat,lon> [tomorrow|hourly|Nd|alerts] - Пример: wx 98101",
       "subcommands": [
         {
           "name": "tomorrow",
@@ -232,12 +232,21 @@
       "mqtt_weather_stale": "Данные MQTT-погоды слишком старые",
       "mqtt_weather_payload_error": "Ошибка полезной нагрузки MQTT-погоды: {detail}",
       "hourly_not_available": "Почасовой прогноз недоступен",
-      "source_option_not_available": "Недоступно для этого источника погоды"
+      "source_option_not_available": "Недоступно для этого источника погоды",
+      "day_abbrev": {
+        "Monday": "Пн",
+        "Tuesday": "Вт",
+        "Wednesday": "Ср",
+        "Thursday": "Чт",
+        "Friday": "Пт",
+        "Saturday": "Сб",
+        "Sunday": "Вс"
+      }
     },
     "gwx": {
       "description": "Получить погоду для любой точки мира (использование: gwx Tokyo)",
       "help": "Использование: gwx <локация> - Погода для любой точки мира (город, страна или координаты)",
-      "usage": "Использование: gwx <локация> - Пример: gwx Tokyo или gwx Paris, France",
+      "usage": "Формат: gwx <место|lat,lon> [tomorrow|hourly|Nd] - Пример: gwx Tokyo или gwx Paris, France 5d",
       "error_fetching": "Ошибка получения данных погоды",
       "error_fetching_api": "Ошибка получения данных погоды из Open-Meteo",
       "no_location": "Не удалось найти локацию '{location}'",
@@ -247,11 +256,11 @@
       "multiday_not_available": "Прогноз на {num_days} дней недоступен",
       "multiday_error": "Ошибка форматирования прогноза на {num_days} дней",
       "mqtt_forecast_not_supported": "Расширенный прогноз недоступен для MQTT-источников погоды",
-      "mqtt_weather_no_subscriber": "MQTT-подписчик погоды не активен",
+      "mqtt_weather_no_subscriber": "MQTT-подписчик погоды не активен (включите [MqttWeather] и custom.mqtt_weather.* темы)",
       "mqtt_weather_no_data": "Сообщение MQTT-погоды ещё не получено",
       "mqtt_weather_stale": "Данные MQTT-погоды устарели",
       "mqtt_weather_payload_error": "Ошибка полезной нагрузки MQTT: {detail}",
-      "feels_like": "(ош.{value}{unit})",
+      "feels_like": "(ощущ. {value}{unit})",
       "humidity": "{value}%",
       "dew_point": "💧{value}{unit}",
       "visibility": "👁️{value} миль",
@@ -311,7 +320,7 @@
         "heavy_rain": "⚠️ Сильный дождь",
         "thunderstorms": "⚠️ Грозы",
         "heavy_snow": "⚠️ Сильный снегопад",
-        "high_winds": "⚠️ Сильный ветер ({wind_speed} м/ч)"
+        "high_winds": "⚠️ Сильный ветер ({wind_speed} {unit})"
       },
       "pressure_unit": "mmhg",
       "hourly_not_available": "Почасовой прогноз недоступен",

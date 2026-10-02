@@ -87,15 +87,21 @@ def test_temperature_thresholds(temperature_unit, fahrenheit, expected):
     _assert_warning(result, expected)
 
 
-@pytest.mark.parametrize("wind_unit, factor", [("mph", 1), ("kmh", 1.609344), ("ms", 0.44704), ("kn", 0.868976)])
-@pytest.mark.parametrize("mph, expected", [
-    (29.9, None), (30, "⚠️ High winds (30 mph)"),
-    (30.1, "⚠️ High winds (30 mph)"), (40, "⚠️ High winds (40 mph)"),
+@pytest.mark.parametrize("wind_unit, factor, label", [
+    ("mph", 1, "mph"), ("kmh", 1.609344, "km/h"), ("ms", 0.44704, "m/s"), ("kn", 0.868976, "kn"),
 ])
-def test_wind_thresholds(wind_unit, factor, mph, expected):
+@pytest.mark.parametrize("mph, warns", [(29.9, False), (30, True), (30.1, True), (40, True)])
+def test_wind_thresholds(wind_unit, factor, label, mph, warns):
+    # The threshold is 30 mph in any unit; the warning shows the speed in the reply's own unit.
     cmd = _gwx(wind_unit=wind_unit)
     result = _run(cmd, _data(cmd, wind_speed_10m=mph * factor))
-    _assert_warning(result, expected)
+    _assert_warning(result, f"⚠️ High winds ({int(mph * factor)} {label})" if warns else None)
+
+
+def test_polish_warning_shows_the_replys_own_speed():
+    cmd = _gwx(temperature_unit="celsius", wind_unit="kmh", language="pl")
+    result = _run(cmd, _data(cmd, wind_speed_10m=80))
+    assert "80" in result[1] and result[2].endswith("(80 km/h)")
 
 
 def test_40_kmh_is_below_the_high_wind_threshold():
@@ -136,7 +142,7 @@ def test_russian_directions_and_conditions(code, warning):
     result = _run(cmd, _data(cmd, weather_code=code, wind_speed_10m=48.28032))
     expected = " | ".join([
         cmd.translate(f"commands.gwx.warnings.{warning}"),
-        cmd.translate("commands.gwx.warnings.high_winds", wind_speed=30),
+        cmd.translate("commands.gwx.warnings.high_winds", wind_speed=48, unit="км/ч"),
     ])
     _assert_warning(result, expected)
     assert "С48" in result[1]

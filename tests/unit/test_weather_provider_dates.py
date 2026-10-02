@@ -14,6 +14,7 @@ from zoneinfo import ZoneInfo
 
 from modules.commands.alternatives.wx_international import GlobalWxCommand
 from modules.commands.wx_command import WxCommand
+from tests.helpers import key_name_translate
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
 SEATTLE = json.loads((FIXTURES / "noaa" / "seattle.json").read_text())
@@ -38,7 +39,7 @@ def _bot(extra=None):
     config.read_dict({"Weather": {"weather_provider": "noaa", **(extra or {})}, "Wx_Command": {}, "Bot": {}})
     bot = Mock()
     bot.config = config
-    bot.translator.translate.side_effect = lambda key, **kw: f"<{key}{sorted(kw.items()) or ''}>"
+    bot.translator.translate.side_effect = key_name_translate
     return bot
 
 

@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from modules.commands.wx_command import WxCommand
+from tests.helpers import key_name_translate
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "noaa"
 US = json.loads((FIXTURES / "seattle.json").read_text())
@@ -33,7 +34,7 @@ def _wx(weather=None, wx=None):
     })
     bot = Mock()
     bot.config = config
-    bot.translator.translate.side_effect = lambda key, **kw: f"<{key}{sorted(kw.items()) or ''}>"
+    bot.translator.translate.side_effect = key_name_translate
     bot.db_manager.get_cached_geocoding = Mock(return_value=(None, None))
     bot.command_manager.send_channel_message = AsyncMock()
     return WxCommand(bot)
