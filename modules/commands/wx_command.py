@@ -1204,85 +1204,9 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                 weather += f" UV{uv_index}"
 
             # Add next period (Today, Tonight) and Tomorrow if available
-            # First, find Today, Tonight, and Tomorrow periods
-            today_period = None
-            tonight_period = None
-            tomorrow_period = None
-            current_period_name = current.get('name', '').lower()
-            is_current_tonight = 'tonight' in current_period_name
-            is_current_night = any(word in current_period_name for word in ['tonight', 'overnight', 'night'])
-
-            # Check if current period is a night period (Overnight, Tonight, etc.)
-            # If so, we should prioritize showing the upcoming daytime period (Today)
-            for i, period in enumerate(forecast):
-                period_name = period.get('name', '').lower()
-                # Look for "Today" period (daytime forecast)
-                if 'today' in period_name and today_period is None and i > 0:
-                    # Make sure it's not a night period
-                    if 'night' not in period_name and 'tonight' not in period_name:
-                        today_period = (i, period)
-                elif 'tonight' in period_name and tonight_period is None:
-                    tonight_period = (i, period)
-                elif 'tomorrow' in period_name and tomorrow_period is None:
-                    tomorrow_period = (i, period)
-
-            # If current is a night period and we haven't found Today yet, look for next daytime period
-            if is_current_night and not today_period:
-                # Look for the next period that's not a night period
-                for i, period in enumerate(forecast):
-                    if i > 0:  # Skip current period
-                        period_name = period.get('name', '').lower()
-                        # Look for daytime periods (Today, or day names without "night")
-                        if 'today' in period_name and 'night' not in period_name:
-                            today_period = (i, period)
-                            break
-                        # Also check for day names that aren't night periods
-                        day_names = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
-                        if any(day in period_name for day in day_names) and 'night' not in period_name:
-                            today_period = (i, period)
-                            break
-
-            # If current is Tonight and we haven't found Tomorrow yet, look for next day's periods
-            if is_current_tonight and not tomorrow_period:
-                # If today_period is a day name (not "Today"), look for the next period after it
-                if today_period:
-                    period_name_lower = today_period[1].get('name', '').lower()
-                    day_names = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
-                    if any(day in period_name_lower for day in day_names) and 'today' not in period_name_lower:
-                        # today_period is actually tomorrow's daytime period - look for the night period after it
-                        today_period_index = today_period[0]
-                        # Look for the next period after today_period (should be the night period for that day)
-                        for i, period in enumerate(forecast):
-                            if i > today_period_index:  # Look for periods after today_period
-                                period_name = period.get('name', '').lower()
-                                # Look for the night period for the same day, or the next day
-                                if any(word in period_name for word in ['night', 'tomorrow', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']):
-                                    tomorrow_period = (i, period)
-                                    break
-                        # If we didn't find a night period, use today_period as tomorrow_period
-                        if not tomorrow_period:
-                            tomorrow_period = today_period
-                    else:
-                        # Look for periods after Tonight (next day)
-                        for i, period in enumerate(forecast):
-                            if i > 0:  # Skip current period
-                                period_name = period.get('name', '').lower()
-                                # Skip if this period is already set as today_period (avoid duplicates)
-                                if today_period and today_period[0] == i:
-                                    continue
-                                # Look for tomorrow, next day, or day names
-                                if any(word in period_name for word in ['tomorrow', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']):
-                                    tomorrow_period = (i, period)
-                                    break
-                else:
-                    # Look for periods after Tonight (next day)
-                    for i, period in enumerate(forecast):
-                        if i > 0:  # Skip current period
-                            period_name = period.get('name', '').lower()
-                            # Look for tomorrow, next day, or day names
-                            if any(word in period_name for word in ['tomorrow', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']):
-                                tomorrow_period = (i, period)
-                                break
+            today_period, tonight_period, tomorrow_period, is_current_tonight, is_current_night = (
+                self._noaa_followup_periods(forecast, current)
+            )
 
             # If current is a night period, prioritize adding Today (the upcoming daytime)
             # When today_period is a day name (like "Tuesday"), we still add it as tomorrow's daytime period
@@ -1386,6 +1310,90 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         except Exception as e:
             self.logger.error(f"Error fetching NOAA weather: {e}")
             return self.ERROR_FETCHING_DATA, None
+
+    def _noaa_followup_periods(self, forecast: list, current: dict) -> tuple:
+        """The ``(index, period)`` pairs for Today, Tonight and Tomorrow after ``current``, and whether
+        ``current`` is Tonight or any night period: ``(today, tonight, tomorrow, is_tonight, is_night)``."""
+        # First, find Today, Tonight, and Tomorrow periods
+        today_period = None
+        tonight_period = None
+        tomorrow_period = None
+        current_period_name = current.get('name', '').lower()
+        is_current_tonight = 'tonight' in current_period_name
+        is_current_night = any(word in current_period_name for word in ['tonight', 'overnight', 'night'])
+
+        # Check if current period is a night period (Overnight, Tonight, etc.)
+        # If so, we should prioritize showing the upcoming daytime period (Today)
+        for i, period in enumerate(forecast):
+            period_name = period.get('name', '').lower()
+            # Look for "Today" period (daytime forecast)
+            if 'today' in period_name and today_period is None and i > 0:
+                # Make sure it's not a night period
+                if 'night' not in period_name and 'tonight' not in period_name:
+                    today_period = (i, period)
+            elif 'tonight' in period_name and tonight_period is None:
+                tonight_period = (i, period)
+            elif 'tomorrow' in period_name and tomorrow_period is None:
+                tomorrow_period = (i, period)
+
+        # If current is a night period and we haven't found Today yet, look for next daytime period
+        if is_current_night and not today_period:
+            # Look for the next period that's not a night period
+            for i, period in enumerate(forecast):
+                if i > 0:  # Skip current period
+                    period_name = period.get('name', '').lower()
+                    # Look for daytime periods (Today, or day names without "night")
+                    if 'today' in period_name and 'night' not in period_name:
+                        today_period = (i, period)
+                        break
+                    # Also check for day names that aren't night periods
+                    day_names = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+                    if any(day in period_name for day in day_names) and 'night' not in period_name:
+                        today_period = (i, period)
+                        break
+
+        # If current is Tonight and we haven't found Tomorrow yet, look for next day's periods
+        if is_current_tonight and not tomorrow_period:
+            # If today_period is a day name (not "Today"), look for the next period after it
+            if today_period:
+                period_name_lower = today_period[1].get('name', '').lower()
+                day_names = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+                if any(day in period_name_lower for day in day_names) and 'today' not in period_name_lower:
+                    # today_period is actually tomorrow's daytime period - look for the night period after it
+                    today_period_index = today_period[0]
+                    # Look for the next period after today_period (should be the night period for that day)
+                    for i, period in enumerate(forecast):
+                        if i > today_period_index:  # Look for periods after today_period
+                            period_name = period.get('name', '').lower()
+                            # Look for the night period for the same day, or the next day
+                            if any(word in period_name for word in ['night', 'tomorrow', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']):
+                                tomorrow_period = (i, period)
+                                break
+                    # If we didn't find a night period, use today_period as tomorrow_period
+                    if not tomorrow_period:
+                        tomorrow_period = today_period
+                else:
+                    # Look for periods after Tonight (next day)
+                    for i, period in enumerate(forecast):
+                        if i > 0:  # Skip current period
+                            period_name = period.get('name', '').lower()
+                            # Skip if this period is already set as today_period (avoid duplicates)
+                            if today_period and today_period[0] == i:
+                                continue
+                            # Look for tomorrow, next day, or day names
+                            if any(word in period_name for word in ['tomorrow', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']):
+                                tomorrow_period = (i, period)
+                                break
+            else:
+                # Look for periods after Tonight (next day)
+                for i, period in enumerate(forecast):
+                    if i > 0:  # Skip current period
+                        period_name = period.get('name', '').lower()
+                        # Look for tomorrow, next day, or day names
+                        if any(word in period_name for word in ['tomorrow', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']):
+                            tomorrow_period = (i, period)
+                            break
+        return today_period, tonight_period, tomorrow_period, is_current_tonight, is_current_night
 
     def _noaa_period_str(self, period: dict, forecast_text: Optional[str] = None) -> Optional[str]:
         """``" | Name: <emoji><forecast> <high/low or temp°>"`` for a forecast period.
