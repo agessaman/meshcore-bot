@@ -363,21 +363,12 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
             # No custom source, try companion location
             companion_location = self._get_companion_location(message)
             if companion_location:
-                # Convert coordinates to location string
-                # Blocking reverse geocode.
-                location_str = await asyncio.to_thread(
-                    self._coordinates_to_location_string,
-                    companion_location[0], companion_location[1],
-                )
-                if location_str:
-                    # Use the location string as if user provided it
-                    parts = [parts[0], location_str]
-                    self.logger.info(f"Using companion location: {location_str} ({companion_location[0]}, {companion_location[1]})")
-                else:
-                    # If reverse geocoding fails, use coordinates directly (geocode_location can handle "lat,lon" format)
-                    location_str = f"{companion_location[0]},{companion_location[1]}"
-                    parts = [parts[0], location_str]
-                    self.logger.info(f"Using companion coordinates: {location_str}")
+                # Forecast the sender's own point. Re-geocoding a reverse-geocoded
+                # place name could move it to that town's center; the reply's
+                # label comes from one reverse lookup in geocode_location.
+                location_str = self._coordinates_query(*companion_location)
+                parts = [parts[0], location_str]
+                self.logger.info(f"Using companion coordinates: {location_str}")
             else:
                 # No companion location: use default city if configured, then bot location fallback
                 if self.default_city:
@@ -399,20 +390,9 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
                     )
                     bot_loc = self._get_bot_location() if use_bot else None
                     if bot_loc:
-                        # Blocking reverse geocode.
-                        location_str = await asyncio.to_thread(
-                            self._coordinates_to_location_string, bot_loc[0], bot_loc[1]
-                        )
-                        if location_str:
-                            parts = [parts[0], location_str]
-                            self.logger.info(
-                                f"Using bot location (no args): {location_str} "
-                                f"({bot_loc[0]}, {bot_loc[1]})"
-                            )
-                        else:
-                            location_str = f"{bot_loc[0]},{bot_loc[1]}"
-                            parts = [parts[0], location_str]
-                            self.logger.info(f"Using bot coordinates (no args): {location_str}")
+                        location_str = self._coordinates_query(*bot_loc)
+                        parts = [parts[0], location_str]
+                        self.logger.info(f"Using bot coordinates (no args): {location_str}")
                     else:
                         if use_bot:
                             self.logger.debug(

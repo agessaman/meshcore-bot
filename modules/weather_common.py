@@ -54,6 +54,15 @@ class WeatherCommandMixin:
     get_max_message_length: Any
 
     @staticmethod
+    def _coordinates_query(lat: float, lon: float) -> str:
+        """A "lat,lon" location for these coordinates, in fixed decimals.
+
+        Plain str() of a float can give "1e-05", which the coordinate pattern
+        does not match, so the point would be geocoded as a place name.
+        """
+        return f"{lat:.5f},{lon:.5f}"
+
+    @staticmethod
     def _parse_forecast_suffix(
         location_parts: list[str], max_days: int, *, allow_hourly: bool
     ) -> tuple[list[str], str, int]:
