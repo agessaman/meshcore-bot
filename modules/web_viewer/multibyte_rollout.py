@@ -458,47 +458,9 @@ class MultibyteRolloutMixin:
                 }
                 all_repeaters: list[dict] = []
 
-                for row in main_rows:
-                    pk = row['public_key']
-
-                    # Recent advert paths for this contact (grouped from the path query above)
-                    all_paths = paths_by_key.get(pk, [])
-
-                    badge = self._compute_path_encoding_badge(row, all_paths, chunk_buckets)
-
-                    obph_raw = row['out_bytes_per_hop']
-                    try:
-                        obph: int | None = int(obph_raw) if obph_raw is not None else None
-                    except (TypeError, ValueError):
-                        obph = None
-
-                    if badge == 'multibyte':
-                        status = 'multibyte_direct' if obph in (2, 3) else 'multibyte_relayed'
-                    elif badge == 'one_byte':
-                        status = 'single_byte'
-                    else:
-                        status = 'unknown'
-
-                    status_counts[status] += 1
-
-                    loc_parts = [p for p in [row['city'], row['state'], row['country']] if p]
-
-                    pt = path_traffic.get(pk or '', {})
-                    all_repeaters.append({
-                        'public_key':      pk,
-                        'name':            row['name'],
-                        'role':            row['role'],
-                        'device_type':     row['device_type'],
-                        'status':          status,
-                        'out_bytes_per_hop': obph,
-                        'advert_count':    row['advert_count'] or 0,
-                        'total_traffic':   pt.get('total_traffic', 0),
-                        'last_seen':       row['last_heard'],
-                        'first_heard':     row['first_heard'],
-                        'location':        ', '.join(loc_parts),
-                        'latitude':        row['latitude'],
-                        'longitude':       row['longitude'],
-                    })
+                self._rollout_classify_repeaters(
+                    all_repeaters, chunk_buckets, main_rows, path_traffic, paths_by_key, status_counts
+                )
 
                 # ── Priority scoring ──────────────────────────────────────────────────
                 unupgraded_pks: set[str] = set()
@@ -588,80 +550,11 @@ class MultibyteRolloutMixin:
                 mb_total = status_counts['multibyte_direct'] + status_counts['multibyte_relayed']
                 adoption_pct = round(mb_total / total * 100, 1) if total > 0 else 0.0
 
-                # Overall path observation traffic breakdown (advert paths, within the since window,
-                # for nodes matching the node_type filter)
-                total_path_obs = multibyte_path_obs = single_byte_path_obs = 0
-                traffic_mb_pct = 0.0
-                if has_observed_paths:
-                    # observed_paths.last_seen is an ISO timestamp → use datetime() comparison
-                    if node_type == 'repeater':
-                        obs_role_filter = "c.role = 'repeater'"
-                    elif node_type == 'roomserver':
-                        obs_role_filter = "c.role = 'roomserver'"
-                    else:
-                        obs_role_filter = "c.role IN ('repeater', 'roomserver')"
+                multibyte_path_obs, single_byte_path_obs, total_path_obs, traffic_mb_pct = (
+                    self._rollout_path_traffic_share(cursor, datetime_offsets, has_observed_paths, node_type, since)
+                )
 
-                    obs_time_cond = ""
-                    if since in datetime_offsets:
-                        obs_time_cond = f" AND op.last_seen >= datetime('now', 'localtime', {datetime_offsets[since]})"
-
-                    cursor.execute(
-                        f"""
-                    SELECT op.bytes_per_hop, SUM(op.observation_count) as n
-                    FROM observed_paths op
-                    JOIN complete_contact_tracking c ON c.public_key = op.public_key
-                    WHERE op.packet_type = 'advert' AND {obs_role_filter}{obs_time_cond}
-                    GROUP BY op.bytes_per_hop
-                    """
-                    )
-                    for tr in cursor.fetchall():
-                        n = tr['n'] or 0
-                        total_path_obs += n
-                        bph = tr['bytes_per_hop'] or 1
-                        try:
-                            bph = int(bph)
-                        except (TypeError, ValueError):
-                            bph = 1
-                        if bph in (2, 3):
-                            multibyte_path_obs += n
-                        else:
-                            single_byte_path_obs += n
-
-                    if total_path_obs > 0:
-                        traffic_mb_pct = round(multibyte_path_obs / total_path_obs * 100, 1)
-
-                # Daily trend: last 30 days, filtered by node_type
-                daily_trend: list[dict] = []
-                if has_observed_paths:
-                    if node_type == 'repeater':
-                        trend_role_filter = "c.role = 'repeater'"
-                    elif node_type == 'roomserver':
-                        trend_role_filter = "c.role = 'roomserver'"
-                    else:
-                        trend_role_filter = "c.role IN ('repeater', 'roomserver')"
-
-                    cursor.execute(
-                        f"""
-                    SELECT date(op.last_seen) as obs_date,
-                        SUM(CASE WHEN op.bytes_per_hop IN (2,3)
-                                 THEN op.observation_count ELSE 0 END) as mb_obs,
-                        SUM(CASE WHEN op.bytes_per_hop = 1 OR op.bytes_per_hop IS NULL
-                                 THEN op.observation_count ELSE 0 END) as sb_obs
-                    FROM observed_paths op
-                    JOIN complete_contact_tracking c ON c.public_key = op.public_key
-                    WHERE {trend_role_filter}
-                      AND op.last_seen >= datetime('now', 'localtime', '-30 days')
-                      AND op.packet_type = 'advert'
-                    GROUP BY date(op.last_seen)
-                    ORDER BY obs_date
-                    """
-                    )
-                    for tr in cursor.fetchall():
-                        daily_trend.append({
-                            'date':        tr['obs_date'],
-                            'multibyte':   tr['mb_obs'] or 0,
-                            'single_byte': tr['sb_obs'] or 0,
-                        })
+                daily_trend = self._rollout_daily_trend(cursor, has_observed_paths, node_type)
 
                 return {
                     'since': since,
@@ -699,3 +592,130 @@ class MultibyteRolloutMixin:
                 'all_repeaters': [],
                 'daily_trend': [],
             }
+
+    def _rollout_classify_repeaters(
+        self, all_repeaters, chunk_buckets, main_rows, path_traffic, paths_by_key, status_counts
+    ):
+        """Classify each repeater row into *all_repeaters* and tally *status_counts*."""
+        for row in main_rows:
+            pk = row['public_key']
+
+            # Recent advert paths for this contact (grouped from the path query above)
+            all_paths = paths_by_key.get(pk, [])
+
+            badge = self._compute_path_encoding_badge(row, all_paths, chunk_buckets)
+
+            obph_raw = row['out_bytes_per_hop']
+            try:
+                obph: int | None = int(obph_raw) if obph_raw is not None else None
+            except (TypeError, ValueError):
+                obph = None
+
+            if badge == 'multibyte':
+                status = 'multibyte_direct' if obph in (2, 3) else 'multibyte_relayed'
+            elif badge == 'one_byte':
+                status = 'single_byte'
+            else:
+                status = 'unknown'
+
+            status_counts[status] += 1
+
+            loc_parts = [p for p in [row['city'], row['state'], row['country']] if p]
+
+            pt = path_traffic.get(pk or '', {})
+            all_repeaters.append({
+                'public_key':      pk,
+                'name':            row['name'],
+                'role':            row['role'],
+                'device_type':     row['device_type'],
+                'status':          status,
+                'out_bytes_per_hop': obph,
+                'advert_count':    row['advert_count'] or 0,
+                'total_traffic':   pt.get('total_traffic', 0),
+                'last_seen':       row['last_heard'],
+                'first_heard':     row['first_heard'],
+                'location':        ', '.join(loc_parts),
+                'latitude':        row['latitude'],
+                'longitude':       row['longitude'],
+            })
+
+    def _rollout_path_traffic_share(self, cursor, datetime_offsets, has_observed_paths, node_type, since):
+        """Multi-byte share of observed path traffic: multi-byte, single-byte and total observations, and the percentage."""
+        # Overall path observation traffic breakdown (advert paths, within the since window,
+        # for nodes matching the node_type filter)
+        total_path_obs = multibyte_path_obs = single_byte_path_obs = 0
+        traffic_mb_pct = 0.0
+        if has_observed_paths:
+            # observed_paths.last_seen is an ISO timestamp → use datetime() comparison
+            if node_type == 'repeater':
+                obs_role_filter = "c.role = 'repeater'"
+            elif node_type == 'roomserver':
+                obs_role_filter = "c.role = 'roomserver'"
+            else:
+                obs_role_filter = "c.role IN ('repeater', 'roomserver')"
+
+            obs_time_cond = ""
+            if since in datetime_offsets:
+                obs_time_cond = f" AND op.last_seen >= datetime('now', 'localtime', {datetime_offsets[since]})"
+
+            cursor.execute(
+                f"""
+                    SELECT op.bytes_per_hop, SUM(op.observation_count) as n
+                    FROM observed_paths op
+                    JOIN complete_contact_tracking c ON c.public_key = op.public_key
+                    WHERE op.packet_type = 'advert' AND {obs_role_filter}{obs_time_cond}
+                    GROUP BY op.bytes_per_hop
+                    """
+            )
+            for tr in cursor.fetchall():
+                n = tr['n'] or 0
+                total_path_obs += n
+                bph = tr['bytes_per_hop'] or 1
+                try:
+                    bph = int(bph)
+                except (TypeError, ValueError):
+                    bph = 1
+                if bph in (2, 3):
+                    multibyte_path_obs += n
+                else:
+                    single_byte_path_obs += n
+
+            if total_path_obs > 0:
+                traffic_mb_pct = round(multibyte_path_obs / total_path_obs * 100, 1)
+        return multibyte_path_obs, single_byte_path_obs, total_path_obs, traffic_mb_pct
+
+    def _rollout_daily_trend(self, cursor, has_observed_paths, node_type):
+        """Daily multi-byte and single-byte path observations over the last 30 days, for the trend chart."""
+        # Daily trend: last 30 days, filtered by node_type
+        daily_trend: list[dict] = []
+        if has_observed_paths:
+            if node_type == 'repeater':
+                trend_role_filter = "c.role = 'repeater'"
+            elif node_type == 'roomserver':
+                trend_role_filter = "c.role = 'roomserver'"
+            else:
+                trend_role_filter = "c.role IN ('repeater', 'roomserver')"
+
+            cursor.execute(
+                f"""
+                    SELECT date(op.last_seen) as obs_date,
+                        SUM(CASE WHEN op.bytes_per_hop IN (2,3)
+                                 THEN op.observation_count ELSE 0 END) as mb_obs,
+                        SUM(CASE WHEN op.bytes_per_hop = 1 OR op.bytes_per_hop IS NULL
+                                 THEN op.observation_count ELSE 0 END) as sb_obs
+                    FROM observed_paths op
+                    JOIN complete_contact_tracking c ON c.public_key = op.public_key
+                    WHERE {trend_role_filter}
+                      AND op.last_seen >= datetime('now', 'localtime', '-30 days')
+                      AND op.packet_type = 'advert'
+                    GROUP BY date(op.last_seen)
+                    ORDER BY obs_date
+                    """
+            )
+            for tr in cursor.fetchall():
+                daily_trend.append({
+                    'date':        tr['obs_date'],
+                    'multibyte':   tr['mb_obs'] or 0,
+                    'single_byte': tr['sb_obs'] or 0,
+                })
+        return daily_trend
