@@ -120,7 +120,7 @@ async def test_hourly_execution_geocodes_only_the_location(command_class, keywor
     cmd = _command(command_class, provider="openmeteo")
     actual = cmd.delegate_command if command_class is WxCommand else cmd
     actual.send_response = cmd.send_response
-    actual.geocode_location = Mock(return_value=(47.6, -122.3, {}, None))
+    actual.geocode_location = Mock(return_value=(47.6, -122.3, {"city": "München", "country_code": "de"}, None))
     actual._format_location_display = Mock(return_value="München, DE")
     actual.get_max_message_length = Mock(return_value=158)
     message = SimpleNamespace(content=f"{keyword} Seattle hourly", sender_id="u")

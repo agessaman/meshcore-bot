@@ -25,6 +25,7 @@ from ...utils import (  # noqa: F401  format_temperature_high_low and get_nomina
     geocode_city_sync,
     geocode_zipcode_sync,
     get_nominatim_geocoder,
+    normalize_us_state,
     rate_limited_nominatim_reverse_sync,
 )
 from ...weather_common import _ARROWS_8, _COMPASS_16, WeatherCommandMixin, load_open_meteo_model
@@ -50,6 +51,9 @@ def _int_or_none(value: Any) -> Optional[int]:
 
 class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
     """Handles global weather commands with city/location support"""
+
+    _COORDINATES_RE = re.compile(r'^\s*-?\d+\.?\d*\s*,\s*-?\d+\.?\d*\s*$')
+    _ZIP_RE = re.compile(r'^\d{5}$')
 
     # Plugin metadata
     # Every reply goes through send_response, so a scheduled {cmd:gwx ...} renders
@@ -546,15 +550,18 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
 
             lat, lon, address_info, geocode_result = result
 
-            # Format location name for display
-            location_display = self._format_location_display(address_info, geocode_result, location)
+            # Format location name for display, when it tells the user something
+            location_display = ""
+            if self._location_label_adds_information(location, address_info):
+                location_display = self._format_location_display(address_info, geocode_result, location)
             self.logger.debug(f"Formatted location_display: '{location_display}' from location: '{location}'")
+            prefix = f"{location_display}: " if location_display else ""
 
             # Calculate the length of the location prefix (location_display + ": ").
             # In UTF-8 bytes, not characters: the budget it is subtracted from is a
             # byte budget, and a non-ASCII city name ("München, DE: ") costs more
             # bytes than it has characters.
-            location_prefix_len = self._count_display_width(f"{location_display}: ")
+            location_prefix_len = self._count_display_width(prefix)
 
             # Get weather forecast from Open-Meteo based on type
             # Pass location_prefix_len so weather formatting can account for it
@@ -579,9 +586,9 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
 
                 if alert_text:
                     # Return multi-message format
-                    return ("multi_message", f"{location_display}: {weather_text}", alert_text)
+                    return ("multi_message", f"{prefix}{weather_text}", alert_text)
 
-            return f"{location_display}: {weather_text}"
+            return f"{prefix}{weather_text}"
 
         except Exception as e:
             self.logger.error(f"Error getting weather for {location}: {e}")
@@ -603,7 +610,7 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
         try:
             # Check if location is coordinates (decimal numbers separated by comma, with optional spaces)
             # Handle formats like: "47.6,-122.3", "47.6, -122.3", "47.980525, -122.150649", " -47.6 , 122.3 "
-            if re.match(r'^\s*-?\d+\.?\d*\s*,\s*-?\d+\.?\d*\s*$', location):
+            if self._COORDINATES_RE.match(location):
                 # Parse lat,lon coordinates
                 try:
                     lat_str, lon_str = location.split(',')
@@ -639,25 +646,15 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
 
             # US ZIP code (5 digits): use geocode_zipcode_sync so the query is "zip, US"
             # and we don't get non‑US matches (e.g. "98104" -> Lithuania) from Nominatim.
-            if re.match(r'^\d{5}$', location.strip()):
+            if self._ZIP_RE.match(location.strip()):
                 lat, lon = geocode_zipcode_sync(
                     self.bot, location,
                     default_country=self.default_country,
                     timeout=10
                 )
                 if lat is not None and lon is not None:
-                    address_info = {}
-                    geocode_result = None
-                    try:
-                        reverse_location = rate_limited_nominatim_reverse_sync(
-                            self.bot, f"{lat}, {lon}", timeout=10
-                        )
-                        if reverse_location:
-                            geocode_result = reverse_location
-                            address_info = reverse_location.raw.get('address', {})
-                    except Exception as e:
-                        self.logger.debug(f"Reverse geocoding failed for zip {location}: {e}")
-                    return lat, lon, address_info or {}, geocode_result
+                    # A ZIP code is not named in the reply (as in wx), so no reverse lookup.
+                    return lat, lon, {}, None
                 # Invalid or unknown US ZIP; do not fall through to city (avoids foreign matches)
                 return None, None, None, None
 
@@ -693,6 +690,37 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
         except Exception as e:
             self.logger.error(f"Error geocoding location {location}: {e}")
             return None, None, None, None
+
+    def _location_label_adds_information(self, location: str, address_info: Optional[dict]) -> bool:
+        """Whether the reply should name the place, as wx decides: only when it adds information.
+
+        Coordinates (typed, or the sender's or bot's own position) are named when a
+        place was found for them. A ZIP code is not named. A city is named when it
+        resolved to another country than [Weather] default_country or, in the US, to
+        another state than default_state (or no default_state is set).
+        """
+        if self._ZIP_RE.match(location.strip()):
+            return False
+        if not address_info:
+            return False
+        if self._COORDINATES_RE.match(location):
+            # Without a place name the label would only repeat the coordinates.
+            return any(address_info.get(field) for field in ('city', 'town', 'village', 'municipality', 'city_district'))
+        country = (address_info.get('country_code') or '').upper()
+        default_country = (self.default_country or '').strip().upper()
+        if country and default_country and country != default_country:
+            return True
+        if country != 'US':
+            return False
+        state = address_info.get('state') or ''
+        if not state or not self.default_state:
+            return bool(state)
+        return self._state_key(state) != self._state_key(self.default_state)
+
+    def _state_key(self, state: str) -> str:
+        """A US state as its abbreviation, for comparing "Washington" with "WA"."""
+        abbreviation, _ = normalize_us_state(state)
+        return (abbreviation or self._get_state_abbreviation(state.strip())).upper()
 
     def _format_location_display(self, address_info: dict, geocode_result: Any, fallback: str) -> str:
         """Format location name for display from address info - returns 'City, CountryCode' format.

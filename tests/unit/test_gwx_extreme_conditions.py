@@ -21,7 +21,7 @@ def _gwx(temperature_unit="fahrenheit", wind_unit="mph", language="en"):
     bot.config = config
     bot.translator = Translator(language)
     cmd = GlobalWxCommand(bot)
-    cmd.geocode_location = Mock(return_value=(1.0, 2.0, {}, None))
+    cmd.geocode_location = Mock(return_value=(1.0, 2.0, {"city": "Test City", "country_code": "fr"}, None))
     cmd._format_location_display = Mock(return_value="Test City")
     cmd.get_max_message_length = Mock(return_value=158)
     return cmd
