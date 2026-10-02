@@ -913,12 +913,13 @@ default_country = US
 # Default: false (show usage instead)
 use_bot_location_when_no_location = false
 
-# Temperature unit for weather display
+# Temperature unit for weather display (wx, gwx, the weather service)
 # Options: fahrenheit, celsius
+# Celsius also switches distances (visibility) to kilometers.
 # Default: fahrenheit
 temperature_unit = fahrenheit
 
-# Wind speed unit for weather display
+# Wind speed unit for weather display (wx, gwx, the weather service)
 # Options: mph, kmh, ms (meters per second)
 # Default: mph
 wind_speed_unit = mph
@@ -1595,11 +1596,11 @@ url_timeout = 10
 [Wx_Command]
 enabled = true
 
-# Temperature unit for weather reports: fahrenheit (default) or celsius
-temperature_unit = fahrenheit
-
-# Wind speed unit for weather reports: mph (default) or kmh
-wind_speed_unit = mph
+# Units come from [Weather] temperature_unit / wind_speed_unit. Set these
+# only to give wx (NOAA and WXSIM) different units from the other weather
+# commands; when set, they win for wx.
+# temperature_unit = fahrenheit
+# wind_speed_unit = mph
 # channels =
 # aliases = comma-separated additional trigger words, e.g.: aliases = weather, w
 
