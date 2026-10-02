@@ -280,6 +280,7 @@
       "periods": {
         "today": "Сегодня",
         "tonight": "Сегодня ночью",
+        "overnight": "Ночью",
         "tomorrow": "Завтра"
       },
       "weather_descriptions": {

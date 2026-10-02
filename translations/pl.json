@@ -240,6 +240,7 @@
       "periods": {
         "today": "Dzisiaj",
         "tonight": "Dzisiaj wieczorem",
+        "overnight": "W nocy",
         "tomorrow": "Jutro"
       },
       "weather_descriptions": {

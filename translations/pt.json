@@ -217,6 +217,7 @@
       "periods": {
         "today": "Hoje",
         "tonight": "Esta Noite",
+        "overnight": "Madrugada",
         "tomorrow": "Amanhã"
       },
       "weather_descriptions": {

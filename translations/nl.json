@@ -220,6 +220,7 @@
       "periods": {
         "today": "Vandaag",
         "tonight": "Vanavond",
+        "overnight": "Vannacht",
         "tomorrow": "Morgen"
       },
       "weather_descriptions": {

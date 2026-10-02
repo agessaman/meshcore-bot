@@ -221,6 +221,7 @@
       "periods": {
         "today": "Aujourd'hui",
         "tonight": "Ce soir",
+        "overnight": "Cette nuit",
         "tomorrow": "Demain"
       },
       "weather_descriptions": {

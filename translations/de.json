@@ -241,6 +241,7 @@
       "periods": {
         "today": "Heute",
         "tonight": "Heute Nacht",
+        "overnight": "Nachts",
         "tomorrow": "Morgen"
       },
       "weather_descriptions": {

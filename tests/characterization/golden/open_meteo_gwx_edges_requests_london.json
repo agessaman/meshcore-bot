@@ -7,7 +7,7 @@
    ]
   ],
   "params": {
-   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure",
+   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure,is_day",
    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max",
    "forecast_days": 2,
    "hourly": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
@@ -29,7 +29,7 @@
    ]
   ],
   "params": {
-   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure",
+   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure,is_day",
    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max",
    "forecast_days": 2,
    "hourly": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
@@ -51,7 +51,7 @@
    ]
   ],
   "params": {
-   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure",
+   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure,is_day",
    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max",
    "forecast_days": 2,
    "hourly": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
@@ -68,7 +68,7 @@
  "model-omitted-default-success": {
   "logs": [],
   "params": {
-   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure",
+   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure,is_day",
    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max",
    "forecast_days": 2,
    "hourly": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
@@ -80,7 +80,7 @@
    "wind_speed_unit": "kmh"
   },
   "requests": 1,
-  "text": "<commands.gwx.periods.tonight>: ⛅<commands.gwx.weather_descriptions.2> 14°C ↙️<common.wind_directions.SW>5<commands.gwx.gust[('value', 11)]> <commands.gwx.humidity[('value', 78)]> | <common.temp_high_label>:20°C <common.temp_low_label>:13°C"
+  "text": "<commands.gwx.periods.overnight>: ⛅<commands.gwx.weather_descriptions.2> 14°C ↙️<common.wind_directions.SW>5<commands.gwx.gust[('value', 11)]> <commands.gwx.humidity[('value', 78)]> | <common.temp_high_label>:20°C <common.temp_low_label>:13°C"
  },
  "model-omitted-default-timeout": {
   "logs": [
@@ -90,7 +90,7 @@
    ]
   ],
   "params": {
-   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure",
+   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure,is_day",
    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max",
    "forecast_days": 2,
    "hourly": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
@@ -112,7 +112,7 @@
    ]
   ],
   "params": {
-   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure",
+   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure,is_day",
    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max",
    "forecast_days": 16,
    "hourly": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
@@ -134,7 +134,7 @@
    ]
   ],
   "params": {
-   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure",
+   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure,is_day",
    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max",
    "forecast_days": 16,
    "hourly": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
@@ -156,7 +156,7 @@
    ]
   ],
   "params": {
-   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure",
+   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure,is_day",
    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max",
    "forecast_days": 16,
    "hourly": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
@@ -173,7 +173,7 @@
  "model-omitted-multiday-success": {
   "logs": [],
   "params": {
-   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure",
+   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure,is_day",
    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max",
    "forecast_days": 16,
    "hourly": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
@@ -195,7 +195,7 @@
    ]
   ],
   "params": {
-   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure",
+   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure,is_day",
    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max",
    "forecast_days": 16,
    "hourly": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
@@ -217,7 +217,7 @@
    ]
   ],
   "params": {
-   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure",
+   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure,is_day",
    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max",
    "forecast_days": 2,
    "hourly": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
@@ -239,7 +239,7 @@
    ]
   ],
   "params": {
-   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure",
+   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure,is_day",
    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max",
    "forecast_days": 2,
    "hourly": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
@@ -261,7 +261,7 @@
    ]
   ],
   "params": {
-   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure",
+   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure,is_day",
    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max",
    "forecast_days": 2,
    "hourly": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
@@ -278,7 +278,7 @@
  "model-omitted-tomorrow-success": {
   "logs": [],
   "params": {
-   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure",
+   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure,is_day",
    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max",
    "forecast_days": 2,
    "hourly": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
@@ -300,7 +300,7 @@
    ]
   ],
   "params": {
-   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure",
+   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure,is_day",
    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max",
    "forecast_days": 2,
    "hourly": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
@@ -322,7 +322,7 @@
    ]
   ],
   "params": {
-   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure",
+   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure,is_day",
    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max",
    "forecast_days": 2,
    "hourly": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
@@ -345,7 +345,7 @@
    ]
   ],
   "params": {
-   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure",
+   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure,is_day",
    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max",
    "forecast_days": 2,
    "hourly": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
@@ -368,7 +368,7 @@
    ]
   ],
   "params": {
-   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure",
+   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure,is_day",
    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max",
    "forecast_days": 2,
    "hourly": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
@@ -386,7 +386,7 @@
  "model-override-default-success": {
   "logs": [],
   "params": {
-   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure",
+   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure,is_day",
    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max",
    "forecast_days": 2,
    "hourly": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
@@ -399,7 +399,7 @@
    "wind_speed_unit": "kmh"
   },
   "requests": 1,
-  "text": "<commands.gwx.periods.tonight>: ⛅<commands.gwx.weather_descriptions.2> 14°C ↙️<common.wind_directions.SW>5<commands.gwx.gust[('value', 11)]> <commands.gwx.humidity[('value', 78)]> | <common.temp_high_label>:20°C <common.temp_low_label>:13°C"
+  "text": "<commands.gwx.periods.overnight>: ⛅<commands.gwx.weather_descriptions.2> 14°C ↙️<common.wind_directions.SW>5<commands.gwx.gust[('value', 11)]> <commands.gwx.humidity[('value', 78)]> | <common.temp_high_label>:20°C <common.temp_low_label>:13°C"
  },
  "model-override-default-timeout": {
   "logs": [
@@ -409,7 +409,7 @@
    ]
   ],
   "params": {
-   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure",
+   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure,is_day",
    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max",
    "forecast_days": 2,
    "hourly": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
@@ -432,7 +432,7 @@
    ]
   ],
   "params": {
-   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure",
+   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure,is_day",
    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max",
    "forecast_days": 16,
    "hourly": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
@@ -455,7 +455,7 @@
    ]
   ],
   "params": {
-   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure",
+   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure,is_day",
    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max",
    "forecast_days": 16,
    "hourly": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
@@ -478,7 +478,7 @@
    ]
   ],
   "params": {
-   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure",
+   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure,is_day",
    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max",
    "forecast_days": 16,
    "hourly": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
@@ -496,7 +496,7 @@
  "model-override-multiday-success": {
   "logs": [],
   "params": {
-   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure",
+   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure,is_day",
    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max",
    "forecast_days": 16,
    "hourly": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
@@ -519,7 +519,7 @@
    ]
   ],
   "params": {
-   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure",
+   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure,is_day",
    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max",
    "forecast_days": 16,
    "hourly": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
@@ -542,7 +542,7 @@
    ]
   ],
   "params": {
-   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure",
+   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure,is_day",
    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max",
    "forecast_days": 2,
    "hourly": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
@@ -565,7 +565,7 @@
    ]
   ],
   "params": {
-   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure",
+   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure,is_day",
    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max",
    "forecast_days": 2,
    "hourly": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
@@ -588,7 +588,7 @@
    ]
   ],
   "params": {
-   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure",
+   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure,is_day",
    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max",
    "forecast_days": 2,
    "hourly": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
@@ -606,7 +606,7 @@
  "model-override-tomorrow-success": {
   "logs": [],
   "params": {
-   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure",
+   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure,is_day",
    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max",
    "forecast_days": 2,
    "hourly": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
@@ -629,7 +629,7 @@
    ]
   ],
   "params": {
-   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure",
+   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure,is_day",
    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max",
    "forecast_days": 2,
    "hourly": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
@@ -652,7 +652,7 @@
    ]
   ],
   "params": {
-   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure",
+   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure,is_day",
    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max",
    "forecast_days": 2,
    "hourly": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
@@ -675,7 +675,7 @@
    ]
   ],
   "params": {
-   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure",
+   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure,is_day",
    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max",
    "forecast_days": 2,
    "hourly": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
@@ -698,7 +698,7 @@
    ]
   ],
   "params": {
-   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure",
+   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure,is_day",
    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max",
    "forecast_days": 2,
    "hourly": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
@@ -716,7 +716,7 @@
  "no-override-default-success": {
   "logs": [],
   "params": {
-   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure",
+   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure,is_day",
    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max",
    "forecast_days": 2,
    "hourly": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
@@ -729,7 +729,7 @@
    "wind_speed_unit": "kmh"
   },
   "requests": 1,
-  "text": "<commands.gwx.periods.tonight>: ⛅<commands.gwx.weather_descriptions.2> 14°C ↙️<common.wind_directions.SW>5<commands.gwx.gust[('value', 11)]> <commands.gwx.humidity[('value', 78)]> | <common.temp_high_label>:20°C <common.temp_low_label>:13°C"
+  "text": "<commands.gwx.periods.overnight>: ⛅<commands.gwx.weather_descriptions.2> 14°C ↙️<common.wind_directions.SW>5<commands.gwx.gust[('value', 11)]> <commands.gwx.humidity[('value', 78)]> | <common.temp_high_label>:20°C <common.temp_low_label>:13°C"
  },
  "no-override-default-timeout": {
   "logs": [
@@ -739,7 +739,7 @@
    ]
   ],
   "params": {
-   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure",
+   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure,is_day",
    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max",
    "forecast_days": 2,
    "hourly": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
@@ -762,7 +762,7 @@
    ]
   ],
   "params": {
-   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure",
+   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure,is_day",
    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max",
    "forecast_days": 16,
    "hourly": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
@@ -785,7 +785,7 @@
    ]
   ],
   "params": {
-   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure",
+   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure,is_day",
    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max",
    "forecast_days": 16,
    "hourly": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
@@ -808,7 +808,7 @@
    ]
   ],
   "params": {
-   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure",
+   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure,is_day",
    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max",
    "forecast_days": 16,
    "hourly": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
@@ -826,7 +826,7 @@
  "no-override-multiday-success": {
   "logs": [],
   "params": {
-   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure",
+   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure,is_day",
    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max",
    "forecast_days": 16,
    "hourly": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
@@ -849,7 +849,7 @@
    ]
   ],
   "params": {
-   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure",
+   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure,is_day",
    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max",
    "forecast_days": 16,
    "hourly": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
@@ -872,7 +872,7 @@
    ]
   ],
   "params": {
-   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure",
+   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure,is_day",
    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max",
    "forecast_days": 2,
    "hourly": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
@@ -895,7 +895,7 @@
    ]
   ],
   "params": {
-   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure",
+   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure,is_day",
    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max",
    "forecast_days": 2,
    "hourly": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
@@ -918,7 +918,7 @@
    ]
   ],
   "params": {
-   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure",
+   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure,is_day",
    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max",
    "forecast_days": 2,
    "hourly": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
@@ -936,7 +936,7 @@
  "no-override-tomorrow-success": {
   "logs": [],
   "params": {
-   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure",
+   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure,is_day",
    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max",
    "forecast_days": 2,
    "hourly": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
@@ -959,7 +959,7 @@
    ]
   ],
   "params": {
-   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure",
+   "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure,is_day",
    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max",
    "forecast_days": 2,
    "hourly": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",

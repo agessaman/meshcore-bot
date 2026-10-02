@@ -898,7 +898,7 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
             params = {
                 'latitude': lat,
                 'longitude': lon,
-                'current': 'temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure',
+                'current': 'temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure,is_day',
                 'daily': 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max',
                 'hourly': 'temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m',
                 'temperature_unit': self.temperature_unit,
@@ -1034,15 +1034,10 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
         if weather_code is None:
             condition = ""
         else:
-            condition = f"{self._get_weather_emoji(weather_code)}{self._get_weather_description(weather_code)} "
+            emoji = self._get_weather_emoji(weather_code, is_day=self._open_meteo_daytime(current))
+            condition = f"{emoji}{self._get_weather_description(weather_code)} "
 
-        # Day or night at the location: Open-Meteo's current time is local there
-        # (timezone=auto); the bot's own clock is only the fallback.
-        hour = self._open_meteo_local_hour(current)
-        if 6 <= hour < 18:
-            period_name = self.translate('commands.gwx.periods.today')
-        else:
-            period_name = self.translate('commands.gwx.periods.tonight')
+        period_name = self.translate(f'commands.gwx.periods.{self._open_meteo_period_key(current)}')
 
         # Build current weather string
         weather = f"{period_name}: {condition}{temp}{temp_symbol}"
@@ -1122,7 +1117,14 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
 
             # Get tomorrow's period name
             tomorrow_period = self.translate('commands.gwx.periods.tomorrow')
-            tomorrow_str = f" | {tomorrow_period}: {tomorrow_emoji} {self._format_high_low(tomorrow_high, tomorrow_low, temp_symbol)}"
+            tomorrow_hl = self._format_high_low(tomorrow_high, tomorrow_low, temp_symbol)
+            tomorrow_str = f" | {tomorrow_period}: {tomorrow_emoji} {tomorrow_hl}"
+            # Name tomorrow's weather when it fits; the emoji alone is ambiguous.
+            if tomorrow_code is not None:
+                described = (f" | {tomorrow_period}: {tomorrow_emoji}"
+                             f"{self._get_weather_description(tomorrow_code)} {tomorrow_hl}")
+                if self._count_display_width(weather + described) <= max_length - 10:
+                    tomorrow_str = described
 
             # Only add if we have space (leave room for potential precipitation)
             # Use display width to account for emojis
@@ -1152,6 +1154,24 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
                         if self._count_display_width(weather + precip_str) <= max_length - 5:
                             weather += precip_str
         return weather
+
+    def _open_meteo_daytime(self, current: dict) -> bool:
+        """Whether the sun is up at the location: Open-Meteo's is_day, else 06:00-18:00 local."""
+        flag = current.get('is_day') if isinstance(current, dict) else None
+        if flag is not None:
+            return bool(flag)
+        return 6 <= self._open_meteo_local_hour(current) < 18
+
+    def _open_meteo_period_key(self, current: dict) -> str:
+        """Period label key for the current conditions: today while the sun is up,
+        overnight from midnight to sunrise, tonight from sunset to midnight.
+
+        Open-Meteo's current time is local to the location (timezone=auto); the
+        bot's own clock is only the fallback.
+        """
+        if self._open_meteo_daytime(current):
+            return 'today'
+        return 'overnight' if self._open_meteo_local_hour(current) < 12 else 'tonight'
 
     @staticmethod
     def _open_meteo_local_hour(current: dict) -> int:
@@ -1401,11 +1421,12 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
 
         return description
 
-    def _get_weather_emoji(self, code: int) -> str:
+    def _get_weather_emoji(self, code: int, is_day: Optional[bool] = True) -> str:
         """Convert WMO weather code to emoji.
 
         Args:
             code: WMO weather code.
+            is_day: False at night, when clear skies show a moon instead of a sun.
 
         Returns:
             str: Weather emoji.
@@ -1442,6 +1463,8 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
             99: "⛈️"      # Severe Thunderstorm
         }
 
+        if is_day is False and code in (0, 1):
+            return "🌙"
         return emoji_map.get(code, "🌤️")
 
     def _check_extreme_conditions(self, current: dict) -> Optional[str]:
