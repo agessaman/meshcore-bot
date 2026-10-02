@@ -736,11 +736,13 @@ class SolarforecastCommand(BaseCommand):
         first_day_date = None
         if today in watt_hours_day:
             first_day_date = today
+            first_day_wh = watt_hours_day[today]
             first_day_prod_hours = production_hours(today, 0.1) if watts else 0
             if first_day_prod_hours > 0:
-                first_day_utilization = utilization(watt_hours_day[today], first_day_prod_hours)
+                first_day_utilization = utilization(first_day_wh, first_day_prod_hours)
         elif tomorrow in watt_hours_day:
             first_day_date = tomorrow
+            first_day_wh = watt_hours_day[tomorrow]
             first_day_prod_hours = 0
             if watts:
                 min_power_threshold = max(panel_watts * 0.01, 0.1)
@@ -748,7 +750,7 @@ class SolarforecastCommand(BaseCommand):
                     if local_date_of(ts) == tomorrow and power >= min_power_threshold:
                         first_day_prod_hours += 1
             if first_day_prod_hours > 0:
-                first_day_utilization = utilization(watt_hours_day[tomorrow], first_day_prod_hours)
+                first_day_utilization = utilization(first_day_wh, first_day_prod_hours)
 
         def day_part(day, label):
             """One day's summary: energy, production hours with %util or %, and the peak if it falls that day."""
