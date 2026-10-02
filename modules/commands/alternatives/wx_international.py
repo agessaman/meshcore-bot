@@ -1263,6 +1263,7 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
                 86: "Snow Showers",
                 95: "Thunderstorm",
                 96: "T-Storm w/Hail",
+                97: "Heavy T-Storm",
                 99: "Severe T-Storm"
             }
             return weather_codes.get(code, self.translate('commands.gwx.weather_descriptions.unknown'))
@@ -1306,6 +1307,7 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
             86: "🌨️",    # Snow Showers
             95: "⛈️",     # Thunderstorm
             96: "⛈️",     # Thunderstorm with Hail
+            97: "⛈️",     # Heavy Thunderstorm
             99: "⛈️"      # Severe Thunderstorm
         }
 
@@ -1336,7 +1338,7 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
         if code in (65, 82):
             warnings.append(self.translate('commands.gwx.warnings.heavy_rain'))
 
-        if code in (95, 96, 99):
+        if code in (95, 96, 97, 99):
             warnings.append(self.translate('commands.gwx.warnings.thunderstorms'))
 
         # The old "Snow Showers" match also covered light snow showers (85).

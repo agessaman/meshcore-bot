@@ -117,7 +117,7 @@ def test_gusts_alone_do_not_warn():
 
 @pytest.mark.parametrize("code, expected", [
     (65, "⚠️ Heavy rain"), (82, "⚠️ Heavy rain"),
-    (95, "⚠️ Thunderstorms"), (96, "⚠️ Thunderstorms"), (99, "⚠️ Thunderstorms"),
+    (95, "⚠️ Thunderstorms"), (96, "⚠️ Thunderstorms"), (97, "⚠️ Thunderstorms"), (99, "⚠️ Thunderstorms"),
     (75, "⚠️ Heavy snow"), (85, "⚠️ Heavy snow"), (86, "⚠️ Heavy snow"),
     *[(code, None) for code in (0, 1, 2, 3, 45, 48, 51, 53, 55, 56, 57, 61, 63, 66, 67, 71, 73, 77, 80, 81, 999)],
 ])
@@ -128,7 +128,7 @@ def test_wmo_warning_categories(code, expected):
 
 @pytest.mark.parametrize("code, warning", [
     (65, "heavy_rain"), (82, "heavy_rain"),
-    (95, "thunderstorms"), (96, "thunderstorms"), (99, "thunderstorms"),
+    (95, "thunderstorms"), (96, "thunderstorms"), (97, "thunderstorms"), (99, "thunderstorms"),
     (75, "heavy_snow"), (85, "heavy_snow"), (86, "heavy_snow"),
 ])
 def test_russian_directions_and_conditions(code, warning):
@@ -195,3 +195,10 @@ def test_public_weather_getter_still_returns_text():
     assert isinstance(text, str)
     assert "100°F" in text
     get.assert_called_once()
+
+
+def test_heavy_thunderstorm_code_has_its_own_description_and_emoji():
+    # Open-Meteo documents WMO 97 as a heavy thunderstorm.
+    cmd = _gwx()
+    assert cmd._get_weather_description(97) == "Heavy T-Storm"
+    assert cmd._get_weather_emoji(97) == "⛈️"
