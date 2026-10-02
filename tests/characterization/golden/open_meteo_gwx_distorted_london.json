@@ -134,24 +134,8 @@
    ]
   ]
  ],
- "null_highs-multiday": [
-  "<commands.gwx.multiday_error[('num_days', 5)]>",
-  [
-   [
-    "error",
-    "Error formatting 5-day forecast: int() argument must be a string, a bytes-like object or a real number, not 'NoneType'"
-   ]
-  ]
- ],
- "null_highs-tomorrow": [
-  "<commands.gwx.tomorrow_error>",
-  [
-   [
-    "error",
-    "Error formatting tomorrow forecast: int() argument must be a string, a bytes-like object or a real number, not 'NoneType'"
-   ]
-  ]
- ],
+ "null_highs-multiday": "<commands.gwx.multiday_not_available[('num_days', 5)]>",
+ "null_highs-tomorrow": "<commands.gwx.tomorrow_not_available>",
  "null_temp-default": [
   "<commands.gwx.error_fetching>",
   [
