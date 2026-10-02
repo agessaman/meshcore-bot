@@ -39,8 +39,9 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import Any, Optional
 
+from modules.flood_scope import validate_scope_name
+from modules.models import CHANNEL_BODY_FLOOR
 from modules.models import DM_BODY_LIMIT as _DM_BODY_LIMIT
-from modules.models import channel_body_limit
 from modules.utils import truncate_to_bytes  # re-exported: callers use region_warning.truncate_to_bytes
 
 CONFIG_SECTION = "Region_Warnings"
@@ -609,11 +610,20 @@ class RegionWarningMonitor:
         # resetting it would retry on the sender's very next message.
         state.unscoped_seen = 0
 
+        # Resolve the scope and size the body before anything is reserved: a
+        # bad config value has to read as a failed attempt, not as a "sent"
+        # row whose rollback never runs because the send path raised.
+        body, scope, problem = self._prepare_send(channel, text)
+        if problem:
+            self._record_event(sender_id, sender_pubkey, channel, ACTION_FAILED, problem)
+            self.logger.warning("Region warning for %s not sent: %s", sender_id, problem)
+            return
+
         if settings.dry_run:
-            self._record_event(sender_id, sender_pubkey, channel, ACTION_DRY_RUN, text)
+            self._record_event(sender_id, sender_pubkey, channel, ACTION_DRY_RUN, body)
             self._mark_warning_sent(now)
             self.logger.info(
-                "Region warning (dry run) for %s on %s: %s", sender_id, channel or "?", text
+                "Region warning (dry run) for %s on %s: %s", sender_id, channel or "?", body
             )
             return
 
@@ -625,10 +635,10 @@ class RegionWarningMonitor:
         # of one and both transmit.
         previous_mark = (self._last_warning_monotonic, self._last_warning_wall)
         event_id = self._record_event(
-            sender_id, sender_pubkey, channel, ACTION_SENT, text)
+            sender_id, sender_pubkey, channel, ACTION_SENT, body)
         self._mark_warning_sent(now)
 
-        sent, detail = await self._send_warning(sender_id, channel, text)
+        sent, detail = await self._send_warning(sender_id, channel, body, scope)
         if sent:
             return
         # Correct the optimistic reservation. The event row stays — the attempt
@@ -638,38 +648,65 @@ class RegionWarningMonitor:
         self._update_event(event_id, ACTION_FAILED, detail)
         self._last_warning_monotonic, self._last_warning_wall = previous_mark
 
+    def _prepare_send(
+        self, channel: Optional[str], text: str
+    ) -> tuple[str, Optional[str], str]:
+        """Return ``(body, scope, problem)`` for this warning.
+
+        ``problem`` is non-empty when the warning cannot be sent as configured;
+        ``scope`` only applies to channel delivery, where ``None`` lets the send
+        apply ``outgoing_flood_scope_override``.
+        """
+        if self.settings.delivery != DELIVERY_CHANNEL:
+            return truncate_to_bytes(text, DM_BODY_LIMIT), None, ""
+        if not channel:
+            return text, None, "no channel to reply on"
+        # The same scope any other proactive channel send from this bot gets:
+        # [Region_Warnings] flood_scope, then flood_scope.<channel>, then
+        # outgoing_flood_scope_override inside the send. A companion accepts a
+        # scoped flood whatever region it has set itself (the firmware's
+        # filterRecvFloodPacket drops nothing), so the sender still hears a
+        # scoped warning wherever the region's repeaters reach, and an operator
+        # who scoped the bot's traffic does not get a global flood from the one
+        # feature about global floods.
+        raw = _get(getattr(self.bot, "config", None), "flood_scope")
+        if raw:
+            # Hand-edited and read raw like the rest of this section. An invalid
+            # name is refused rather than handed to set_flood_scope, whose
+            # failure path sends anyway at whatever scope the radio holds.
+            try:
+                scope: Optional[str] = validate_scope_name(raw)
+            except ValueError as exc:
+                return text, None, f"invalid [{CONFIG_SECTION}] flood_scope: {exc}"
+        else:
+            try:
+                scope = self.bot.command_manager.resolve_channel_send_scope(channel=channel)
+            except Exception as exc:  # noqa: BLE001 - surfaced as a failed attempt
+                return text, None, f"could not resolve the channel flood scope: {exc}"
+        return truncate_to_bytes(text, self._channel_body_limit(channel, scope)), scope, ""
+
     async def _send_warning(
-        self, sender_id: str, channel: Optional[str], text: str
+        self, sender_id: str, channel: Optional[str], body: str, scope: Optional[str]
     ) -> tuple[bool, str]:
         cmd_mgr = self.bot.command_manager
         if self.settings.delivery == DELIVERY_CHANNEL:
-            if not channel:
-                return False, "no channel to reply on"
-            body = truncate_to_bytes(text, self._channel_body_limit())
-            # Deliberately global scope: the recipient is by definition not
-            # inside any region the bot replies under, so a scoped reply would
-            # never reach them.
             ok = await cmd_mgr.send_channel_message(
-                channel, body, skip_user_rate_limit=True, scope="*"
+                channel, body, skip_user_rate_limit=True, scope=scope
             )
             return ok, body if ok else f"channel send failed: {body}"
 
-        body = truncate_to_bytes(text, DM_BODY_LIMIT)
         ok = await cmd_mgr.send_dm(sender_id, body, skip_user_rate_limit=True)
         return ok, body if ok else f"DM send failed (contact unknown or radio busy): {body}"
 
-    def _channel_body_limit(self) -> int:
-        """Channel body budget for a global-scope send from this node.
-
-        Warnings always go out unscoped, so no regional-scope overhead applies.
-        """
+    def _channel_body_limit(self, channel: str, scope: Optional[str]) -> int:
+        """Channel body budget for this send, regional-scope overhead included."""
         try:
-            from modules.models import MeshMessage
-
-            probe = MeshMessage(content="", channel="", is_dm=False, reply_scope="")
-            return int(self.bot.command_manager.get_max_message_length(probe))
+            return int(
+                self.bot.command_manager.channel_body_budget(channel=channel, scope=scope)
+            )
         except Exception:
-            return channel_body_limit(None)
+            # Most conservative budget: the body floor, as if regional.
+            return CHANNEL_BODY_FLOOR
 
     # -- gating ------------------------------------------------------------
 
