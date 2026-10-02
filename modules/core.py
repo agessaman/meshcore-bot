@@ -1223,17 +1223,7 @@ class MeshCoreBot(ServiceSupervisorMixin, RadioLinkMixin, RadioOfflineBreaker):
                 if not self._radio_zombie_detected:
                     if self._last_radio_probe is None:
                         self._last_radio_probe = time.time()
-                    probe_interval = max(
-                        300,
-                        min(
-                            900,
-                            self.config.getint(
-                                'Connection',
-                                'radio_probe_interval_seconds',
-                                fallback=self.config.getint('Bot', 'radio_probe_interval_seconds', fallback=300),
-                            ),
-                        ),
-                    )
+                    probe_interval = self._radio_probe_interval_seconds()
                     if time.time() - self._last_radio_probe >= probe_interval:
                         self._last_radio_probe = time.time()
                         asyncio.create_task(self._probe_radio_health())
