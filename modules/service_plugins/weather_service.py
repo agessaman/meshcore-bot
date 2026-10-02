@@ -931,7 +931,7 @@ class WeatherService(BaseServicePlugin):
             return "🌧️"
         elif code in [71, 73, 75, 77, 85, 86]:
             return "❄️"
-        elif code in [95, 96, 99]:
+        elif code in [95, 96, 97, 99]:
             return "⛈️"
         else:
             return "🌤️"

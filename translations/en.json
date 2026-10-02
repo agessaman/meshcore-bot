@@ -300,6 +300,7 @@
         "86": "Snow Showers",
         "95": "Thunderstorm",
         "96": "T-Storm w/Hail",
+        "97": "Heavy T-Storm",
         "99": "Severe T-Storm",
         "unknown": "Unknown"
       },
@@ -1527,6 +1528,7 @@
         "86": "Heavy Snow Showers",
         "95": "Thunderstorm",
         "96": "Thunderstorm w/Hail",
+        "97": "Heavy Thunderstorm",
         "99": "Severe Thunderstorm"
       },
       "wind_speed_units": {
