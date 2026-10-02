@@ -85,7 +85,7 @@ class WeatherCommandMixin:
                         forecast_type = "multiday"
                         num_days = days
                         location_parts = location_parts[:-1]
-                elif last_part.isdigit():
+                elif last_part.isdecimal():
                     days = int(last_part)
                     if 2 <= days <= max_days:
                         forecast_type = "multiday"

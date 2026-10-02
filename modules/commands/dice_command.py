@@ -121,7 +121,7 @@ class DiceCommand(BaseCommand):
                     return None, None, False
 
         # Handle direct number (e.g., "20" -> d20)
-        if dice_input.isdigit():
+        if dice_input.isdecimal():
             sides = int(dice_input)
             if sides in self.DICE_TYPES.values():
                 return sides, 1, False

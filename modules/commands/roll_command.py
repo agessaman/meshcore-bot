@@ -92,7 +92,7 @@ class RollCommand(BaseCommand):
         roll_input = roll_input.strip()
 
         # Handle direct number (e.g., "50", "100", "1000")
-        if roll_input.isdigit():
+        if roll_input.isdecimal():
             max_num = int(roll_input)
             if 1 <= max_num <= 10000:  # Reasonable limit
                 return max_num
