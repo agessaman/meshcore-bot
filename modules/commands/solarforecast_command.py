@@ -8,7 +8,7 @@ import hashlib
 import re
 import time
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Any, Optional
 
 import requests
 
@@ -19,11 +19,26 @@ from ..utils import (
     geocode_city,
     geocode_zipcode,
     get_config_timezone,
-    get_nominatim_geocoder,
+    get_nominatim_geocoder,  # noqa: F401
     rate_limited_nominatim_reverse,
 )
 from .base_command import BaseCommand
 
+
+def _solar_timestamp_to_naive(timestamp: str, local_tz: Any) -> datetime:
+    """A forecast.solar timestamp as a naive local datetime; raises when it does not parse.
+
+    Timestamps with a Z or + offset are converted to *local_tz*; plain ones
+    ("2026-10-01 13:00:00") are already local.
+    """
+    if 'Z' in timestamp or '+' in timestamp:
+        dt_with_tz = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+        if dt_with_tz.tzinfo:
+            if local_tz:
+                return dt_with_tz.astimezone(local_tz).replace(tzinfo=None)
+            return dt_with_tz.astimezone().replace(tzinfo=None)
+        return dt_with_tz
+    return datetime.strptime(timestamp, '%Y-%m-%d %H:%M:%S')
 
 class SolarforecastCommand(BaseCommand):
     """Handles solar forecast commands with location support"""
@@ -652,7 +667,6 @@ class SolarforecastCommand(BaseCommand):
                         lat: float = None, lon: float = None) -> str:
         """Format forecast data to fit 130 characters with user-friendly labels"""
         watt_hours_day = result.get('watt_hours_day', {})
-        result.get('num_days', 0)
 
         if not watt_hours_day:
             return self.translate('commands.solarforecast.no_data')
@@ -665,174 +679,115 @@ class SolarforecastCommand(BaseCommand):
         day_after = (now + timedelta(days=2)).strftime('%Y-%m-%d')
         day_after_2 = (now + timedelta(days=3)).strftime('%Y-%m-%d')
 
-        # Get day names for Day+2 and Day+3
-        day_after_date = now + timedelta(days=2)
-        day_after_2_date = now + timedelta(days=3)
-        day_after_name_en = day_after_date.strftime('%a')  # Mon, Tue, Wed, etc.
-        day_after_2_name_en = day_after_2_date.strftime('%a')
-        # Translate day abbreviations
-        day_after_name = self._translate_day_abbreviation(day_after_name_en)
-        day_after_2_name = self._translate_day_abbreviation(day_after_2_name_en)
+        # Day+2 and Day+3 are labeled with (translated) weekday abbreviations.
+        day_after_name = self._translate_day_abbreviation((now + timedelta(days=2)).strftime('%a'))
+        day_after_2_name = self._translate_day_abbreviation((now + timedelta(days=3)).strftime('%a'))
 
-        # Build user-friendly forecast with peak grouped by day
-
-        # Calculate production hours and find peak for all days
         watts = result.get('watts', {})
-        now.strftime('%Y-%m-%d %H:%M:%S')
 
-        # Find future peak first to know which day it belongs to
+        # Find the future peak first, to know which day it belongs to.
+        # Forecast.Solar returns naive timestamps in the queried location's
+        # local time; they are read as the bot's configured timezone.
         future_watts = {}
         peak_time_str = None
         peak_date = None
         max_watts = None
 
         if watts:
-            # Filter to only future timestamps
-            # Forecast.Solar API returns naive timestamps (no timezone)
-            # Based on testing, they appear to be in local time for the queried location
-            # Parse them as naive datetimes and assume they're in the bot's configured timezone
             for timestamp, power in watts.items():
                 try:
-                    # Parse as naive datetime
-                    dt_naive = None
-
-                    # Try ISO format first (with Z or timezone)
-                    if 'Z' in timestamp or '+' in timestamp:
-                        # Has timezone info, parse and convert
-                        dt_with_tz = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
-                        if dt_with_tz.tzinfo:
-                            # Convert to local timezone
-                            if local_tz:
-                                dt_naive = dt_with_tz.astimezone(local_tz).replace(tzinfo=None)
-                            else:
-                                dt_naive = dt_with_tz.astimezone().replace(tzinfo=None)
-                        else:
-                            dt_naive = dt_with_tz
-                    else:
-                        # Naive format - parse directly
-                        dt_naive = datetime.strptime(timestamp, '%Y-%m-%d %H:%M:%S')
-
-                    # Compare with current time - convert now to naive if needed
-                    if now.tzinfo:
-                        # Convert timezone-aware now to naive for comparison
-                        now_naive = now.replace(tzinfo=None)
-                    else:
-                        now_naive = now
-
+                    dt_naive = _solar_timestamp_to_naive(timestamp, local_tz)
+                    now_naive = now.replace(tzinfo=None) if now.tzinfo else now
                     if dt_naive > now_naive:
-                        # Store with original timestamp key
                         future_watts[timestamp] = (power, dt_naive)
-
                 except (ValueError, TypeError) as e:
                     self.logger.debug(f"Error parsing timestamp {timestamp}: {e}")
-                    pass
 
-            # Find peak from future data, but only from today or tomorrow
-            if future_watts:
-                # Filter to only today and tomorrow
-                today_tomorrow_watts = {}
-                for timestamp, (power, dt_naive) in future_watts.items():
-                    date_str = dt_naive.strftime('%Y-%m-%d')
-                    if date_str in (today, tomorrow):
-                        today_tomorrow_watts[timestamp] = (power, dt_naive)
+            # The peak shown is the highest future point today or tomorrow.
+            today_tomorrow_watts = {
+                timestamp: (power, dt_naive)
+                for timestamp, (power, dt_naive) in future_watts.items()
+                if dt_naive.strftime('%Y-%m-%d') in (today, tomorrow)
+            }
+            if today_tomorrow_watts:
+                max_watts = max(power for power, dt in today_tomorrow_watts.values())
+                for timestamp, (power, dt_naive) in today_tomorrow_watts.items():
+                    if power == max_watts:
+                        peak_time_str = dt_naive.strftime('%H:%M')
+                        peak_date = dt_naive.strftime('%Y-%m-%d')
+                        break
 
-                # Find peak from today/tomorrow only
-                if today_tomorrow_watts:
-                    max_watts = max(power for power, dt in today_tomorrow_watts.values())
-                    for timestamp, (power, dt_naive) in today_tomorrow_watts.items():
-                        if power == max_watts:
-                            peak_time_str = dt_naive.strftime('%H:%M')
-                            peak_date = dt_naive.strftime('%Y-%m-%d')
-                            break
-
-        # Helper function to parse timestamp and get date
-        def get_local_date_from_timestamp(timestamp_str):
-            """Parse timestamp (assumed to be in local time) and return date string"""
+        def local_date_of(timestamp_str):
+            """Local date string of a timestamp, or None when it does not parse."""
             try:
-                # Parse as naive datetime (API returns local time for location)
-                if 'Z' in timestamp_str or '+' in timestamp_str:
-                    # Has timezone info, parse and convert to local
-                    dt_with_tz = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
-                    if dt_with_tz.tzinfo:
-                        if local_tz:
-                            dt_naive = dt_with_tz.astimezone(local_tz).replace(tzinfo=None)
-                        else:
-                            dt_naive = dt_with_tz.astimezone().replace(tzinfo=None)
-                    else:
-                        dt_naive = dt_with_tz
-                else:
-                    # Naive format - parse directly
-                    dt_naive = datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S')
-
-                return dt_naive.strftime('%Y-%m-%d')
-            except:
+                return _solar_timestamp_to_naive(timestamp_str, local_tz).strftime('%Y-%m-%d')
+            except:  # noqa: E722 - any unparseable timestamp counts as no date
                 return None
 
-        # Calculate utilization once for first day (only show %util on first day)
+        def production_hours(day, min_power_threshold):
+            """Distinct clock hours on *day* at or above the threshold (several points can share an hour)."""
+            unique_hours = set()
+            for ts, power in watts.items():
+                local_date = local_date_of(ts)
+                if local_date == day and power >= min_power_threshold:
+                    try:
+                        unique_hours.add(f"{local_date}_{_solar_timestamp_to_naive(ts, local_tz).hour}")
+                    except:  # noqa: E722
+                        pass
+            return len(unique_hours)
+
+        def utilization(wh, hours):
+            """Percent of the panel's rated output over *hours*; None when that is not positive."""
+            typical_max_energy = panel_watts * hours
+            if typical_max_energy > 0:
+                return (wh / typical_max_energy) * 100
+            return None
+
+        # %util is shown on the first forecast day only (today, else tomorrow).
+        # Note the two variants: today counts distinct hours at >= 0.1 W,
+        # tomorrow counts data points at >= 1% of the panel (or 0.1 W).
         first_day_utilization = None
         first_day_date = None
         if today in watt_hours_day:
             first_day_date = today
             first_day_wh = watt_hours_day[today]
-            first_day_prod_hours = 0
-            if watts:
-                # Convert timestamps to local dates and count production hours
-                # Use fixed threshold of 0.1W for all panels to ensure consistent hour counts
-                # This filters out noise/very low power that isn't meaningful production
-                min_power_threshold = 0.1
-                # Count unique hours (not data points) - API may have multiple points per hour
-                unique_hours = set()
-                for ts, power in watts.items():
-                    local_date = get_local_date_from_timestamp(ts)
-                    if local_date == today and power >= min_power_threshold:
-                        try:
-                            if 'Z' in ts or '+' in ts:
-                                dt_with_tz = datetime.fromisoformat(ts.replace('Z', '+00:00'))
-                                if dt_with_tz.tzinfo:
-                                    if local_tz:
-                                        dt_naive = dt_with_tz.astimezone(local_tz).replace(tzinfo=None)
-                                    else:
-                                        dt_naive = dt_with_tz.astimezone().replace(tzinfo=None)
-                                else:
-                                    dt_naive = dt_with_tz
-                            else:
-                                dt_naive = datetime.strptime(ts, '%Y-%m-%d %H:%M:%S')
-                            hour_key = f"{local_date}_{dt_naive.hour}"
-                            unique_hours.add(hour_key)
-                        except:
-                            pass
-                first_day_prod_hours = len(unique_hours)
-
+            first_day_prod_hours = production_hours(today, 0.1) if watts else 0
             if first_day_prod_hours > 0:
-                # Use 100% of panel capacity - API already accounts for real-world conditions
-                typical_max_power = panel_watts
-                typical_max_energy = typical_max_power * first_day_prod_hours
-                if typical_max_energy > 0:
-                    first_day_utilization = (first_day_wh / typical_max_energy) * 100
+                first_day_utilization = utilization(first_day_wh, first_day_prod_hours)
         elif tomorrow in watt_hours_day:
             first_day_date = tomorrow
             first_day_wh = watt_hours_day[tomorrow]
             first_day_prod_hours = 0
             if watts:
-                # Convert timestamps to local dates and count production hours
-                # Use minimum threshold: 1% of panel capacity or 0.1W, whichever is higher
                 min_power_threshold = max(panel_watts * 0.01, 0.1)
                 for ts, power in watts.items():
-                    local_date = get_local_date_from_timestamp(ts)
-                    if local_date == tomorrow and power >= min_power_threshold:
+                    if local_date_of(ts) == tomorrow and power >= min_power_threshold:
                         first_day_prod_hours += 1
-
             if first_day_prod_hours > 0:
-                # Use 100% of panel capacity - API already accounts for real-world conditions
-                typical_max_power = panel_watts
-                typical_max_energy = typical_max_power * first_day_prod_hours
-                if typical_max_energy > 0:
-                    first_day_utilization = (first_day_wh / typical_max_energy) * 100
+                first_day_utilization = utilization(first_day_wh, first_day_prod_hours)
 
-        # Build lines for multi-line format
+        def day_part(day, label):
+            """One day's summary: energy, production hours with %util or %, and the peak if it falls that day."""
+            wh = watt_hours_day[day]
+            prod_hours = production_hours(day, max(panel_watts * 0.01, 0.1)) if watts else 0
+            part = label(wh)
+            if prod_hours > 0:
+                if first_day_utilization is not None and first_day_date == day:
+                    part += self.translate('commands.solarforecast.labels.hours_util', hours=prod_hours, util=first_day_utilization)
+                else:
+                    day_utilization = utilization(wh, prod_hours)
+                    if day_utilization is not None:
+                        part += self.translate('commands.solarforecast.labels.hours_percent', hours=prod_hours, percent=day_utilization)
+                    else:
+                        part += self.translate('commands.solarforecast.labels.hours_only', hours=prod_hours)
+            # The peak is only ever today or tomorrow.
+            if peak_date == day and peak_time_str:
+                part += " " + self.translate('commands.solarforecast.labels.peak', watts=max_watts, time=peak_time_str)
+            return part
+
         lines = []
 
-        # Add panel info and location to first line
+        # The first line starts with the panel size and location.
         panel_info = f"{panel_watts:.0f}W"
         if location_name:
             abbreviated_location = abbreviate_location(location_name, max_length=25)
@@ -840,233 +795,31 @@ class SolarforecastCommand(BaseCommand):
         else:
             first_line_prefix = f"{panel_info} "
 
-        # Today
         if today in watt_hours_day:
-            today_wh = watt_hours_day[today]
-            today_prod_hours = 0
-            if watts:
-                # Convert timestamps to local dates and count production hours
-                # Use minimum threshold: 1% of panel capacity or 0.1W, whichever is higher
-                min_power_threshold = max(panel_watts * 0.01, 0.1)
-                # Count unique hours (not data points) - API may have multiple points per hour
-                unique_hours = set()
-                for ts, power in watts.items():
-                    local_date = get_local_date_from_timestamp(ts)
-                    if local_date == today and power >= min_power_threshold:
-                        try:
-                            if 'Z' in ts or '+' in ts:
-                                dt_with_tz = datetime.fromisoformat(ts.replace('Z', '+00:00'))
-                                if dt_with_tz.tzinfo:
-                                    if local_tz:
-                                        dt_naive = dt_with_tz.astimezone(local_tz).replace(tzinfo=None)
-                                    else:
-                                        dt_naive = dt_with_tz.astimezone().replace(tzinfo=None)
-                                else:
-                                    dt_naive = dt_with_tz
-                            else:
-                                dt_naive = datetime.strptime(ts, '%Y-%m-%d %H:%M:%S')
-                            hour_key = f"{local_date}_{dt_naive.hour}"
-                            unique_hours.add(hour_key)
-                        except:
-                            pass
-                today_prod_hours = len(unique_hours)
+            today_part = day_part(today, lambda wh: self.translate('commands.solarforecast.labels.today', wh=wh))
+            lines.append(f"{first_line_prefix}{today_part}")
 
-            today_part = self.translate('commands.solarforecast.labels.today', wh=today_wh)
-            if today_prod_hours > 0:
-                if first_day_utilization is not None and first_day_date == today:
-                    # First day - show %util
-                    today_part += self.translate('commands.solarforecast.labels.hours_util', hours=today_prod_hours, util=first_day_utilization)
-                else:
-                    # Calculate utilization for this day
-                    # Use 100% of panel capacity - API already accounts for real-world conditions
-                    typical_max_power = panel_watts
-                    typical_max_energy = typical_max_power * today_prod_hours
-                    if typical_max_energy > 0:
-                        utilization = (today_wh / typical_max_energy) * 100
-                        today_part += self.translate('commands.solarforecast.labels.hours_percent', hours=today_prod_hours, percent=utilization)
-                    else:
-                        today_part += self.translate('commands.solarforecast.labels.hours_only', hours=today_prod_hours)
-
-            # Add peak if it's today
-            if peak_date == today and peak_time_str:
-                today_part += " " + self.translate('commands.solarforecast.labels.peak', watts=max_watts, time=peak_time_str)
-
-            # First line includes panel info and location
-            first_line = f"{first_line_prefix}{today_part}"
-            lines.append(first_line)
-
-        # Tomorrow
         if tomorrow in watt_hours_day:
-            tomorrow_wh = watt_hours_day[tomorrow]
-            tomorrow_prod_hours = 0
-            if watts:
-                # Convert timestamps to local dates and count production hours
-                # Use minimum threshold: 1% of panel capacity or 0.1W, whichever is higher
-                min_power_threshold = max(panel_watts * 0.01, 0.1)
-                # Count unique hours (not data points) - API may have multiple points per hour
-                unique_hours = set()
-                for ts, power in watts.items():
-                    local_date = get_local_date_from_timestamp(ts)
-                    if local_date == tomorrow and power >= min_power_threshold:
-                        try:
-                            if 'Z' in ts or '+' in ts:
-                                dt_with_tz = datetime.fromisoformat(ts.replace('Z', '+00:00'))
-                                if dt_with_tz.tzinfo:
-                                    if local_tz:
-                                        dt_naive = dt_with_tz.astimezone(local_tz).replace(tzinfo=None)
-                                    else:
-                                        dt_naive = dt_with_tz.astimezone().replace(tzinfo=None)
-                                else:
-                                    dt_naive = dt_with_tz
-                            else:
-                                dt_naive = datetime.strptime(ts, '%Y-%m-%d %H:%M:%S')
-                            hour_key = f"{local_date}_{dt_naive.hour}"
-                            unique_hours.add(hour_key)
-                        except:
-                            pass
-                tomorrow_prod_hours = len(unique_hours)
+            lines.append(day_part(tomorrow, lambda wh: self.translate('commands.solarforecast.labels.tomorrow', wh=wh)))
 
-            tomorrow_part = self.translate('commands.solarforecast.labels.tomorrow', wh=tomorrow_wh)
-            if tomorrow_prod_hours > 0:
-                if first_day_utilization is not None and first_day_date == tomorrow:
-                    # First day - show %util
-                    tomorrow_part += self.translate('commands.solarforecast.labels.hours_util', hours=tomorrow_prod_hours, util=first_day_utilization)
-                else:
-                    # Calculate utilization for this day
-                    # Use 100% of panel capacity - API already accounts for real-world conditions
-                    typical_max_power = panel_watts
-                    typical_max_energy = typical_max_power * tomorrow_prod_hours
-                    if typical_max_energy > 0:
-                        utilization = (tomorrow_wh / typical_max_energy) * 100
-                        tomorrow_part += self.translate('commands.solarforecast.labels.hours_percent', hours=tomorrow_prod_hours, percent=utilization)
-                    else:
-                        tomorrow_part += self.translate('commands.solarforecast.labels.hours_only', hours=tomorrow_prod_hours)
-
-            # Add peak if it's tomorrow
-            if peak_date == tomorrow and peak_time_str:
-                tomorrow_part += " " + self.translate('commands.solarforecast.labels.peak', watts=max_watts, time=peak_time_str)
-
-            lines.append(tomorrow_part)
-
-        # Day+2 and Day+3 on same line with | separator
+        # Day+2 and Day+3 share one line.
         day_plus_line_parts = []
-
-        # Day after tomorrow (if available, 3-day forecast)
-        if day_after in watt_hours_day:
-            day_after_wh = watt_hours_day[day_after]
-            day_after_prod_hours = 0
-            if watts:
-                # Convert timestamps to local dates and count production hours
-                # Use minimum threshold: 1% of panel capacity or 0.1W, whichever is higher
-                min_power_threshold = max(panel_watts * 0.01, 0.1)
-                # Count unique hours (not data points) - API may have multiple points per hour
-                unique_hours = set()
-                for ts, power in watts.items():
-                    local_date = get_local_date_from_timestamp(ts)
-                    if local_date == day_after and power >= min_power_threshold:
-                        try:
-                            if 'Z' in ts or '+' in ts:
-                                dt_with_tz = datetime.fromisoformat(ts.replace('Z', '+00:00'))
-                                if dt_with_tz.tzinfo:
-                                    if local_tz:
-                                        dt_naive = dt_with_tz.astimezone(local_tz).replace(tzinfo=None)
-                                    else:
-                                        dt_naive = dt_with_tz.astimezone().replace(tzinfo=None)
-                                else:
-                                    dt_naive = dt_with_tz
-                            else:
-                                dt_naive = datetime.strptime(ts, '%Y-%m-%d %H:%M:%S')
-                            hour_key = f"{local_date}_{dt_naive.hour}"
-                            unique_hours.add(hour_key)
-                        except:
-                            pass
-                day_after_prod_hours = len(unique_hours)
-
-            day_after_part = self.translate('commands.solarforecast.labels.day_format', day=day_after_name, wh=day_after_wh)
-            if day_after_prod_hours > 0:
-                # Calculate utilization for this day
-                # Use 100% of panel capacity - API already accounts for real-world conditions
-                typical_max_power = panel_watts
-                typical_max_energy = typical_max_power * day_after_prod_hours
-                if typical_max_energy > 0:
-                    utilization = (day_after_wh / typical_max_energy) * 100
-                    day_after_part += self.translate('commands.solarforecast.labels.hours_percent', hours=day_after_prod_hours, percent=utilization)
-                else:
-                    day_after_part += self.translate('commands.solarforecast.labels.hours_only', hours=day_after_prod_hours)
-
-            # Peak is only shown for today or tomorrow, not for later days
-
-            day_plus_line_parts.append(day_after_part)
-
-        # Day after that (if available, 4+ day forecast)
-        if day_after_2 in watt_hours_day:
-            day_after_2_wh = watt_hours_day[day_after_2]
-            day_after_2_prod_hours = 0
-            if watts:
-                # Convert timestamps to local dates and count production hours
-                # Use minimum threshold: 1% of panel capacity or 0.1W, whichever is higher
-                min_power_threshold = max(panel_watts * 0.01, 0.1)
-                # Count unique hours (not data points) - API may have multiple points per hour
-                unique_hours = set()
-                for ts, power in watts.items():
-                    local_date = get_local_date_from_timestamp(ts)
-                    if local_date == day_after_2 and power >= min_power_threshold:
-                        try:
-                            if 'Z' in ts or '+' in ts:
-                                dt_with_tz = datetime.fromisoformat(ts.replace('Z', '+00:00'))
-                                if dt_with_tz.tzinfo:
-                                    if local_tz:
-                                        dt_naive = dt_with_tz.astimezone(local_tz).replace(tzinfo=None)
-                                    else:
-                                        dt_naive = dt_with_tz.astimezone().replace(tzinfo=None)
-                                else:
-                                    dt_naive = dt_with_tz
-                            else:
-                                dt_naive = datetime.strptime(ts, '%Y-%m-%d %H:%M:%S')
-                            hour_key = f"{local_date}_{dt_naive.hour}"
-                            unique_hours.add(hour_key)
-                        except:
-                            pass
-                day_after_2_prod_hours = len(unique_hours)
-
-            day_after_2_part = self.translate('commands.solarforecast.labels.day_format', day=day_after_2_name, wh=day_after_2_wh)
-            if day_after_2_prod_hours > 0:
-                # Calculate utilization for this day
-                # Use 100% of panel capacity - API already accounts for real-world conditions
-                typical_max_power = panel_watts
-                typical_max_energy = typical_max_power * day_after_2_prod_hours
-                if typical_max_energy > 0:
-                    utilization = (day_after_2_wh / typical_max_energy) * 100
-                    day_after_2_part += self.translate('commands.solarforecast.labels.hours_percent', hours=day_after_2_prod_hours, percent=utilization)
-                else:
-                    day_after_2_part += self.translate('commands.solarforecast.labels.hours_only', hours=day_after_2_prod_hours)
-
-            # Peak is only shown for today or tomorrow, not for later days
-
-            day_plus_line_parts.append(day_after_2_part)
-
-        # Add Day+2 and Day+3 on same line if both exist
+        for day, name in ((day_after, day_after_name), (day_after_2, day_after_2_name)):
+            if day in watt_hours_day:
+                day_plus_line_parts.append(day_part(
+                    day, lambda wh, name=name: self.translate('commands.solarforecast.labels.day_format', day=name, wh=wh)
+                ))
         if day_plus_line_parts:
             separator = self.translate('commands.solarforecast.labels.separator')
-            day_plus_line = separator.join(day_plus_line_parts)
-            lines.append(day_plus_line)
+            lines.append(separator.join(day_plus_line_parts))
 
-        # If peak has passed, add it at the end
+        # Once today's peak has passed, report it at the end.
         if not future_watts and watts:
-            # Find max from today's timestamps (converted to local)
-            today_watts = []
-            for ts, power in watts.items():
-                local_date = get_local_date_from_timestamp(ts)
-                if local_date == today:
-                    today_watts.append(power)
+            today_watts = [power for ts, power in watts.items() if local_date_of(ts) == today]
             if today_watts:
-                past_max = max(today_watts)
-                lines.append(self.translate('commands.solarforecast.labels.peak_past', watts=past_max))
+                lines.append(self.translate('commands.solarforecast.labels.peak_past', watts=max(today_watts)))
 
-        # Join lines with newlines
-        full_message = "\n".join(lines)
-
-        return full_message
+        return "\n".join(lines)
 
     async def _send_forecast_response(self, message: MeshMessage, forecast_text: str):
         """Send forecast response, splitting into multiple messages if needed"""

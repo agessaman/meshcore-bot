@@ -1,0 +1,1500 @@
+{
+ "points_url": "https://api.weather.gov/points/25.7617,-80.1918",
+ "points": {
+  "id": "https://api.weather.gov/points/25.7617,-80.1918",
+  "type": "Feature",
+  "properties": {
+   "@id": "https://api.weather.gov/points/25.7617,-80.1918",
+   "@type": "wx:Point",
+   "cwa": "MFL",
+   "type": "land",
+   "forecastOffice": "https://api.weather.gov/offices/MFL",
+   "gridId": "MFL",
+   "gridX": 110,
+   "gridY": 50,
+   "forecast": "https://api.weather.gov/gridpoints/MFL/110,50/forecast",
+   "forecastHourly": "https://api.weather.gov/gridpoints/MFL/110,50/forecast/hourly",
+   "forecastGridData": "https://api.weather.gov/gridpoints/MFL/110,50",
+   "observationStations": "https://api.weather.gov/gridpoints/MFL/110,50/stations",
+   "timeZone": "America/New_York",
+   "radarStation": "KAMX",
+   "astronomicalData": {
+    "sunrise": "2026-10-01T07:13:07-04:00",
+    "sunset": "2026-10-01T19:07:34-04:00",
+    "transit": "2026-10-01T13:10:20-04:00",
+    "civilTwilightBegin": "2026-10-01T06:50:13-04:00",
+    "civilTwilightEnd": "2026-10-01T19:30:28-04:00",
+    "nauticalTwilightBegin": "2026-10-01T06:23:34-04:00",
+    "nauticalTwilightEnd": "2026-10-01T19:57:07-04:00",
+    "astronomicalTwilightBegin": "2026-10-01T05:56:52-04:00",
+    "astronomicalTwilightEnd": "2026-10-01T20:23:49-04:00"
+   },
+   "nwr": {
+    "transmitter": "WZ2531",
+    "sameCode": "012086",
+    "areaBroadcast": "https://api.weather.gov/radio/WZ2531/broadcast",
+    "pointBroadcast": "https://api.weather.gov/points/25.7617,-80.1918/radio"
+   }
+  }
+ },
+ "forecast_url": "https://api.weather.gov/gridpoints/MFL/110,50/forecast",
+ "forecast": {
+  "type": "Feature",
+  "properties": {
+   "units": "us",
+   "forecastGenerator": "BaselineForecastGenerator",
+   "generatedAt": "2026-10-01T22:33:03+00:00",
+   "updateTime": "2026-10-01T20:17:07+00:00",
+   "validTimes": "2026-10-01T14:00:00+00:00/P7DT11H",
+   "elevation": {
+    "unitCode": "wmoUnit:m",
+    "value": 0.9144
+   },
+   "periods": [
+    {
+     "number": 1,
+     "name": "Tonight",
+     "startTime": "2026-10-01T18:00:00-04:00",
+     "endTime": "2026-10-02T06:00:00-04:00",
+     "isDaytime": false,
+     "temperature": 81,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 43
+     },
+     "windSpeed": "17 mph",
+     "windDirection": "E",
+     "icon": "https://api.weather.gov/icons/land/night/tsra_sct,40?size=medium",
+     "shortForecast": "Chance Showers And Thunderstorms",
+     "detailedForecast": "A chance of showers and thunderstorms. Mostly cloudy, with a low around 81. East wind around 17 mph, with gusts as high as 21 mph. Chance of precipitation is 40%. New rainfall amounts less than a tenth of an inch possible."
+    },
+    {
+     "number": 2,
+     "name": "Friday",
+     "startTime": "2026-10-02T06:00:00-04:00",
+     "endTime": "2026-10-02T18:00:00-04:00",
+     "isDaytime": true,
+     "temperature": 88,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 35
+     },
+     "windSpeed": "14 to 18 mph",
+     "windDirection": "SE",
+     "icon": "https://api.weather.gov/icons/land/day/tsra_sct,40/tsra_sct,30?size=medium",
+     "shortForecast": "Chance Showers And Thunderstorms",
+     "detailedForecast": "A chance of showers and thunderstorms before 8am, then a chance of showers and thunderstorms between 8am and 9am, then a chance of showers and thunderstorms. Partly sunny, with a high near 88. Heat index values as high as 104. Southeast wind 14 to 18 mph, with gusts as high as 22 mph. Chance of precipitation is 40%. New rainfall amounts less than a tenth of an inch possible."
+    },
+    {
+     "number": 3,
+     "name": "Friday Night",
+     "startTime": "2026-10-02T18:00:00-04:00",
+     "endTime": "2026-10-03T06:00:00-04:00",
+     "isDaytime": false,
+     "temperature": 81,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 45
+     },
+     "windSpeed": "15 mph",
+     "windDirection": "E",
+     "icon": "https://api.weather.gov/icons/land/night/tsra_hi,50/tsra_hi,40?size=medium",
+     "shortForecast": "Chance Showers And Thunderstorms",
+     "detailedForecast": "A chance of showers and thunderstorms before 3am, then a chance of showers and thunderstorms. Partly cloudy, with a low around 81. East wind around 15 mph, with gusts as high as 18 mph. Chance of precipitation is 50%. New rainfall amounts less than a tenth of an inch possible."
+    },
+    {
+     "number": 4,
+     "name": "Saturday",
+     "startTime": "2026-10-03T06:00:00-04:00",
+     "endTime": "2026-10-03T18:00:00-04:00",
+     "isDaytime": true,
+     "temperature": 88,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 37
+     },
+     "windSpeed": "15 mph",
+     "windDirection": "E",
+     "icon": "https://api.weather.gov/icons/land/day/tsra_hi,40?size=medium",
+     "shortForecast": "Chance Showers And Thunderstorms",
+     "detailedForecast": "A chance of showers and thunderstorms before 8am, then a chance of showers and thunderstorms. Mostly sunny, with a high near 88. Heat index values as high as 103. East wind around 15 mph, with gusts as high as 20 mph. Chance of precipitation is 40%."
+    },
+    {
+     "number": 5,
+     "name": "Saturday Night",
+     "startTime": "2026-10-03T18:00:00-04:00",
+     "endTime": "2026-10-04T06:00:00-04:00",
+     "isDaytime": false,
+     "temperature": 81,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 36
+     },
+     "windSpeed": "14 mph",
+     "windDirection": "E",
+     "icon": "https://api.weather.gov/icons/land/night/tsra_hi,40/tsra_hi,20?size=medium",
+     "shortForecast": "Chance Showers And Thunderstorms",
+     "detailedForecast": "A chance of showers and thunderstorms before 2am. Partly cloudy, with a low around 81. East wind around 14 mph. Chance of precipitation is 40%."
+    },
+    {
+     "number": 6,
+     "name": "Sunday",
+     "startTime": "2026-10-04T06:00:00-04:00",
+     "endTime": "2026-10-04T18:00:00-04:00",
+     "isDaytime": true,
+     "temperature": 88,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 20
+     },
+     "windSpeed": "13 mph",
+     "windDirection": "E",
+     "icon": "https://api.weather.gov/icons/land/day/few/tsra_hi,20?size=medium",
+     "shortForecast": "Sunny then Slight Chance Showers And Thunderstorms",
+     "detailedForecast": "A slight chance of showers and thunderstorms after 2pm. Sunny, with a high near 88. East wind around 13 mph. Chance of precipitation is 20%."
+    },
+    {
+     "number": 7,
+     "name": "Sunday Night",
+     "startTime": "2026-10-04T18:00:00-04:00",
+     "endTime": "2026-10-05T06:00:00-04:00",
+     "isDaytime": false,
+     "temperature": 79,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 20
+     },
+     "windSpeed": "6 to 9 mph",
+     "windDirection": "E",
+     "icon": "https://api.weather.gov/icons/land/night/tsra_hi,20/sct?size=medium",
+     "shortForecast": "Slight Chance Showers And Thunderstorms then Partly Cloudy",
+     "detailedForecast": "A slight chance of showers and thunderstorms before 8pm. Partly cloudy, with a low around 79. East wind 6 to 9 mph. Chance of precipitation is 20%."
+    },
+    {
+     "number": 8,
+     "name": "Monday",
+     "startTime": "2026-10-05T06:00:00-04:00",
+     "endTime": "2026-10-05T18:00:00-04:00",
+     "isDaytime": true,
+     "temperature": 89,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 37
+     },
+     "windSpeed": "8 mph",
+     "windDirection": "SE",
+     "icon": "https://api.weather.gov/icons/land/day/sct/tsra_hi,40?size=medium",
+     "shortForecast": "Mostly Sunny then Chance Showers And Thunderstorms",
+     "detailedForecast": "A chance of showers and thunderstorms after 2pm. Mostly sunny, with a high near 89. Southeast wind around 8 mph. Chance of precipitation is 40%."
+    },
+    {
+     "number": 9,
+     "name": "Monday Night",
+     "startTime": "2026-10-05T18:00:00-04:00",
+     "endTime": "2026-10-06T06:00:00-04:00",
+     "isDaytime": false,
+     "temperature": 77,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 37
+     },
+     "windSpeed": "2 to 6 mph",
+     "windDirection": "SE",
+     "icon": "https://api.weather.gov/icons/land/night/tsra_hi,40/tsra_hi,20?size=medium",
+     "shortForecast": "Chance Showers And Thunderstorms",
+     "detailedForecast": "A chance of showers and thunderstorms. Partly cloudy, with a low around 77. Southeast wind 2 to 6 mph. Chance of precipitation is 40%."
+    },
+    {
+     "number": 10,
+     "name": "Tuesday",
+     "startTime": "2026-10-06T06:00:00-04:00",
+     "endTime": "2026-10-06T18:00:00-04:00",
+     "isDaytime": true,
+     "temperature": 88,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 62
+     },
+     "windSpeed": "3 to 7 mph",
+     "windDirection": "SE",
+     "icon": "https://api.weather.gov/icons/land/day/tsra_hi,20/tsra_hi,60?size=medium",
+     "shortForecast": "Slight Chance Showers And Thunderstorms",
+     "detailedForecast": "A slight chance of showers and thunderstorms before 2pm, then showers and thunderstorms likely. Mostly sunny, with a high near 88. Chance of precipitation is 60%."
+    },
+    {
+     "number": 11,
+     "name": "Tuesday Night",
+     "startTime": "2026-10-06T18:00:00-04:00",
+     "endTime": "2026-10-07T06:00:00-04:00",
+     "isDaytime": false,
+     "temperature": 77,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 62
+     },
+     "windSpeed": "5 mph",
+     "windDirection": "S",
+     "icon": "https://api.weather.gov/icons/land/night/tsra_hi,60/tsra_hi,30?size=medium",
+     "shortForecast": "Showers And Thunderstorms Likely then Chance Showers And Thunderstorms",
+     "detailedForecast": "Showers and thunderstorms likely before 8pm, then a chance of showers and thunderstorms. Mostly cloudy, with a low around 77. Chance of precipitation is 60%."
+    },
+    {
+     "number": 12,
+     "name": "Wednesday",
+     "startTime": "2026-10-07T06:00:00-04:00",
+     "endTime": "2026-10-07T18:00:00-04:00",
+     "isDaytime": true,
+     "temperature": 88,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 69
+     },
+     "windSpeed": "3 to 8 mph",
+     "windDirection": "S",
+     "icon": "https://api.weather.gov/icons/land/day/tsra_hi,30/tsra_hi,70?size=medium",
+     "shortForecast": "Chance Showers And Thunderstorms",
+     "detailedForecast": "A chance of showers and thunderstorms before 2pm, then showers and thunderstorms likely. Partly sunny, with a high near 88. Chance of precipitation is 70%."
+    },
+    {
+     "number": 13,
+     "name": "Wednesday Night",
+     "startTime": "2026-10-07T18:00:00-04:00",
+     "endTime": "2026-10-08T06:00:00-04:00",
+     "isDaytime": false,
+     "temperature": 77,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 69
+     },
+     "windSpeed": "5 mph",
+     "windDirection": "S",
+     "icon": "https://api.weather.gov/icons/land/night/tsra_hi,70/tsra_hi,40?size=medium",
+     "shortForecast": "Showers And Thunderstorms Likely then Chance Showers And Thunderstorms",
+     "detailedForecast": "Showers and thunderstorms likely before 8pm, then a chance of showers and thunderstorms. Mostly cloudy, with a low around 77. Chance of precipitation is 70%."
+    },
+    {
+     "number": 14,
+     "name": "Thursday",
+     "startTime": "2026-10-08T06:00:00-04:00",
+     "endTime": "2026-10-08T18:00:00-04:00",
+     "isDaytime": true,
+     "temperature": 88,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 61
+     },
+     "windSpeed": "5 to 8 mph",
+     "windDirection": "S",
+     "icon": "https://api.weather.gov/icons/land/day/tsra_hi,30/tsra_hi,60?size=medium",
+     "shortForecast": "Showers And Thunderstorms Likely",
+     "detailedForecast": "A slight chance of rain showers before 8am, then showers and thunderstorms likely. Mostly sunny, with a high near 88."
+    }
+   ]
+  }
+ },
+ "stations_url": "https://api.weather.gov/gridpoints/MFL/110,50/stations",
+ "stations": {
+  "type": "FeatureCollection",
+  "features": [
+   {
+    "id": "https://api.weather.gov/stations/KMIA",
+    "type": "Feature",
+    "properties": {
+     "@id": "https://api.weather.gov/stations/KMIA",
+     "@type": "wx:ObservationStation",
+     "elevation": {
+      "unitCode": "wmoUnit:m",
+      "value": 3.048
+     },
+     "stationIdentifier": "KMIA",
+     "name": "Miami, Miami International Airport",
+     "timeZone": "America/New_York",
+     "provider": "ASOS-HFM",
+     "subProvider": "",
+     "distance": {
+      "unitCode": "wmoUnit:m",
+      "value": 13352.943132011
+     },
+     "bearing": {
+      "unitCode": "wmoUnit:degree_(angle)",
+      "value": 285
+     },
+     "forecast": "https://api.weather.gov/zones/forecast/FLZ074"
+    }
+   },
+   {
+    "id": "https://api.weather.gov/stations/KOPF",
+    "type": "Feature",
+    "properties": {
+     "@id": "https://api.weather.gov/stations/KOPF",
+     "@type": "wx:ObservationStation",
+     "elevation": {
+      "unitCode": "wmoUnit:m",
+      "value": 3.048
+     },
+     "stationIdentifier": "KOPF",
+     "name": "Miami, Opa Locka Airport",
+     "timeZone": "America/New_York",
+     "provider": "ASOS-HFM",
+     "subProvider": "",
+     "distance": {
+      "unitCode": "wmoUnit:m",
+      "value": 19269.596429138
+     },
+     "bearing": {
+      "unitCode": "wmoUnit:degree_(angle)",
+      "value": 330
+     },
+     "forecast": "https://api.weather.gov/zones/forecast/FLZ074"
+    }
+   }
+  ],
+  "observationStations": [
+   "https://api.weather.gov/stations/KMIA",
+   "https://api.weather.gov/stations/KOPF",
+   "https://api.weather.gov/stations/KHWO",
+   "https://api.weather.gov/stations/KTMB",
+   "https://api.weather.gov/stations/KHST",
+   "https://api.weather.gov/stations/KFLL",
+   "https://api.weather.gov/stations/KFXE",
+   "https://api.weather.gov/stations/KPMP",
+   "https://api.weather.gov/stations/KDJT",
+   "https://api.weather.gov/stations/KMTH",
+   "https://api.weather.gov/stations/KSUA",
+   "https://api.weather.gov/stations/KAPF",
+   "https://api.weather.gov/stations/KRSW",
+   "https://api.weather.gov/stations/KOBE",
+   "https://api.weather.gov/stations/KFMY",
+   "https://api.weather.gov/stations/KFPR",
+   "https://api.weather.gov/stations/KNQX",
+   "https://api.weather.gov/stations/KEYW",
+   "https://api.weather.gov/stations/KPGD",
+   "https://api.weather.gov/stations/KSRQ"
+  ],
+  "pagination": {
+   "next": "https://api.weather.gov/stations?id%5B0%5D=K2IS&id%5B1%5D=KAPF&id%5B2%5D=KDJT&id%5B3%5D=KEYW&id%5B4%5D=KFLL&id%5B5%5D=KFMY&id%5B6%5D=KFPR&id%5B7%5D=KFXE&id%5B8%5D=KHST&id%5B9%5D=KHWO&id%5B10%5D=KMIA&id%5B11%5D=KMTH&id%5B12%5D=KNQX&id%5B13%5D=KOBE&id%5B14%5D=KOPF&id%5B15%5D=KPGD&id%5B16%5D=KPMP&id%5B17%5D=KRSW&id%5B18%5D=KSRQ&id%5B19%5D=KSUA&id%5B20%5D=KTMB&cursor=eyJzIjo1MDB9"
+  }
+ },
+ "observation_url": "https://api.weather.gov/stations/KMIA/observations/latest",
+ "observation": {
+  "id": "https://api.weather.gov/stations/KMIA/observations/2026-10-01T22:20:00+00:00",
+  "type": "Feature",
+  "properties": {
+   "@id": "https://api.weather.gov/stations/KMIA/observations/2026-10-01T22:20:00+00:00",
+   "@type": "wx:ObservationStation",
+   "elevation": {
+    "unitCode": "wmoUnit:m",
+    "value": 4
+   },
+   "station": "https://api.weather.gov/stations/KMIA",
+   "stationId": "KMIA",
+   "stationName": "Miami, Miami International Airport",
+   "timestamp": "2026-10-01T22:20:00+00:00",
+   "rawMessage": "",
+   "textDescription": "Rain",
+   "icon": "https://api.weather.gov/icons/land/day/rain?size=medium",
+   "presentWeather": [
+    {
+     "intensity": null,
+     "modifier": null,
+     "weather": "rain",
+     "rawString": "RA"
+    }
+   ],
+   "temperature": {
+    "unitCode": "wmoUnit:degC",
+    "value": 25,
+    "qualityControl": "V"
+   },
+   "dewpoint": {
+    "unitCode": "wmoUnit:degC",
+    "value": 23,
+    "qualityControl": "V"
+   },
+   "windDirection": {
+    "unitCode": "wmoUnit:degree_(angle)",
+    "value": 80,
+    "qualityControl": "V"
+   },
+   "windSpeed": {
+    "unitCode": "wmoUnit:km_h-1",
+    "value": 12.96,
+    "qualityControl": "V"
+   },
+   "windGust": {
+    "unitCode": "wmoUnit:km_h-1",
+    "value": null,
+    "qualityControl": "Z"
+   },
+   "barometricPressure": {
+    "unitCode": "wmoUnit:Pa",
+    "value": 101557.8,
+    "qualityControl": "V"
+   },
+   "seaLevelPressure": {
+    "unitCode": "wmoUnit:Pa",
+    "value": null,
+    "qualityControl": "Z"
+   },
+   "visibility": {
+    "unitCode": "wmoUnit:m",
+    "value": 11265.41,
+    "qualityControl": "C"
+   },
+   "maxTemperatureLast24Hours": {
+    "unitCode": "wmoUnit:degC",
+    "value": null
+   },
+   "minTemperatureLast24Hours": {
+    "unitCode": "wmoUnit:degC",
+    "value": null
+   },
+   "precipitationLast3Hours": {
+    "unitCode": "wmoUnit:mm",
+    "value": null,
+    "qualityControl": "Z"
+   },
+   "relativeHumidity": {
+    "unitCode": "wmoUnit:percent",
+    "value": 88.67956137467,
+    "qualityControl": "V"
+   },
+   "windChill": {
+    "unitCode": "wmoUnit:degC",
+    "value": null,
+    "qualityControl": "V"
+   },
+   "heatIndex": {
+    "unitCode": "wmoUnit:degC",
+    "value": 25.871077435894446,
+    "qualityControl": "V"
+   },
+   "cloudLayers": [
+    {
+     "base": {
+      "unitCode": "wmoUnit:m",
+      "value": 3352.8
+     },
+     "amount": "BKN"
+    }
+   ]
+  }
+ },
+ "hourly_url": "https://api.weather.gov/gridpoints/MFL/110,50/forecast/hourly",
+ "hourly": {
+  "type": "Feature",
+  "properties": {
+   "units": "us",
+   "forecastGenerator": "HourlyForecastGenerator",
+   "generatedAt": "2026-10-01T22:09:27+00:00",
+   "updateTime": "2026-10-01T20:17:07+00:00",
+   "validTimes": "2026-10-01T14:00:00+00:00/P7DT11H",
+   "elevation": {
+    "unitCode": "wmoUnit:m",
+    "value": 0.9144
+   },
+   "periods": [
+    {
+     "number": 1,
+     "name": "",
+     "startTime": "2026-10-01T18:00:00-04:00",
+     "endTime": "2026-10-01T19:00:00-04:00",
+     "isDaytime": false,
+     "temperature": 83,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 38
+     },
+     "dewpoint": {
+      "unitCode": "wmoUnit:degC",
+      "value": 26.11111111111111
+     },
+     "relativeHumidity": {
+      "unitCode": "wmoUnit:percent",
+      "value": 88
+     },
+     "windSpeed": "15 mph",
+     "windDirection": "E",
+     "icon": "https://api.weather.gov/icons/land/night/tsra,40?size=small",
+     "shortForecast": "Chance Showers And Thunderstorms",
+     "detailedForecast": ""
+    },
+    {
+     "number": 2,
+     "name": "",
+     "startTime": "2026-10-01T19:00:00-04:00",
+     "endTime": "2026-10-01T20:00:00-04:00",
+     "isDaytime": false,
+     "temperature": 83,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 34
+     },
+     "dewpoint": {
+      "unitCode": "wmoUnit:degC",
+      "value": 25.555555555555557
+     },
+     "relativeHumidity": {
+      "unitCode": "wmoUnit:percent",
+      "value": 85
+     },
+     "windSpeed": "15 mph",
+     "windDirection": "E",
+     "icon": "https://api.weather.gov/icons/land/night/tsra_sct,30?size=small",
+     "shortForecast": "Chance Showers And Thunderstorms",
+     "detailedForecast": ""
+    },
+    {
+     "number": 3,
+     "name": "",
+     "startTime": "2026-10-01T20:00:00-04:00",
+     "endTime": "2026-10-01T21:00:00-04:00",
+     "isDaytime": false,
+     "temperature": 82,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 43
+     },
+     "dewpoint": {
+      "unitCode": "wmoUnit:degC",
+      "value": 25.555555555555557
+     },
+     "relativeHumidity": {
+      "unitCode": "wmoUnit:percent",
+      "value": 88
+     },
+     "windSpeed": "15 mph",
+     "windDirection": "E",
+     "icon": "https://api.weather.gov/icons/land/night/tsra_sct,40?size=small",
+     "shortForecast": "Chance Showers And Thunderstorms",
+     "detailedForecast": ""
+    },
+    {
+     "number": 4,
+     "name": "",
+     "startTime": "2026-10-01T21:00:00-04:00",
+     "endTime": "2026-10-01T22:00:00-04:00",
+     "isDaytime": false,
+     "temperature": 83,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 39
+     },
+     "dewpoint": {
+      "unitCode": "wmoUnit:degC",
+      "value": 26.11111111111111
+     },
+     "relativeHumidity": {
+      "unitCode": "wmoUnit:percent",
+      "value": 88
+     },
+     "windSpeed": "16 mph",
+     "windDirection": "E",
+     "icon": "https://api.weather.gov/icons/land/night/tsra_sct,40?size=small",
+     "shortForecast": "Chance Showers And Thunderstorms",
+     "detailedForecast": ""
+    },
+    {
+     "number": 5,
+     "name": "",
+     "startTime": "2026-10-01T22:00:00-04:00",
+     "endTime": "2026-10-01T23:00:00-04:00",
+     "isDaytime": false,
+     "temperature": 83,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 34
+     },
+     "dewpoint": {
+      "unitCode": "wmoUnit:degC",
+      "value": 25.555555555555557
+     },
+     "relativeHumidity": {
+      "unitCode": "wmoUnit:percent",
+      "value": 85
+     },
+     "windSpeed": "17 mph",
+     "windDirection": "E",
+     "icon": "https://api.weather.gov/icons/land/night/tsra_sct,30?size=small",
+     "shortForecast": "Chance Showers And Thunderstorms",
+     "detailedForecast": ""
+    },
+    {
+     "number": 6,
+     "name": "",
+     "startTime": "2026-10-01T23:00:00-04:00",
+     "endTime": "2026-10-02T00:00:00-04:00",
+     "isDaytime": false,
+     "temperature": 83,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 35
+     },
+     "dewpoint": {
+      "unitCode": "wmoUnit:degC",
+      "value": 25.555555555555557
+     },
+     "relativeHumidity": {
+      "unitCode": "wmoUnit:percent",
+      "value": 85
+     },
+     "windSpeed": "17 mph",
+     "windDirection": "E",
+     "icon": "https://api.weather.gov/icons/land/night/tsra_hi,40?size=small",
+     "shortForecast": "Chance Showers And Thunderstorms",
+     "detailedForecast": ""
+    },
+    {
+     "number": 7,
+     "name": "",
+     "startTime": "2026-10-02T00:00:00-04:00",
+     "endTime": "2026-10-02T01:00:00-04:00",
+     "isDaytime": false,
+     "temperature": 83,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 33
+     },
+     "dewpoint": {
+      "unitCode": "wmoUnit:degC",
+      "value": 25.555555555555557
+     },
+     "relativeHumidity": {
+      "unitCode": "wmoUnit:percent",
+      "value": 85
+     },
+     "windSpeed": "17 mph",
+     "windDirection": "E",
+     "icon": "https://api.weather.gov/icons/land/night/tsra_hi,30?size=small",
+     "shortForecast": "Chance Showers And Thunderstorms",
+     "detailedForecast": ""
+    },
+    {
+     "number": 8,
+     "name": "",
+     "startTime": "2026-10-02T01:00:00-04:00",
+     "endTime": "2026-10-02T02:00:00-04:00",
+     "isDaytime": false,
+     "temperature": 83,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 34
+     },
+     "dewpoint": {
+      "unitCode": "wmoUnit:degC",
+      "value": 25.555555555555557
+     },
+     "relativeHumidity": {
+      "unitCode": "wmoUnit:percent",
+      "value": 85
+     },
+     "windSpeed": "17 mph",
+     "windDirection": "E",
+     "icon": "https://api.weather.gov/icons/land/night/tsra_hi,30?size=small",
+     "shortForecast": "Chance Showers And Thunderstorms",
+     "detailedForecast": ""
+    },
+    {
+     "number": 9,
+     "name": "",
+     "startTime": "2026-10-02T02:00:00-04:00",
+     "endTime": "2026-10-02T03:00:00-04:00",
+     "isDaytime": false,
+     "temperature": 83,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 31
+     },
+     "dewpoint": {
+      "unitCode": "wmoUnit:degC",
+      "value": 25.555555555555557
+     },
+     "relativeHumidity": {
+      "unitCode": "wmoUnit:percent",
+      "value": 85
+     },
+     "windSpeed": "16 mph",
+     "windDirection": "E",
+     "icon": "https://api.weather.gov/icons/land/night/tsra_hi,30?size=small",
+     "shortForecast": "Chance Showers And Thunderstorms",
+     "detailedForecast": ""
+    },
+    {
+     "number": 10,
+     "name": "",
+     "startTime": "2026-10-02T03:00:00-04:00",
+     "endTime": "2026-10-02T04:00:00-04:00",
+     "isDaytime": false,
+     "temperature": 83,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 36
+     },
+     "dewpoint": {
+      "unitCode": "wmoUnit:degC",
+      "value": 25.555555555555557
+     },
+     "relativeHumidity": {
+      "unitCode": "wmoUnit:percent",
+      "value": 85
+     },
+     "windSpeed": "17 mph",
+     "windDirection": "E",
+     "icon": "https://api.weather.gov/icons/land/night/tsra_sct,40?size=small",
+     "shortForecast": "Chance Showers And Thunderstorms",
+     "detailedForecast": ""
+    },
+    {
+     "number": 11,
+     "name": "",
+     "startTime": "2026-10-02T04:00:00-04:00",
+     "endTime": "2026-10-02T05:00:00-04:00",
+     "isDaytime": false,
+     "temperature": 83,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 36
+     },
+     "dewpoint": {
+      "unitCode": "wmoUnit:degC",
+      "value": 25.555555555555557
+     },
+     "relativeHumidity": {
+      "unitCode": "wmoUnit:percent",
+      "value": 85
+     },
+     "windSpeed": "17 mph",
+     "windDirection": "E",
+     "icon": "https://api.weather.gov/icons/land/night/tsra_sct,40?size=small",
+     "shortForecast": "Chance Showers And Thunderstorms",
+     "detailedForecast": ""
+    },
+    {
+     "number": 12,
+     "name": "",
+     "startTime": "2026-10-02T05:00:00-04:00",
+     "endTime": "2026-10-02T06:00:00-04:00",
+     "isDaytime": false,
+     "temperature": 82,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 34
+     },
+     "dewpoint": {
+      "unitCode": "wmoUnit:degC",
+      "value": 25.555555555555557
+     },
+     "relativeHumidity": {
+      "unitCode": "wmoUnit:percent",
+      "value": 88
+     },
+     "windSpeed": "17 mph",
+     "windDirection": "E",
+     "icon": "https://api.weather.gov/icons/land/night/tsra_sct,30?size=small",
+     "shortForecast": "Chance Showers And Thunderstorms",
+     "detailedForecast": ""
+    },
+    {
+     "number": 13,
+     "name": "",
+     "startTime": "2026-10-02T06:00:00-04:00",
+     "endTime": "2026-10-02T07:00:00-04:00",
+     "isDaytime": true,
+     "temperature": 83,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 35
+     },
+     "dewpoint": {
+      "unitCode": "wmoUnit:degC",
+      "value": 25.555555555555557
+     },
+     "relativeHumidity": {
+      "unitCode": "wmoUnit:percent",
+      "value": 85
+     },
+     "windSpeed": "17 mph",
+     "windDirection": "E",
+     "icon": "https://api.weather.gov/icons/land/day/tsra_sct,40?size=small",
+     "shortForecast": "Chance Showers And Thunderstorms",
+     "detailedForecast": ""
+    },
+    {
+     "number": 14,
+     "name": "",
+     "startTime": "2026-10-02T07:00:00-04:00",
+     "endTime": "2026-10-02T08:00:00-04:00",
+     "isDaytime": true,
+     "temperature": 82,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 27
+     },
+     "dewpoint": {
+      "unitCode": "wmoUnit:degC",
+      "value": 25.555555555555557
+     },
+     "relativeHumidity": {
+      "unitCode": "wmoUnit:percent",
+      "value": 88
+     },
+     "windSpeed": "18 mph",
+     "windDirection": "E",
+     "icon": "https://api.weather.gov/icons/land/day/tsra_sct,30?size=small",
+     "shortForecast": "Chance Showers And Thunderstorms",
+     "detailedForecast": ""
+    },
+    {
+     "number": 15,
+     "name": "",
+     "startTime": "2026-10-02T08:00:00-04:00",
+     "endTime": "2026-10-02T09:00:00-04:00",
+     "isDaytime": true,
+     "temperature": 83,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 27
+     },
+     "dewpoint": {
+      "unitCode": "wmoUnit:degC",
+      "value": 25.555555555555557
+     },
+     "relativeHumidity": {
+      "unitCode": "wmoUnit:percent",
+      "value": 85
+     },
+     "windSpeed": "17 mph",
+     "windDirection": "E",
+     "icon": "https://api.weather.gov/icons/land/day/tsra_sct,30?size=small",
+     "shortForecast": "Chance Showers And Thunderstorms",
+     "detailedForecast": ""
+    },
+    {
+     "number": 16,
+     "name": "",
+     "startTime": "2026-10-02T09:00:00-04:00",
+     "endTime": "2026-10-02T10:00:00-04:00",
+     "isDaytime": true,
+     "temperature": 84,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 22
+     },
+     "dewpoint": {
+      "unitCode": "wmoUnit:degC",
+      "value": 26.11111111111111
+     },
+     "relativeHumidity": {
+      "unitCode": "wmoUnit:percent",
+      "value": 85
+     },
+     "windSpeed": "17 mph",
+     "windDirection": "E",
+     "icon": "https://api.weather.gov/icons/land/day/tsra_hi,20?size=small",
+     "shortForecast": "Slight Chance Showers And Thunderstorms",
+     "detailedForecast": ""
+    },
+    {
+     "number": 17,
+     "name": "",
+     "startTime": "2026-10-02T10:00:00-04:00",
+     "endTime": "2026-10-02T11:00:00-04:00",
+     "isDaytime": true,
+     "temperature": 84,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 21
+     },
+     "dewpoint": {
+      "unitCode": "wmoUnit:degC",
+      "value": 26.666666666666668
+     },
+     "relativeHumidity": {
+      "unitCode": "wmoUnit:percent",
+      "value": 88
+     },
+     "windSpeed": "17 mph",
+     "windDirection": "E",
+     "icon": "https://api.weather.gov/icons/land/day/tsra_sct,20?size=small",
+     "shortForecast": "Slight Chance Showers And Thunderstorms",
+     "detailedForecast": ""
+    },
+    {
+     "number": 18,
+     "name": "",
+     "startTime": "2026-10-02T11:00:00-04:00",
+     "endTime": "2026-10-02T12:00:00-04:00",
+     "isDaytime": true,
+     "temperature": 84,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 22
+     },
+     "dewpoint": {
+      "unitCode": "wmoUnit:degC",
+      "value": 26.666666666666668
+     },
+     "relativeHumidity": {
+      "unitCode": "wmoUnit:percent",
+      "value": 88
+     },
+     "windSpeed": "16 mph",
+     "windDirection": "SE",
+     "icon": "https://api.weather.gov/icons/land/day/tsra_sct,20?size=small",
+     "shortForecast": "Slight Chance Showers And Thunderstorms",
+     "detailedForecast": ""
+    },
+    {
+     "number": 19,
+     "name": "",
+     "startTime": "2026-10-02T12:00:00-04:00",
+     "endTime": "2026-10-02T13:00:00-04:00",
+     "isDaytime": true,
+     "temperature": 85,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 20
+     },
+     "dewpoint": {
+      "unitCode": "wmoUnit:degC",
+      "value": 27.22222222222222
+     },
+     "relativeHumidity": {
+      "unitCode": "wmoUnit:percent",
+      "value": 88
+     },
+     "windSpeed": "15 mph",
+     "windDirection": "E",
+     "icon": "https://api.weather.gov/icons/land/day/tsra_hi,20?size=small",
+     "shortForecast": "Slight Chance Showers And Thunderstorms",
+     "detailedForecast": ""
+    },
+    {
+     "number": 20,
+     "name": "",
+     "startTime": "2026-10-02T13:00:00-04:00",
+     "endTime": "2026-10-02T14:00:00-04:00",
+     "isDaytime": true,
+     "temperature": 86,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 25
+     },
+     "dewpoint": {
+      "unitCode": "wmoUnit:degC",
+      "value": 27.22222222222222
+     },
+     "relativeHumidity": {
+      "unitCode": "wmoUnit:percent",
+      "value": 85
+     },
+     "windSpeed": "16 mph",
+     "windDirection": "SE",
+     "icon": "https://api.weather.gov/icons/land/day/tsra_sct,30?size=small",
+     "shortForecast": "Chance Showers And Thunderstorms",
+     "detailedForecast": ""
+    },
+    {
+     "number": 21,
+     "name": "",
+     "startTime": "2026-10-02T14:00:00-04:00",
+     "endTime": "2026-10-02T15:00:00-04:00",
+     "isDaytime": true,
+     "temperature": 86,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 28
+     },
+     "dewpoint": {
+      "unitCode": "wmoUnit:degC",
+      "value": 27.22222222222222
+     },
+     "relativeHumidity": {
+      "unitCode": "wmoUnit:percent",
+      "value": 85
+     },
+     "windSpeed": "15 mph",
+     "windDirection": "SE",
+     "icon": "https://api.weather.gov/icons/land/day/tsra_sct,30?size=small",
+     "shortForecast": "Chance Showers And Thunderstorms",
+     "detailedForecast": ""
+    },
+    {
+     "number": 22,
+     "name": "",
+     "startTime": "2026-10-02T15:00:00-04:00",
+     "endTime": "2026-10-02T16:00:00-04:00",
+     "isDaytime": true,
+     "temperature": 87,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 30
+     },
+     "dewpoint": {
+      "unitCode": "wmoUnit:degC",
+      "value": 27.22222222222222
+     },
+     "relativeHumidity": {
+      "unitCode": "wmoUnit:percent",
+      "value": 82
+     },
+     "windSpeed": "15 mph",
+     "windDirection": "SE",
+     "icon": "https://api.weather.gov/icons/land/day/tsra_sct,30?size=small",
+     "shortForecast": "Chance Showers And Thunderstorms",
+     "detailedForecast": ""
+    },
+    {
+     "number": 23,
+     "name": "",
+     "startTime": "2026-10-02T16:00:00-04:00",
+     "endTime": "2026-10-02T17:00:00-04:00",
+     "isDaytime": true,
+     "temperature": 86,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 33
+     },
+     "dewpoint": {
+      "unitCode": "wmoUnit:degC",
+      "value": 27.22222222222222
+     },
+     "relativeHumidity": {
+      "unitCode": "wmoUnit:percent",
+      "value": 85
+     },
+     "windSpeed": "14 mph",
+     "windDirection": "E",
+     "icon": "https://api.weather.gov/icons/land/day/tsra_sct,30?size=small",
+     "shortForecast": "Chance Showers And Thunderstorms",
+     "detailedForecast": ""
+    },
+    {
+     "number": 24,
+     "name": "",
+     "startTime": "2026-10-02T17:00:00-04:00",
+     "endTime": "2026-10-02T18:00:00-04:00",
+     "isDaytime": true,
+     "temperature": 85,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 33
+     },
+     "dewpoint": {
+      "unitCode": "wmoUnit:degC",
+      "value": 26.666666666666668
+     },
+     "relativeHumidity": {
+      "unitCode": "wmoUnit:percent",
+      "value": 85
+     },
+     "windSpeed": "14 mph",
+     "windDirection": "E",
+     "icon": "https://api.weather.gov/icons/land/day/tsra_sct,30?size=small",
+     "shortForecast": "Chance Showers And Thunderstorms",
+     "detailedForecast": ""
+    },
+    {
+     "number": 25,
+     "name": "",
+     "startTime": "2026-10-02T18:00:00-04:00",
+     "endTime": "2026-10-02T19:00:00-04:00",
+     "isDaytime": false,
+     "temperature": 85,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 30
+     },
+     "dewpoint": {
+      "unitCode": "wmoUnit:degC",
+      "value": 26.666666666666668
+     },
+     "relativeHumidity": {
+      "unitCode": "wmoUnit:percent",
+      "value": 85
+     },
+     "windSpeed": "13 mph",
+     "windDirection": "E",
+     "icon": "https://api.weather.gov/icons/land/night/tsra_sct,30?size=small",
+     "shortForecast": "Chance Showers And Thunderstorms",
+     "detailedForecast": ""
+    },
+    {
+     "number": 26,
+     "name": "",
+     "startTime": "2026-10-02T19:00:00-04:00",
+     "endTime": "2026-10-02T20:00:00-04:00",
+     "isDaytime": false,
+     "temperature": 83,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 33
+     },
+     "dewpoint": {
+      "unitCode": "wmoUnit:degC",
+      "value": 26.11111111111111
+     },
+     "relativeHumidity": {
+      "unitCode": "wmoUnit:percent",
+      "value": 88
+     },
+     "windSpeed": "13 mph",
+     "windDirection": "E",
+     "icon": "https://api.weather.gov/icons/land/night/tsra_sct,30?size=small",
+     "shortForecast": "Chance Showers And Thunderstorms",
+     "detailedForecast": ""
+    },
+    {
+     "number": 27,
+     "name": "",
+     "startTime": "2026-10-02T20:00:00-04:00",
+     "endTime": "2026-10-02T21:00:00-04:00",
+     "isDaytime": false,
+     "temperature": 84,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 36
+     },
+     "dewpoint": {
+      "unitCode": "wmoUnit:degC",
+      "value": 26.11111111111111
+     },
+     "relativeHumidity": {
+      "unitCode": "wmoUnit:percent",
+      "value": 85
+     },
+     "windSpeed": "13 mph",
+     "windDirection": "E",
+     "icon": "https://api.weather.gov/icons/land/night/tsra_sct,40?size=small",
+     "shortForecast": "Chance Showers And Thunderstorms",
+     "detailedForecast": ""
+    },
+    {
+     "number": 28,
+     "name": "",
+     "startTime": "2026-10-02T21:00:00-04:00",
+     "endTime": "2026-10-02T22:00:00-04:00",
+     "isDaytime": false,
+     "temperature": 83,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 40
+     },
+     "dewpoint": {
+      "unitCode": "wmoUnit:degC",
+      "value": 26.11111111111111
+     },
+     "relativeHumidity": {
+      "unitCode": "wmoUnit:percent",
+      "value": 88
+     },
+     "windSpeed": "14 mph",
+     "windDirection": "SE",
+     "icon": "https://api.weather.gov/icons/land/night/tsra_hi,40?size=small",
+     "shortForecast": "Chance Showers And Thunderstorms",
+     "detailedForecast": ""
+    },
+    {
+     "number": 29,
+     "name": "",
+     "startTime": "2026-10-02T22:00:00-04:00",
+     "endTime": "2026-10-02T23:00:00-04:00",
+     "isDaytime": false,
+     "temperature": 83,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 45
+     },
+     "dewpoint": {
+      "unitCode": "wmoUnit:degC",
+      "value": 26.11111111111111
+     },
+     "relativeHumidity": {
+      "unitCode": "wmoUnit:percent",
+      "value": 88
+     },
+     "windSpeed": "14 mph",
+     "windDirection": "E",
+     "icon": "https://api.weather.gov/icons/land/night/tsra_hi,50?size=small",
+     "shortForecast": "Chance Showers And Thunderstorms",
+     "detailedForecast": ""
+    },
+    {
+     "number": 30,
+     "name": "",
+     "startTime": "2026-10-02T23:00:00-04:00",
+     "endTime": "2026-10-03T00:00:00-04:00",
+     "isDaytime": false,
+     "temperature": 83,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 34
+     },
+     "dewpoint": {
+      "unitCode": "wmoUnit:degC",
+      "value": 26.11111111111111
+     },
+     "relativeHumidity": {
+      "unitCode": "wmoUnit:percent",
+      "value": 88
+     },
+     "windSpeed": "15 mph",
+     "windDirection": "E",
+     "icon": "https://api.weather.gov/icons/land/night/tsra_hi,30?size=small",
+     "shortForecast": "Chance Showers And Thunderstorms",
+     "detailedForecast": ""
+    },
+    {
+     "number": 31,
+     "name": "",
+     "startTime": "2026-10-03T00:00:00-04:00",
+     "endTime": "2026-10-03T01:00:00-04:00",
+     "isDaytime": false,
+     "temperature": 83,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 31
+     },
+     "dewpoint": {
+      "unitCode": "wmoUnit:degC",
+      "value": 26.11111111111111
+     },
+     "relativeHumidity": {
+      "unitCode": "wmoUnit:percent",
+      "value": 88
+     },
+     "windSpeed": "15 mph",
+     "windDirection": "E",
+     "icon": "https://api.weather.gov/icons/land/night/tsra_hi,30?size=small",
+     "shortForecast": "Chance Showers And Thunderstorms",
+     "detailedForecast": ""
+    },
+    {
+     "number": 32,
+     "name": "",
+     "startTime": "2026-10-03T01:00:00-04:00",
+     "endTime": "2026-10-03T02:00:00-04:00",
+     "isDaytime": false,
+     "temperature": 83,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 25
+     },
+     "dewpoint": {
+      "unitCode": "wmoUnit:degC",
+      "value": 26.11111111111111
+     },
+     "relativeHumidity": {
+      "unitCode": "wmoUnit:percent",
+      "value": 88
+     },
+     "windSpeed": "15 mph",
+     "windDirection": "E",
+     "icon": "https://api.weather.gov/icons/land/night/tsra_hi,30?size=small",
+     "shortForecast": "Chance Showers And Thunderstorms",
+     "detailedForecast": ""
+    },
+    {
+     "number": 33,
+     "name": "",
+     "startTime": "2026-10-03T02:00:00-04:00",
+     "endTime": "2026-10-03T03:00:00-04:00",
+     "isDaytime": false,
+     "temperature": 83,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 23
+     },
+     "dewpoint": {
+      "unitCode": "wmoUnit:degC",
+      "value": 26.11111111111111
+     },
+     "relativeHumidity": {
+      "unitCode": "wmoUnit:percent",
+      "value": 88
+     },
+     "windSpeed": "14 mph",
+     "windDirection": "E",
+     "icon": "https://api.weather.gov/icons/land/night/tsra_hi,20?size=small",
+     "shortForecast": "Slight Chance Showers And Thunderstorms",
+     "detailedForecast": ""
+    },
+    {
+     "number": 34,
+     "name": "",
+     "startTime": "2026-10-03T03:00:00-04:00",
+     "endTime": "2026-10-03T04:00:00-04:00",
+     "isDaytime": false,
+     "temperature": 83,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 30
+     },
+     "dewpoint": {
+      "unitCode": "wmoUnit:degC",
+      "value": 26.11111111111111
+     },
+     "relativeHumidity": {
+      "unitCode": "wmoUnit:percent",
+      "value": 88
+     },
+     "windSpeed": "15 mph",
+     "windDirection": "E",
+     "icon": "https://api.weather.gov/icons/land/night/tsra_hi,30?size=small",
+     "shortForecast": "Chance Showers And Thunderstorms",
+     "detailedForecast": ""
+    },
+    {
+     "number": 35,
+     "name": "",
+     "startTime": "2026-10-03T04:00:00-04:00",
+     "endTime": "2026-10-03T05:00:00-04:00",
+     "isDaytime": false,
+     "temperature": 83,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 37
+     },
+     "dewpoint": {
+      "unitCode": "wmoUnit:degC",
+      "value": 25.555555555555557
+     },
+     "relativeHumidity": {
+      "unitCode": "wmoUnit:percent",
+      "value": 85
+     },
+     "windSpeed": "15 mph",
+     "windDirection": "E",
+     "icon": "https://api.weather.gov/icons/land/night/tsra_hi,40?size=small",
+     "shortForecast": "Chance Showers And Thunderstorms",
+     "detailedForecast": ""
+    },
+    {
+     "number": 36,
+     "name": "",
+     "startTime": "2026-10-03T05:00:00-04:00",
+     "endTime": "2026-10-03T06:00:00-04:00",
+     "isDaytime": false,
+     "temperature": 83,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 40
+     },
+     "dewpoint": {
+      "unitCode": "wmoUnit:degC",
+      "value": 25.555555555555557
+     },
+     "relativeHumidity": {
+      "unitCode": "wmoUnit:percent",
+      "value": 85
+     },
+     "windSpeed": "15 mph",
+     "windDirection": "E",
+     "icon": "https://api.weather.gov/icons/land/night/tsra_hi,40?size=small",
+     "shortForecast": "Chance Showers And Thunderstorms",
+     "detailedForecast": ""
+    }
+   ]
+  }
+ }
+}

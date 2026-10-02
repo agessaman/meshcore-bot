@@ -12,11 +12,20 @@ from datetime import datetime, timedelta
 from typing import Callable, Optional, ParamSpec, TypeVar
 
 import requests
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
 
 from .. import alert_format
+from ..clients.mqtt_weather import (  # noqa: F401  re-exported
+    get_mqtt_weather_topic,
+    load_mqtt_weather_format_config,
+    mqtt_weather_display_for_topic,
+)
+
+# First-party modules with only required dependencies; they always import.
+from ..clients.wxsim_parser import WXSIMParser
+from ..http_retry import make_retry_session
+from ..location import get_bot_lat_lon, get_companion_lat_lon
 from ..models import MeshMessage
+from ..nws_alerts import WX_SPECIAL_RULES, entry_nws_headline, entry_summary, entry_title, parse_alert_fields
 from ..utils import (
     format_temperature_high_low,
     geocode_city_sync,
@@ -24,30 +33,14 @@ from ..utils import (
     get_nominatim_geocoder,
     normalize_us_state,
 )
+from ..weather_common import WeatherCommandMixin
+from .alternatives.wx_international import GlobalWxCommand
 from .base_command import BaseCommand
-
-# Import for delegation when using Open-Meteo provider
-try:
-    from .alternatives.wx_international import GlobalWxCommand
-    WX_INTERNATIONAL_AVAILABLE = True
-except ImportError:
-    WX_INTERNATIONAL_AVAILABLE = False
-    GlobalWxCommand = None
-
-# Import WXSIM parser for custom weather sources
-try:
-    from ..clients.wxsim_parser import WXSIMParser
-    WXSIM_PARSER_AVAILABLE = True
-except ImportError:
-    WXSIM_PARSER_AVAILABLE = False
-    WXSIMParser = None
-
-from ..clients.mqtt_weather import (
-    get_mqtt_weather_topic,
-    load_mqtt_weather_format_config,
-    mqtt_weather_display_for_topic,
-)
 from .rain_command import nws_http_means_no_coverage
+
+# Kept for code that checked them; these imports used to be optional.
+WX_INTERNATIONAL_AVAILABLE = True
+WXSIM_PARSER_AVAILABLE = True
 
 # Multiday: plain digits (e.g. 7), 7day/7-day, or suffix form 7d/10d (min 2, max below).
 WX_MULTIDAY_MAX_DAYS = 16
@@ -61,15 +54,109 @@ _COMPASS_16 = (
     "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW",
 )
 _ARROWS_8 = ("⬆️", "↗️", "➡️", "↘️", "⬇️", "↙️", "⬅️", "↖️")
+_WEEKDAYS_LOWER = ('monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday')
+
+# Forecast-text patterns for the extract_* readers, tried in order.
+# extract_humidity: "humidity 45%" or "45% humidity"
+_HUMIDITY_PATTERNS = (
+    r'humidity\s+(\d+)%',
+    r'(\d+)%\s+humidity',
+    r'relative humidity\s+(\d+)%',
+    r'(\d+)%\s+relative humidity',
+)
+
+# extract_precip_chance: "20% chance" or "chance of rain 30%"
+_PRECIP_CHANCE_PATTERNS = (
+    r'(\d+)%\s+chance',
+    r'chance\s+of\s+\w+\s+(\d+)%',
+    r'(\d+)%\s+probability',
+    r'probability\s+of\s+\w+\s+(\d+)%',
+)
+
+# extract_uv_index
+_UV_INDEX_PATTERNS = (
+    r'uv\s+index\s+(\d+)',
+    r'uv\s+(\d+)',
+    r'ultraviolet\s+index\s+(\d+)',
+)
+
+# extract_dew_point
+_DEW_POINT_PATTERNS = (
+    r'dew point\s+(\d+)',
+    r'dewpoint\s+(\d+)',
+    r'dew\s+point\s+(\d+)°',
+)
+
+# extract_visibility
+_VISIBILITY_PATTERNS = (
+    r'visibility\s+(\d+)\s+miles',
+    r'visibility\s+(\d+)\s+mi',
+    r'(\d+)\s+mile\s+visibility',
+    r'(\d+)\s+mi\s+visibility',
+)
+
+# extract_precip_probability
+_PRECIP_PROBABILITY_PATTERNS = (
+    r'(\d+)%\s+chance\s+of\s+(?:rain|precipitation|showers)',
+    r'chance\s+of\s+(?:rain|precipitation|showers)\s+(\d+)%',
+    r'(\d+)%\s+probability\s+of\s+(?:rain|precipitation|showers)',
+    r'probability\s+of\s+(?:rain|precipitation|showers)\s+(\d+)%',
+    r'(\d+)%\s+chance',
+    r'chance\s+(\d+)%',
+)
+
+# extract_wind_gusts
+_WIND_GUST_PATTERNS = (
+    r'gusts\s+to\s+(\d+)\s+mph',
+    r'gusts\s+up\s+to\s+(\d+)\s+mph',
+    r'wind\s+gusts\s+to\s+(\d+)\s+mph',
+    r'wind\s+gusts\s+up\s+to\s+(\d+)\s+mph',
+    r'gusts\s+(\d+)\s+mph',
+    r'wind\s+gusts\s+(\d+)\s+mph',
+)
+
+# extract_pressure
+_PRESSURE_PATTERNS = (
+    r'pressure\s+(\d+)\s*hpa',
+    r'pressure\s+(\d+)\s*mb',
+    r'barometric\s+pressure\s+(\d+)\s*hpa',
+    r'barometric\s+pressure\s+(\d+)\s*mb',
+    r'(\d+)\s*hpa',
+    r'(\d+)\s*mb\s+pressure',
+)
 
 
-class WxCommand(BaseCommand):
+def _first_match(text: str, patterns: tuple[str, ...], low: int | None = None, high: int | None = None) -> str:
+    """Group 1 of the first pattern found in the lowercased *text*, within [low, high] when given.
+
+    Each pattern is tried at its first match only; a value out of range moves on
+    to the next pattern, not to a later match of the same one.
+    """
+    if not text:
+        return ""
+    lowered = text.lower()
+    for pattern in patterns:
+        match = re.search(pattern, lowered)
+        if match:
+            value = match.group(1)
+            if low is None or high is None:
+                return value
+            try:
+                if low <= int(value) <= high:
+                    return value
+            except ValueError:
+                continue
+    return ""
+
+
+class WxCommand(WeatherCommandMixin, BaseCommand):
     """Handles weather commands with zipcode support"""
 
     # Plugin metadata
     # Read-only informational output; safe for scheduled {cmd:...} rendering.
     render_safe = True
     name = "wx"
+    translation_ns = "commands.wx"
     keywords = ['wx', 'weather', 'wxa', 'wxalert']
     description = "Get weather information for a zip code (usage: wx 12345)"
     category = "weather"
@@ -139,15 +226,11 @@ class WxCommand(BaseCommand):
         super().__init__(bot)
         self.wx_enabled = self.get_config_value('Wx_Command', 'enabled', fallback=True, value_type='bool')
 
-        # Initialize WXSIM parser if available
-        if WXSIM_PARSER_AVAILABLE:
-            self.wxsim_parser = WXSIMParser()
-        else:
-            self.wxsim_parser = None
+        self.wxsim_parser = WXSIMParser()
 
         # Check weather provider setting - delegate to international command if using Open-Meteo
         weather_provider = bot.config.get('Weather', 'weather_provider', fallback='noaa').lower()
-        if weather_provider == 'openmeteo' and WX_INTERNATIONAL_AVAILABLE:
+        if weather_provider == 'openmeteo':
             # Delegate to international weather command
             self.delegate_command = GlobalWxCommand(bot)
             # Use wx triggers plus any [Wx_Command] aliases loaded by BaseCommand.
@@ -189,11 +272,6 @@ class WxCommand(BaseCommand):
             # Lazy: None = unknown, False = NOAA alerts unavailable (non-US / no coverage)
             self._nws_alerts_available = None
 
-    def _format_high_low(self, high: Optional[float], low: Optional[float], temp_symbol: str) -> str:
-        """Format high/low using [Weather] temperature_*_format templates."""
-        return format_temperature_high_low(self.bot.config, high, low, temp_symbol, self.logger,
-                                           translator=self.response_translator)
-
     @staticmethod
     def _noaa_period_temp_symbol(period: dict) -> str:
         u = (period.get("temperatureUnit") or "F").upper()
@@ -201,31 +279,7 @@ class WxCommand(BaseCommand):
 
     def _create_retry_session(self) -> requests.Session:
         """Create a requests session with retry logic for NOAA API calls"""
-        session = requests.Session()
-
-        # Configure retry strategy
-        # Retry on: connection errors, timeout errors, and 5xx server errors
-        # Reduced to 2 retries (total 3 attempts) for faster failure recovery
-        retry_strategy = Retry(
-            total=2,  # Total number of retries (3 total attempts: 1 initial + 2 retries)
-            backoff_factor=0.3,  # Wait 0.3s, 0.6s between retries (faster backoff)
-            status_forcelist=[500, 502, 503, 504],  # Retry on these HTTP status codes
-            allowed_methods=["GET"],  # Only retry GET requests
-            raise_on_status=False  # Don't raise exception on status codes, let us handle it
-        )
-
-        # Mount the adapter with connection pooling for better performance
-        # pool_connections: number of connection pools to cache
-        # pool_maxsize: maximum number of connections to save in the pool
-        adapter = HTTPAdapter(
-            max_retries=retry_strategy,
-            pool_connections=10,  # Reuse connections for better performance
-            pool_maxsize=20
-        )
-        session.mount("https://", adapter)
-        session.mount("http://", adapter)
-
-        return session
+        return make_retry_session()
 
     def _run_sync_provider(
         self,
@@ -290,63 +344,12 @@ class WxCommand(BaseCommand):
         return super().get_remaining_cooldown(user_id)
 
     def _get_companion_location(self, message: MeshMessage) -> Optional[tuple[float, float]]:
-        """Get companion/sender location from database.
-
-        Args:
-            message: The message object.
-
-        Returns:
-            Optional[Tuple[float, float]]: Tuple of (latitude, longitude) or None.
-        """
-        try:
-            sender_pubkey = message.sender_pubkey
-            if not sender_pubkey:
-                self.logger.debug("No sender_pubkey in message for companion location lookup")
-                return None
-
-            query = '''
-                SELECT latitude, longitude
-                FROM complete_contact_tracking
-                WHERE public_key = ?
-                AND latitude IS NOT NULL AND longitude IS NOT NULL
-                AND latitude != 0 AND longitude != 0
-                ORDER BY COALESCE(last_advert_timestamp, last_heard) DESC
-                LIMIT 1
-            '''
-
-            results = self.bot.db_manager.execute_query(query, (sender_pubkey,))
-
-            if results:
-                row = results[0]
-                lat = row['latitude']
-                lon = row['longitude']
-                self.logger.debug(f"Found companion location: {lat}, {lon} for pubkey {sender_pubkey[:16]}...")
-                return (lat, lon)
-            else:
-                self.logger.debug(f"No location found in database for pubkey {sender_pubkey[:16]}...")
-            return None
-        except Exception as e:
-            self.logger.warning(f"Error getting companion location: {e}")
-            return None
+        """Get companion/sender location from the contact-tracking database."""
+        return get_companion_lat_lon(self.bot, message, self.logger, error_level="warning", trace=True)
 
     def _get_bot_location(self) -> Optional[tuple[float, float]]:
-        """Get bot location from config.
-
-        Returns:
-            Optional[Tuple[float, float]]: Tuple of (latitude, longitude) or None.
-        """
-        try:
-            lat = self.bot.config.getfloat('Bot', 'bot_latitude', fallback=None)
-            lon = self.bot.config.getfloat('Bot', 'bot_longitude', fallback=None)
-
-            if lat is not None and lon is not None:
-                # Validate coordinates
-                if -90 <= lat <= 90 and -180 <= lon <= 180:
-                    return (lat, lon)
-            return None
-        except Exception as e:
-            self.logger.debug(f"Error getting bot location: {e}")
-            return None
+        """Get bot location from config ([Bot] bot_latitude, bot_longitude)."""
+        return get_bot_lat_lon(self.bot, self.logger)
 
     def _get_custom_wxsim_source(self, location: Optional[str] = None) -> Optional[str]:
         """Get custom WXSIM source URL from config.
@@ -360,9 +363,6 @@ class WxCommand(BaseCommand):
         Returns:
             Optional[str]: Source URL or None if not found
         """
-        if not self.wxsim_parser:
-            self.logger.debug("WXSIM parser not available")
-            return None
 
         section = 'Weather'
         if not self.bot.config.has_section(section):
@@ -397,39 +397,6 @@ class WxCommand(BaseCommand):
 
         return None
 
-    def _get_custom_mqtt_weather_topic(self, location: Optional[str] = None) -> Optional[str]:
-        """MQTT topic for custom.mqtt_weather.<name> (see get_mqtt_weather_topic)."""
-        return get_mqtt_weather_topic(self.bot.config, location)
-
-    def _mqtt_weather_line(
-        self,
-        topic: str,
-        forecast_type: str,
-        location_name: Optional[str],
-    ) -> str:
-        """Format cached MQTT payload for wx output."""
-        if forecast_type != "default":
-            return self.translate("commands.wx.mqtt_forecast_not_supported")
-
-        fmt = load_mqtt_weather_format_config(self.bot.config)
-        cache = getattr(self.bot, "mqtt_weather_cache", None)
-        text, err = mqtt_weather_display_for_topic(topic, cache, fmt)
-        if text is not None:
-            if location_name:
-                return f"{location_name}: {text}"
-            return text
-        return self._mqtt_weather_error_key(err)
-
-    def _mqtt_weather_error_key(self, err: Optional[str]) -> str:
-        if err == "no_cache":
-            return self.translate("commands.wx.mqtt_weather_no_subscriber")
-        if err in ("no_data", "empty_payload", "empty_after_sanitize"):
-            return self.translate("commands.wx.mqtt_weather_no_data")
-        if err == "stale":
-            return self.translate("commands.wx.mqtt_weather_stale")
-        detail = (err or "unknown").replace("_", " ")
-        return self.translate("commands.wx.mqtt_weather_payload_error", detail=detail)
-
     def _get_wxsim_weather(self, source_url: str, forecast_type: str = "default",
                                 num_days: int = 7, message: MeshMessage = None,
                                 location_name: Optional[str] = None) -> str:
@@ -445,8 +412,6 @@ class WxCommand(BaseCommand):
         Returns:
             str: Formatted weather string
         """
-        if not self.wxsim_parser:
-            return self.translate('commands.wx.error', error="WXSIM parser not available")
 
         # Fetch WXSIM data
         text = self.wxsim_parser.fetch_from_url(source_url, timeout=self.url_timeout)
@@ -702,37 +667,12 @@ class WxCommand(BaseCommand):
         else:
             location_parts = parts[1:]
 
-        # Check for forecast type options: "tomorrow", Nd (7d, 10d), or plain digit days 2–WX_MULTIDAY_MAX_DAYS
         forecast_type = "default"
         num_days = 7  # Default for multi-day forecast
-
-        # Check last part for forecast type (only if not "alerts")
-        if len(location_parts) > 0 and not show_full_alerts:
-            last_part = location_parts[-1].lower()
-            if last_part == "tomorrow":
-                forecast_type = "tomorrow"
-                location_parts = location_parts[:-1]
-            elif last_part == "hourly":
-                forecast_type = "hourly"
-                location_parts = location_parts[:-1]
-            elif last_part in ["7day", "7-day"]:
-                forecast_type = "multiday"
-                num_days = 7
-                location_parts = location_parts[:-1]
-            else:
-                nd_match = re.fullmatch(r"(\d+)d", last_part)
-                if nd_match:
-                    days = int(nd_match.group(1))
-                    if 2 <= days <= WX_MULTIDAY_MAX_DAYS:
-                        forecast_type = "multiday"
-                        num_days = days
-                        location_parts = location_parts[:-1]
-                elif last_part.isdigit():
-                    days = int(last_part)
-                    if 2 <= days <= WX_MULTIDAY_MAX_DAYS:
-                        forecast_type = "multiday"
-                        num_days = days
-                        location_parts = location_parts[:-1]
+        if not show_full_alerts:
+            location_parts, forecast_type, num_days = self._parse_forecast_suffix(
+                location_parts, WX_MULTIDAY_MAX_DAYS, allow_hourly=True
+            )
 
         # Join remaining parts to handle "city, state" format
         location = ' '.join(location_parts).strip()
@@ -853,7 +793,6 @@ class WxCommand(BaseCommand):
 
                 # Send the special weather statement (already formatted with prioritization)
                 alert_text = weather_data[2]
-                weather_data[3]
                 # Second part of the same reply: the reply limiter already let the first through.
                 await self.send_response(message, alert_text, skip_user_rate_limit=True)
             elif forecast_type == "multiday":
@@ -1058,10 +997,6 @@ class WxCommand(BaseCommand):
             self.logger.error(f"Error getting weather for {location_type} {location}: {e}")
             return self.translate('commands.wx.error', error=str(e))
 
-    async def get_weather_for_zipcode(self, zipcode: str) -> str:
-        """Get weather data for a specific zipcode (legacy method)"""
-        return await self.get_weather_for_location(zipcode, "zipcode")
-
     def zipcode_to_lat_lon(self, zipcode: str) -> tuple:
         """Convert zipcode to latitude and longitude"""
         try:
@@ -1096,6 +1031,20 @@ class WxCommand(BaseCommand):
     async def _city_to_lat_lon_async(self, city: str) -> tuple:
         return await self._run_sync_provider_async(self.city_to_lat_lon, city)
 
+    def _noaa_fetch(self, url: str, what: str):
+        """GET *url* through the NOAA session; None, after a warning naming *what*,
+        on an HTTP error status, a timeout or a connection error.
+        """
+        try:
+            response = self.noaa_session.get(url, timeout=self.url_timeout)
+            if not response.ok:
+                self.logger.warning(f"Error fetching {what} from NOAA: HTTP {response.status_code}")
+                return None
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+            self.logger.warning(f"Timeout/connection error fetching {what} from NOAA: {e}")
+            return None
+        return response
+
     def get_noaa_weather(self, lat: float, lon: float, return_periods: bool = False, max_length: int = 130) -> tuple:
         """Get weather forecast from NOAA and return both weather string and points data
 
@@ -1117,26 +1066,16 @@ class WxCommand(BaseCommand):
             weather_api = f"https://api.weather.gov/points/{lat_rounded},{lon_rounded}"
 
             # Get the forecast URL (with retry logic)
-            try:
-                weather_data = self.noaa_session.get(weather_api, timeout=self.url_timeout)
-                if not weather_data.ok:
-                    self.logger.warning(f"Error fetching weather data from NOAA: HTTP {weather_data.status_code}")
-                    return self.ERROR_FETCHING_DATA, None
-            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
-                self.logger.warning(f"Timeout/connection error fetching weather data from NOAA: {e}")
+            weather_data = self._noaa_fetch(weather_api, "weather data")
+            if weather_data is None:
                 return self.ERROR_FETCHING_DATA, None
 
             weather_json = weather_data.json()
             forecast_url = weather_json['properties']['forecast']
 
             # Get the forecast (with retry logic)
-            try:
-                forecast_data = self.noaa_session.get(forecast_url, timeout=self.url_timeout)
-                if not forecast_data.ok:
-                    self.logger.warning(f"Error fetching weather forecast from NOAA: HTTP {forecast_data.status_code}")
-                    return self.ERROR_FETCHING_DATA, None
-            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
-                self.logger.warning(f"Timeout/connection error fetching weather forecast from NOAA: {e}")
+            forecast_data = self._noaa_fetch(forecast_url, "weather forecast")
+            if forecast_data is None:
                 return self.ERROR_FETCHING_DATA, None
 
             forecast_json = forecast_data.json()
@@ -1283,37 +1222,10 @@ class WxCommand(BaseCommand):
             if is_current_night and today_period:
                 period = today_period[1]
                 # Always add today_period - it represents tomorrow's daytime when current is Tonight
-                period_name = self._noaa_period_display_name(period)
-                period_temp = period.get('temperature', '')
-                period_short = period.get('shortForecast', '')
                 period_detailed = period.get('detailedForecast', '')
-                period_wind_speed = period.get('windSpeed', '')
-                period_wind_direction = period.get('windDirection', '')
-
-                if period_temp and period_short:
-                    # Try to get high/low
-                    period_high_low = self.extract_high_low(
-                        period_detailed, self._noaa_period_temp_symbol(period)
-                    )
-
-                    period_emoji = self.get_weather_emoji(period_short)
-                    if period_high_low:
-                        period_str = f" | {period_name}: {period_emoji}{period_short} {period_high_low}"
-                    else:
-                        period_str = f" | {period_name}: {period_emoji}{period_short} {period_temp}°"
-
-                    # Add wind info if space allows (using display width)
-                    if period_wind_speed and period_wind_direction:
-                        test_str = weather + period_str
-                        if self._count_display_width(test_str) < max_length - 10:
-                            wind_match = re.search(r'(\d+)', period_wind_speed)
-                            if wind_match:
-                                wind_num = wind_match.group(1)
-                                wind_dir = self.abbreviate_wind_direction(period_wind_direction)
-                                if wind_dir:
-                                    wind_info = f" {wind_dir}{wind_num}"
-                                    if self._count_display_width(test_str + wind_info) <= max_length:
-                                        period_str += wind_info
+                period_head = self._noaa_period_str(period)
+                if period_head:
+                    period_str = self._noaa_period_wind(weather, period_head, period, max_length - 10, max_length)
 
                     # Add additional details (humidity, dew point, visibility, etc.)
                     # But only if current period isn't too long - prioritize current period details
@@ -1343,37 +1255,10 @@ class WxCommand(BaseCommand):
 
                 if should_add_tonight:
                     period = tonight_period[1]
-                    period_name = self._noaa_period_display_name(period)
-                    period_temp = period.get('temperature', '')
-                    period_short = period.get('shortForecast', '')
                     period_detailed = period.get('detailedForecast', '')
-                    period_wind_speed = period.get('windSpeed', '')
-                    period_wind_direction = period.get('windDirection', '')
-
-                    if period_temp and period_short:
-                        # Try to get high/low
-                        period_high_low = self.extract_high_low(
-                            period_detailed, self._noaa_period_temp_symbol(period)
-                        )
-
-                        period_emoji = self.get_weather_emoji(period_short)
-                        if period_high_low:
-                            period_str = f" | {period_name}: {period_emoji}{period_short} {period_high_low}"
-                        else:
-                            period_str = f" | {period_name}: {period_emoji}{period_short} {period_temp}°"
-
-                        # Add wind info if space allows (using display width)
-                        if period_wind_speed and period_wind_direction:
-                            test_str = weather + period_str
-                            if self._count_display_width(test_str) < max_length - 10:
-                                wind_match = re.search(r'(\d+)', period_wind_speed)
-                                if wind_match:
-                                    wind_num = wind_match.group(1)
-                                    wind_dir = self.abbreviate_wind_direction(period_wind_direction)
-                                    if wind_dir:
-                                        wind_info = f" {wind_dir}{wind_num}"
-                                        if self._count_display_width(test_str + wind_info) <= max_length:
-                                            period_str += wind_info
+                    period_head = self._noaa_period_str(period)
+                    if period_head:
+                        period_str = self._noaa_period_wind(weather, period_head, period, max_length - 10, max_length)
 
                     # Add additional details (humidity, dew point, visibility, etc.)
                     # But only if current period isn't too long - prioritize current period details
@@ -1392,76 +1277,20 @@ class WxCommand(BaseCommand):
             # Prioritize adding Tomorrow when current is Tonight to use more of the available message length
             if tomorrow_period:
                 period = tomorrow_period[1]
-                period_name = self._noaa_period_display_name(period)
-                period_temp = period.get('temperature', '')
-                period_short = period.get('shortForecast', '')
                 period_detailed = period.get('detailedForecast', '')
-                period_wind_speed = period.get('windSpeed', '')
-                period_wind_direction = period.get('windDirection', '')
-
-                if period_temp and period_short:
-                    # Try to get high/low for tomorrow
-                    period_high_low = self.extract_high_low(
-                        period_detailed, self._noaa_period_temp_symbol(period)
+                period_short = period.get('shortForecast', '')
+                night = is_current_tonight or is_current_night
+                period_head = None
+                if period.get('temperature', '') and period_short:
+                    # Shorten long forecast text (especially when current is a night period)
+                    forecast_text = (
+                        self._abbreviate_noaa_forecast(period_short) if night and len(period_short) > 20 else period_short
                     )
-
-                    # Abbreviate forecast text if it's too long (especially when current is a night period)
-                    abbreviated_forecast = period_short
-                    if (is_current_tonight or is_current_night) and len(period_short) > 20:
-                        # Try to shorten forecast text to fit more info
-                        # Remove transitional words and keep meaningful conditions
-                        words = period_short.split()
-                        # Transitional words to skip
-                        transitions = {'then', 'and', 'or', 'becoming', 'followed', 'by', 'with'}
-
-                        # If there's a "then" pattern, take first condition and last significant condition
-                        if 'then' in words:
-                            then_index = words.index('then')
-                            # Take first condition (before "then")
-                            first_part = words[:then_index]
-                            # Take last significant condition (after "then", skip small words)
-                            if then_index + 1 < len(words):
-                                last_part = [w for w in words[then_index + 1:] if w.lower() not in transitions]
-                                # Combine: first condition + last significant condition (max 2 words)
-                                if last_part:
-                                    abbreviated_forecast = ' '.join(first_part)
-                                    if len(last_part) <= 2:
-                                        abbreviated_forecast += ' ' + ' '.join(last_part)
-                                    else:
-                                        # Take last 2 words of the last part
-                                        abbreviated_forecast += ' ' + ' '.join(last_part[-2:])
-                                else:
-                                    abbreviated_forecast = ' '.join(first_part)
-                            else:
-                                abbreviated_forecast = ' '.join(first_part)
-                        else:
-                            # Filter out transitional words and take first meaningful words
-                            meaningful_words = [w for w in words if w.lower() not in transitions]
-                            if len(meaningful_words) > 3:
-                                abbreviated_forecast = ' '.join(meaningful_words[:3])
-                            else:
-                                abbreviated_forecast = ' '.join(meaningful_words)
-
-                    period_emoji = self.get_weather_emoji(period_short)
-                    if period_high_low:
-                        period_str = f" | {period_name}: {period_emoji}{abbreviated_forecast} {period_high_low}"
-                    else:
-                        period_str = f" | {period_name}: {period_emoji}{abbreviated_forecast} {period_temp}°"
-
-                    # Add wind info if space allows (using display width)
+                    period_head = self._noaa_period_str(period, forecast_text)
+                if period_head:
                     # Be more aggressive about adding wind when current is a night period
-                    wind_threshold = 115 if (is_current_tonight or is_current_night) else 120
-                    if period_wind_speed and period_wind_direction:
-                        test_str = weather + period_str
-                        if self._count_display_width(test_str) < wind_threshold:
-                            wind_match = re.search(r'(\d+)', period_wind_speed)
-                            if wind_match:
-                                wind_num = wind_match.group(1)
-                                wind_dir = self.abbreviate_wind_direction(period_wind_direction)
-                                if wind_dir:
-                                    wind_info = f" {wind_dir}{wind_num}"
-                                    if self._count_display_width(test_str + wind_info) <= max_length:
-                                        period_str += wind_info
+                    wind_threshold = 115 if night else 120
+                    period_str = self._noaa_period_wind(weather, period_head, period, wind_threshold, max_length)
 
                     # Add additional details (humidity, dew point, visibility, etc.)
                     # But only if current period isn't too long - prioritize current period details
@@ -1491,6 +1320,84 @@ class WxCommand(BaseCommand):
             self.logger.error(f"Error fetching NOAA weather: {e}")
             return self.ERROR_FETCHING_DATA, None
 
+    def _noaa_period_str(self, period: dict, forecast_text: Optional[str] = None) -> Optional[str]:
+        """``" | Name: <emoji><forecast> <high/low or temp°>"`` for a forecast period.
+
+        None when the period has no temperature or no short forecast.
+        ``forecast_text`` replaces the short forecast in the text (the emoji
+        still comes from the short forecast).
+        """
+        period_name = self._noaa_period_display_name(period)
+        period_temp = period.get('temperature', '')
+        period_short = period.get('shortForecast', '')
+        if not (period_temp and period_short):
+            return None
+        period_high_low = self.extract_high_low(
+            period.get('detailedForecast', ''), self._noaa_period_temp_symbol(period)
+        )
+        period_emoji = self.get_weather_emoji(period_short)
+        text = period_short if forecast_text is None else forecast_text
+        if period_high_low:
+            return f" | {period_name}: {period_emoji}{text} {period_high_low}"
+        return f" | {period_name}: {period_emoji}{text} {period_temp}°"
+
+    def _noaa_period_wind(self, weather: str, period_str: str, period: dict, threshold: int, max_length: int) -> str:
+        """Append the period's wind to ``period_str`` when ``weather + period_str`` is under ``threshold``
+        display columns and the result still fits ``max_length``."""
+        period_wind_speed = period.get('windSpeed', '')
+        period_wind_direction = period.get('windDirection', '')
+        if period_wind_speed and period_wind_direction:
+            test_str = weather + period_str
+            if self._count_display_width(test_str) < threshold:
+                wind_match = re.search(r'(\d+)', period_wind_speed)
+                if wind_match:
+                    wind_num = wind_match.group(1)
+                    wind_dir = self.abbreviate_wind_direction(period_wind_direction)
+                    if wind_dir:
+                        wind_info = f" {wind_dir}{wind_num}"
+                        if self._count_display_width(test_str + wind_info) <= max_length:
+                            return period_str + wind_info
+        return period_str
+
+    @staticmethod
+    def _abbreviate_noaa_forecast(period_short: str) -> str:
+        """Shorten a long short-forecast ("A then B and C") to its main conditions."""
+        abbreviated_forecast = period_short
+        # Try to shorten forecast text to fit more info
+        # Remove transitional words and keep meaningful conditions
+        words = period_short.split()
+        # Transitional words to skip
+        transitions = {'then', 'and', 'or', 'becoming', 'followed', 'by', 'with'}
+
+        # If there's a "then" pattern, take first condition and last significant condition
+        if 'then' in words:
+            then_index = words.index('then')
+            # Take first condition (before "then")
+            first_part = words[:then_index]
+            # Take last significant condition (after "then", skip small words)
+            if then_index + 1 < len(words):
+                last_part = [w for w in words[then_index + 1:] if w.lower() not in transitions]
+                # Combine: first condition + last significant condition (max 2 words)
+                if last_part:
+                    abbreviated_forecast = ' '.join(first_part)
+                    if len(last_part) <= 2:
+                        abbreviated_forecast += ' ' + ' '.join(last_part)
+                    else:
+                        # Take last 2 words of the last part
+                        abbreviated_forecast += ' ' + ' '.join(last_part[-2:])
+                else:
+                    abbreviated_forecast = ' '.join(first_part)
+            else:
+                abbreviated_forecast = ' '.join(first_part)
+        else:
+            # Filter out transitional words and take first meaningful words
+            meaningful_words = [w for w in words if w.lower() not in transitions]
+            if len(meaningful_words) > 3:
+                abbreviated_forecast = ' '.join(meaningful_words[:3])
+            else:
+                abbreviated_forecast = ' '.join(meaningful_words)
+        return abbreviated_forecast
+
     def get_noaa_hourly_weather(self, lat: float, lon: float) -> tuple:
         """Get hourly weather forecast from NOAA
 
@@ -1510,13 +1417,8 @@ class WxCommand(BaseCommand):
             weather_api = f"https://api.weather.gov/points/{lat_rounded},{lon_rounded}"
 
             # Get the forecast URL (with retry logic)
-            try:
-                weather_data = self.noaa_session.get(weather_api, timeout=self.url_timeout)
-                if not weather_data.ok:
-                    self.logger.warning(f"Error fetching weather data from NOAA: HTTP {weather_data.status_code}")
-                    return self.ERROR_FETCHING_DATA, None
-            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
-                self.logger.warning(f"Timeout/connection error fetching weather data from NOAA: {e}")
+            weather_data = self._noaa_fetch(weather_api, "weather data")
+            if weather_data is None:
                 return self.ERROR_FETCHING_DATA, None
 
             weather_json = weather_data.json()
@@ -1527,13 +1429,8 @@ class WxCommand(BaseCommand):
                 return self.ERROR_FETCHING_DATA, None
 
             # Get the hourly forecast (with retry logic)
-            try:
-                hourly_data = self.noaa_session.get(hourly_forecast_url, timeout=self.url_timeout)
-                if not hourly_data.ok:
-                    self.logger.warning(f"Error fetching hourly forecast from NOAA: HTTP {hourly_data.status_code}")
-                    return self.ERROR_FETCHING_DATA, None
-            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
-                self.logger.warning(f"Timeout/connection error fetching hourly forecast from NOAA: {e}")
+            hourly_data = self._noaa_fetch(hourly_forecast_url, "hourly forecast")
+            if hourly_data is None:
                 return self.ERROR_FETCHING_DATA, None
 
             hourly_json = hourly_data.json()
@@ -1563,128 +1460,17 @@ class WxCommand(BaseCommand):
             if not hourly_periods:
                 return self.translate('commands.wx.hourly_not_available')
 
-            lines = []
-
-            # Filter to only future hours
-            now = datetime.now()
-            future_periods = []
-            for period in hourly_periods:
-                start_time_str = period.get('startTime', '')
-                if start_time_str:
-                    try:
-                        # Parse ISO format with timezone
-                        if 'Z' in start_time_str:
-                            start_time = datetime.fromisoformat(start_time_str.replace('Z', '+00:00'))
-                        else:
-                            start_time = datetime.fromisoformat(start_time_str)
-
-                        # Convert to local timezone if needed
-                        if start_time.tzinfo:
-                            # Make naive for comparison
-                            start_time = start_time.replace(tzinfo=None)
-
-                        if start_time > now:
-                            future_periods.append(period)
-                    except (ValueError, TypeError):
-                        # If parsing fails, include it anyway
-                        future_periods.append(period)
-                else:
-                    # If no startTime, include it
-                    future_periods.append(period)
-
+            future_periods = self._future_hourly_periods(hourly_periods)
             if not future_periods:
                 return "No future hourly periods available"
 
-            # Format each hour
+            lines: list[str] = []
             for period in future_periods:
-                start_time_str = period.get('startTime', '')
-                temp = period.get('temperature', '')
-                period.get('temperatureUnit', 'F')
-                short_forecast = period.get('shortForecast', '')
-                wind_speed = period.get('windSpeed', '')
-                wind_direction = period.get('windDirection', '')
-                precip_prob = period.get('probabilityOfPrecipitation', {}).get('value')
-
-                # Format time (e.g., "2PM", "10AM")
-                time_str = ""
-                if start_time_str:
-                    try:
-                        # Parse ISO format - handle timezone
-                        if 'Z' in start_time_str:
-                            dt = datetime.fromisoformat(start_time_str.replace('Z', '+00:00'))
-                        elif '+' in start_time_str or start_time_str.count('-') > 2:
-                            # Has timezone info
-                            dt = datetime.fromisoformat(start_time_str)
-                        else:
-                            # No timezone, parse as naive
-                            dt = datetime.fromisoformat(start_time_str)
-
-                        # Extract hour (assume it's already in local time or close enough)
-                        hour = dt.hour
-
-                        # Format as 12-hour time
-                        if hour == 0:
-                            time_str = "12AM"
-                        elif hour < 12:
-                            time_str = f"{hour}AM"
-                        elif hour == 12:
-                            time_str = "12PM"
-                        else:
-                            time_str = f"{hour-12}PM"
-                    except (ValueError, TypeError):
-                        time_str = ""
-
-                # Build hour line: "10AM: 🌦️ 26% Chance Light Rain 49° SS5"
-                emoji = self.get_weather_emoji(short_forecast)
-
-                # Abbreviate forecast if too long
-                forecast_short = short_forecast
-                if len(forecast_short) > 18:
-                    # Take first 2-3 words
-                    words = forecast_short.split()
-                    forecast_short = ' '.join(words[:3]) if len(words) > 3 else forecast_short[:18]
-
-                # Build the line - format: "10AM: 🌦️ 26% Chance Light Rain 49° SS5"
-                line_parts = []
-                if time_str:
-                    line_parts.append(f"{time_str}:")
-
-                # Add emoji
-                line_parts.append(emoji)
-
-                # Add precip probability if > 0% (before forecast text)
-                if precip_prob is not None and precip_prob > 0:
-                    line_parts.append(f"{precip_prob}%")
-
-                # Add forecast text
-                line_parts.append(forecast_short)
-
-                # Add temperature
-                if temp:
-                    line_parts.append(f"{temp}°")
-
-                # Add wind if available (use compact format)
-                if wind_speed and wind_direction:
-                    wind_match = re.search(r'(\d+)', wind_speed)
-                    if wind_match:
-                        wind_num = wind_match.group(1)
-                        # Get direction abbreviation (first 1-2 chars)
-                        wind_dir_abbrev = wind_direction[:2] if len(wind_direction) >= 2 else wind_direction
-                        # Remove any spaces and make uppercase
-                        wind_dir_abbrev = wind_dir_abbrev.replace(' ', '').upper()
-                        line_parts.append(f"{wind_dir_abbrev}{wind_num}")
-
-                line = " ".join(line_parts)
-
-                # Check if adding this line would exceed limit
-                test_lines = lines + [line]
-                test_message = "\n".join(test_lines)
-                test_length = self._count_display_width(test_message)
-
-                if test_length <= max_length:
+                line = self._hourly_line(period)
+                # Stop at the first hour that no longer fits.
+                if self._count_display_width("\n".join(lines + [line])) <= max_length:
                     lines.append(line)
                 else:
-                    # This line would exceed limit, stop here
                     break
 
             if not lines:
@@ -1696,50 +1482,113 @@ class WxCommand(BaseCommand):
             self.logger.error(f"Error formatting hourly forecast: {e}")
             return f"Error formatting hourly forecast: {str(e)}"
 
+    @staticmethod
+    def _parse_noaa_start_time(start_time_str: str) -> datetime:
+        """Parse a NOAA ISO ``startTime``; a trailing ``Z`` means UTC."""
+        if 'Z' in start_time_str:
+            return datetime.fromisoformat(start_time_str.replace('Z', '+00:00'))
+        return datetime.fromisoformat(start_time_str)
+
+    def _future_hourly_periods(self, hourly_periods: list) -> list:
+        """Periods starting after now (wall clock, ignoring the offset); unparseable or missing times are kept."""
+        now = datetime.now()
+        future_periods = []
+        for period in hourly_periods:
+            start_time_str = period.get('startTime', '')
+            if not start_time_str:
+                future_periods.append(period)
+                continue
+            try:
+                start_time = self._parse_noaa_start_time(start_time_str).replace(tzinfo=None)
+            except (ValueError, TypeError):
+                future_periods.append(period)
+                continue
+            if start_time > now:
+                future_periods.append(period)
+        return future_periods
+
+    def _hour_label(self, start_time_str: str) -> str:
+        """12-hour label for a period's start hour ("12AM", "2PM"); empty when missing or unparseable."""
+        if not start_time_str:
+            return ""
+        try:
+            hour = self._parse_noaa_start_time(start_time_str).hour
+        except (ValueError, TypeError):
+            return ""
+        return f"{hour % 12 or 12}{'AM' if hour < 12 else 'PM'}"
+
+    def _hourly_line(self, period: dict) -> str:
+        """One hour as "10AM: 🌦️ 26% Chance Light Rain 49° SS5"."""
+        temp = period.get('temperature', '')
+        short_forecast = period.get('shortForecast', '')
+        wind_speed = period.get('windSpeed', '')
+        wind_direction = period.get('windDirection', '')
+        precip_prob = period.get('probabilityOfPrecipitation', {}).get('value')
+        time_str = self._hour_label(period.get('startTime', ''))
+        emoji = self.get_weather_emoji(short_forecast)
+
+        # Long forecasts keep their first three words, or 18 characters.
+        forecast_short = short_forecast
+        if len(forecast_short) > 18:
+            words = forecast_short.split()
+            forecast_short = ' '.join(words[:3]) if len(words) > 3 else forecast_short[:18]
+
+        line_parts = []
+        if time_str:
+            line_parts.append(f"{time_str}:")
+        line_parts.append(emoji)
+        if precip_prob is not None and precip_prob > 0:
+            line_parts.append(f"{precip_prob}%")
+        line_parts.append(forecast_short)
+        if temp:
+            line_parts.append(f"{temp}°")
+        if wind_speed and wind_direction:
+            wind_match = re.search(r'(\d+)', wind_speed)
+            if wind_match:
+                # Compact wind: the direction's first two characters, no spaces.
+                wind_dir_abbrev = wind_direction[:2] if len(wind_direction) >= 2 else wind_direction
+                wind_dir_abbrev = wind_dir_abbrev.replace(' ', '').upper()
+                line_parts.append(f"{wind_dir_abbrev}{wind_match.group(1)}")
+        return " ".join(line_parts)
+
+    def _find_tomorrow_periods(self, forecast: list) -> list:
+        """Tomorrow's NOAA periods: named "Tomorrow", else named for tomorrow's weekday,
+        else the (up to two) periods after today's.
+        """
+        tomorrow_day_name = (datetime.now() + timedelta(days=1)).strftime('%A')
+
+        tomorrow_periods = [p for p in forecast if 'tomorrow' in p.get('name', '').lower()]
+        if tomorrow_periods:
+            return tomorrow_periods
+
+        for period in forecast:
+            period_name_lower = period.get('name', '').lower()
+            if tomorrow_day_name.lower() in period_name_lower:
+                # A name like "Monday" can also be today's; skip those.
+                today_day_name = datetime.now().strftime('%A')
+                if today_day_name.lower() not in period_name_lower:
+                    tomorrow_periods.append(period)
+        if tomorrow_periods:
+            return tomorrow_periods
+
+        # Generic names: take the periods after today's (Today, This Afternoon,
+        # This Evening, Tonight), usually tomorrow's day and night.
+        found_tonight = False
+        for period in forecast:
+            period_name = period.get('name', '').lower()
+            if any(word in period_name for word in ['today', 'this afternoon', 'this evening', 'tonight']):
+                found_tonight = True
+                continue
+            if found_tonight:
+                tomorrow_periods.append(period)
+                if len(tomorrow_periods) >= 2:
+                    break
+        return tomorrow_periods
+
     def format_tomorrow_forecast(self, forecast: list, max_length: int = 130) -> str:
         """Format a detailed forecast for tomorrow"""
         try:
-            # Find tomorrow's periods
-            # NOAA may use "Tomorrow", "Tomorrow Night" or day names like "Tuesday", "Tuesday Night"
-            tomorrow_periods = []
-            tomorrow_day_name = (datetime.now() + timedelta(days=1)).strftime('%A')
-
-            # First, try to find periods with "tomorrow" in the name
-            for period in forecast:
-                period_name = period.get('name', '').lower()
-                if 'tomorrow' in period_name:
-                    tomorrow_periods.append(period)
-
-            # If not found, look for tomorrow's day name (e.g., "Tuesday", "Tuesday Night")
-            if not tomorrow_periods:
-                for period in forecast:
-                    period_name = period.get('name', '')
-                    period_name_lower = period_name.lower()
-                    # Check if it contains tomorrow's day name
-                    if tomorrow_day_name.lower() in period_name_lower:
-                        # Make sure it's not today
-                        today_day_name = datetime.now().strftime('%A')
-                        if today_day_name.lower() not in period_name_lower:
-                            tomorrow_periods.append(period)
-
-            # If still not found, find periods after "Tonight" (skip current day periods)
-            # This handles cases where NOAA uses generic day names
-            if not tomorrow_periods:
-                found_tonight = False
-                current_day_periods = 0
-                for period in forecast:
-                    period_name = period.get('name', '').lower()
-                    # Count current day periods (Today, This Afternoon, Tonight, This Evening)
-                    if any(word in period_name for word in ['today', 'this afternoon', 'this evening', 'tonight']):
-                        current_day_periods += 1
-                        found_tonight = True
-                        continue
-                    if found_tonight:
-                        # This should be tomorrow's period
-                        tomorrow_periods.append(period)
-                        # Stop after collecting tomorrow's day and night periods (usually 2)
-                        if len(tomorrow_periods) >= 2:
-                            break
+            tomorrow_periods = self._find_tomorrow_periods(forecast)
 
             if not tomorrow_periods:
                 return self.translate('commands.wx.tomorrow_not_available')
@@ -1792,49 +1641,20 @@ class WxCommand(BaseCommand):
     def format_multiday_forecast(self, forecast: list, num_days: int = 7, max_length: int = 130) -> str:
         """Format a less detailed multi-day forecast summary"""
         try:
-            # Group periods by day
-            days = {}
+            # One entry per weekday; a day period wins over a night one.
+            days: dict[str, dict] = {}
             for period in forecast:
-                period_name = period.get('name', '')
-                period_name_lower = period_name.lower()
+                period_name_lower = period.get('name', '').lower()
+                day_name = self._multiday_day_name(period_name_lower)
+                if not day_name:
+                    continue
 
-                # Skip if it's a time period (Tonight, This Afternoon, etc.) unless it's the only period for that day
-                # We want to focus on daily summaries
-                if any(word in period_name_lower for word in ['tonight', 'afternoon', 'morning', 'evening']):
-                    # Only include if it's a named day (Monday, Tuesday, etc.)
-                    day_name = None
-                    for day in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']:
-                        if day in period_name_lower:
-                            day_name = day.capitalize()
-                            break
-
-                    if not day_name:
-                        continue
-                else:
-                    # Extract day name
-                    day_name = None
-                    for day in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']:
-                        if day in period_name_lower:
-                            day_name = day.capitalize()
-                            break
-
-                    if not day_name:
-                        # Try to extract from "Tomorrow", "Today", etc.
-                        if 'tomorrow' in period_name_lower:
-                            tomorrow = datetime.now() + timedelta(days=1)
-                            day_name = tomorrow.strftime('%A')
-                        elif 'today' in period_name_lower:
-                            day_name = datetime.now().strftime('%A')
-                        else:
-                            continue
-
-                # Get temperature (prefer high/low if available)
+                # Prefer the high/low from the detailed text over the bare temperature.
                 temp = period.get('temperature', '')
                 detailed_forecast = period.get('detailedForecast', '')
                 high_low = self.extract_high_low(
                     detailed_forecast, self._noaa_period_temp_symbol(period)
                 )
-
                 if high_low:
                     temp_str = high_low
                 elif temp:
@@ -1842,30 +1662,14 @@ class WxCommand(BaseCommand):
                 else:
                     continue
 
-                # Get short forecast
                 short_forecast = period.get('shortForecast', '')
                 if not short_forecast:
                     continue
 
-                # Store the best period for each day (prefer day periods over night)
-                if day_name not in days:
-                    days[day_name] = {
-                        'temp': temp_str,
-                        'forecast': short_forecast,
-                        'is_day': 'night' not in period_name_lower and 'tonight' not in period_name_lower
-                    }
-                else:
-                    # Prefer day periods, but update if we have better temp info
-                    if 'night' not in period_name_lower and 'tonight' not in period_name_lower:
-                        days[day_name] = {
-                            'temp': temp_str,
-                            'forecast': short_forecast,
-                            'is_day': True
-                        }
-                    elif not days[day_name]['is_day']:
-                        # Update night period if we don't have a day period
-                        days[day_name]['temp'] = temp_str
-                        days[day_name]['forecast'] = short_forecast
+                # "tonight" contains "night", so this also covers Tonight.
+                is_day = 'night' not in period_name_lower
+                if day_name not in days or is_day or not days[day_name]['is_day']:
+                    days[day_name] = {'temp': temp_str, 'forecast': short_forecast, 'is_day': is_day}
 
             if not days:
                 return self.translate('commands.wx.multiday_not_available', num_days=num_days)
@@ -1926,6 +1730,24 @@ class WxCommand(BaseCommand):
             self.logger.error(f"Error formatting {num_days}-day forecast: {e}")
             return self.translate('commands.wx.multiday_error', num_days=num_days)
 
+    @staticmethod
+    def _multiday_day_name(period_name_lower: str) -> str | None:
+        """The weekday a NOAA period belongs to, or None to skip it.
+
+        Part-of-day periods (Tonight, This Afternoon) count only when they name a
+        weekday; otherwise Today and Tomorrow map to the current and next weekday.
+        """
+        for day in _WEEKDAYS_LOWER:
+            if day in period_name_lower:
+                return day.capitalize()
+        if any(word in period_name_lower for word in ['tonight', 'afternoon', 'morning', 'evening']):
+            return None
+        if 'tomorrow' in period_name_lower:
+            return (datetime.now() + timedelta(days=1)).strftime('%A')
+        if 'today' in period_name_lower:
+            return datetime.now().strftime('%A')
+        return None
+
     def _add_period_details(self, period_str: str, detailed_forecast: str, current_weather_length: int, max_length: int = 130, observation_data: dict = None) -> str:
         """Add additional details (humidity, dew point, visibility, etc.) to a period string
 
@@ -1939,151 +1761,31 @@ class WxCommand(BaseCommand):
         Returns:
             Updated period string with additional details if space allows
         """
-        result = period_str
-        current_weather_length + self._count_display_width(result)
-
-        # Extract additional details - prefer observation data if available (more accurate)
-        if observation_data:
-            humidity = observation_data.get('humidity')
-            dew_point = observation_data.get('dew_point')
-            visibility = observation_data.get('visibility')
-            wind_gusts = observation_data.get('wind_gusts')
-            pressure = observation_data.get('pressure')
-        else:
-            humidity = None
-            dew_point = None
-            visibility = None
-            wind_gusts = None
-            pressure = None
-
-        # Fall back to parsing from detailed forecast if observation data not available
-        if not humidity:
-            humidity = self.extract_humidity(detailed_forecast)
-        if not dew_point:
-            dew_point = self.extract_dew_point(detailed_forecast)
-        if not visibility:
-            visibility = self.extract_visibility(detailed_forecast)
-        if not wind_gusts:
-            wind_gusts = self.extract_wind_gusts(detailed_forecast)
-        if not pressure:
-            pressure = self.extract_pressure(detailed_forecast)
-
-        # Always try to get precip_prob from detailed forecast (not in observation data)
+        # Prefer the station observation (more accurate); fall back to parsing the forecast text.
+        observed = observation_data or {}
+        humidity = observed.get('humidity') or self.extract_humidity(detailed_forecast)
+        dew_point = observed.get('dew_point') or self.extract_dew_point(detailed_forecast)
+        visibility = observed.get('visibility') or self.extract_visibility(detailed_forecast)
+        wind_gusts = observed.get('wind_gusts') or self.extract_wind_gusts(detailed_forecast)
+        pressure = observed.get('pressure') or self.extract_pressure(detailed_forecast)
+        # Precipitation probability only comes from the forecast text.
         precip_prob = self.extract_precip_probability(detailed_forecast)
 
-        # Add humidity if available and space allows
-        # Try to add all available details, only skip if they would exceed max_length
-        if humidity:
-            humidity_str = f" {humidity}%RH"
-            if self._count_display_width(result + humidity_str) + current_weather_length <= max_length:
-                result += humidity_str
-                current_weather_length + self._count_display_width(result)
-
-        # Add dew point if available and space allows
-        if dew_point:
-            dew_str = f" 💧{dew_point}°"
-            if self._count_display_width(result + dew_str) + current_weather_length <= max_length:
-                result += dew_str
-                current_weather_length + self._count_display_width(result)
-
-        # Add visibility if available and space allows
-        if visibility:
-            vis_str = f" 👁️{visibility}mi"
-            if self._count_display_width(result + vis_str) + current_weather_length <= max_length:
-                result += vis_str
-                current_weather_length + self._count_display_width(result)
-
-        # Add precipitation probability if available and space allows
-        if precip_prob:
-            precip_str = f" 🌦️{precip_prob}%"
-            if self._count_display_width(result + precip_str) + current_weather_length <= max_length:
-                result += precip_str
-                current_weather_length + self._count_display_width(result)
-
-        # Add wind gusts if available and space allows
-        if wind_gusts:
-            gust_str = f" 💨{wind_gusts}"
-            if self._count_display_width(result + gust_str) + current_weather_length <= max_length:
-                result += gust_str
-                current_weather_length + self._count_display_width(result)
-
-        # Add pressure if available and space allows
-        if pressure:
-            pressure_str = f" 📊{pressure}hPa"
-            if self._count_display_width(result + pressure_str) + current_weather_length <= max_length:
-                result += pressure_str
-
+        # Add each available detail, in this order, as long as the total still fits.
+        result = period_str
+        for value, template in (
+            (humidity, " {}%RH"),
+            (dew_point, " 💧{}°"),
+            (visibility, " 👁️{}mi"),
+            (precip_prob, " 🌦️{}%"),
+            (wind_gusts, " 💨{}"),
+            (pressure, " 📊{}hPa"),
+        ):
+            if value:
+                piece = template.format(value)
+                if self._count_display_width(result + piece) + current_weather_length <= max_length:
+                    result += piece
         return result
-
-    def _count_display_width(self, text: str) -> int:
-        """Count UTF-8 byte length of text. Matches RF packet byte limit from get_max_message_length()."""
-        return len(text.encode('utf-8'))
-
-    async def _send_multiday_forecast(self, message: MeshMessage, forecast_text: str):
-        """Send multi-day forecast response, splitting into multiple messages if needed"""
-        # Get max message length dynamically
-        max_length = self.get_max_message_length(message)
-
-        lines = forecast_text.split('\n')
-
-        # Remove empty lines
-        lines = [line.strip() for line in lines if line.strip()]
-
-        if not lines:
-            return
-
-        # If single line and under max_length chars, send as-is
-        if self._count_display_width(forecast_text) <= max_length:
-            await self.send_response(message, forecast_text)
-            return
-
-        # Multi-line message - try to fit as many days as possible in one message
-        # Only split when necessary (message would exceed max_length chars)
-        current_message = ""
-        message_count = 0
-
-        for i, line in enumerate(lines):
-            if not line:
-                continue
-
-            # Check if adding this line would exceed max_length characters (using display width)
-            test_message = current_message + "\n" + line if current_message else line
-
-            # Only split if message would exceed max_length chars (using display width)
-            if self._count_display_width(test_message) > max_length:
-                # Send current message and start new one
-                if current_message:
-                    # Per-user rate limit applies only to first message (trigger); skip for continuations
-                    await self.send_response(
-                        message, current_message,
-                        skip_user_rate_limit=(message_count > 0)
-                    )
-                    message_count += 1
-                    # Wait between messages (same as other commands)
-                    if i < len(lines):
-                        await asyncio.sleep(2.0)
-
-                    current_message = line
-                else:
-                    # Single line is too long, send it anyway (will be truncated by bot)
-                    await self.send_response(
-                        message, line,
-                        skip_user_rate_limit=(message_count > 0)
-                    )
-                    message_count += 1
-                    if i < len(lines) - 1:
-                        await asyncio.sleep(2.0)
-                    current_message = ""
-            else:
-                # Add line to current message (fits within max_length chars)
-                if current_message:
-                    current_message += "\n" + line
-                else:
-                    current_message = line
-
-        # Send the last message if there's content (continuation; skip per-user rate limit)
-        if current_message:
-            await self.send_response(message, current_message, skip_user_rate_limit=True)
 
     def get_weather_alerts_noaa(self, lat: float, lon: float, return_full_data: bool = False) -> tuple:
         """Get weather alerts from NOAA with full metadata extraction and prioritization
@@ -2133,312 +1835,10 @@ class WxCommand(BaseCommand):
 
             for entry in alertxml.getElementsByTagName("entry"):
                 try:
-                    # Extract title
-                    title_elem = entry.getElementsByTagName("title")
-                    title = title_elem[0].childNodes[0].nodeValue if title_elem and title_elem[0].childNodes else ""
-
-                    # Extract summary/content for additional context (especially useful for Special Statements)
-                    summary = ""
-                    summary_elem = entry.getElementsByTagName("summary")
-                    if summary_elem and summary_elem[0].childNodes:
-                        summary = summary_elem[0].childNodes[0].nodeValue if summary_elem[0].childNodes[0].nodeValue else ""
-                    # Also check for content element
-                    if not summary:
-                        content_elem = entry.getElementsByTagName("content")
-                        if content_elem and content_elem[0].childNodes:
-                            summary = content_elem[0].childNodes[0].nodeValue if content_elem[0].childNodes[0].nodeValue else ""
-
-                    # Extract NWS headline parameter (very useful for Special Statements)
-                    # Try both with and without namespace prefix
-                    nws_headline = ""
-                    # Try cap:parameter first
-                    params = entry.getElementsByTagName("cap:parameter")
-                    if not params:
-                        # Try without namespace prefix
-                        params = entry.getElementsByTagName("parameter")
-
-                    for param in params:
-                        value_name_elem = param.getElementsByTagName("valueName")
-                        value_elem = param.getElementsByTagName("value")
-                        if value_name_elem and value_elem and value_name_elem[0].childNodes and value_elem[0].childNodes:
-                            value_name = value_name_elem[0].childNodes[0].nodeValue if value_name_elem[0].childNodes[0].nodeValue else ""
-                            if value_name == "NWSheadline":
-                                nws_headline = value_elem[0].childNodes[0].nodeValue if value_elem[0].childNodes[0].nodeValue else ""
-                                break
-
-                    # Extract CAP (Common Alerting Protocol) metadata
-                    # These are in the cap namespace, so we need to search by tag name
-                    event = ""
-                    severity = "Unknown"
-                    urgency = "Unknown"
-                    certainty = "Unknown"
-                    effective = ""
-                    expires = ""
-                    area_desc = ""
-                    office = ""
-
-                    # Parse title to extract key info (fallback if CAP data not available)
-                    # Title format: "High Wind Warning issued December 16 at 3:12PM PST until December 17 at 6:00AM PST by NWS Seattle WA"
-                    title_lower = title.lower()
-
-                    # Extract event type from title
-                    if "warning" in title_lower:
-                        event_type = "Warning"
-                        # Extract event name (e.g., "High Wind Warning" -> "High Wind")
-                        event_match = re.search(r'^([^W]+?)\s+Warning', title, re.IGNORECASE)
-                        if event_match:
-                            event = event_match.group(1).strip()
-                    elif "watch" in title_lower:
-                        event_type = "Watch"
-                        event_match = re.search(r'^([^W]+?)\s+Watch', title, re.IGNORECASE)
-                        if event_match:
-                            event = event_match.group(1).strip()
-                    elif "advisory" in title_lower:
-                        event_type = "Advisory"
-                        event_match = re.search(r'^([^A]+?)\s+Advisory', title, re.IGNORECASE)
-                        if event_match:
-                            event = event_match.group(1).strip()
-                    elif "statement" in title_lower:
-                        event_type = "Statement"
-                        # For statements, try to extract more descriptive info
-                        # Pattern: "Special Weather Statement" or "Hydrologic Statement" etc.
-                        event_match = re.search(r'^([^S]+?)\s+Statement', title, re.IGNORECASE)
-                        event = event_match.group(1).strip() if event_match else "Special"
-
-                        # For Special Statements, try to extract meaningful description from NWS headline or summary
-                        if event.lower() in ["special", "special weather"]:
-                            # First, try NWS headline (most concise and descriptive)
-                            if nws_headline:
-                                headline_lower = nws_headline.lower()
-
-                                # Extract the PRIMARY topic - look for the main subject/action
-                                # Strategy: Find the most important noun/topic, prioritizing specific threats
-                                # Order matters - check more specific threats first
-
-                                # Very specific threats (highest priority)
-                                if any(phrase in headline_lower for phrase in ['debris flow', 'mudslide']):
-                                    event = "Debris Flow"
-                                elif 'landslide' in headline_lower:
-                                    # Check if there's a more specific context
-                                    if 'burn' in headline_lower or 'burned area' in headline_lower:
-                                        event = "Landslide (Burn)"
-                                    else:
-                                        event = "Landslide"
-                                # Weather phenomena
-                                elif any(phrase in headline_lower for phrase in ['flash flood', 'river flood']) or 'flood' in headline_lower or 'flooding' in headline_lower:
-                                    event = "Flood"
-                                elif any(phrase in headline_lower for phrase in ['high wind', 'strong wind', 'damaging wind']) or 'wind' in headline_lower or 'gust' in headline_lower:
-                                    event = "Wind"
-                                elif any(phrase in headline_lower for phrase in ['heavy rain', 'excessive rain']):
-                                    event = "Heavy Rain"
-                                elif 'rain' in headline_lower or 'rainfall' in headline_lower or 'precipitation' in headline_lower:
-                                    # If rain is mentioned with another threat, prioritize the other threat
-                                    # But if rain is the main topic, use it
-                                    if not any(word in headline_lower for word in ['landslide', 'flood', 'wind', 'snow']):
-                                        event = "Rainfall"
-                                    # Otherwise, the other threat was already caught above
-                                elif any(phrase in headline_lower for phrase in ['heavy snow', 'blizzard', 'winter storm']) or 'snow' in headline_lower or 'winter' in headline_lower:
-                                    event = "Snow"
-                                elif any(phrase in headline_lower for phrase in ['dense fog', 'low visibility']):
-                                    event = "Fog"
-                                elif 'fog' in headline_lower or 'visibility' in headline_lower:
-                                    event = "Visibility"
-                                elif any(phrase in headline_lower for phrase in ['extreme heat', 'excessive heat']):
-                                    event = "Heat"
-                                elif 'heat' in headline_lower or 'temperature' in headline_lower:
-                                    event = "Temperature"
-                                elif any(phrase in headline_lower for phrase in ['storm surge', 'coastal flood']) or 'marine' in headline_lower or 'coastal' in headline_lower:
-                                    event = "Marine"
-                                else:
-                                    # Try to extract first meaningful word/phrase from headline
-                                    # Remove common words and extract key terms
-                                    headline_words = headline_lower.split()
-                                    # Skip common words
-                                    skip_words = {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'will', 'lead', 'increased', 'threat', 'remains', 'effect', 'until', 'during', 'last', 'week', 'including', 'today'}
-                                    meaningful_words = [w for w in headline_words if w not in skip_words and len(w) > 3]
-                                    if meaningful_words:
-                                        # Take first meaningful word, capitalize it
-                                        event = meaningful_words[0].capitalize()
-
-                            # If still generic, try summary
-                            if event.lower() in ["special", "special weather"] and summary:
-                                summary_lower = summary.lower()
-                                # Look for key phrases in summary that indicate statement type
-                                if any(word in summary_lower for word in ['landslide', 'debris flow', 'mudslide']):
-                                    event = "Landslide"
-                                elif any(word in summary_lower for word in ['hydrologic', 'river', 'flood', 'stream']):
-                                    event = "Hydrologic"
-                                elif any(word in summary_lower for word in ['marine', 'coastal', 'beach', 'surf']):
-                                    event = "Marine"
-                                elif any(word in summary_lower for word in ['avalanche', 'snow', 'mountain']):
-                                    event = "Avalanche"
-                                elif any(word in summary_lower for word in ['air quality', 'smoke', 'pollution']):
-                                    event = "Air Quality"
-                                elif any(word in summary_lower for word in ['wind', 'gust']):
-                                    event = "Wind"
-                                elif any(word in summary_lower for word in ['rain', 'precipitation', 'shower', 'rainfall']):
-                                    event = "Rainfall"
-                                elif any(word in summary_lower for word in ['temperature', 'heat', 'cold', 'freeze']):
-                                    event = "Temperature"
-                                elif any(word in summary_lower for word in ['visibility', 'fog', 'haze']):
-                                    event = "Visibility"
-
-                            # If still generic, check if title has "Weather" in it
-                            if event.lower() in ["special", "special weather"]:
-                                event = "Weather" if "weather" in title_lower else "Special"
-                    else:
-                        event_type = "Unknown"
-                        event = title.split()[0] if title else ""
-
-                    # Extract times from title
-                    # Pattern: "issued December 16 at 3:12PM PST until December 17 at 6:00AM PST"
-                    issued_match = re.search(r'issued\s+([^u]+?)\s+until\s+(.+?)\s+by', title, re.IGNORECASE)
-                    if issued_match:
-                        effective = issued_match.group(1).strip()
-                        expires = issued_match.group(2).strip()
-                    else:
-                        # Try alternative patterns
-                        until_match = re.search(r'until\s+(.+?)\s+by', title, re.IGNORECASE)
-                        if until_match:
-                            expires = until_match.group(1).strip()
-
-                    # Extract office from title
-                    # Pattern: "by NWS Seattle WA"
-                    office_match = re.search(r'by\s+(.+?)$', title, re.IGNORECASE)
-                    if office_match:
-                        office = office_match.group(1).strip()
-
-                    # Try to extract CAP elements if available (they may be in different namespaces)
-                    # Look for cap:event, cap:severity, etc. in the XML
-                    # CAP elements might be in namespace like "cap:event" or just "event" in a cap namespace
-                    def get_node_value(node):
-                        """Extract text value from XML node"""
-                        if not node or not node.childNodes:
-                            return ""
-                        # Get all text nodes
-                        text_parts = []
-                        for child in node.childNodes:
-                            if child.nodeType == child.TEXT_NODE or hasattr(child, 'nodeValue') and child.nodeValue:
-                                text_parts.append(child.nodeValue)
-                        return " ".join(text_parts).strip()
-
-                    # Search for CAP elements by tag name (handles namespaces)
-                    for child in entry.childNodes:
-                        if hasattr(child, 'tagName'):
-                            tag_name = child.tagName
-                            tag_lower = tag_name.lower()
-
-                            # Handle both "cap:event" and "event" formats
-                            if ('event' in tag_lower or tag_name.endswith(':event')) and not event:
-                                event_val = get_node_value(child)
-                                if event_val:
-                                    event = event_val
-                            elif 'severity' in tag_lower or tag_name.endswith(':severity'):
-                                severity_val = get_node_value(child)
-                                if severity_val:
-                                    severity = severity_val
-                            elif 'urgency' in tag_lower or tag_name.endswith(':urgency'):
-                                urgency_val = get_node_value(child)
-                                if urgency_val:
-                                    urgency = urgency_val
-                            elif 'certainty' in tag_lower or tag_name.endswith(':certainty'):
-                                certainty_val = get_node_value(child)
-                                if certainty_val:
-                                    certainty = certainty_val
-                            elif 'effective' in tag_lower or tag_name.endswith(':effective'):
-                                effective_val = get_node_value(child)
-                                if effective_val:
-                                    effective = effective_val
-                            elif 'expires' in tag_lower or tag_name.endswith(':expires'):
-                                expires_val = get_node_value(child)
-                                if expires_val:
-                                    expires = expires_val
-                            elif ('areadesc' in tag_lower or 'area' in tag_lower or
-                                  tag_name.endswith(':areadesc') or tag_name.endswith(':area')):
-                                area_val = get_node_value(child)
-                                if area_val:
-                                    area_desc = area_val
-
-                    # Also try searching by namespace-aware methods
-                    # Some XML parsers handle namespaces differently
-                    try:
-                        # Try to get elements by local name (ignoring namespace prefix)
-                        for node in entry.getElementsByTagName("*"):
-                            if hasattr(node, 'localName'):
-                                local_name = node.localName.lower()
-                                node_val = get_node_value(node)
-                                if node_val:
-                                    if local_name == 'event' and not event:
-                                        event = node_val
-                                    elif local_name == 'severity' and severity == "Unknown":
-                                        severity = node_val
-                                    elif local_name == 'urgency' and urgency == "Unknown":
-                                        urgency = node_val
-                                    elif local_name == 'certainty' and certainty == "Unknown":
-                                        certainty = node_val
-                                    elif local_name == 'effective' and not effective:
-                                        effective = node_val
-                                    elif local_name == 'expires' and not expires:
-                                        expires = node_val
-                                    elif local_name in ['areadesc', 'area'] and not area_desc:
-                                        area_desc = node_val
-                    except:
-                        pass  # Namespace-aware methods may not be available
-
-                    # Infer severity from event type if not found
-                    if severity == "Unknown":
-                        if any(word in event.lower() for word in ['extreme', 'tornado', 'hurricane', 'blizzard']):
-                            severity = "Extreme"
-                        elif any(word in event.lower() for word in ['severe', 'warning']):
-                            severity = "Severe"
-                        elif any(word in event.lower() for word in ['advisory', 'moderate']):
-                            severity = "Moderate"
-                        else:
-                            severity = "Minor"
-
-                    # Infer urgency from event type if not found
-                    if urgency == "Unknown":
-                        if event_type == "Warning":
-                            urgency = "Immediate"
-                        elif event_type == "Watch":
-                            urgency = "Expected"
-                        else:
-                            urgency = "Future"
-
-                    # Calculate expiration time for prioritization
-                    if expires:
-                        try:
-                            # Try to parse expiration time
-                            # Format might be "December 17 at 6:00AM PST" or ISO format
-                            if 'at' in expires.lower():
-                                # Parse "December 17 at 6:00AM PST"
-                                from datetime import datetime
-                                datetime.now()
-                                # Extract date and time parts
-                                date_match = re.search(r'(\w+\s+\d+)', expires)
-                                time_match = re.search(r'(\d+):?(\d+)?(AM|PM)', expires, re.IGNORECASE)
-                                if date_match and time_match:
-                                    # For simplicity, assume it's within next 7 days
-                                    pass  # Default estimate
-                        except:
-                            pass
-
-                    alert_dict = {
-                        'title': title,
-                        'summary': summary,  # Store summary for potential use in formatting
-                        'nws_headline': nws_headline,  # Store NWS headline for Special Statements
-                        'event': event,
-                        'event_type': event_type,
-                        'severity': severity,
-                        'urgency': urgency,
-                        'certainty': certainty,
-                        'effective': effective,
-                        'expires': expires,
-                        'area_desc': area_desc,
-                        'office': office
-                    }
-
-                    alerts.append(alert_dict)
+                    title = entry_title(entry)
+                    summary = entry_summary(entry)
+                    nws_headline = entry_nws_headline(entry)
+                    alerts.append(parse_alert_fields(entry, title, summary, nws_headline, WX_SPECIAL_RULES))
 
                 except Exception as e:
                     self.logger.warning(f"Error parsing alert entry: {e}")
@@ -2521,7 +1921,6 @@ class WxCommand(BaseCommand):
                     nws_headline = alert.get('nws_headline', '')
                     summary = alert.get('summary', '')
                     effective = alert.get('effective', '')
-                    alert.get('expires', '')
 
                     # Try to extract unique distinguishing details
                     distinguishing_detail = ""
@@ -2886,69 +2285,6 @@ class WxCommand(BaseCommand):
             if i < len(messages) - 1:
                 await asyncio.sleep(sleep_time)
 
-    def abbreviate_alert_title(self, title: str) -> str:
-        """Abbreviate alert title for brevity"""
-        # Common alert type abbreviations
-        replacements = {
-            "warning": "Warn",
-            "watch": "Watch",
-            "advisory": "Adv",
-            "statement": "Stmt",
-            "severe thunderstorm": "SvrT-Storm",
-            "tornado": "Tornado",
-            "flash flood": "FlashFlood",
-            "flood": "Flood",
-            "winter storm": "WinterStorm",
-            "blizzard": "Blizzard",
-            "ice storm": "IceStorm",
-            "freeze": "Freeze",
-            "frost": "Frost",
-            "heat": "Heat",
-            "excessive heat": "ExHeat",
-            "extreme heat": "ExtHeat",
-            "wind": "Wind",
-            "high wind": "HighWind",
-            "wind advisory": "WindAdv",
-            "fire weather": "FireWx",
-            "red flag": "RedFlag",
-            "dense fog": "DenseFog",
-            "issued": "iss",
-            "until": "til",
-            "effective": "eff",
-            "expires": "exp",
-            "dense smoke": "DenseSmoke",
-            "air quality": "AirQuality",
-            "coastal flood": "CoastalFlood",
-            "lakeshore flood": "LakeshoreFlood",
-            "rip current": "RipCurrent",
-            "high surf": "HighSurf",
-            "hurricane": "Hurricane",
-            "tropical storm": "TropStorm",
-            "tropical depression": "TropDep",
-            "storm surge": "StormSurge",
-            "tsunami": "Tsunami",
-            "earthquake": "Earthquake",
-            "volcano": "Volcano",
-            "avalanche": "Avalanche",
-            "landslide": "Landslide",
-            "debris flow": "DebrisFlow",
-            "dust storm": "DustStorm",
-            "sandstorm": "Sandstorm",
-            "blowing dust": "BlwDust",
-            "blowing sand": "BlwSand"
-        }
-
-        result = title
-        for key, value in replacements.items():
-            # Case insensitive replace
-            result = result.replace(key, value).replace(key.capitalize(), value).replace(key.upper(), value)
-
-        # Limit to reasonable length
-        if len(result) > 30:
-            result = result[:27] + "..."
-
-        return result
-
     def abbreviate_city_name(self, city: str) -> str:
         """Abbreviate city names for compact display (e.g., Seattle -> SEA)"""
         return alert_format.abbreviate_city_name(city)
@@ -2990,43 +2326,11 @@ class WxCommand(BaseCommand):
 
     def extract_humidity(self, text: str) -> str:
         """Extract humidity percentage from forecast text"""
-        if not text:
-            return ""
-
-        # Look for patterns like "humidity 45%" or "45% humidity"
-        humidity_patterns = [
-            r'humidity\s+(\d+)%',
-            r'(\d+)%\s+humidity',
-            r'relative humidity\s+(\d+)%',
-            r'(\d+)%\s+relative humidity'
-        ]
-
-        for pattern in humidity_patterns:
-            match = re.search(pattern, text.lower())
-            if match:
-                return match.group(1)
-
-        return ""
+        return _first_match(text, _HUMIDITY_PATTERNS)
 
     def extract_precip_chance(self, text: str) -> str:
         """Extract precipitation chance from forecast text"""
-        if not text:
-            return ""
-
-        # Look for patterns like "20% chance" or "chance of rain 30%"
-        precip_patterns = [
-            r'(\d+)%\s+chance',
-            r'chance\s+of\s+\w+\s+(\d+)%',
-            r'(\d+)%\s+probability',
-            r'probability\s+of\s+\w+\s+(\d+)%'
-        ]
-
-        for pattern in precip_patterns:
-            match = re.search(pattern, text.lower())
-            if match:
-                return match.group(1)
-
-        return ""
+        return _first_match(text, _PRECIP_CHANCE_PATTERNS)
 
     def extract_high_low(self, text: str, units_str: str = "°F") -> str:
         """Extract high/low temperatures from forecast text; format via [Weather] templates."""
@@ -3093,165 +2397,27 @@ class WxCommand(BaseCommand):
 
     def extract_uv_index(self, text: str) -> str:
         """Extract UV index from forecast text"""
-        if not text:
-            return ""
-
-        # Look for UV index patterns
-        uv_patterns = [
-            r'uv\s+index\s+(\d+)',
-            r'uv\s+(\d+)',
-            r'ultraviolet\s+index\s+(\d+)'
-        ]
-
-        for pattern in uv_patterns:
-            match = re.search(pattern, text.lower())
-            if match:
-                uv_val = match.group(1)
-                # Validate UV index (0-11+ is reasonable)
-                try:
-                    if 0 <= int(uv_val) <= 15:
-                        return uv_val
-                except ValueError:
-                    continue
-
-        return ""
+        return _first_match(text, _UV_INDEX_PATTERNS, 0, 15)
 
     def extract_dew_point(self, text: str) -> str:
         """Extract dew point temperature from forecast text"""
-        if not text:
-            return ""
-
-        # Look for dew point patterns
-        dew_point_patterns = [
-            r'dew point\s+(\d+)',
-            r'dewpoint\s+(\d+)',
-            r'dew\s+point\s+(\d+)°'
-        ]
-
-        for pattern in dew_point_patterns:
-            match = re.search(pattern, text.lower())
-            if match:
-                dp_val = match.group(1)
-                # Validate dew point (reasonable range -20 to 80°F)
-                try:
-                    if -20 <= int(dp_val) <= 80:
-                        return dp_val
-                except ValueError:
-                    continue
-
-        return ""
+        return _first_match(text, _DEW_POINT_PATTERNS, -20, 80)
 
     def extract_visibility(self, text: str) -> str:
         """Extract visibility from forecast text"""
-        if not text:
-            return ""
-
-        # Look for visibility patterns
-        visibility_patterns = [
-            r'visibility\s+(\d+)\s+miles',
-            r'visibility\s+(\d+)\s+mi',
-            r'(\d+)\s+mile\s+visibility',
-            r'(\d+)\s+mi\s+visibility'
-        ]
-
-        for pattern in visibility_patterns:
-            match = re.search(pattern, text.lower())
-            if match:
-                vis_val = match.group(1)
-                # Validate visibility (reasonable range 0-20 miles)
-                try:
-                    if 0 <= int(vis_val) <= 20:
-                        return vis_val
-                except ValueError:
-                    continue
-
-        return ""
+        return _first_match(text, _VISIBILITY_PATTERNS, 0, 20)
 
     def extract_precip_probability(self, text: str) -> str:
         """Extract precipitation probability from forecast text"""
-        if not text:
-            return ""
-
-        # Look for precipitation probability patterns
-        precip_prob_patterns = [
-            r'(\d+)%\s+chance\s+of\s+(?:rain|precipitation|showers)',
-            r'chance\s+of\s+(?:rain|precipitation|showers)\s+(\d+)%',
-            r'(\d+)%\s+probability\s+of\s+(?:rain|precipitation|showers)',
-            r'probability\s+of\s+(?:rain|precipitation|showers)\s+(\d+)%',
-            r'(\d+)%\s+chance',
-            r'chance\s+(\d+)%'
-        ]
-
-        for pattern in precip_prob_patterns:
-            match = re.search(pattern, text.lower())
-            if match:
-                prob_val = match.group(1)
-                # Validate probability (0-100%)
-                try:
-                    if 0 <= int(prob_val) <= 100:
-                        return prob_val
-                except ValueError:
-                    continue
-
-        return ""
+        return _first_match(text, _PRECIP_PROBABILITY_PATTERNS, 0, 100)
 
     def extract_wind_gusts(self, text: str) -> str:
         """Extract wind gusts from forecast text"""
-        if not text:
-            return ""
-
-        # Look for wind gust patterns
-        gust_patterns = [
-            r'gusts\s+to\s+(\d+)\s+mph',
-            r'gusts\s+up\s+to\s+(\d+)\s+mph',
-            r'wind\s+gusts\s+to\s+(\d+)\s+mph',
-            r'wind\s+gusts\s+up\s+to\s+(\d+)\s+mph',
-            r'gusts\s+(\d+)\s+mph',
-            r'wind\s+gusts\s+(\d+)\s+mph'
-        ]
-
-        for pattern in gust_patterns:
-            match = re.search(pattern, text.lower())
-            if match:
-                gust_val = match.group(1)
-                # Validate wind gust (reasonable range 10-100 mph)
-                try:
-                    if 10 <= int(gust_val) <= 100:
-                        return gust_val
-                except ValueError:
-                    continue
-
-        return ""
+        return _first_match(text, _WIND_GUST_PATTERNS, 10, 100)
 
     def extract_pressure(self, text: str) -> str:
         """Extract barometric pressure from forecast text"""
-        if not text:
-            return ""
-
-        # Look for pressure patterns (hPa, mb, inches of mercury)
-        pressure_patterns = [
-            r'pressure\s+(\d+)\s*hpa',
-            r'pressure\s+(\d+)\s*mb',
-            r'barometric\s+pressure\s+(\d+)\s*hpa',
-            r'barometric\s+pressure\s+(\d+)\s*mb',
-            r'(\d+)\s*hpa',
-            r'(\d+)\s*mb\s+pressure'
-        ]
-
-        for pattern in pressure_patterns:
-            match = re.search(pattern, text.lower())
-            if match:
-                pressure_val = match.group(1)
-                # Validate pressure (reasonable range 600-1100 hPa/mb)
-                # Normal sea level is ~1013 hPa, but high elevation locations can be lower
-                try:
-                    pressure_int = int(pressure_val)
-                    if 600 <= pressure_int <= 1100:
-                        return pressure_val
-                except ValueError:
-                    continue
-
-        return ""
+        return _first_match(text, _PRESSURE_PATTERNS, 600, 1100)
 
     def get_observation_data(self, points_data: dict) -> dict:
         """Get observation station data from NOAA and return as a dict
@@ -3335,32 +2501,6 @@ class WxCommand(BaseCommand):
         except Exception as e:
             self.logger.debug(f"Error getting observation data: {e}")
             return {}
-
-    def get_current_conditions(self, points_data: dict) -> str:
-        """Get additional current conditions data from NOAA using existing points data (legacy method)"""
-        obs_data = self.get_observation_data(points_data)
-        if not obs_data:
-            return ""
-
-        conditions = []
-
-        # Build conditions list in priority order
-        if 'humidity' in obs_data:
-            conditions.append(f"{obs_data['humidity']}%RH")
-
-        if 'dew_point' in obs_data:
-            conditions.append(f"💧{obs_data['dew_point']}°")
-
-        if 'visibility' in obs_data:
-            conditions.append(f"👁️{obs_data['visibility']}mi")
-
-        if 'wind_gusts' in obs_data:
-            conditions.append(f"💨{obs_data['wind_gusts']}")
-
-        if 'pressure' in obs_data:
-            conditions.append(f"📊{obs_data['pressure']}hPa")
-
-        return " ".join(conditions[:3])  # Limit to 3 conditions to avoid overflow
 
     def get_weather_emoji(self, condition: str) -> str:
         """Get emoji for weather condition"""
@@ -3470,3 +2610,96 @@ class WxCommand(BaseCommand):
             line = line.replace(key, value).replace(key.capitalize(), value).replace(key.upper(), value)
 
         return line
+
+    async def get_weather_for_zipcode(self, zipcode: str) -> str:
+        """Get weather data for a specific zipcode (legacy method)"""
+        return await self.get_weather_for_location(zipcode, "zipcode")
+
+    def abbreviate_alert_title(self, title: str) -> str:
+        """Abbreviate alert title for brevity"""
+        # Common alert type abbreviations
+        replacements = {
+            "warning": "Warn",
+            "watch": "Watch",
+            "advisory": "Adv",
+            "statement": "Stmt",
+            "severe thunderstorm": "SvrT-Storm",
+            "tornado": "Tornado",
+            "flash flood": "FlashFlood",
+            "flood": "Flood",
+            "winter storm": "WinterStorm",
+            "blizzard": "Blizzard",
+            "ice storm": "IceStorm",
+            "freeze": "Freeze",
+            "frost": "Frost",
+            "heat": "Heat",
+            "excessive heat": "ExHeat",
+            "extreme heat": "ExtHeat",
+            "wind": "Wind",
+            "high wind": "HighWind",
+            "wind advisory": "WindAdv",
+            "fire weather": "FireWx",
+            "red flag": "RedFlag",
+            "dense fog": "DenseFog",
+            "issued": "iss",
+            "until": "til",
+            "effective": "eff",
+            "expires": "exp",
+            "dense smoke": "DenseSmoke",
+            "air quality": "AirQuality",
+            "coastal flood": "CoastalFlood",
+            "lakeshore flood": "LakeshoreFlood",
+            "rip current": "RipCurrent",
+            "high surf": "HighSurf",
+            "hurricane": "Hurricane",
+            "tropical storm": "TropStorm",
+            "tropical depression": "TropDep",
+            "storm surge": "StormSurge",
+            "tsunami": "Tsunami",
+            "earthquake": "Earthquake",
+            "volcano": "Volcano",
+            "avalanche": "Avalanche",
+            "landslide": "Landslide",
+            "debris flow": "DebrisFlow",
+            "dust storm": "DustStorm",
+            "sandstorm": "Sandstorm",
+            "blowing dust": "BlwDust",
+            "blowing sand": "BlwSand"
+        }
+
+        result = title
+        for key, value in replacements.items():
+            # Case insensitive replace
+            result = result.replace(key, value).replace(key.capitalize(), value).replace(key.upper(), value)
+
+        # Limit to reasonable length
+        if len(result) > 30:
+            result = result[:27] + "..."
+
+        return result
+
+    def get_current_conditions(self, points_data: dict) -> str:
+        """Get additional current conditions data from NOAA using existing points data (legacy method)"""
+        obs_data = self.get_observation_data(points_data)
+        if not obs_data:
+            return ""
+
+        conditions = []
+
+        # Build conditions list in priority order
+        if 'humidity' in obs_data:
+            conditions.append(f"{obs_data['humidity']}%RH")
+
+        if 'dew_point' in obs_data:
+            conditions.append(f"💧{obs_data['dew_point']}°")
+
+        if 'visibility' in obs_data:
+            conditions.append(f"👁️{obs_data['visibility']}mi")
+
+        if 'wind_gusts' in obs_data:
+            conditions.append(f"💨{obs_data['wind_gusts']}")
+
+        if 'pressure' in obs_data:
+            conditions.append(f"📊{obs_data['pressure']}hPa")
+
+        return " ".join(conditions[:3])  # Limit to 3 conditions to avoid overflow
