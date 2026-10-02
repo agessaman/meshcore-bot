@@ -97,6 +97,7 @@ _VISIBILITY_PATTERNS = (
 _PRECIP_PROBABILITY_PATTERNS = (
     r'(\d+)%\s+chance\s+of\s+(?:rain|precipitation|showers)',
     r'chance\s+of\s+(?:rain|precipitation|showers)\s+(\d+)%',
+    r'chance\s+of\s+(?:rain|precipitation|showers)\s+is\s+(\d+)%',  # NOAA: "Chance of precipitation is 60%."
     r'(\d+)%\s+probability\s+of\s+(?:rain|precipitation|showers)',
     r'probability\s+of\s+(?:rain|precipitation|showers)\s+(\d+)%',
     r'(\d+)%\s+chance',
@@ -111,6 +112,7 @@ _WIND_GUST_PATTERNS = (
     r'wind\s+gusts\s+up\s+to\s+(\d+)\s+mph',
     r'gusts\s+(\d+)\s+mph',
     r'wind\s+gusts\s+(\d+)\s+mph',
+    r'gusts\s+as\s+high\s+as\s+(\d+)\s+mph',  # NOAA: "with gusts as high as 25 mph."
 )
 
 # extract_wind_gusts in SI forecast text ("Wind gusts up to 48 km/h")
@@ -2482,22 +2484,22 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         if not text:
             return ""
 
-        def _pair_ok(hi: int, lo: int) -> bool:
-            if units_str == "°C":
-                return -35 <= hi <= 55 and -35 <= lo <= 55 and hi > lo
-            return 20 <= hi <= 120 and 20 <= lo <= 120 and hi > lo
-
+        # NOAA writes cold values as plain negatives ("Low around -5."); the ranges
+        # cover the coldest and hottest forecasts it issues.
         def _single_ok(val: int) -> bool:
             if units_str == "°C":
-                return -35 <= val <= 55
-            return 20 <= val <= 120
+                return -55 <= val <= 55
+            return -65 <= val <= 130
+
+        def _pair_ok(hi: int, lo: int) -> bool:
+            return _single_ok(hi) and _single_ok(lo) and hi > lo
 
         pair_patterns = [
-            r'high\s+near\s+(\d+).*?low\s+around\s+(\d+)',
-            r'high\s+(\d+).*?low\s+(\d+)',
-            r'(\d+)\s+to\s+(\d+)\s+degrees',
-            r'temperature\s+(\d+)\s+to\s+(\d+)',
-            r'high\s+near\s+(\d+).*?temperatures\s+falling\s+to\s+around\s+(\d+)',
+            r'high\s+near\s+(-?\d+).*?low\s+around\s+(-?\d+)',
+            r'high\s+(-?\d+).*?low\s+(-?\d+)',
+            r'(-?\d+)\s+to\s+(-?\d+)\s+degrees',
+            r'temperature\s+(-?\d+)\s+to\s+(-?\d+)',
+            r'high\s+near\s+(-?\d+).*?temperatures\s+falling\s+to\s+around\s+(-?\d+)',
         ]
         for pattern in pair_patterns:
             match = re.search(pattern, text.lower())
@@ -2514,7 +2516,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                 except ValueError:
                     continue
 
-        low_match = re.search(r'low\s+around\s+(\d+)', text.lower())
+        low_match = re.search(r'low\s+around\s+(-?\d+)', text.lower())
         if low_match:
             try:
                 low_val = int(low_match.group(1))
@@ -2526,7 +2528,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             except ValueError:
                 pass
 
-        high_match = re.search(r'high\s+near\s+(\d+)', text.lower())
+        high_match = re.search(r'high\s+near\s+(-?\d+)', text.lower())
         if high_match:
             try:
                 high_val = int(high_match.group(1))
