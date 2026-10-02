@@ -43,6 +43,14 @@ def load_open_meteo_model(config: Any, logger: Any) -> Optional[str]:
     return model
 
 
+# 16-point compass labels, clockwise from north, and the arrow for each 45° sector.
+_COMPASS_16 = (
+    "N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
+    "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW",
+)
+_ARROWS_8 = ("⬆️", "↗️", "➡️", "↘️", "⬇️", "↙️", "⬅️", "↖️")
+
+
 class WeatherCommandMixin:
     # Catalog namespace for this command's strings, e.g. "commands.wx".
     translation_ns: str = ""

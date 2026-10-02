@@ -89,9 +89,9 @@ def test_open_meteo_daily_tail_width(name):
     data = _wet_data(name)
     for field in ("dewpoint_2m", "visibility", "surface_pressure"):
         data["current"].pop(field)
-    # With the key-returning translator, tomorrow's total width is 350/319;
-    # adding precipitation makes it 368/337. These budgets pin <= at equality.
-    tomorrow_budget, precip_budget = (360, 373) if name == "london" else (329, 342)
+    # With the key-returning translator, tomorrow's total width is 350/320;
+    # adding precipitation makes it 368/338. These budgets pin <= at equality.
+    tomorrow_budget, precip_budget = (360, 373) if name == "london" else (330, 343)
     results = {}
     for segment, boundary in (("tomorrow", tomorrow_budget), ("precipitation", precip_budget)):
         for offset in (-1, 0, 1):

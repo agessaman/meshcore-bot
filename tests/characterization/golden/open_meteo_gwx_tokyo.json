@@ -15,7 +15,7 @@
    "wind_speed_unit": "kmh"
   },
   "requests": 1,
-  "text": "<commands.gwx.periods.today>: 🌦️<commands.gwx.weather_descriptions.51> 19°C ↗️<common.wind_directions.NE>5<commands.gwx.gust[('value', 23)]> <commands.gwx.humidity[('value', 93)]> | <common.temp_high_label>:21°C <common.temp_low_label>:18°C"
+  "text": "<commands.gwx.periods.today>: 🌦️<commands.gwx.weather_descriptions.51> 19°C ↗️<common.wind_directions.NNE>5<commands.gwx.gust[('value', 23)]> <commands.gwx.humidity[('value', 93)]> | <common.temp_high_label>:21°C <common.temp_low_label>:18°C"
  },
  "default-day-budget200": {
   "logs": [],
@@ -33,7 +33,7 @@
    "wind_speed_unit": "kmh"
   },
   "requests": 1,
-  "text": "<commands.gwx.periods.today>: 🌦️<commands.gwx.weather_descriptions.51> 19°C ↗️<common.wind_directions.NE>5<commands.gwx.gust[('value', 23)]> <commands.gwx.humidity[('value', 93)]> | <common.temp_high_label>:21°C <common.temp_low_label>:18°C"
+  "text": "<commands.gwx.periods.today>: 🌦️<commands.gwx.weather_descriptions.51> 19°C ↗️<common.wind_directions.NNE>5<commands.gwx.gust[('value', 23)]> <commands.gwx.humidity[('value', 93)]> | <common.temp_high_label>:21°C <common.temp_low_label>:18°C"
  },
  "default-day-budget240": {
   "logs": [],
@@ -51,7 +51,7 @@
    "wind_speed_unit": "kmh"
   },
   "requests": 1,
-  "text": "<commands.gwx.periods.today>: 🌦️<commands.gwx.weather_descriptions.51> 19°C ↗️<common.wind_directions.NE>5<commands.gwx.gust[('value', 23)]> <commands.gwx.humidity[('value', 93)]> | <common.temp_high_label>:21°C <common.temp_low_label>:18°C"
+  "text": "<commands.gwx.periods.today>: 🌦️<commands.gwx.weather_descriptions.51> 19°C ↗️<common.wind_directions.NNE>5<commands.gwx.gust[('value', 23)]> <commands.gwx.humidity[('value', 93)]> | <common.temp_high_label>:21°C <common.temp_low_label>:18°C"
  },
  "default-day-budget300": {
   "logs": [],
@@ -69,7 +69,7 @@
    "wind_speed_unit": "kmh"
   },
   "requests": 1,
-  "text": "<commands.gwx.periods.today>: 🌦️<commands.gwx.weather_descriptions.51> 19°C ↗️<common.wind_directions.NE>5<commands.gwx.gust[('value', 23)]> <commands.gwx.humidity[('value', 93)]> <commands.gwx.dew_point[('unit', '°C'), ('value', 18)]> <commands.gwx.visibility_km[('value', 3)]> <commands.gwx.pressure[('value', 1010)]> | <common.temp_high_label>:21°C <common.temp_low_label>:18°C"
+  "text": "<commands.gwx.periods.today>: 🌦️<commands.gwx.weather_descriptions.51> 19°C ↗️<common.wind_directions.NNE>5<commands.gwx.gust[('value', 23)]> <commands.gwx.humidity[('value', 93)]> <commands.gwx.dew_point[('unit', '°C'), ('value', 18)]> <commands.gwx.visibility_km[('value', 3)]> <commands.gwx.pressure[('value', 1010)]> | <common.temp_high_label>:21°C <common.temp_low_label>:18°C"
  },
  "default-day-budget600": {
   "logs": [],
@@ -87,7 +87,7 @@
    "wind_speed_unit": "kmh"
   },
   "requests": 1,
-  "text": "<commands.gwx.periods.today>: 🌦️<commands.gwx.weather_descriptions.51> 19°C ↗️<common.wind_directions.NE>5<commands.gwx.gust[('value', 23)]> <commands.gwx.humidity[('value', 93)]> <commands.gwx.dew_point[('unit', '°C'), ('value', 18)]> <commands.gwx.visibility_km[('value', 3)]> <commands.gwx.pressure[('value', 1010)]> | <common.temp_high_label>:21°C <common.temp_low_label>:18°C | <commands.gwx.periods.tomorrow>: ⛅ <common.temp_high_label>:23°C <common.temp_low_label>:16°C"
+  "text": "<commands.gwx.periods.today>: 🌦️<commands.gwx.weather_descriptions.51> 19°C ↗️<common.wind_directions.NNE>5<commands.gwx.gust[('value', 23)]> <commands.gwx.humidity[('value', 93)]> <commands.gwx.dew_point[('unit', '°C'), ('value', 18)]> <commands.gwx.visibility_km[('value', 3)]> <commands.gwx.pressure[('value', 1010)]> | <common.temp_high_label>:21°C <common.temp_low_label>:18°C | <commands.gwx.periods.tomorrow>: ⛅ <common.temp_high_label>:23°C <common.temp_low_label>:16°C"
  },
  "default-day-prefix0": {
   "logs": [],
@@ -105,7 +105,7 @@
    "wind_speed_unit": "kmh"
   },
   "requests": 1,
-  "text": "<commands.gwx.periods.today>: 🌦️<commands.gwx.weather_descriptions.51> 19°C ↗️<common.wind_directions.NE>5<commands.gwx.gust[('value', 23)]> <commands.gwx.humidity[('value', 93)]> | <common.temp_high_label>:21°C <common.temp_low_label>:18°C"
+  "text": "<commands.gwx.periods.today>: 🌦️<commands.gwx.weather_descriptions.51> 19°C ↗️<common.wind_directions.NNE>5<commands.gwx.gust[('value', 23)]> <commands.gwx.humidity[('value', 93)]> | <common.temp_high_label>:21°C <common.temp_low_label>:18°C"
  },
  "default-day-prefix30": {
   "logs": [],
@@ -123,7 +123,7 @@
    "wind_speed_unit": "kmh"
   },
   "requests": 1,
-  "text": "<commands.gwx.periods.today>: 🌦️<commands.gwx.weather_descriptions.51> 19°C ↗️<common.wind_directions.NE>5<commands.gwx.gust[('value', 23)]> <commands.gwx.humidity[('value', 93)]> | <common.temp_high_label>:21°C <common.temp_low_label>:18°C"
+  "text": "<commands.gwx.periods.today>: 🌦️<commands.gwx.weather_descriptions.51> 19°C ↗️<common.wind_directions.NNE>5<commands.gwx.gust[('value', 23)]> <commands.gwx.humidity[('value', 93)]> | <common.temp_high_label>:21°C <common.temp_low_label>:18°C"
  },
  "default-day-prefix60": {
   "logs": [],
@@ -141,7 +141,7 @@
    "wind_speed_unit": "kmh"
   },
   "requests": 1,
-  "text": "<commands.gwx.periods.today>: 🌦️<commands.gwx.weather_descriptions.51> 19°C ↗️<common.wind_directions.NE>5<commands.gwx.gust[('value', 23)]> <commands.gwx.humidity[('value', 93)]> | <common.temp_high_label>:21°C <common.temp_low_label>:18°C"
+  "text": "<commands.gwx.periods.today>: 🌦️<commands.gwx.weather_descriptions.51> 19°C ↗️<common.wind_directions.NNE>5<commands.gwx.gust[('value', 23)]> <commands.gwx.humidity[('value', 93)]> | <common.temp_high_label>:21°C <common.temp_low_label>:18°C"
  },
  "default-night-budget160": {
   "logs": [],
@@ -159,7 +159,7 @@
    "wind_speed_unit": "kmh"
   },
   "requests": 1,
-  "text": "<commands.gwx.periods.today>: 🌦️<commands.gwx.weather_descriptions.51> 19°C ↗️<common.wind_directions.NE>5<commands.gwx.gust[('value', 23)]> <commands.gwx.humidity[('value', 93)]> | <common.temp_high_label>:21°C <common.temp_low_label>:18°C"
+  "text": "<commands.gwx.periods.today>: 🌦️<commands.gwx.weather_descriptions.51> 19°C ↗️<common.wind_directions.NNE>5<commands.gwx.gust[('value', 23)]> <commands.gwx.humidity[('value', 93)]> | <common.temp_high_label>:21°C <common.temp_low_label>:18°C"
  },
  "default-night-budget200": {
   "logs": [],
@@ -177,7 +177,7 @@
    "wind_speed_unit": "kmh"
   },
   "requests": 1,
-  "text": "<commands.gwx.periods.today>: 🌦️<commands.gwx.weather_descriptions.51> 19°C ↗️<common.wind_directions.NE>5<commands.gwx.gust[('value', 23)]> <commands.gwx.humidity[('value', 93)]> | <common.temp_high_label>:21°C <common.temp_low_label>:18°C"
+  "text": "<commands.gwx.periods.today>: 🌦️<commands.gwx.weather_descriptions.51> 19°C ↗️<common.wind_directions.NNE>5<commands.gwx.gust[('value', 23)]> <commands.gwx.humidity[('value', 93)]> | <common.temp_high_label>:21°C <common.temp_low_label>:18°C"
  },
  "default-night-budget240": {
   "logs": [],
@@ -195,7 +195,7 @@
    "wind_speed_unit": "kmh"
   },
   "requests": 1,
-  "text": "<commands.gwx.periods.today>: 🌦️<commands.gwx.weather_descriptions.51> 19°C ↗️<common.wind_directions.NE>5<commands.gwx.gust[('value', 23)]> <commands.gwx.humidity[('value', 93)]> | <common.temp_high_label>:21°C <common.temp_low_label>:18°C"
+  "text": "<commands.gwx.periods.today>: 🌦️<commands.gwx.weather_descriptions.51> 19°C ↗️<common.wind_directions.NNE>5<commands.gwx.gust[('value', 23)]> <commands.gwx.humidity[('value', 93)]> | <common.temp_high_label>:21°C <common.temp_low_label>:18°C"
  },
  "default-night-budget300": {
   "logs": [],
@@ -213,7 +213,7 @@
    "wind_speed_unit": "kmh"
   },
   "requests": 1,
-  "text": "<commands.gwx.periods.today>: 🌦️<commands.gwx.weather_descriptions.51> 19°C ↗️<common.wind_directions.NE>5<commands.gwx.gust[('value', 23)]> <commands.gwx.humidity[('value', 93)]> <commands.gwx.dew_point[('unit', '°C'), ('value', 18)]> <commands.gwx.visibility_km[('value', 3)]> <commands.gwx.pressure[('value', 1010)]> | <common.temp_high_label>:21°C <common.temp_low_label>:18°C"
+  "text": "<commands.gwx.periods.today>: 🌦️<commands.gwx.weather_descriptions.51> 19°C ↗️<common.wind_directions.NNE>5<commands.gwx.gust[('value', 23)]> <commands.gwx.humidity[('value', 93)]> <commands.gwx.dew_point[('unit', '°C'), ('value', 18)]> <commands.gwx.visibility_km[('value', 3)]> <commands.gwx.pressure[('value', 1010)]> | <common.temp_high_label>:21°C <common.temp_low_label>:18°C"
  },
  "default-night-budget600": {
   "logs": [],
@@ -231,7 +231,7 @@
    "wind_speed_unit": "kmh"
   },
   "requests": 1,
-  "text": "<commands.gwx.periods.today>: 🌦️<commands.gwx.weather_descriptions.51> 19°C ↗️<common.wind_directions.NE>5<commands.gwx.gust[('value', 23)]> <commands.gwx.humidity[('value', 93)]> <commands.gwx.dew_point[('unit', '°C'), ('value', 18)]> <commands.gwx.visibility_km[('value', 3)]> <commands.gwx.pressure[('value', 1010)]> | <common.temp_high_label>:21°C <common.temp_low_label>:18°C | <commands.gwx.periods.tomorrow>: ⛅ <common.temp_high_label>:23°C <common.temp_low_label>:16°C"
+  "text": "<commands.gwx.periods.today>: 🌦️<commands.gwx.weather_descriptions.51> 19°C ↗️<common.wind_directions.NNE>5<commands.gwx.gust[('value', 23)]> <commands.gwx.humidity[('value', 93)]> <commands.gwx.dew_point[('unit', '°C'), ('value', 18)]> <commands.gwx.visibility_km[('value', 3)]> <commands.gwx.pressure[('value', 1010)]> | <common.temp_high_label>:21°C <common.temp_low_label>:18°C | <commands.gwx.periods.tomorrow>: ⛅ <common.temp_high_label>:23°C <common.temp_low_label>:16°C"
  },
  "default-night-prefix0": {
   "logs": [],
@@ -249,7 +249,7 @@
    "wind_speed_unit": "kmh"
   },
   "requests": 1,
-  "text": "<commands.gwx.periods.today>: 🌦️<commands.gwx.weather_descriptions.51> 19°C ↗️<common.wind_directions.NE>5<commands.gwx.gust[('value', 23)]> <commands.gwx.humidity[('value', 93)]> | <common.temp_high_label>:21°C <common.temp_low_label>:18°C"
+  "text": "<commands.gwx.periods.today>: 🌦️<commands.gwx.weather_descriptions.51> 19°C ↗️<common.wind_directions.NNE>5<commands.gwx.gust[('value', 23)]> <commands.gwx.humidity[('value', 93)]> | <common.temp_high_label>:21°C <common.temp_low_label>:18°C"
  },
  "default-night-prefix30": {
   "logs": [],
@@ -267,7 +267,7 @@
    "wind_speed_unit": "kmh"
   },
   "requests": 1,
-  "text": "<commands.gwx.periods.today>: 🌦️<commands.gwx.weather_descriptions.51> 19°C ↗️<common.wind_directions.NE>5<commands.gwx.gust[('value', 23)]> <commands.gwx.humidity[('value', 93)]> | <common.temp_high_label>:21°C <common.temp_low_label>:18°C"
+  "text": "<commands.gwx.periods.today>: 🌦️<commands.gwx.weather_descriptions.51> 19°C ↗️<common.wind_directions.NNE>5<commands.gwx.gust[('value', 23)]> <commands.gwx.humidity[('value', 93)]> | <common.temp_high_label>:21°C <common.temp_low_label>:18°C"
  },
  "default-night-prefix60": {
   "logs": [],
@@ -285,7 +285,7 @@
    "wind_speed_unit": "kmh"
   },
   "requests": 1,
-  "text": "<commands.gwx.periods.today>: 🌦️<commands.gwx.weather_descriptions.51> 19°C ↗️<common.wind_directions.NE>5<commands.gwx.gust[('value', 23)]> <commands.gwx.humidity[('value', 93)]> | <common.temp_high_label>:21°C <common.temp_low_label>:18°C"
+  "text": "<commands.gwx.periods.today>: 🌦️<commands.gwx.weather_descriptions.51> 19°C ↗️<common.wind_directions.NNE>5<commands.gwx.gust[('value', 23)]> <commands.gwx.humidity[('value', 93)]> | <common.temp_high_label>:21°C <common.temp_low_label>:18°C"
  },
  "multiday16-day": {
   "logs": [],
