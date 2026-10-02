@@ -149,7 +149,7 @@ class TestHandleNewContactAddContact:
     async def test_add_contact_receives_merged_path_from_rf_flood_event(self, companion_new_contact_setup):
         """Flood NEW_CONTACT (-1/-1) + RF routing with path_len_byte fixes hash_mode for add_contact."""
         bot, mh = companion_new_contact_setup
-        mh.recent_rf_data = [
+        mh._advert_rf = [
             {
                 "routing_info": {
                     "path_hex": "0102030405060708",
@@ -160,8 +160,8 @@ class TestHandleNewContactAddContact:
                 },
                 "snr": 13.5,
                 "timestamp": time.time(),
-                "payload_type_int": 4,
-                "scope_payload_hex": "a95b4becd36e185eae392d48f11825143d8505d9421a15c7d9f99bc51da70f66" + "00" * 8,
+                "public_key": "a95b4becd36e185eae392d48f11825143d8505d9421a15c7d9f99bc51da70f66",
+                "advert_timestamp": 1,
             }
         ]
 
@@ -195,7 +195,7 @@ class TestHandleNewContactAddContact:
     async def test_add_contact_uses_path_len_byte_for_two_byte_hops(self, companion_new_contact_setup):
         bot, mh = companion_new_contact_setup
         path_hex = "414243444546"  # 3 hops × 2 bytes = 6 bytes = 12 hex chars
-        mh.recent_rf_data = [
+        mh._advert_rf = [
             {
                 "routing_info": {
                     "path_hex": path_hex,
@@ -205,8 +205,8 @@ class TestHandleNewContactAddContact:
                     "path_byte_length": 6,
                 },
                 "timestamp": time.time(),
-                "payload_type_int": 4,
-                "scope_payload_hex": "b95b4becd36e185eae392d48f11825143d8505d9421a15c7d9f99bc51da70f66" + "00" * 8,
+                "public_key": "b95b4becd36e185eae392d48f11825143d8505d9421a15c7d9f99bc51da70f66",
+                "advert_timestamp": 1,
             }
         ]
 
@@ -234,11 +234,11 @@ class TestHandleNewContactAddContact:
         int(self._pack_path_byte(passed)).to_bytes(1, "little", signed=False)
 
 
-def _rf(public_key, path_hex, *, packet_hash, payload_type=4, age=0.0):
+def _rf(public_key, path_hex, *, packet_hash, advert_timestamp=1, age=0.0):
     return {
         "timestamp": time.time() - age,
-        "payload_type_int": payload_type,
-        "scope_payload_hex": public_key + "00" * 8,
+        "public_key": public_key,
+        "advert_timestamp": advert_timestamp,
         "routing_info": {
             "path_hex": path_hex,
             "path_length": len(path_hex) // 2,
@@ -282,9 +282,9 @@ class TestNewContactRouteSource:
     @pytest.mark.asyncio
     async def test_an_unrelated_packet_route_is_not_used(self, companion_new_contact_setup):
         bot, mh = companion_new_contact_setup
-        mh.recent_rf_data = [
-            _rf(self.OTHER, "a1a2a3", packet_hash="00aa00aa00aa00aa"),  # another node's advert
-            _rf(self.PK, "b1b2b3", packet_hash="00bb00bb00bb00bb", payload_type=5),  # a GRP_TXT
+        mh._advert_rf = [_rf(self.OTHER, "a1a2a3", packet_hash="00aa00aa00aa00aa")]  # another node's advert
+        mh.recent_rf_data = [  # a channel message heard just before
+            {"timestamp": time.time(), "payload_type_int": 5, "routing_info": {"path_hex": "b1b2b3", "path_length": 3}},
         ]
         passed = await self._added(bot, mh)
         assert passed["out_path"] == ""
@@ -295,7 +295,7 @@ class TestNewContactRouteSource:
     @pytest.mark.asyncio
     async def test_the_contact_advert_route_is_used_and_not_recorded_again(self, companion_new_contact_setup):
         bot, mh = companion_new_contact_setup
-        mh.recent_rf_data = [
+        mh._advert_rf = [
             _rf(self.OTHER, "a1a2a3", packet_hash="00aa00aa00aa00aa"),
             _rf(self.PK, "c1c2", packet_hash="00cc00cc00cc00cc"),
             _rf(self.OTHER, "a4a5", packet_hash="00dd00dd00dd00dd"),
@@ -311,8 +311,8 @@ class TestNewContactRouteSource:
     @pytest.mark.asyncio
     async def test_the_first_copy_of_the_newest_advert_is_used(self, companion_new_contact_setup):
         bot, mh = companion_new_contact_setup
-        mh.recent_rf_data = [
-            _rf(self.PK, "0f0f", packet_hash="0001000100010001", age=8.0),  # an older advert
+        mh._advert_rf = [
+            _rf(self.PK, "0f0f", packet_hash="0001000100010001", advert_timestamp=0, age=8.0),  # an older advert
             _rf(self.PK, "e1e2", packet_hash="0002000200020002", age=2.0),  # first copy heard
             _rf(self.PK, "e3e4e5", packet_hash="0002000200020002", age=1.0),  # a later copy
         ]
@@ -325,3 +325,38 @@ class TestNewContactRouteSource:
         mh.recent_rf_data = [_rf(self.PK, "c1c2", packet_hash="00cc00cc00cc00cc", age=60.0)]
         passed = await self._added(bot, mh)
         assert passed["out_path"] == ""
+
+
+    @pytest.mark.asyncio
+    async def test_the_advert_named_by_last_advert_is_used(self, companion_new_contact_setup):
+        """A delayed copy of an older advert does not stand in for the one NEW_CONTACT is about."""
+        bot, mh = companion_new_contact_setup
+        mh._advert_rf = [
+            _rf(self.PK, "a1a1", packet_hash="000a000a000a000a", advert_timestamp=1, age=5.0),
+            _rf(self.PK, "b2b2", packet_hash="000b000b000b000b", advert_timestamp=2, age=3.0),
+            _rf(self.PK, "a3a3", packet_hash="000a000a000a000a", advert_timestamp=1, age=1.0),  # delayed copy
+        ]
+        event = MagicMock()
+        event.payload = {**_flood_contact(self.PK), "last_advert": 2}
+        await mh.handle_new_contact(event)
+        assert bot.meshcore.commands.add_contact.await_args[0][0]["out_path"] == "b2b2"
+
+
+class TestAdvertSeenBeforeProcessing:
+    @pytest.mark.asyncio
+    async def test_new_contact_handled_during_advert_processing_finds_the_advert(self, message_handler):
+        """The advert is recorded before _process_advertisement_packet yields."""
+        mh = message_handler
+        pk = "e7" * 32
+        payload_hex = pk + (1234).to_bytes(4, "little").hex() + "00" * 70
+        seen = {}
+
+        async def _process(packet_info, signal_info):
+            seen["entry"] = mh._find_advert_rf_data(pk, 1234)
+
+        mh._process_advertisement_packet = _process
+        routing_info = {"path_hex": "0102", "path_length": 2, "packet_hash": "00ee00ee00ee00ee"}
+        mh._remember_advert_rf({"payload_hex": payload_hex}, routing_info, "00ee00ee00ee00ee", {"snr": 5.0}, time.time())
+        await mh._process_advertisement_packet({}, {})
+        assert seen["entry"]["routing_info"]["path_hex"] == "0102"
+        assert mh._find_advert_rf_data(pk, 999) is None

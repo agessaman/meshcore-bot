@@ -84,6 +84,9 @@ class MessageHandler:
         # Time-based cache for recent RF log data
         self.recent_rf_data: list[dict[str, Any]] = []
 
+        # Adverts heard on RF, recorded before any await so NEW_CONTACT can find its own
+        self._advert_rf: list[dict[str, Any]] = []
+
         # (public_key, packet_hash) of adverts NEW_CONTACT already added to the device
         self._new_contact_adds: dict[tuple[str, str], None] = {}
 
@@ -1541,6 +1544,9 @@ class MessageHandler:
                                     "rssi": payload.get("rssi") if "rssi" in payload else None,
                                     "hops": routing_info["path_length"],
                                 }
+                                self._remember_advert_rf(
+                                    decoded_packet, routing_info, packet_hash, signal_info, current_time
+                                )
                                 await self._process_advertisement_packet(decoded_packet, signal_info)
 
                     # Prefer library-provided scope fields (already parsed by meshcore-py).
@@ -4120,36 +4126,67 @@ class MessageHandler:
         contact_data["out_path_hash_mode"] = (pb >> 6) & 0x03
         contact_data["out_path_len"] = pb & 0x3F
 
-    def _find_advert_rf_data(self, public_key: str) -> dict[str, Any] | None:
-        """The cached RF entry of ``public_key``'s most recent ADVERT, or None.
+    def _remember_advert_rf(
+        self,
+        packet_info: dict[str, Any],
+        routing_info: dict[str, Any],
+        packet_hash: str | None,
+        signal_info: dict[str, Any],
+        current_time: float,
+    ) -> None:
+        """Record an advert heard on RF for handle_new_contact.
 
-        An ADVERT's payload starts with the sender's public key, so the match is
-        exact. Among the copies of that packet heard over different paths, the first
-        one is returned: the copy the device acted on.
+        Called before the advert is processed, which can yield, so a NEW_CONTACT
+        handled meanwhile still finds it. An ADVERT payload starts with the
+        sender's 32-byte public key and its 4-byte advert timestamp.
+        """
+        payload_hex = packet_info.get("payload_hex")
+        if not isinstance(payload_hex, str) or len(payload_hex) < 72:
+            return
+        try:
+            advert_timestamp = int.from_bytes(bytes.fromhex(payload_hex[64:72]), "little")
+        except ValueError:
+            return
+        self._advert_rf.append({
+            "timestamp": current_time,
+            "public_key": payload_hex[:64].lower(),
+            "advert_timestamp": advert_timestamp,
+            "routing_info": routing_info,
+            "packet_hash": packet_hash,
+            "snr": signal_info.get("snr"),
+            "rssi": signal_info.get("rssi"),
+        })
+        cutoff = current_time - self.rf_data_timeout
+        self._advert_rf = [entry for entry in self._advert_rf if entry["timestamp"] >= cutoff][-256:]
+
+    def _find_advert_rf_data(self, public_key: str, advert_timestamp: Any = None) -> dict[str, Any] | None:
+        """The first copy heard of ``public_key``'s advert, or None.
+
+        With ``advert_timestamp`` (NEW_CONTACT's ``last_advert``) only that advert
+        matches; without it, the most recent one. Copies of one advert heard over
+        different paths share its timestamp; the first is the one the device acted on.
         """
         if not public_key:
             return None
         key = public_key.lower()
         now = time.time()
         matches = [
-            data
-            for data in self.recent_rf_data
-            if data.get("routing_info")
-            and data.get("payload_type_int") == PayloadType.ADVERT.value
-            and (data.get("scope_payload_hex") or "").lower().startswith(key)
-            and now - data.get("timestamp", 0) < self.rf_data_timeout
+            entry
+            for entry in self._advert_rf
+            if entry["public_key"] == key and now - entry["timestamp"] < self.rf_data_timeout
         ]
+        if isinstance(advert_timestamp, int) and not isinstance(advert_timestamp, bool) and advert_timestamp > 0:
+            matches = [entry for entry in matches if entry["advert_timestamp"] == advert_timestamp]
+        elif matches:
+            newest = max(matches, key=lambda entry: entry["timestamp"])["advert_timestamp"]
+            matches = [entry for entry in matches if entry["advert_timestamp"] == newest]
         if not matches:
             return None
-        newest = max(matches, key=lambda d: d.get("timestamp", 0))
-        packet_hash = newest["routing_info"].get("packet_hash") or newest.get("packet_hash")
-        if not packet_hash:
-            return newest
-        copies = [
-            d for d in matches
-            if (d["routing_info"].get("packet_hash") or d.get("packet_hash")) == packet_hash
-        ]
-        return min(copies, key=lambda d: d.get("timestamp", 0))
+        return min(matches, key=lambda entry: entry["timestamp"])
+
+    def _release_new_contact_add(self, public_key: str, packet_hash: str | None) -> None:
+        """Let a later NEW_CONTACT for this advert try again after a failed add."""
+        self._new_contact_adds.pop((public_key, packet_hash or ""), None)
 
     def _claim_new_contact_add(self, public_key: str, packet_hash: str | None) -> bool:
         """False when a NEW_CONTACT for this advert packet already added the contact."""
@@ -4197,7 +4234,7 @@ class MessageHandler:
             # Only collect RSSI/SNR for zero-hop (direct) advertisements
             packet_hash = None
             try:
-                rf_entry = self._find_advert_rf_data(public_key)
+                rf_entry = self._find_advert_rf_data(public_key, contact_data.get("last_advert"))
                 if rf_entry:
                     routing_info = rf_entry["routing_info"]
 
@@ -4356,11 +4393,13 @@ class MessageHandler:
                                     contact_data, contact_name, public_key
                                 )
                                 if not ok:
+                                    self._release_new_contact_add(public_key, packet_hash)
                                     self.logger.warning(
                                         "Failed to add companion contact %s to device after managed add/retry",
                                         contact_name,
                                     )
                             except Exception as e:
+                                self._release_new_contact_add(public_key, packet_hash)
                                 self.logger.error("Error adding companion %s to device: %s", contact_name, e)
 
                             status = await self.bot.repeater_manager.get_contact_list_status()

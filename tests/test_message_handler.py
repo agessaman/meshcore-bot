@@ -2303,13 +2303,13 @@ def _companion_contact_payload() -> dict:
 
 
 def _advert_rf_entry(public_key: str, *, path_hex: str = "0102", path_length: int = 2,
-                     packet_hash: str | None = None, age: float = 0.0, payload_type: int = 4) -> dict:
-    """A cached RF entry for an ADVERT (payload type 4) from ``public_key``."""
+                     packet_hash: str | None = None, age: float = 0.0) -> dict:
+    """An advert from ``public_key`` as handle_new_contact's advert cache holds it."""
     import time as _time
     return {
         "timestamp": _time.time() - age,
-        "payload_type_int": payload_type,
-        "scope_payload_hex": public_key + "00" * 8,
+        "public_key": public_key,
+        "advert_timestamp": 1,
         "routing_info": {
             "path_hex": path_hex,
             "path_length": path_length,
@@ -2414,7 +2414,7 @@ class TestHandleNewContactAutoManage:
 
         bot, handler, rm, mesh = new_contact_env
         bot.config.set("Bot", "auto_manage_contacts", "bot")
-        handler.recent_rf_data = [_advert_rf_entry("ab" * 32, packet_hash="1122334455667788")]
+        handler._advert_rf = [_advert_rf_entry("ab" * 32, packet_hash="1122334455667788")]
         rm.track_contact_advertisement = AsyncMock(
             return_value=TrackAdvertResult(ok=True, duplicate_packet=True)
         )
@@ -2427,12 +2427,22 @@ class TestHandleNewContactAutoManage:
     async def test_bot_mode_two_events_for_one_advert_add_once(self, new_contact_env):
         bot, handler, rm, mesh = new_contact_env
         bot.config.set("Bot", "auto_manage_contacts", "bot")
-        handler.recent_rf_data = [_advert_rf_entry("ab" * 32, packet_hash="1122334455667788")]
+        handler._advert_rf = [_advert_rf_entry("ab" * 32, packet_hash="1122334455667788")]
         ev = _NewContactEvent(_companion_contact_payload())
         await handler.handle_new_contact(ev, None)
         await handler.handle_new_contact(_NewContactEvent(_companion_contact_payload()), None)
         assert rm.track_contact_advertisement.await_count == 2
         rm.add_companion_from_contact_data.assert_awaited_once()
+
+    async def test_bot_mode_failed_add_lets_the_next_event_retry(self, new_contact_env):
+        bot, handler, rm, mesh = new_contact_env
+        bot.config.set("Bot", "auto_manage_contacts", "bot")
+        rm.add_companion_from_contact_data = AsyncMock(side_effect=[False, True])
+        handler._advert_rf = [_advert_rf_entry("ab" * 32, packet_hash="1122334455667788")]
+        await handler.handle_new_contact(_NewContactEvent(_companion_contact_payload()), None)
+        await handler.handle_new_contact(_NewContactEvent(_companion_contact_payload()), None)
+        await handler.handle_new_contact(_NewContactEvent(_companion_contact_payload()), None)
+        assert rm.add_companion_from_contact_data.await_count == 2
 
     async def test_bot_mode_without_an_advert_packet_adds_every_time(self, new_contact_env):
         bot, handler, rm, mesh = new_contact_env
