@@ -44,6 +44,7 @@ _COMPASS_16 = (
     "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW",
 )
 _ARROWS_8 = ("⬆️", "↗️", "➡️", "↘️", "⬇️", "↙️", "⬅️", "↖️")
+_WEEKDAYS_LOWER = ('monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday')
 
 # Forecast-text patterns for the extract_* readers, tried in order.
 # extract_humidity: "humidity 45%" or "45% humidity"
@@ -1658,49 +1659,20 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
     def format_multiday_forecast(self, forecast: list, num_days: int = 7, max_length: int = 130) -> str:
         """Format a less detailed multi-day forecast summary"""
         try:
-            # Group periods by day
-            days = {}
+            # One entry per weekday; a day period wins over a night one.
+            days: dict[str, dict] = {}
             for period in forecast:
-                period_name = period.get('name', '')
-                period_name_lower = period_name.lower()
+                period_name_lower = period.get('name', '').lower()
+                day_name = self._multiday_day_name(period_name_lower)
+                if not day_name:
+                    continue
 
-                # Skip if it's a time period (Tonight, This Afternoon, etc.) unless it's the only period for that day
-                # We want to focus on daily summaries
-                if any(word in period_name_lower for word in ['tonight', 'afternoon', 'morning', 'evening']):
-                    # Only include if it's a named day (Monday, Tuesday, etc.)
-                    day_name = None
-                    for day in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']:
-                        if day in period_name_lower:
-                            day_name = day.capitalize()
-                            break
-
-                    if not day_name:
-                        continue
-                else:
-                    # Extract day name
-                    day_name = None
-                    for day in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']:
-                        if day in period_name_lower:
-                            day_name = day.capitalize()
-                            break
-
-                    if not day_name:
-                        # Try to extract from "Tomorrow", "Today", etc.
-                        if 'tomorrow' in period_name_lower:
-                            tomorrow = datetime.now() + timedelta(days=1)
-                            day_name = tomorrow.strftime('%A')
-                        elif 'today' in period_name_lower:
-                            day_name = datetime.now().strftime('%A')
-                        else:
-                            continue
-
-                # Get temperature (prefer high/low if available)
+                # Prefer the high/low from the detailed text over the bare temperature.
                 temp = period.get('temperature', '')
                 detailed_forecast = period.get('detailedForecast', '')
                 high_low = self.extract_high_low(
                     detailed_forecast, self._noaa_period_temp_symbol(period)
                 )
-
                 if high_low:
                     temp_str = high_low
                 elif temp:
@@ -1708,30 +1680,14 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                 else:
                     continue
 
-                # Get short forecast
                 short_forecast = period.get('shortForecast', '')
                 if not short_forecast:
                     continue
 
-                # Store the best period for each day (prefer day periods over night)
-                if day_name not in days:
-                    days[day_name] = {
-                        'temp': temp_str,
-                        'forecast': short_forecast,
-                        'is_day': 'night' not in period_name_lower and 'tonight' not in period_name_lower
-                    }
-                else:
-                    # Prefer day periods, but update if we have better temp info
-                    if 'night' not in period_name_lower and 'tonight' not in period_name_lower:
-                        days[day_name] = {
-                            'temp': temp_str,
-                            'forecast': short_forecast,
-                            'is_day': True
-                        }
-                    elif not days[day_name]['is_day']:
-                        # Update night period if we don't have a day period
-                        days[day_name]['temp'] = temp_str
-                        days[day_name]['forecast'] = short_forecast
+                # "tonight" contains "night", so this also covers Tonight.
+                is_day = 'night' not in period_name_lower
+                if day_name not in days or is_day or not days[day_name]['is_day']:
+                    days[day_name] = {'temp': temp_str, 'forecast': short_forecast, 'is_day': is_day}
 
             if not days:
                 return self.translate('commands.wx.multiday_not_available', num_days=num_days)
@@ -1791,6 +1747,24 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         except Exception as e:
             self.logger.error(f"Error formatting {num_days}-day forecast: {e}")
             return self.translate('commands.wx.multiday_error', num_days=num_days)
+
+    @staticmethod
+    def _multiday_day_name(period_name_lower: str) -> str | None:
+        """The weekday a NOAA period belongs to, or None to skip it.
+
+        Part-of-day periods (Tonight, This Afternoon) count only when they name a
+        weekday; otherwise Today and Tomorrow map to the current and next weekday.
+        """
+        for day in _WEEKDAYS_LOWER:
+            if day in period_name_lower:
+                return day.capitalize()
+        if any(word in period_name_lower for word in ['tonight', 'afternoon', 'morning', 'evening']):
+            return None
+        if 'tomorrow' in period_name_lower:
+            return (datetime.now() + timedelta(days=1)).strftime('%A')
+        if 'today' in period_name_lower:
+            return datetime.now().strftime('%A')
+        return None
 
     def _add_period_details(self, period_str: str, detailed_forecast: str, current_weather_length: int, max_length: int = 130, observation_data: dict = None) -> str:
         """Add additional details (humidity, dew point, visibility, etc.) to a period string
