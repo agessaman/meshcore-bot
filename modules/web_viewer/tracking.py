@@ -46,96 +46,9 @@ class ContactTrackingMixin:
                 bot_lat = self.config.getfloat('Bot', 'bot_latitude', fallback=None)
                 bot_lon = self.config.getfloat('Bot', 'bot_longitude', fallback=None)
 
-                # Filter by last_heard (default: last 30 days). last_heard is stored as ISO-text
-                # datetime in LOCAL time (e.g. '2026-06-16 09:03:49.606966', written by datetime.now()),
-                # so the cutoff must also be local: datetime('now', 'localtime', ...). Using bare
-                # datetime('now', ...) computes the cutoff in UTC and shaves the local UTC offset off
-                # the window (e.g. a "24h" filter only returns ~17h of data in US/Pacific).
-                datetime_offsets = {
-                    '24h': "'-24 hours'",
-                    '7d':  "'-7 days'",
-                    '30d': "'-30 days'",
-                    '90d': "'-90 days'",
-                }
-                where_parts = []
-                where_params: list[Any] = []
-                # A node can have more than one observed advert path.  Treat its byte class as
-                # the widest path encoding seen for it, with the contact's current out-path as a
-                # fallback for databases that have not retained an observed path yet.  This gives
-                # the list one stable, sortable value instead of placing the same node in several
-                # byte buckets.  Only count rows with a known 1/2/3 encoding so NULL/invalid
-                # observations do not collapse to "1-byte" and block the out-path fallback.
-                path_bytes_expression = """COALESCE((
-                SELECT MAX(op.bytes_per_hop)
-                FROM observed_paths op
-                WHERE op.public_key = c.public_key
-                  AND op.packet_type = 'advert'
-                  AND op.path_hex IS NOT NULL AND op.path_hex != ''
-                  AND op.bytes_per_hop IN (1, 2, 3)
-            ), CASE WHEN c.out_bytes_per_hop IN (1, 2, 3)
-                     THEN c.out_bytes_per_hop ELSE 0 END)"""
-                if since in datetime_offsets:
-                    where_parts.append(
-                        f"c.last_heard >= datetime('now', 'localtime', {datetime_offsets[since]})"
-                    )
-
-                search = (search or '').strip().lower()[:100]
-                if search and not include_detail:
-                    # Match the former client-side behavior: public keys are prefix-only,
-                    # while names, roles, device types, and locations match anywhere.
-                    escaped = search.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
-                    where_parts.append(
-                        "("
-                        "LOWER(COALESCE(c.public_key, '')) LIKE ? ESCAPE '\\' OR "
-                        "LOWER(COALESCE(c.name, '')) LIKE ? ESCAPE '\\' OR "
-                        "LOWER(COALESCE(c.role, '')) LIKE ? ESCAPE '\\' OR "
-                        "LOWER(COALESCE(c.device_type, '')) LIKE ? ESCAPE '\\' OR "
-                        "LOWER(COALESCE(c.city, '')) LIKE ? ESCAPE '\\' OR "
-                        "LOWER(COALESCE(c.state, '')) LIKE ? ESCAPE '\\' OR "
-                        "LOWER(COALESCE(c.country, '')) LIKE ? ESCAPE '\\'"
-                        ")"
-                    )
-                    where_params.extend([f'{escaped}%'] + [f'%{escaped}%'] * 6)
-
-                path_bytes = str(path_bytes or '').strip()
-                if path_bytes in ('1', '2', '3'):
-                    where_parts.append(f'{path_bytes_expression} = ?')
-                    where_params.append(int(path_bytes))
-                elif path_bytes == 'unknown':
-                    where_parts.append(f'{path_bytes_expression} = 0')
-
-                device_role = str(device_role or '').strip().lower()
-                if device_role in ('companion', 'repeater', 'roomserver', 'sensor'):
-                    where_parts.append("LOWER(COALESCE(c.role, '')) = ?")
-                    where_params.append(device_role)
-                elif device_role == 'other':
-                    where_parts.append("LOWER(COALESCE(c.role, '')) NOT IN ('companion', 'repeater', 'roomserver', 'sensor')")
-
-                if hop_filter in ('0', '1', '2', '3'):
-                    where_parts.append(
-                        'COALESCE(c.hop_count, 0) = ?' if hop_filter == '0'
-                        else 'COALESCE(c.hop_count, 0) >= ?'
-                    )
-                    where_params.append(int(hop_filter))
-
-                has_location_expression = (
-                    "((c.city IS NOT NULL AND c.city != '') OR "
-                    "(c.state IS NOT NULL AND c.state != '') OR "
-                    "(c.country IS NOT NULL AND c.country != '') OR "
-                    "(c.latitude IS NOT NULL AND c.longitude IS NOT NULL "
-                    "AND c.latitude != 0 AND c.longitude != 0))"
+                where_clause, where_params, path_bytes_expression = self._tracking_where(
+                    since, search, path_bytes, device_role, hop_filter, location_filter, starred, include_detail
                 )
-                if location_filter == 'known':
-                    where_parts.append(has_location_expression)
-                elif location_filter == 'unknown':
-                    where_parts.append(f'NOT {has_location_expression}')
-
-                if starred == 'yes':
-                    where_parts.append('COALESCE(c.is_starred, 0) = 1')
-                elif starred == 'no':
-                    where_parts.append('COALESCE(c.is_starred, 0) = 0')
-
-                where_clause = (' WHERE ' + ' AND '.join(where_parts)) if where_parts else ''
 
                 pagination = None
                 filtered_stats = None
@@ -295,243 +208,11 @@ class ContactTrackingMixin:
                 chunk_buckets = self._bucket_hop_chunks(multibyte_hop_chunks)
 
                 tracking = []
-                for row in main_rows:
-                    # Calculate distance if both bot and contact have coordinates
-                    distance = None
-                    if (bot_lat is not None and bot_lon is not None and
-                        row['latitude'] is not None and row['longitude'] is not None):
-                        distance = self._calculate_distance(bot_lat, bot_lon, row['latitude'], row['longitude'])
-
-                    # Recent paths for this contact (grouped from the second query above). The full
-                    # path objects are NOT sent in the list payload (they were ~70% of its size and
-                    # are only used in the per-contact modal); the UI fetches them on demand via
-                    # /api/contact-detail. The list only needs the count and the badge.
-                    all_paths = paths_by_key.get(row['public_key'], [])
-                    paths_count = len(all_paths)
-
-                    # Preserve the legacy total_messages value: it was COUNT(*) over the LEFT-JOINed
-                    # path rows, i.e. the number of paths, or 1 when a contact had no paths.
-                    total_messages = max(1, paths_count)
-
-                    path_encoding_badge = self._compute_path_encoding_badge(
-                        row, all_paths, chunk_buckets
-                    )
-
-                    # The badge/tooltip decodes out_path (the "primary" path) using out_bytes_per_hop.
-                    # The contact column can be stale (e.g. left at 1 while the primary path is a 3-byte
-                    # path), which makes a multi-byte path render as twice/three-times as many 1-byte
-                    # hops. Index the encoding on the primary observed path itself, which carries the
-                    # authoritative bytes_per_hop, falling back to the contact column when unmatched.
-                    out_path_val = row['out_path'] if row['out_path'] is not None else ''
-                    out_bytes_per_hop_val = row['out_bytes_per_hop'] if row['out_bytes_per_hop'] is not None else None
-                    if out_path_val:
-                        primary_path = next((p for p in all_paths if p['path_hex'] == out_path_val), None)
-                        if primary_path and primary_path.get('bytes_per_hop') in (1, 2, 3):
-                            out_bytes_per_hop_val = primary_path['bytes_per_hop']
-
-                    entry = {
-                        'user_id': row['public_key'],
-                        'username': row['name'],
-                        'role': row['role'],
-                        'device_type': row['device_type'],
-                        'latitude': row['latitude'],
-                        'longitude': row['longitude'],
-                        'city': row['city'],
-                        'state': row['state'],
-                        'country': row['country'],
-                        'snr': row['snr'],
-                        'hop_count': row['hop_count'],
-                        'first_heard': row['first_heard'],
-                        'last_seen': row['last_heard'],
-                        'advert_count': row['advert_count'],
-                        'is_currently_tracked': row['is_currently_tracked'],
-                        'signal_strength': row['signal_strength'],
-                        'total_messages': total_messages,
-                        'last_message': row['last_message'],
-                        'distance': distance,
-                        'is_starred': bool(row['is_starred'] if row['is_starred'] is not None else 0),
-                        'out_path': out_path_val,
-                        'out_path_len': row['out_path_len'] if row['out_path_len'] is not None else -1,
-                        'out_bytes_per_hop': out_bytes_per_hop_val,
-                        'path_bytes_per_hop': int(row['path_bytes_per_hop'] or 0),
-                        'paths_count': paths_count,
-                        'path_encoding_badge': path_encoding_badge,
-                    }
-                    if include_detail:
-                        # Full fidelity for the export endpoint (size-tolerant, infrequent download).
-                        raw_advert_data = row['raw_advert_data']
-                        raw_advert_data_parsed = None
-                        if raw_advert_data:
-                            try:
-                                import json
-                                raw_advert_data_parsed = json.loads(raw_advert_data)
-                            except Exception:
-                                raw_advert_data_parsed = None
-                        entry['all_paths'] = all_paths
-                        entry['raw_advert_data'] = raw_advert_data
-                        entry['raw_advert_data_parsed'] = raw_advert_data_parsed
-                    tracking.append(entry)
+                self._tracking_entries(main_rows, paths_by_key, chunk_buckets, bot_lat, bot_lon, include_detail, tracking)
 
                 # Get server statistics for daily tracking using direct database queries
                 server_stats = {}
-                try:
-                    # Check if daily_stats table exists
-                    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='daily_stats'")
-                    if cursor.fetchone():
-                        # 24h: Last 24 hours of advertisements
-                        cursor.execute("""
-                        SELECT SUM(advert_count) FROM daily_stats
-                        WHERE date >= date('now', 'localtime', '-1 day')
-                    """)
-                        server_stats['advertisements_24h'] = cursor.fetchone()[0] or 0
-
-                        # 7d: Previous 6 days (excluding today)
-                        cursor.execute("""
-                        SELECT SUM(advert_count) FROM daily_stats
-                        WHERE date >= date('now', 'localtime', '-7 days') AND date < date('now', 'localtime')
-                    """)
-                        server_stats['advertisements_7d'] = cursor.fetchone()[0] or 0
-
-                        # All: Everything
-                        cursor.execute("""
-                        SELECT SUM(advert_count) FROM daily_stats
-                    """)
-                        server_stats['total_advertisements'] = cursor.fetchone()[0] or 0
-
-                        # Nodes per day statistics
-                        # Calculate today's unique nodes from complete_contact_tracking
-                        # (last_heard in last 24 hours) since daily_stats might not have today's data yet
-                        cursor.execute("""
-                        SELECT COUNT(DISTINCT public_key) FROM complete_contact_tracking
-                        WHERE last_heard >= datetime('now', 'localtime', '-24 hours')
-                    """)
-                        server_stats['nodes_24h'] = cursor.fetchone()[0] or 0
-
-                        # Get today's unique nodes by role for the stacked chart
-                        cursor.execute("""
-                        SELECT role, COUNT(DISTINCT public_key) as count
-                        FROM complete_contact_tracking
-                        WHERE last_heard >= datetime('now', 'localtime', '-24 hours')
-                        AND role IS NOT NULL AND role != ''
-                        GROUP BY role
-                    """)
-                        today_by_role = {}
-                        for row in cursor.fetchall():
-                            role = row[0].lower() if row[0] else 'unknown'
-                            count = row[1]
-                            today_by_role[role] = count
-
-                        server_stats['nodes_24h_by_role'] = {
-                            'companion': today_by_role.get('companion', 0),
-                            'repeater': today_by_role.get('repeater', 0),
-                            'roomserver': today_by_role.get('roomserver', 0),
-                            'sensor': today_by_role.get('sensor', 0),
-                            'other': sum(v for k, v in today_by_role.items() if k not in ['companion', 'repeater', 'roomserver', 'sensor'])
-                        }
-
-                        cursor.execute("""
-                        SELECT COUNT(DISTINCT public_key) FROM daily_stats
-                        WHERE date >= date('now', 'localtime', '-7 days') AND date < date('now', 'localtime')
-                    """)
-                        server_stats['nodes_7d'] = cursor.fetchone()[0] or 0
-
-                        # Calculate day-over-day and period-over-period comparisons
-                        # Today vs 7 days ago (single day comparison)
-                        cursor.execute("""
-                        SELECT COUNT(DISTINCT public_key) FROM daily_stats
-                        WHERE date = date('now', 'localtime', '-7 days')
-                    """)
-                        result = cursor.fetchone()
-                        server_stats['nodes_7d_ago'] = result[0] if result and result[0] else 0
-
-                        # Last 7 days vs previous 7 days (days 8-14 ago)
-                        cursor.execute("""
-                        SELECT COUNT(DISTINCT public_key) FROM daily_stats
-                        WHERE date >= date('now', 'localtime', '-14 days') AND date < date('now', 'localtime', '-7 days')
-                    """)
-                        result = cursor.fetchone()
-                        server_stats['nodes_prev_7d'] = result[0] if result and result[0] else 0
-
-                        # Last 30 days vs previous 30 days (days 31-60 ago)
-                        cursor.execute("""
-                        SELECT COUNT(DISTINCT public_key) FROM daily_stats
-                        WHERE date >= date('now', 'localtime', '-60 days') AND date < date('now', 'localtime', '-30 days')
-                    """)
-                        result = cursor.fetchone()
-                        server_stats['nodes_prev_30d'] = result[0] if result and result[0] else 0
-
-                        # Also get current period totals for comparison
-                        cursor.execute("""
-                        SELECT COUNT(DISTINCT public_key) FROM daily_stats
-                        WHERE date >= date('now', 'localtime', '-7 days')
-                    """)
-                        server_stats['nodes_7d'] = cursor.fetchone()[0] or 0
-
-                        cursor.execute("""
-                        SELECT COUNT(DISTINCT public_key) FROM daily_stats
-                        WHERE date >= date('now', 'localtime', '-30 days')
-                    """)
-                        server_stats['nodes_30d'] = cursor.fetchone()[0] or 0
-
-                        cursor.execute("""
-                        SELECT COUNT(DISTINCT public_key) FROM daily_stats
-                    """)
-                        server_stats['nodes_all'] = cursor.fetchone()[0] or 0
-
-                        # Get daily unique node counts by role for the last 30 days for the stacked graph
-                        # Join daily_stats with complete_contact_tracking to get role information
-                        # This gives us accurate historical daily counts by role
-                        cursor.execute("""
-                        SELECT ds.date, c.role, COUNT(DISTINCT ds.public_key) as daily_count
-                        FROM daily_stats ds
-                        LEFT JOIN complete_contact_tracking c ON ds.public_key = c.public_key
-                        WHERE ds.date >= date('now', 'localtime', '-30 days') AND ds.date <= date('now', 'localtime')
-                        AND (c.role IS NOT NULL AND c.role != '')
-                        GROUP BY ds.date, c.role
-                        ORDER BY ds.date ASC, c.role ASC
-                    """)
-                        daily_data_by_role = cursor.fetchall()
-
-                        # Organize data by date and role
-                        daily_by_role = {}
-                        for row in daily_data_by_role:
-                            date_str = row[0]
-                            role = (row[1] or 'unknown').lower()
-                            count = row[2]
-
-                            if date_str not in daily_by_role:
-                                daily_by_role[date_str] = {}
-                            daily_by_role[date_str][role] = count
-
-                        # Convert to array format with all roles for each date
-                        server_stats['daily_nodes_30d_by_role'] = []
-                        for date_str in sorted(daily_by_role.keys()):
-                            roles_data = daily_by_role[date_str]
-                            server_stats['daily_nodes_30d_by_role'].append({
-                                'date': date_str,
-                                'companion': roles_data.get('companion', 0),
-                                'repeater': roles_data.get('repeater', 0),
-                                'roomserver': roles_data.get('roomserver', 0),
-                                'sensor': roles_data.get('sensor', 0),
-                                'other': sum(v for k, v in roles_data.items() if k not in ['companion', 'repeater', 'roomserver', 'sensor'])
-                            })
-
-                        # Also keep the total count for backward compatibility
-                        cursor.execute("""
-                        SELECT date, COUNT(DISTINCT public_key) as daily_count
-                        FROM daily_stats
-                        WHERE date >= date('now', 'localtime', '-30 days') AND date <= date('now', 'localtime')
-                        GROUP BY date
-                        ORDER BY date ASC
-                    """)
-                        daily_data = cursor.fetchall()
-                        server_stats['daily_nodes_30d'] = [
-                            {'date': row[0], 'count': row[1]}
-                            for row in daily_data
-                        ]
-
-                except Exception as e:
-                    self.logger.debug(f"Could not get server stats: {e}")
+                self._tracking_server_stats(cursor, server_stats)
 
                 result = {
                     'tracking_data': tracking,
@@ -544,6 +225,342 @@ class ContactTrackingMixin:
         except Exception as e:
             self.logger.error(f"Error getting tracking data: {e}")
             return {'error': str(e)}
+
+    def _tracking_where(
+        self, since, search, path_bytes, device_role, hop_filter, location_filter, starred, include_detail
+    ):
+        """WHERE clause and parameters for the contact filters, and the path-bytes SQL expression the sort reuses."""
+        # Filter by last_heard (default: last 30 days). last_heard is stored as ISO-text
+        # datetime in LOCAL time (e.g. '2026-06-16 09:03:49.606966', written by datetime.now()),
+        # so the cutoff must also be local: datetime('now', 'localtime', ...). Using bare
+        # datetime('now', ...) computes the cutoff in UTC and shaves the local UTC offset off
+        # the window (e.g. a "24h" filter only returns ~17h of data in US/Pacific).
+        datetime_offsets = {
+            '24h': "'-24 hours'",
+            '7d':  "'-7 days'",
+            '30d': "'-30 days'",
+            '90d': "'-90 days'",
+        }
+        where_parts = []
+        where_params: list[Any] = []
+        # A node can have more than one observed advert path.  Treat its byte class as
+        # the widest path encoding seen for it, with the contact's current out-path as a
+        # fallback for databases that have not retained an observed path yet.  This gives
+        # the list one stable, sortable value instead of placing the same node in several
+        # byte buckets.  Only count rows with a known 1/2/3 encoding so NULL/invalid
+        # observations do not collapse to "1-byte" and block the out-path fallback.
+        path_bytes_expression = """COALESCE((
+                SELECT MAX(op.bytes_per_hop)
+                FROM observed_paths op
+                WHERE op.public_key = c.public_key
+                  AND op.packet_type = 'advert'
+                  AND op.path_hex IS NOT NULL AND op.path_hex != ''
+                  AND op.bytes_per_hop IN (1, 2, 3)
+            ), CASE WHEN c.out_bytes_per_hop IN (1, 2, 3)
+                     THEN c.out_bytes_per_hop ELSE 0 END)"""
+        if since in datetime_offsets:
+            where_parts.append(
+                f"c.last_heard >= datetime('now', 'localtime', {datetime_offsets[since]})"
+            )
+
+        search = (search or '').strip().lower()[:100]
+        if search and not include_detail:
+            # Match the former client-side behavior: public keys are prefix-only,
+            # while names, roles, device types, and locations match anywhere.
+            escaped = search.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+            where_parts.append(
+                "("
+                        "LOWER(COALESCE(c.public_key, '')) LIKE ? ESCAPE '\\' OR "
+                        "LOWER(COALESCE(c.name, '')) LIKE ? ESCAPE '\\' OR "
+                        "LOWER(COALESCE(c.role, '')) LIKE ? ESCAPE '\\' OR "
+                        "LOWER(COALESCE(c.device_type, '')) LIKE ? ESCAPE '\\' OR "
+                        "LOWER(COALESCE(c.city, '')) LIKE ? ESCAPE '\\' OR "
+                        "LOWER(COALESCE(c.state, '')) LIKE ? ESCAPE '\\' OR "
+                        "LOWER(COALESCE(c.country, '')) LIKE ? ESCAPE '\\'"
+                        ")"
+            )
+            where_params.extend([f'{escaped}%'] + [f'%{escaped}%'] * 6)
+
+        path_bytes = str(path_bytes or '').strip()
+        if path_bytes in ('1', '2', '3'):
+            where_parts.append(f'{path_bytes_expression} = ?')
+            where_params.append(int(path_bytes))
+        elif path_bytes == 'unknown':
+            where_parts.append(f'{path_bytes_expression} = 0')
+
+        device_role = str(device_role or '').strip().lower()
+        if device_role in ('companion', 'repeater', 'roomserver', 'sensor'):
+            where_parts.append("LOWER(COALESCE(c.role, '')) = ?")
+            where_params.append(device_role)
+        elif device_role == 'other':
+            where_parts.append("LOWER(COALESCE(c.role, '')) NOT IN ('companion', 'repeater', 'roomserver', 'sensor')")
+
+        if hop_filter in ('0', '1', '2', '3'):
+            where_parts.append(
+                'COALESCE(c.hop_count, 0) = ?' if hop_filter == '0'
+                else 'COALESCE(c.hop_count, 0) >= ?'
+            )
+            where_params.append(int(hop_filter))
+
+        has_location_expression = (
+            "((c.city IS NOT NULL AND c.city != '') OR "
+                    "(c.state IS NOT NULL AND c.state != '') OR "
+                    "(c.country IS NOT NULL AND c.country != '') OR "
+                    "(c.latitude IS NOT NULL AND c.longitude IS NOT NULL "
+                    "AND c.latitude != 0 AND c.longitude != 0))"
+        )
+        if location_filter == 'known':
+            where_parts.append(has_location_expression)
+        elif location_filter == 'unknown':
+            where_parts.append(f'NOT {has_location_expression}')
+
+        if starred == 'yes':
+            where_parts.append('COALESCE(c.is_starred, 0) = 1')
+        elif starred == 'no':
+            where_parts.append('COALESCE(c.is_starred, 0) = 0')
+
+        where_clause = (' WHERE ' + ' AND '.join(where_parts)) if where_parts else ''
+        return where_clause, where_params, path_bytes_expression
+
+    def _tracking_entries(self, main_rows, paths_by_key, chunk_buckets, bot_lat, bot_lon, include_detail, tracking):
+        """Append one response entry per contact row to *tracking*."""
+        for row in main_rows:
+            # Calculate distance if both bot and contact have coordinates
+            distance = None
+            if (bot_lat is not None and bot_lon is not None and
+                row['latitude'] is not None and row['longitude'] is not None):
+                distance = self._calculate_distance(bot_lat, bot_lon, row['latitude'], row['longitude'])
+
+            # Recent paths for this contact (grouped from the second query above). The full
+            # path objects are NOT sent in the list payload (they were ~70% of its size and
+            # are only used in the per-contact modal); the UI fetches them on demand via
+            # /api/contact-detail. The list only needs the count and the badge.
+            all_paths = paths_by_key.get(row['public_key'], [])
+            paths_count = len(all_paths)
+
+            # Preserve the legacy total_messages value: it was COUNT(*) over the LEFT-JOINed
+            # path rows, i.e. the number of paths, or 1 when a contact had no paths.
+            total_messages = max(1, paths_count)
+
+            path_encoding_badge = self._compute_path_encoding_badge(
+                row, all_paths, chunk_buckets
+            )
+
+            # The badge/tooltip decodes out_path (the "primary" path) using out_bytes_per_hop.
+            # The contact column can be stale (e.g. left at 1 while the primary path is a 3-byte
+            # path), which makes a multi-byte path render as twice/three-times as many 1-byte
+            # hops. Index the encoding on the primary observed path itself, which carries the
+            # authoritative bytes_per_hop, falling back to the contact column when unmatched.
+            out_path_val = row['out_path'] if row['out_path'] is not None else ''
+            out_bytes_per_hop_val = row['out_bytes_per_hop'] if row['out_bytes_per_hop'] is not None else None
+            if out_path_val:
+                primary_path = next((p for p in all_paths if p['path_hex'] == out_path_val), None)
+                if primary_path and primary_path.get('bytes_per_hop') in (1, 2, 3):
+                    out_bytes_per_hop_val = primary_path['bytes_per_hop']
+
+            entry = {
+                'user_id': row['public_key'],
+                'username': row['name'],
+                'role': row['role'],
+                'device_type': row['device_type'],
+                'latitude': row['latitude'],
+                'longitude': row['longitude'],
+                'city': row['city'],
+                'state': row['state'],
+                'country': row['country'],
+                'snr': row['snr'],
+                'hop_count': row['hop_count'],
+                'first_heard': row['first_heard'],
+                'last_seen': row['last_heard'],
+                'advert_count': row['advert_count'],
+                'is_currently_tracked': row['is_currently_tracked'],
+                'signal_strength': row['signal_strength'],
+                'total_messages': total_messages,
+                'last_message': row['last_message'],
+                'distance': distance,
+                'is_starred': bool(row['is_starred'] if row['is_starred'] is not None else 0),
+                'out_path': out_path_val,
+                'out_path_len': row['out_path_len'] if row['out_path_len'] is not None else -1,
+                'out_bytes_per_hop': out_bytes_per_hop_val,
+                'path_bytes_per_hop': int(row['path_bytes_per_hop'] or 0),
+                'paths_count': paths_count,
+                'path_encoding_badge': path_encoding_badge,
+            }
+            if include_detail:
+                # Full fidelity for the export endpoint (size-tolerant, infrequent download).
+                raw_advert_data = row['raw_advert_data']
+                raw_advert_data_parsed = None
+                if raw_advert_data:
+                    try:
+                        import json
+                        raw_advert_data_parsed = json.loads(raw_advert_data)
+                    except Exception:
+                        raw_advert_data_parsed = None
+                entry['all_paths'] = all_paths
+                entry['raw_advert_data'] = raw_advert_data
+                entry['raw_advert_data_parsed'] = raw_advert_data_parsed
+            tracking.append(entry)
+
+    def _tracking_server_stats(self, cursor, server_stats):
+        """Fill *server_stats* with advert counts, node counts and the daily per-role series."""
+        try:
+            # Check if daily_stats table exists
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='daily_stats'")
+            if cursor.fetchone():
+                # 24h: Last 24 hours of advertisements
+                cursor.execute("""
+                        SELECT SUM(advert_count) FROM daily_stats
+                        WHERE date >= date('now', 'localtime', '-1 day')
+                    """)
+                server_stats['advertisements_24h'] = cursor.fetchone()[0] or 0
+
+                # 7d: Previous 6 days (excluding today)
+                cursor.execute("""
+                        SELECT SUM(advert_count) FROM daily_stats
+                        WHERE date >= date('now', 'localtime', '-7 days') AND date < date('now', 'localtime')
+                    """)
+                server_stats['advertisements_7d'] = cursor.fetchone()[0] or 0
+
+                # All: Everything
+                cursor.execute("""
+                        SELECT SUM(advert_count) FROM daily_stats
+                    """)
+                server_stats['total_advertisements'] = cursor.fetchone()[0] or 0
+
+                # Nodes per day statistics
+                # Calculate today's unique nodes from complete_contact_tracking
+                # (last_heard in last 24 hours) since daily_stats might not have today's data yet
+                cursor.execute("""
+                        SELECT COUNT(DISTINCT public_key) FROM complete_contact_tracking
+                        WHERE last_heard >= datetime('now', 'localtime', '-24 hours')
+                    """)
+                server_stats['nodes_24h'] = cursor.fetchone()[0] or 0
+
+                # Get today's unique nodes by role for the stacked chart
+                cursor.execute("""
+                        SELECT role, COUNT(DISTINCT public_key) as count
+                        FROM complete_contact_tracking
+                        WHERE last_heard >= datetime('now', 'localtime', '-24 hours')
+                        AND role IS NOT NULL AND role != ''
+                        GROUP BY role
+                    """)
+                today_by_role = {}
+                for row in cursor.fetchall():
+                    role = row[0].lower() if row[0] else 'unknown'
+                    count = row[1]
+                    today_by_role[role] = count
+
+                server_stats['nodes_24h_by_role'] = {
+                    'companion': today_by_role.get('companion', 0),
+                    'repeater': today_by_role.get('repeater', 0),
+                    'roomserver': today_by_role.get('roomserver', 0),
+                    'sensor': today_by_role.get('sensor', 0),
+                    'other': sum(v for k, v in today_by_role.items() if k not in ['companion', 'repeater', 'roomserver', 'sensor'])
+                }
+
+                cursor.execute("""
+                        SELECT COUNT(DISTINCT public_key) FROM daily_stats
+                        WHERE date >= date('now', 'localtime', '-7 days') AND date < date('now', 'localtime')
+                    """)
+                server_stats['nodes_7d'] = cursor.fetchone()[0] or 0
+
+                # Calculate day-over-day and period-over-period comparisons
+                # Today vs 7 days ago (single day comparison)
+                cursor.execute("""
+                        SELECT COUNT(DISTINCT public_key) FROM daily_stats
+                        WHERE date = date('now', 'localtime', '-7 days')
+                    """)
+                result = cursor.fetchone()
+                server_stats['nodes_7d_ago'] = result[0] if result and result[0] else 0
+
+                # Last 7 days vs previous 7 days (days 8-14 ago)
+                cursor.execute("""
+                        SELECT COUNT(DISTINCT public_key) FROM daily_stats
+                        WHERE date >= date('now', 'localtime', '-14 days') AND date < date('now', 'localtime', '-7 days')
+                    """)
+                result = cursor.fetchone()
+                server_stats['nodes_prev_7d'] = result[0] if result and result[0] else 0
+
+                # Last 30 days vs previous 30 days (days 31-60 ago)
+                cursor.execute("""
+                        SELECT COUNT(DISTINCT public_key) FROM daily_stats
+                        WHERE date >= date('now', 'localtime', '-60 days') AND date < date('now', 'localtime', '-30 days')
+                    """)
+                result = cursor.fetchone()
+                server_stats['nodes_prev_30d'] = result[0] if result and result[0] else 0
+
+                # Also get current period totals for comparison
+                cursor.execute("""
+                        SELECT COUNT(DISTINCT public_key) FROM daily_stats
+                        WHERE date >= date('now', 'localtime', '-7 days')
+                    """)
+                server_stats['nodes_7d'] = cursor.fetchone()[0] or 0
+
+                cursor.execute("""
+                        SELECT COUNT(DISTINCT public_key) FROM daily_stats
+                        WHERE date >= date('now', 'localtime', '-30 days')
+                    """)
+                server_stats['nodes_30d'] = cursor.fetchone()[0] or 0
+
+                cursor.execute("""
+                        SELECT COUNT(DISTINCT public_key) FROM daily_stats
+                    """)
+                server_stats['nodes_all'] = cursor.fetchone()[0] or 0
+
+                # Get daily unique node counts by role for the last 30 days for the stacked graph
+                # Join daily_stats with complete_contact_tracking to get role information
+                # This gives us accurate historical daily counts by role
+                cursor.execute("""
+                        SELECT ds.date, c.role, COUNT(DISTINCT ds.public_key) as daily_count
+                        FROM daily_stats ds
+                        LEFT JOIN complete_contact_tracking c ON ds.public_key = c.public_key
+                        WHERE ds.date >= date('now', 'localtime', '-30 days') AND ds.date <= date('now', 'localtime')
+                        AND (c.role IS NOT NULL AND c.role != '')
+                        GROUP BY ds.date, c.role
+                        ORDER BY ds.date ASC, c.role ASC
+                    """)
+                daily_data_by_role = cursor.fetchall()
+
+                # Organize data by date and role
+                daily_by_role = {}
+                for row in daily_data_by_role:
+                    date_str = row[0]
+                    role = (row[1] or 'unknown').lower()
+                    count = row[2]
+
+                    if date_str not in daily_by_role:
+                        daily_by_role[date_str] = {}
+                    daily_by_role[date_str][role] = count
+
+                # Convert to array format with all roles for each date
+                server_stats['daily_nodes_30d_by_role'] = []
+                for date_str in sorted(daily_by_role.keys()):
+                    roles_data = daily_by_role[date_str]
+                    server_stats['daily_nodes_30d_by_role'].append({
+                        'date': date_str,
+                        'companion': roles_data.get('companion', 0),
+                        'repeater': roles_data.get('repeater', 0),
+                        'roomserver': roles_data.get('roomserver', 0),
+                        'sensor': roles_data.get('sensor', 0),
+                        'other': sum(v for k, v in roles_data.items() if k not in ['companion', 'repeater', 'roomserver', 'sensor'])
+                    })
+
+                # Also keep the total count for backward compatibility
+                cursor.execute("""
+                        SELECT date, COUNT(DISTINCT public_key) as daily_count
+                        FROM daily_stats
+                        WHERE date >= date('now', 'localtime', '-30 days') AND date <= date('now', 'localtime')
+                        GROUP BY date
+                        ORDER BY date ASC
+                    """)
+                daily_data = cursor.fetchall()
+                server_stats['daily_nodes_30d'] = [
+                    {'date': row[0], 'count': row[1]}
+                    for row in daily_data
+                ]
+
+        except Exception as e:
+            self.logger.debug(f"Could not get server stats: {e}")
 
     def _get_contact_detail(self, public_key: str) -> dict:
         """Per-contact detail loaded on demand by the contacts UI modals.
