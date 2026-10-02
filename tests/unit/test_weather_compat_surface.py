@@ -4,6 +4,8 @@ import configparser
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+import pytest
+
 import modules.commands.alternatives.wx_international as wx_international
 import modules.commands.wx_command as wx_command
 from modules.commands.alternatives.wx_international import GlobalWxCommand
@@ -51,3 +53,30 @@ def test_solarforecast_honours_its_enabled_setting():
     cmd = SolarforecastCommand(_bot({"Solarforecast_Command": {"enabled": "false"}}))
     message = SimpleNamespace(content="sf Seattle", channel="general", is_dm=True, sender_id="u", sender_pubkey="pk")
     assert cmd.can_execute(message) is False
+
+
+@pytest.mark.parametrize("cls", [WxCommand, GlobalWxCommand])
+@pytest.mark.parametrize(("pubkey", "rows", "logged"), [
+    (None, [], "No sender_pubkey in message for companion location lookup"),
+    ("ab" * 16, [], "No location found in database for pubkey " + "ab" * 8 + "..."),
+    ("ab" * 16, [{"latitude": 47.5, "longitude": -122.25}],
+     "Found companion location: 47.5, -122.25 for pubkey " + "ab" * 8 + "..."),
+])
+def test_wx_and_gwx_log_the_companion_lookup_as_on_dev(cls, pubkey, rows, logged):
+    bot = _bot()
+    bot.db_manager.execute_query = Mock(return_value=rows)
+    cmd = cls(bot)
+    cmd.logger = Mock()
+    cmd._get_companion_location(SimpleNamespace(sender_pubkey=pubkey))
+    cmd.logger.debug.assert_any_call(logged)
+
+
+def test_rain_keeps_its_quiet_companion_lookup():
+    from modules.commands.rain_command import RainCommand
+
+    bot = _bot()
+    bot.db_manager.execute_query = Mock(return_value=[])
+    rain = RainCommand(bot)
+    rain.logger = Mock()
+    rain._get_companion_location(SimpleNamespace(sender_pubkey="ab" * 16))
+    rain.logger.debug.assert_not_called()
