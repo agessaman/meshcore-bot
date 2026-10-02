@@ -1163,7 +1163,7 @@ class GlobalWxCommand(BaseCommand):
                         # Add precipitation probability and amount if significant and space allows
                         if len(daily.get('precipitation_probability_max', [])) > 1:
                             precip_prob = daily['precipitation_probability_max'][1]
-                            if precip_prob >= 30:
+                            if precip_prob is not None and precip_prob >= 30:
                                 # Get precipitation amount if available
                                 precip_amount = None
                                 if len(daily.get('precipitation_sum', [])) > 1:
@@ -1202,6 +1202,8 @@ class GlobalWxCommand(BaseCommand):
             daily = data.get('daily', {})
             if not daily or len(daily.get('temperature_2m_max', [])) < 2:
                 return self.translate('commands.gwx.tomorrow_not_available')
+            if daily['temperature_2m_max'][1] is None or daily['temperature_2m_min'][1] is None:
+                return self.translate('commands.gwx.tomorrow_not_available')
 
             temp_symbol = "°F" if self.temperature_unit == 'fahrenheit' else "°C"
             tomorrow_high = int(daily['temperature_2m_max'][1])
@@ -1226,7 +1228,7 @@ class GlobalWxCommand(BaseCommand):
             precip_info = ""
             if len(daily.get('precipitation_probability_max', [])) > 1:
                 precip_prob = daily['precipitation_probability_max'][1]
-                if precip_prob >= 30:
+                if precip_prob is not None and precip_prob >= 30:
                     # Get precipitation amount if available
                     precip_amount = None
                     if len(daily.get('precipitation_sum', [])) > 1:
@@ -1288,6 +1290,10 @@ class GlobalWxCommand(BaseCommand):
 
             # Start from tomorrow (index 1)
             for i in range(1, min(num_days + 1, len(temps_max))):
+                # Open-Meteo pads the days past a model's horizon with nulls
+                # (up to 9 of 16 with icon_seamless), so the forecast ends there.
+                if temps_max[i] is None or i >= len(temps_min) or temps_min[i] is None:
+                    break
                 day_date = today + timedelta(days=i)
                 day_name = day_date.strftime('%A')
                 day_abbrev = day_abbrev_map.get(day_name, day_name[:2])
