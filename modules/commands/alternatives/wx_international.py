@@ -42,6 +42,11 @@ VISIBILITY_CAP_MI = 20
 VISIBILITY_CAP_KM = 32
 
 
+
+def _int_or_none(value: Any) -> Optional[int]:
+    """int(value), or None for a missing or null field."""
+    return None if value is None else int(value)
+
 class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
     """Handles global weather commands with city/location support"""
 
@@ -860,6 +865,8 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
 
             temp_symbol = "°F" if self.temperature_unit == 'fahrenheit' else "°C"
             weather = self._open_meteo_current(data, max_length, temp_symbol)
+            if weather is None:
+                return self.translate('commands.gwx.error_fetching')
             # Forecast high/low for today (the current conditions already name the period).
             daily = data.get('daily', {})
             if daily:
@@ -870,8 +877,13 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
             self.logger.error(f"Error fetching Open-Meteo weather: {e}")
             return self.translate('commands.gwx.error_fetching')
 
-    def _open_meteo_current(self, data: dict, max_length: int, temp_symbol: str) -> str:
-        """Current conditions for the default gwx reply, with extra conditions when they fit."""
+    def _open_meteo_current(self, data: dict, max_length: int, temp_symbol: str) -> Optional[str]:
+        """Current conditions for the default gwx reply, with extra conditions when they fit.
+
+        None when the response has no current temperature: a reply built from
+        defaults would invent "0°, 0%RH" weather. Other missing or null
+        current fields are left out of the reply one by one.
+        """
         # Check units in response to verify API is respecting our unit requests
         current_units = data.get('current_units', {})
         visibility_unit = current_units.get('visibility', 'm')
@@ -880,16 +892,21 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
         current = data.get('current', {})
 
         # Current conditions - API should return in Fahrenheit when requested
-        temp = int(current.get('temperature_2m', 0))
-        feels_like = int(current.get('apparent_temperature', temp))
+        if current.get('temperature_2m') is None:
+            self.logger.warning("Open-Meteo response has no current temperature")
+            return None
+        temp = int(current['temperature_2m'])
+        feels_like = _int_or_none(current.get('apparent_temperature'))
+        if feels_like is None:
+            feels_like = temp
         dewpoint = current.get('dewpoint_2m')
-        humidity = int(current.get('relative_humidity_2m', 0))
-        wind_speed = int(current.get('wind_speed_10m', 0))
-        wind_direction = self._degrees_to_direction(current.get('wind_direction_10m', 0))
-        wind_gusts = int(current.get('wind_gusts_10m', 0))
+        humidity = _int_or_none(current.get('relative_humidity_2m'))
+        wind_speed = _int_or_none(current.get('wind_speed_10m'))
+        wind_direction = self._degrees_to_direction(current.get('wind_direction_10m'))
+        wind_gusts = _int_or_none(current.get('wind_gusts_10m'))
         visibility = current.get('visibility')
         pressure = current.get('surface_pressure')
-        weather_code = current.get('weather_code', 0)
+        weather_code = current.get('weather_code')
 
         # Convert visibility to miles based on actual unit from API
         # API returns visibility in feet when using imperial units
@@ -911,9 +928,11 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
             self.logger.warning(f"Extremely low pressure value: {pressure} hPa - might be invalid")
             pressure = None
 
-        # Get weather description and emoji
-        weather_desc = self._get_weather_description(weather_code)
-        weather_emoji = self._get_weather_emoji(weather_code)
+        # Get weather description and emoji (none for a missing code, rather than "clear")
+        if weather_code is None:
+            condition = ""
+        else:
+            condition = f"{self._get_weather_emoji(weather_code)}{self._get_weather_description(weather_code)} "
 
         # Day or night at the location: Open-Meteo's current time is local there
         # (timezone=auto); the bot's own clock is only the fallback.
@@ -924,7 +943,7 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
             period_name = self.translate('commands.gwx.periods.tonight')
 
         # Build current weather string
-        weather = f"{period_name}: {weather_emoji}{weather_desc} {temp}{temp_symbol}"
+        weather = f"{period_name}: {condition}{temp}{temp_symbol}"
 
         # Add feels like if significantly different
         if abs(feels_like - temp) >= 5:
@@ -932,15 +951,16 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
             weather += f" {feels_str}"
 
         # Add wind info (always show if >= 3 mph, show gusts if significant)
-        if wind_speed >= 3:
+        if wind_speed is not None and wind_speed >= 3:
             weather += f" {wind_direction}{wind_speed}"
-            if wind_gusts > wind_speed + 3:
+            if wind_gusts is not None and wind_gusts > wind_speed + 3:
                 gust_str = self.translate('commands.gwx.gust', value=wind_gusts)
                 weather += gust_str
 
         # Add humidity
-        humidity_str = self.translate('commands.gwx.humidity', value=humidity)
-        weather += f" {humidity_str}"
+        if humidity is not None:
+            humidity_str = self.translate('commands.gwx.humidity', value=humidity)
+            weather += f" {humidity_str}"
 
         # Add additional conditions if space allows
         conditions = []
