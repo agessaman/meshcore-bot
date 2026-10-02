@@ -1,5 +1,6 @@
 """Tests for NEW_CONTACT / meshcore contact path wire encoding helpers."""
 
+import time
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -158,6 +159,9 @@ class TestHandleNewContactAddContact:
                     "path_byte_length": 4,
                 },
                 "snr": 13.5,
+                "timestamp": time.time(),
+                "payload_type_int": 4,
+                "scope_payload_hex": "a95b4becd36e185eae392d48f11825143d8505d9421a15c7d9f99bc51da70f66" + "00" * 8,
             }
         ]
 
@@ -200,6 +204,9 @@ class TestHandleNewContactAddContact:
                     "bytes_per_hop": 2,
                     "path_byte_length": 6,
                 },
+                "timestamp": time.time(),
+                "payload_type_int": 4,
+                "scope_payload_hex": "b95b4becd36e185eae392d48f11825143d8505d9421a15c7d9f99bc51da70f66" + "00" * 8,
             }
         ]
 
@@ -225,3 +232,96 @@ class TestHandleNewContactAddContact:
         assert passed["out_path_len"] == 3
         assert self._pack_path_byte(passed) == 0x43
         int(self._pack_path_byte(passed)).to_bytes(1, "little", signed=False)
+
+
+def _rf(public_key, path_hex, *, packet_hash, payload_type=4, age=0.0):
+    return {
+        "timestamp": time.time() - age,
+        "payload_type_int": payload_type,
+        "scope_payload_hex": public_key + "00" * 8,
+        "routing_info": {
+            "path_hex": path_hex,
+            "path_length": len(path_hex) // 2,
+            "bytes_per_hop": 1,
+            "path_byte_length": len(path_hex) // 2,
+            "packet_hash": packet_hash,
+        },
+        "snr": 11.0,
+        "rssi": -80,
+    }
+
+
+def _flood_contact(public_key):
+    return {
+        "public_key": public_key,
+        "type": 1,
+        "flags": 0,
+        "out_path_hash_mode": -1,
+        "out_path_len": -1,
+        "out_path": "",
+        "adv_name": "Route Test",
+        "last_advert": 1,
+        "adv_lat": 0.0,
+        "adv_lon": 0.0,
+        "lastmod": 1,
+    }
+
+
+class TestNewContactRouteSource:
+    """NEW_CONTACT takes its route only from the new contact's own ADVERT packet."""
+
+    PK = "c1" * 32
+    OTHER = "d2" * 32
+
+    async def _added(self, bot, mh):
+        event = MagicMock()
+        event.payload = _flood_contact(self.PK)
+        await mh.handle_new_contact(event)
+        return bot.meshcore.commands.add_contact.await_args[0][0]
+
+    @pytest.mark.asyncio
+    async def test_an_unrelated_packet_route_is_not_used(self, companion_new_contact_setup):
+        bot, mh = companion_new_contact_setup
+        mh.recent_rf_data = [
+            _rf(self.OTHER, "a1a2a3", packet_hash="00aa00aa00aa00aa"),  # another node's advert
+            _rf(self.PK, "b1b2b3", packet_hash="00bb00bb00bb00bb", payload_type=5),  # a GRP_TXT
+        ]
+        passed = await self._added(bot, mh)
+        assert passed["out_path"] == ""
+        assert passed["out_path_len"] == -1
+        mh._update_mesh_graph_from_advert.assert_not_called()
+        mh._store_observed_path.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_the_contact_advert_route_is_used_and_not_recorded_again(self, companion_new_contact_setup):
+        bot, mh = companion_new_contact_setup
+        mh.recent_rf_data = [
+            _rf(self.OTHER, "a1a2a3", packet_hash="00aa00aa00aa00aa"),
+            _rf(self.PK, "c1c2", packet_hash="00cc00cc00cc00cc"),
+            _rf(self.OTHER, "a4a5", packet_hash="00dd00dd00dd00dd"),
+        ]
+        passed = await self._added(bot, mh)
+        assert passed["out_path"] == "c1c2"
+        assert passed["out_path_len"] == 2
+        mh._update_mesh_graph_from_advert.assert_not_called()
+        mh._store_observed_path.assert_not_called()
+        hash_passed = bot.repeater_manager.track_contact_advertisement.await_args.kwargs["packet_hash"]
+        assert hash_passed == "00cc00cc00cc00cc"
+
+    @pytest.mark.asyncio
+    async def test_the_first_copy_of_the_newest_advert_is_used(self, companion_new_contact_setup):
+        bot, mh = companion_new_contact_setup
+        mh.recent_rf_data = [
+            _rf(self.PK, "0f0f", packet_hash="0001000100010001", age=8.0),  # an older advert
+            _rf(self.PK, "e1e2", packet_hash="0002000200020002", age=2.0),  # first copy heard
+            _rf(self.PK, "e3e4e5", packet_hash="0002000200020002", age=1.0),  # a later copy
+        ]
+        passed = await self._added(bot, mh)
+        assert passed["out_path"] == "e1e2"
+
+    @pytest.mark.asyncio
+    async def test_an_advert_older_than_the_rf_window_is_not_used(self, companion_new_contact_setup):
+        bot, mh = companion_new_contact_setup
+        mh.recent_rf_data = [_rf(self.PK, "c1c2", packet_hash="00cc00cc00cc00cc", age=60.0)]
+        passed = await self._added(bot, mh)
+        assert passed["out_path"] == ""

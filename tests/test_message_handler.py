@@ -2302,6 +2302,26 @@ def _companion_contact_payload() -> dict:
     }
 
 
+def _advert_rf_entry(public_key: str, *, path_hex: str = "0102", path_length: int = 2,
+                     packet_hash: str | None = None, age: float = 0.0, payload_type: int = 4) -> dict:
+    """A cached RF entry for an ADVERT (payload type 4) from ``public_key``."""
+    import time as _time
+    return {
+        "timestamp": _time.time() - age,
+        "payload_type_int": payload_type,
+        "scope_payload_hex": public_key + "00" * 8,
+        "routing_info": {
+            "path_hex": path_hex,
+            "path_length": path_length,
+            "bytes_per_hop": 1,
+            "path_byte_length": len(path_hex) // 2,
+            "packet_hash": packet_hash,
+        },
+        "snr": 9.0,
+        "rssi": -90,
+    }
+
+
 @pytest.fixture
 def new_contact_env(mock_logger):
     """Bot + MessageHandler with mocked repeater_manager and meshcore for NEW_CONTACT tests."""
@@ -2388,36 +2408,38 @@ class TestHandleNewContactAutoManage:
         rm.add_companion_from_contact_data.assert_awaited_once()
         mesh.commands.add_contact.assert_not_called()
 
-    async def test_bot_mode_skips_add_when_duplicate_packet_hash(self, new_contact_env):
+    async def test_bot_mode_adds_although_the_advert_packet_was_already_tracked(self, new_contact_env):
+        """The advert packet is tracked before NEW_CONTACT arrives, so tracking reports a duplicate."""
         from modules.repeater_manager import TrackAdvertResult
 
         bot, handler, rm, mesh = new_contact_env
         bot.config.set("Bot", "auto_manage_contacts", "bot")
+        handler.recent_rf_data = [_advert_rf_entry("ab" * 32, packet_hash="1122334455667788")]
         rm.track_contact_advertisement = AsyncMock(
             return_value=TrackAdvertResult(ok=True, duplicate_packet=True)
         )
         ev = _NewContactEvent(_companion_contact_payload())
         await handler.handle_new_contact(ev, None)
         rm.track_contact_advertisement.assert_awaited_once()
-        rm.add_companion_from_contact_data.assert_not_called()
-        rm.get_contact_list_status.assert_not_awaited()
+        assert rm.track_contact_advertisement.await_args.kwargs["packet_hash"] == "1122334455667788"
+        rm.add_companion_from_contact_data.assert_awaited_once()
 
-    async def test_bot_mode_two_events_first_unique_then_duplicate_adds_once(self, new_contact_env):
-        from modules.repeater_manager import TrackAdvertResult
-
+    async def test_bot_mode_two_events_for_one_advert_add_once(self, new_contact_env):
         bot, handler, rm, mesh = new_contact_env
         bot.config.set("Bot", "auto_manage_contacts", "bot")
-        rm.track_contact_advertisement = AsyncMock(
-            side_effect=[
-                TrackAdvertResult(ok=True, duplicate_packet=False),
-                TrackAdvertResult(ok=True, duplicate_packet=True),
-            ]
-        )
+        handler.recent_rf_data = [_advert_rf_entry("ab" * 32, packet_hash="1122334455667788")]
         ev = _NewContactEvent(_companion_contact_payload())
         await handler.handle_new_contact(ev, None)
-        await handler.handle_new_contact(ev, None)
+        await handler.handle_new_contact(_NewContactEvent(_companion_contact_payload()), None)
         assert rm.track_contact_advertisement.await_count == 2
         rm.add_companion_from_contact_data.assert_awaited_once()
+
+    async def test_bot_mode_without_an_advert_packet_adds_every_time(self, new_contact_env):
+        bot, handler, rm, mesh = new_contact_env
+        bot.config.set("Bot", "auto_manage_contacts", "bot")
+        await handler.handle_new_contact(_NewContactEvent(_companion_contact_payload()), None)
+        await handler.handle_new_contact(_NewContactEvent(_companion_contact_payload()), None)
+        assert rm.add_companion_from_contact_data.await_count == 2
 
     async def test_new_companion_logs_new_and_records_audit(self, new_contact_env):
         bot, handler, rm, mesh = new_contact_env
