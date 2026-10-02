@@ -59,3 +59,10 @@ def test_no_current_temperature_is_an_error_reply_not_zero_degrees(missing):
     assert text == "<commands.gwx.error_fetching>"
     assert "0°F" not in text
     logger.warning.assert_called_once_with("Open-Meteo response has no current temperature")
+
+
+@pytest.mark.parametrize("missing", [None, ...])
+def test_a_missing_wind_direction_is_not_reported_as_north(missing):
+    text, _ = _reply(wind_direction_10m=missing, wind_speed_10m=12)
+    assert "wind_directions" not in text
+    assert "12" in text

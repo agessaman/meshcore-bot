@@ -920,7 +920,7 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
         dewpoint = current.get('dewpoint_2m')
         humidity = _int_or_none(current.get('relative_humidity_2m'))
         wind_speed = _int_or_none(current.get('wind_speed_10m'))
-        wind_direction = self._degrees_to_direction(current.get('wind_direction_10m', 0))
+        wind_direction = self._degrees_to_direction(current.get('wind_direction_10m'))
         wind_gusts = _int_or_none(current.get('wind_gusts_10m'))
         visibility = current.get('visibility')
         pressure = current.get('surface_pressure')
