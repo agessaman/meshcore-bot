@@ -65,6 +65,7 @@
                         <option value="interval_hours">Every N hours</option>
                         <option value="interval_minutes">Every N minutes</option>
                         <option value="advanced">Advanced (cron)</option>
+                        <option value="flexible">Flexible (cron)</option>
                     </select>
                 </div>
 
@@ -99,8 +100,23 @@
                                placeholder="0 6,12,18 * * *">
                         <div class="form-text">
                             Five fields: minute hour day-of-month month day-of-week.
-                            Day-of-week is 0=Monday here, not Sunday. Presets like
+                            Day-of-week is 0=Monday here, not Sunday. 3 letter
+                            month and day-of-week can be used. Presets like
                             <code>@daily</code> and <code>@hourly</code> also work.
+                        </div>
+                    </div>
+                    <div class="col-12 d-none" id="fieldFlexible">
+                        <label class="form-label" for="scheduleFlexible">Flexible cron expression</label>
+                        <input type="text" class="form-control font-monospace" id="scheduleFlexible"
+                               placeholder="2nd wed mar-jul 14:30">
+                        <div class="form-text">
+                            Fields can come in any order. Time may be specified
+                            as HH:MM, HHMM, ##h ##m. Months must be 3 character
+                            labels (i.e feb) and day of month must be ##d. Week
+                            can be specified as ##w. Day of week must be 3 character
+                            label (i.e. wed) and can be qualified by 1st, 2nd,
+                            3rd, 4th, 5th or last. Any field not specified
+                            defaults to '*'.
                         </div>
                     </div>
                 </div>
@@ -210,6 +226,7 @@
     function composeCron() {
         const mode = $('scheduleMode').value;
         if (mode === 'advanced') return $('scheduleCron').value.trim();
+        if (mode === 'flexible') return $('scheduleFlexible').value.trim();
 
         if (mode === 'interval_minutes') {
             const n = parseInt($('scheduleEveryMinutes').value, 10);
@@ -245,6 +262,7 @@
         show('fieldEveryMinutes', mode === 'interval_minutes');
         show('fieldDays', mode === 'weekly');
         show('fieldCron', mode === 'advanced');
+        show('fieldFlexible', mode === "flexible");
         schedulePreview();
     }
 
@@ -289,8 +307,21 @@
         $('scheduleMessage').value = entry ? entry.message : '';
         // Existing entries open in Advanced so the stored cron is never silently
         // rewritten into something the friendly controls happen to produce.
-        $('scheduleMode').value = entry ? 'advanced' : 'daily';
-        $('scheduleCron').value = entry ? entry.schedule : '';
+        if (entry) {
+            const cron_regex = /^(?:[\d\-,\/\*]+\s+){3}([\d\-,\/a-z\*]+)\s+([\d\-,\/a-z\*]+)$/i;
+            if (cron_regex.test(entry.schedule)) {
+                $('scheduleMode').value = 'advanced';
+                $('scheduleCron').value = entry.schedule;
+            } else {
+                $('scheduleMode').value = 'flexible';
+                $('scheduleFlexible').value = entry.schedule;
+            }
+        } else {
+            $('scheduleMode').value = 'daily';
+            $('scheduleCron').value = '';
+        }
+
+
         syncModeFields();
         modal.show();
     }
@@ -403,7 +434,7 @@
         $('saveScheduleBtn').addEventListener('click', save);
         $('scheduleMode').addEventListener('change', syncModeFields);
         ['scheduleTime', 'scheduleTimes', 'scheduleEveryHours', 'scheduleEveryMinutes',
-         'scheduleCron', 'scheduleMessage'].forEach((id) =>
+         'scheduleCron', 'scheduleFlexible', 'scheduleMessage'].forEach((id) =>
             $(id).addEventListener('input', schedulePreview));
         syncModeFields();
         load();
