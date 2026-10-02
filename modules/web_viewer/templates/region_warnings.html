@@ -545,7 +545,7 @@
             el('rw-preview-note').textContent = used.length ? 'Shown with ' + used.join(', ') + '.' : '';
 
             el('rw-delivery-help').textContent = delivery === 'channel'
-                ? 'Sent at global scope so it reaches someone outside your region — everyone on the channel sees it.'
+                ? 'Everyone on the channel sees it. Sent at the bot\'s usual channel scope, so a regional bot warns within its region.'
                 : 'Costs the least airtime, and only the sender sees it. Only goes to '
                   + 'senders the radio already has a contact for.';
         }
