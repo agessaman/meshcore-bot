@@ -4,7 +4,7 @@ import asyncio
 import configparser
 import sqlite3
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
@@ -104,3 +104,23 @@ def test_wx_city_lookup_accepts_a_zero_coordinate(monkeypatch):
         "modules.commands.wx_command.geocode_city_sync", lambda *a, **k: (0.0, 6.73, {"city": "São Tomé"})
     )
     assert cmd.city_to_lat_lon("Sao Tome") == (0.0, 6.73, {"city": "São Tomé"})
+
+
+@pytest.mark.parametrize("query", ["Null Island Town, ST", "Null Island Town"])
+def test_city_geocoding_keeps_a_zero_latitude(query):
+    from modules import utils
+
+    bot = Mock()
+    bot.db_manager.get_cached_geocoding = Mock(return_value=(None, None))
+    bot.db_manager.get_cached_json = Mock(return_value=None)
+    bot.config = configparser.ConfigParser()
+    bot.config.read_dict({"Weather": {"default_state": "", "default_country": "ST"}, "Bot": {}})
+    hit = Mock(latitude=0.0, longitude=6.73, raw={"address": {"city": "Null Island Town", "country_code": "st"}})
+    # Only the first forward lookup finds the place; any fallback query after it finds nothing,
+    # so a rejected zero coordinate cannot be rescued by a later lookup.
+    forward = Mock(side_effect=[hit] + [None] * 10)
+    with patch.object(utils, "rate_limited_nominatim_geocode_sync", forward), patch.object(
+        utils, "rate_limited_nominatim_reverse_sync", return_value=hit
+    ):
+        lat, lon, _ = utils.geocode_city_sync(bot, query, default_country="ST", include_address_info=True)
+    assert (lat, lon) == (0.0, 6.73)
