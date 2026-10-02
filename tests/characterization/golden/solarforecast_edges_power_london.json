@@ -1,0 +1,71 @@
+{
+ "invalid-timestamp-debug": {
+  "logs": [
+   [
+    "debug",
+    "Error parsing timestamp not a time: time data 'not a time' does not match format '%Y-%m-%d %H:%M:%S'"
+   ]
+  ],
+  "text": "400W <commands.solarforecast.labels.today[('wh', 2848)]><commands.solarforecast.labels.hours_util[('hours', 11), ('util', 64.72727272727272)]> <commands.solarforecast.labels.peak[('time', '14:00'), ('watts', 346)]>\n<commands.solarforecast.labels.tomorrow[('wh', 1363)]><commands.solarforecast.labels.hours_percent[('hours', 11), ('percent', 30.977272727272727)]>\n<commands.solarforecast.labels.day_format[('day', '<common.date_time.day_abbreviations.Sun>'), ('wh', 1499.3000000000002)]><commands.solarforecast.labels.hours_percent[('hours', 11), ('percent', 34.075)]><commands.solarforecast.labels.separator><commands.solarforecast.labels.day_format[('day', '<common.date_time.day_abbreviations.Mon>'), ('wh', 1635.6)]><commands.solarforecast.labels.hours_percent[('hours', 11), ('percent', 37.17272727272727)]>"
+ },
+ "nan-panel-day0": {
+  "logs": [],
+  "text": "nanW <commands.solarforecast.labels.today[('wh', 2848)]> <commands.solarforecast.labels.peak[('time', '10:00'), ('watts', 40)]>"
+ },
+ "nan-panel-day1": {
+  "logs": [],
+  "text": "<commands.solarforecast.labels.tomorrow[('wh', 1363)]> <commands.solarforecast.labels.peak[('time', '10:00'), ('watts', 40)]>"
+ },
+ "nan-power-day0-first": {
+  "logs": [],
+  "text": "400W <commands.solarforecast.labels.today[('wh', 2848)]><commands.solarforecast.labels.hours_util[('hours', 1), ('util', 712.0)]>"
+ },
+ "nan-power-day0-last": {
+  "logs": [],
+  "text": "400W <commands.solarforecast.labels.today[('wh', 2848)]><commands.solarforecast.labels.hours_util[('hours', 1), ('util', 712.0)]> <commands.solarforecast.labels.peak[('time', '11:00'), ('watts', 40)]>"
+ },
+ "nan-power-day1-first": {
+  "logs": [],
+  "text": "<commands.solarforecast.labels.tomorrow[('wh', 1363)]><commands.solarforecast.labels.hours_util[('hours', 1), ('util', 340.75)]>"
+ },
+ "nan-power-day1-last": {
+  "logs": [],
+  "text": "<commands.solarforecast.labels.tomorrow[('wh', 1363)]><commands.solarforecast.labels.hours_util[('hours', 1), ('util', 340.75)]> <commands.solarforecast.labels.peak[('time', '11:00'), ('watts', 40)]>"
+ },
+ "tied-early-first": {
+  "logs": [],
+  "text": "400W <commands.solarforecast.labels.today[('wh', 2848)]><commands.solarforecast.labels.hours_util[('hours', 2), ('util', 356.0)]> <commands.solarforecast.labels.peak[('time', '10:00'), ('watts', 100)]>\n<commands.solarforecast.labels.tomorrow[('wh', 1363)]><commands.solarforecast.labels.hours_percent[('hours', 1), ('percent', 340.75)]>\n<commands.solarforecast.labels.day_format[('day', '<common.date_time.day_abbreviations.Sun>'), ('wh', 1499.3000000000002)]><commands.solarforecast.labels.separator><commands.solarforecast.labels.day_format[('day', '<common.date_time.day_abbreviations.Mon>'), ('wh', 1635.6)]>"
+ },
+ "tied-late-first": {
+  "logs": [],
+  "text": "400W <commands.solarforecast.labels.today[('wh', 2848)]><commands.solarforecast.labels.hours_util[('hours', 2), ('util', 356.0)]> <commands.solarforecast.labels.peak[('time', '15:00'), ('watts', 100)]>\n<commands.solarforecast.labels.tomorrow[('wh', 1363)]><commands.solarforecast.labels.hours_percent[('hours', 1), ('percent', 340.75)]>\n<commands.solarforecast.labels.day_format[('day', '<common.date_time.day_abbreviations.Sun>'), ('wh', 1499.3000000000002)]><commands.solarforecast.labels.separator><commands.solarforecast.labels.day_format[('day', '<common.date_time.day_abbreviations.Mon>'), ('wh', 1635.6)]>"
+ },
+ "tied-tomorrow-first": {
+  "logs": [],
+  "text": "400W <commands.solarforecast.labels.today[('wh', 2848)]><commands.solarforecast.labels.hours_util[('hours', 2), ('util', 356.0)]>\n<commands.solarforecast.labels.tomorrow[('wh', 1363)]><commands.solarforecast.labels.hours_percent[('hours', 1), ('percent', 340.75)]> <commands.solarforecast.labels.peak[('time', '12:00'), ('watts', 100)]>\n<commands.solarforecast.labels.day_format[('day', '<common.date_time.day_abbreviations.Sun>'), ('wh', 1499.3000000000002)]><commands.solarforecast.labels.separator><commands.solarforecast.labels.day_format[('day', '<common.date_time.day_abbreviations.Mon>'), ('wh', 1635.6)]>"
+ },
+ "today-exact-0.1": {
+  "logs": [],
+  "text": "10W <commands.solarforecast.labels.today[('wh', 2848)]><commands.solarforecast.labels.hours_util[('hours', 1), ('util', 28480.0)]> <commands.solarforecast.labels.peak[('time', '10:00'), ('watts', 0.1)]>"
+ },
+ "today-exact-one-percent": {
+  "logs": [],
+  "text": "400W <commands.solarforecast.labels.today[('wh', 2848)]><commands.solarforecast.labels.hours_util[('hours', 1), ('util', 356.0)]> <commands.solarforecast.labels.peak[('time', '10:00'), ('watts', 4.0)]>"
+ },
+ "today-same-hour": {
+  "logs": [],
+  "text": "400W <commands.solarforecast.labels.today[('wh', 2848)]><commands.solarforecast.labels.hours_util[('hours', 1), ('util', 712.0)]> <commands.solarforecast.labels.peak[('time', '10:45'), ('watts', 40)]>"
+ },
+ "tomorrow-exact-0.1": {
+  "logs": [],
+  "text": "<commands.solarforecast.labels.tomorrow[('wh', 1363)]><commands.solarforecast.labels.hours_util[('hours', 1), ('util', 27260.000000000004)]> <commands.solarforecast.labels.peak[('time', '10:00'), ('watts', 0.1)]>"
+ },
+ "tomorrow-exact-one-percent": {
+  "logs": [],
+  "text": "<commands.solarforecast.labels.tomorrow[('wh', 1363)]><commands.solarforecast.labels.hours_util[('hours', 1), ('util', 340.75)]> <commands.solarforecast.labels.peak[('time', '10:00'), ('watts', 4.0)]>"
+ },
+ "tomorrow-same-hour": {
+  "logs": [],
+  "text": "<commands.solarforecast.labels.tomorrow[('wh', 1363)]><commands.solarforecast.labels.hours_util[('hours', 1), ('util', 113.58333333333333)]> <commands.solarforecast.labels.peak[('time', '10:45'), ('watts', 40)]>"
+ }
+}
