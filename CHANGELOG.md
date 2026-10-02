@@ -26,6 +26,7 @@ semantic versioning.
 
 ### Changed
 
+- `gwx` can be used in scheduled messages (`{cmd:gwx Paris}`), like `wx`. It was not marked safe to render, so the placeholder expanded to nothing, although `{cmd:wx ...}` already ran `gwx` when `weather_provider = openmeteo`.
 - The footer's MeshCore link now points at the official site, meshcore.io.
 
 ### Fixed
