@@ -413,6 +413,9 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             str: Formatted weather string
         """
 
+        if forecast_type in ("hourly", "alerts"):
+            return self.translate("commands.wx.source_option_not_available")
+
         # Fetch WXSIM data
         text = self.wxsim_parser.fetch_from_url(source_url, timeout=self.url_timeout)
         if not text:
@@ -440,8 +443,8 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             # Get tomorrow's forecast
             if len(forecast.periods) > 1:
                 tomorrow = forecast.periods[1]
-                high = self.wxsim_parser._convert_temp(tomorrow.high_temp, temp_unit) if tomorrow.high_temp else None
-                low = self.wxsim_parser._convert_temp(tomorrow.low_temp, temp_unit) if tomorrow.low_temp else None
+                high = self.wxsim_parser._convert_temp(tomorrow.high_temp, temp_unit) if tomorrow.high_temp is not None else None
+                low = self.wxsim_parser._convert_temp(tomorrow.low_temp, temp_unit) if tomorrow.low_temp is not None else None
                 temp_symbol = "°F" if temp_unit == 'fahrenheit' else "°C"
 
                 result = f"Tomorrow: {tomorrow.conditions}"
@@ -472,8 +475,8 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             # Add today's high/low if available (use first period as "today")
             if forecast.periods:
                 today = forecast.periods[0]
-                high = self.wxsim_parser._convert_temp(today.high_temp, temp_unit) if today.high_temp else None
-                low = self.wxsim_parser._convert_temp(today.low_temp, temp_unit) if today.low_temp else None
+                high = self.wxsim_parser._convert_temp(today.high_temp, temp_unit) if today.high_temp is not None else None
+                low = self.wxsim_parser._convert_temp(today.low_temp, temp_unit) if today.low_temp is not None else None
                 temp_symbol = "°F" if temp_unit == 'fahrenheit' else "°C"
 
                 hl_today = self._format_high_low(high, low, temp_symbol)
@@ -483,8 +486,8 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                 # Add tomorrow if available (second period)
                 if len(forecast.periods) > 1:
                     tomorrow = forecast.periods[1]
-                    tomorrow_high = self.wxsim_parser._convert_temp(tomorrow.high_temp, temp_unit) if tomorrow.high_temp else None
-                    tomorrow_low = self.wxsim_parser._convert_temp(tomorrow.low_temp, temp_unit) if tomorrow.low_temp else None
+                    tomorrow_high = self.wxsim_parser._convert_temp(tomorrow.high_temp, temp_unit) if tomorrow.high_temp is not None else None
+                    tomorrow_low = self.wxsim_parser._convert_temp(tomorrow.low_temp, temp_unit) if tomorrow.low_temp is not None else None
 
                     hl_tom = self._format_high_low(tomorrow_high, tomorrow_low, temp_symbol)
                     if hl_tom:
@@ -667,7 +670,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         else:
             location_parts = parts[1:]
 
-        forecast_type = "default"
+        forecast_type = "alerts" if show_full_alerts else "default"
         num_days = 7  # Default for multi-day forecast
         if not show_full_alerts:
             location_parts, forecast_type, num_days = self._parse_forecast_suffix(
@@ -681,25 +684,24 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             await self.send_response(message, self.translate('commands.wx.usage'))
             return True
 
-        # Custom MQTT before WXSIM; skip snapshot sources when user asked for NOAA alerts
-        if not show_full_alerts:
-            mqtt_topic = self._get_custom_mqtt_weather_topic(location)
-            if mqtt_topic:
-                self.logger.info(f"Using custom MQTT weather topic for location '{location}': {mqtt_topic}")
-                try:
-                    self.record_execution(message.sender_id)
-                    weather_data = self._mqtt_weather_line(
-                        mqtt_topic, forecast_type, location
-                    )
-                    if forecast_type == "multiday":
-                        await self._send_multiday_forecast(message, weather_data)
-                    else:
-                        await self.send_response(message, weather_data)
-                    return True
-                except Exception as e:
-                    self.logger.error(f"Error reading MQTT weather: {e}")
-                    await self.send_response(message, self.translate("commands.wx.error", error=str(e)))
-                    return True
+        # Custom MQTT before WXSIM
+        mqtt_topic = self._get_custom_mqtt_weather_topic(location)
+        if mqtt_topic:
+            self.logger.info(f"Using custom MQTT weather topic for location '{location}': {mqtt_topic}")
+            try:
+                self.record_execution(message.sender_id)
+                weather_data = self._mqtt_weather_line(
+                    mqtt_topic, forecast_type, location
+                )
+                if forecast_type == "multiday":
+                    await self._send_multiday_forecast(message, weather_data)
+                else:
+                    await self.send_response(message, weather_data)
+                return True
+            except Exception as e:
+                self.logger.error(f"Error reading MQTT weather: {e}")
+                await self.send_response(message, self.translate("commands.wx.error", error=str(e)))
+                return True
 
         # Check for custom WXSIM source first (before checking location type)
         wxsim_source = self._get_custom_wxsim_source(location)
@@ -1447,7 +1449,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             return self.ERROR_FETCHING_DATA, None
 
     def format_hourly_forecast(self, hourly_periods: list, max_length: int = 130) -> str:
-        """Format hourly forecast to fit as many hours as possible in max_length chars
+        """Format hourly forecast to fit as many hours as possible in max_length bytes
 
         Args:
             hourly_periods: List of hourly forecast periods from NOAA
@@ -1464,19 +1466,9 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             if not future_periods:
                 return "No future hourly periods available"
 
-            lines: list[str] = []
-            for period in future_periods:
-                line = self._hourly_line(period)
-                # Stop at the first hour that no longer fits.
-                if self._count_display_width("\n".join(lines + [line])) <= max_length:
-                    lines.append(line)
-                else:
-                    break
-
-            if not lines:
-                return "Hourly forecast not available"
-
-            return "\n".join(lines)
+            return self._pack_hourly_lines(
+                (self._hourly_line(period) for period in future_periods), max_length
+            )
 
         except Exception as e:
             self.logger.error(f"Error formatting hourly forecast: {e}")
@@ -1507,18 +1499,8 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                 future_periods.append(period)
         return future_periods
 
-    def _hour_label(self, start_time_str: str) -> str:
-        """12-hour label for a period's start hour ("12AM", "2PM"); empty when missing or unparseable."""
-        if not start_time_str:
-            return ""
-        try:
-            hour = self._parse_noaa_start_time(start_time_str).hour
-        except (ValueError, TypeError):
-            return ""
-        return f"{hour % 12 or 12}{'AM' if hour < 12 else 'PM'}"
-
     def _hourly_line(self, period: dict) -> str:
-        """One hour as "10AM: 🌦️ 26% Chance Light Rain 49° SS5"."""
+        """One hour as "10AM: 🌦️ 26% Chance Light Rain 49° SSW5"."""
         temp = period.get('temperature', '')
         short_forecast = period.get('shortForecast', '')
         wind_speed = period.get('windSpeed', '')
@@ -1527,11 +1509,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         time_str = self._hour_label(period.get('startTime', ''))
         emoji = self.get_weather_emoji(short_forecast)
 
-        # Long forecasts keep their first three words, or 18 characters.
-        forecast_short = short_forecast
-        if len(forecast_short) > 18:
-            words = forecast_short.split()
-            forecast_short = ' '.join(words[:3]) if len(words) > 3 else forecast_short[:18]
+        forecast_short = self._short_hourly_description(short_forecast)
 
         line_parts = []
         if time_str:
@@ -1545,9 +1523,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         if wind_speed and wind_direction:
             wind_match = re.search(r'(\d+)', wind_speed)
             if wind_match:
-                # Compact wind: the direction's first two characters, no spaces.
-                wind_dir_abbrev = wind_direction[:2] if len(wind_direction) >= 2 else wind_direction
-                wind_dir_abbrev = wind_dir_abbrev.replace(' ', '').upper()
+                wind_dir_abbrev = self._without_arrow(self.abbreviate_wind_direction(wind_direction))
                 line_parts.append(f"{wind_dir_abbrev}{wind_match.group(1)}")
         return " ".join(line_parts)
 
