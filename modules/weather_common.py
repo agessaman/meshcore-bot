@@ -53,6 +53,46 @@ class WeatherCommandMixin:
     send_response: Any
     get_max_message_length: Any
 
+    @staticmethod
+    def _parse_forecast_suffix(
+        location_parts: list[str], max_days: int, *, allow_hourly: bool
+    ) -> tuple[list[str], str, int]:
+        """Strip a trailing forecast option from the location words.
+
+        "tomorrow", "hourly" (when allowed), "7day"/"7-day", "Nd" or a bare "N"
+        with 2 <= N <= max_days. Returns (remaining words, forecast type, days);
+        anything else stays part of the location and the type is "default".
+        """
+        forecast_type = "default"
+        num_days = 7  # Default for multi-day forecast
+        if len(location_parts) > 0:
+            last_part = location_parts[-1].lower()
+            if last_part == "tomorrow":
+                forecast_type = "tomorrow"
+                location_parts = location_parts[:-1]
+            elif allow_hourly and last_part == "hourly":
+                forecast_type = "hourly"
+                location_parts = location_parts[:-1]
+            elif last_part in ["7day", "7-day"]:
+                forecast_type = "multiday"
+                num_days = 7
+                location_parts = location_parts[:-1]
+            else:
+                nd_match = re.fullmatch(r"(\d+)d", last_part)
+                if nd_match:
+                    days = int(nd_match.group(1))
+                    if 2 <= days <= max_days:
+                        forecast_type = "multiday"
+                        num_days = days
+                        location_parts = location_parts[:-1]
+                elif last_part.isdigit():
+                    days = int(last_part)
+                    if 2 <= days <= max_days:
+                        forecast_type = "multiday"
+                        num_days = days
+                        location_parts = location_parts[:-1]
+        return location_parts, forecast_type, num_days
+
     def _format_high_low(self, high: Optional[Number], low: Optional[Number], temp_symbol: str) -> str:
         """Format high/low using [Weather] temperature_*_format templates."""
         return format_temperature_high_low(self.bot.config, high, low, temp_symbol, self.logger,

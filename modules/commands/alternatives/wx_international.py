@@ -424,35 +424,9 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
                         await self.send_response(message, self.translate('commands.gwx.usage'))
                         return True
 
-        # Check for forecast type options: "tomorrow", Nd (7d, 10d), or plain digit days 2–GWX_MULTIDAY_MAX_DAYS
-        forecast_type = "default"
-        num_days = 7  # Default for multi-day forecast
-        location_parts = parts[1:]
-
-        # Check last part for forecast type
-        if len(location_parts) > 0:
-            last_part = location_parts[-1].lower()
-            if last_part == "tomorrow":
-                forecast_type = "tomorrow"
-                location_parts = location_parts[:-1]
-            elif last_part in ["7day", "7-day"]:
-                forecast_type = "multiday"
-                num_days = 7
-                location_parts = location_parts[:-1]
-            else:
-                nd_match = re.fullmatch(r"(\d+)d", last_part)
-                if nd_match:
-                    days = int(nd_match.group(1))
-                    if 2 <= days <= GWX_MULTIDAY_MAX_DAYS:
-                        forecast_type = "multiday"
-                        num_days = days
-                        location_parts = location_parts[:-1]
-                elif last_part.isdigit():
-                    days = int(last_part)
-                    if 2 <= days <= GWX_MULTIDAY_MAX_DAYS:
-                        forecast_type = "multiday"
-                        num_days = days
-                        location_parts = location_parts[:-1]
+        location_parts, forecast_type, num_days = self._parse_forecast_suffix(
+            parts[1:], GWX_MULTIDAY_MAX_DAYS, allow_hourly=False
+        )
 
         # Join remaining parts to handle "city, country" format
         location = ' '.join(location_parts).strip()

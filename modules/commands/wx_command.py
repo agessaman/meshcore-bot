@@ -655,37 +655,12 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         else:
             location_parts = parts[1:]
 
-        # Check for forecast type options: "tomorrow", Nd (7d, 10d), or plain digit days 2–WX_MULTIDAY_MAX_DAYS
         forecast_type = "default"
         num_days = 7  # Default for multi-day forecast
-
-        # Check last part for forecast type (only if not "alerts")
-        if len(location_parts) > 0 and not show_full_alerts:
-            last_part = location_parts[-1].lower()
-            if last_part == "tomorrow":
-                forecast_type = "tomorrow"
-                location_parts = location_parts[:-1]
-            elif last_part == "hourly":
-                forecast_type = "hourly"
-                location_parts = location_parts[:-1]
-            elif last_part in ["7day", "7-day"]:
-                forecast_type = "multiday"
-                num_days = 7
-                location_parts = location_parts[:-1]
-            else:
-                nd_match = re.fullmatch(r"(\d+)d", last_part)
-                if nd_match:
-                    days = int(nd_match.group(1))
-                    if 2 <= days <= WX_MULTIDAY_MAX_DAYS:
-                        forecast_type = "multiday"
-                        num_days = days
-                        location_parts = location_parts[:-1]
-                elif last_part.isdigit():
-                    days = int(last_part)
-                    if 2 <= days <= WX_MULTIDAY_MAX_DAYS:
-                        forecast_type = "multiday"
-                        num_days = days
-                        location_parts = location_parts[:-1]
+        if not show_full_alerts:
+            location_parts, forecast_type, num_days = self._parse_forecast_suffix(
+                location_parts, WX_MULTIDAY_MAX_DAYS, allow_hourly=True
+            )
 
         # Join remaining parts to handle "city, state" format
         location = ' '.join(location_parts).strip()
