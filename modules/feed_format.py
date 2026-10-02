@@ -223,7 +223,7 @@ def apply_feed_field_function(
 
             if last_colon_idx > 0:
                 potential_group = remaining[last_colon_idx + 1 :]
-                if potential_group.isdigit():
+                if potential_group.isdecimal():
                     pattern = remaining[:last_colon_idx]
                     group_num = int(potential_group)
 
@@ -293,7 +293,7 @@ def apply_feed_field_function(
             extract_pattern = parts[0]
             check_pattern = parts[1]
             then_value = parts[2]
-            else_group = int(parts[3]) if parts[3].isdigit() else 1
+            else_group = int(parts[3]) if parts[3].isdecimal() else 1
 
             if not extract_pattern:
                 return text

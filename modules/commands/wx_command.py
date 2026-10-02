@@ -727,7 +727,7 @@ class WxCommand(BaseCommand):
                         forecast_type = "multiday"
                         num_days = days
                         location_parts = location_parts[:-1]
-                elif last_part.isdigit():
+                elif last_part.isdecimal():
                     days = int(last_part)
                     if 2 <= days <= WX_MULTIDAY_MAX_DAYS:
                         forecast_type = "multiday"
