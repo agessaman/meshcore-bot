@@ -16,7 +16,7 @@
    "wind_speed_unit": "mph"
   },
   "requests": 1,
-  "text": "<commands.gwx.periods.today>: ☀️<commands.gwx.weather_descriptions.0> 84°F ↙️<common.wind_directions.SW>4 <commands.gwx.humidity[('value', 32)]> | <common.temp_high_label>:93°F <common.temp_low_label>:69°F | <commands.gwx.periods.tomorrow>: ☀️ <common.temp_high_label>:95°F <common.temp_low_label>:70°F 🌦️80% 4.20in"
+  "text": "<commands.gwx.periods.today>: ☀️<commands.gwx.weather_descriptions.0> 84°F ⬅️<common.wind_directions.WSW>4 <commands.gwx.humidity[('value', 32)]> | <common.temp_high_label>:93°F <common.temp_low_label>:69°F | <commands.gwx.periods.tomorrow>: ☀️ <common.temp_high_label>:95°F <common.temp_low_label>:70°F"
  },
  "precipitation-boundary+1": {
   "budget": 343,
@@ -35,7 +35,7 @@
    "wind_speed_unit": "mph"
   },
   "requests": 1,
-  "text": "<commands.gwx.periods.today>: ☀️<commands.gwx.weather_descriptions.0> 84°F ↙️<common.wind_directions.SW>4 <commands.gwx.humidity[('value', 32)]> | <common.temp_high_label>:93°F <common.temp_low_label>:69°F | <commands.gwx.periods.tomorrow>: ☀️ <common.temp_high_label>:95°F <common.temp_low_label>:70°F 🌦️80% 4.20in"
+  "text": "<commands.gwx.periods.today>: ☀️<commands.gwx.weather_descriptions.0> 84°F ⬅️<common.wind_directions.WSW>4 <commands.gwx.humidity[('value', 32)]> | <common.temp_high_label>:93°F <common.temp_low_label>:69°F | <commands.gwx.periods.tomorrow>: ☀️ <common.temp_high_label>:95°F <common.temp_low_label>:70°F 🌦️80% 4.20in"
  },
  "precipitation-boundary-1": {
   "budget": 341,
@@ -54,7 +54,7 @@
    "wind_speed_unit": "mph"
   },
   "requests": 1,
-  "text": "<commands.gwx.periods.today>: ☀️<commands.gwx.weather_descriptions.0> 84°F ↙️<common.wind_directions.SW>4 <commands.gwx.humidity[('value', 32)]> | <common.temp_high_label>:93°F <common.temp_low_label>:69°F | <commands.gwx.periods.tomorrow>: ☀️ <common.temp_high_label>:95°F <common.temp_low_label>:70°F"
+  "text": "<commands.gwx.periods.today>: ☀️<commands.gwx.weather_descriptions.0> 84°F ⬅️<common.wind_directions.WSW>4 <commands.gwx.humidity[('value', 32)]> | <common.temp_high_label>:93°F <common.temp_low_label>:69°F | <commands.gwx.periods.tomorrow>: ☀️ <common.temp_high_label>:95°F <common.temp_low_label>:70°F"
  },
  "tomorrow-boundary+0": {
   "budget": 329,
@@ -73,7 +73,7 @@
    "wind_speed_unit": "mph"
   },
   "requests": 1,
-  "text": "<commands.gwx.periods.today>: ☀️<commands.gwx.weather_descriptions.0> 84°F ↙️<common.wind_directions.SW>4 <commands.gwx.humidity[('value', 32)]> | <common.temp_high_label>:93°F <common.temp_low_label>:69°F | <commands.gwx.periods.tomorrow>: ☀️ <common.temp_high_label>:95°F <common.temp_low_label>:70°F"
+  "text": "<commands.gwx.periods.today>: ☀️<commands.gwx.weather_descriptions.0> 84°F ⬅️<common.wind_directions.WSW>4 <commands.gwx.humidity[('value', 32)]> | <common.temp_high_label>:93°F <common.temp_low_label>:69°F"
  },
  "tomorrow-boundary+1": {
   "budget": 330,
@@ -92,7 +92,7 @@
    "wind_speed_unit": "mph"
   },
   "requests": 1,
-  "text": "<commands.gwx.periods.today>: ☀️<commands.gwx.weather_descriptions.0> 84°F ↙️<common.wind_directions.SW>4 <commands.gwx.humidity[('value', 32)]> | <common.temp_high_label>:93°F <common.temp_low_label>:69°F | <commands.gwx.periods.tomorrow>: ☀️ <common.temp_high_label>:95°F <common.temp_low_label>:70°F"
+  "text": "<commands.gwx.periods.today>: ☀️<commands.gwx.weather_descriptions.0> 84°F ⬅️<common.wind_directions.WSW>4 <commands.gwx.humidity[('value', 32)]> | <common.temp_high_label>:93°F <common.temp_low_label>:69°F | <commands.gwx.periods.tomorrow>: ☀️ <common.temp_high_label>:95°F <common.temp_low_label>:70°F"
  },
  "tomorrow-boundary-1": {
   "budget": 328,
@@ -111,6 +111,6 @@
    "wind_speed_unit": "mph"
   },
   "requests": 1,
-  "text": "<commands.gwx.periods.today>: ☀️<commands.gwx.weather_descriptions.0> 84°F ↙️<common.wind_directions.SW>4 <commands.gwx.humidity[('value', 32)]> | <common.temp_high_label>:93°F <common.temp_low_label>:69°F"
+  "text": "<commands.gwx.periods.today>: ☀️<commands.gwx.weather_descriptions.0> 84°F ⬅️<common.wind_directions.WSW>4 <commands.gwx.humidity[('value', 32)]> | <common.temp_high_label>:93°F <common.temp_low_label>:69°F"
  }
 }

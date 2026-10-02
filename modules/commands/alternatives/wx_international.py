@@ -26,7 +26,7 @@ from ...utils import (  # noqa: F401  format_temperature_high_low and get_nomina
     get_nominatim_geocoder,
     rate_limited_nominatim_reverse_sync,
 )
-from ...weather_common import WeatherCommandMixin, load_open_meteo_model
+from ...weather_common import _ARROWS_8, _COMPASS_16, WeatherCommandMixin, load_open_meteo_model
 from ..base_command import BaseCommand
 
 # Kept for code that checked them; these imports used to be optional.
@@ -1183,33 +1183,23 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
     def _degrees_to_direction(self, degrees: float) -> str:
         """Convert wind direction in degrees to compass direction with emoji.
 
+        Uses the nearest of the 16 compass points (as NOAA's own labels do) and
+        the nearest 8-point arrow: 22.5° is NNE, 350° is N. Letters come from the
+        translation catalog.
+
         Args:
             degrees: Wind direction in degrees.
 
         Returns:
-            str: Compass direction string with emoji (e.g., "⬆️N").
+            str: Compass direction string with emoji (e.g., "↗️NNE").
         """
         if degrees is None:
             return ""
-
-        dir_emojis = [
-            (0, "⬆️", "N"), (22.5, "↗️", "NE"), (45, "↗️", "NE"), (67.5, "➡️", "E"),
-            (90, "➡️", "E"), (112.5, "↘️", "SE"), (135, "↘️", "SE"), (157.5, "⬇️", "S"),
-            (180, "⬇️", "S"), (202.5, "↙️", "SW"), (225, "↙️", "SW"), (247.5, "⬅️", "W"),
-            (270, "⬅️", "W"), (292.5, "↖️", "NW"), (315, "↖️", "NW"), (337.5, "⬆️", "N"),
-            (360, "⬆️", "N")
-        ]
-
-        # Find closest direction
-        for i in range(len(dir_emojis) - 1):
-            if dir_emojis[i][0] <= degrees < dir_emojis[i + 1][0]:
-                emoji, key = dir_emojis[i][1], dir_emojis[i][2]
-                translated = self.translate(f"common.wind_directions.{key}")
-                return f"{emoji}{translated}"
-
-        emoji, key = dir_emojis[-1][1], dir_emojis[-1][2]
+        index = int((float(degrees) % 360) / 22.5 + 0.5) % 16
+        key = _COMPASS_16[index]
+        arrow = _ARROWS_8[int(index / 2 + 0.5) % 8]
         translated = self.translate(f"common.wind_directions.{key}")
-        return f"{emoji}{translated}"
+        return f"{arrow}{translated}"
 
     def _get_weather_description(self, code: int) -> str:
         """Convert WMO weather code to description.

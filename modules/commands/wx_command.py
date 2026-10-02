@@ -33,7 +33,7 @@ from ..utils import (
     get_nominatim_geocoder,
     normalize_us_state,
 )
-from ..weather_common import WeatherCommandMixin
+from ..weather_common import _ARROWS_8, _COMPASS_16, WeatherCommandMixin
 from .alternatives.wx_international import GlobalWxCommand
 from .base_command import BaseCommand
 from .rain_command import nws_http_means_no_coverage
@@ -49,11 +49,6 @@ _P = ParamSpec("_P")
 _T = TypeVar("_T")
 
 
-_COMPASS_16 = (
-    "N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
-    "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW",
-)
-_ARROWS_8 = ("⬆️", "↗️", "➡️", "↘️", "⬇️", "↙️", "⬅️", "↖️")
 _WEEKDAYS_LOWER = ('monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday')
 
 # Forecast-text patterns for the extract_* readers, tried in order.
@@ -2510,18 +2505,20 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         condition_lower = condition.lower()
 
         # Weather condition emojis
+        # Order matters: a specific phrase has to be tested before a word it contains
+        # ("partly cloudy" before "cloudy"), and thunderstorms outrank rain and cloud.
         if any(word in condition_lower for word in ['sunny', 'clear']):
             return "☀️"
         elif any(word in condition_lower for word in ['heavy rain', 'heavy showers', 'excessive rain']):
             return "🌧️"  # Cloud with rain - more rain, less sun
-        elif any(word in condition_lower for word in ['cloudy', 'overcast']):
-            return "☁️"
+        elif any(word in condition_lower for word in ['thunderstorm', 't-storm']):
+            return "⛈️"
         elif any(word in condition_lower for word in ['partly cloudy', 'mostly cloudy']):
             return "⛅"
+        elif any(word in condition_lower for word in ['cloudy', 'overcast']):
+            return "☁️"
         elif any(word in condition_lower for word in ['rain', 'showers']):
             return "🌦️"
-        elif any(word in condition_lower for word in ['thunderstorm', 'thunderstorms']):
-            return "⛈️"
         elif any(word in condition_lower for word in ['snow', 'snow showers']):
             return "❄️"
         elif any(word in condition_lower for word in ['fog', 'mist', 'haze']):
