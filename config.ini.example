@@ -901,25 +901,35 @@ weather_provider = noaa
 
 # Default state for city name disambiguation
 # When users type "wx seattle", it will search for "seattle, WA, USA"
+# Replies for a city in this state leave out the place name; other states name it.
 # Use 2-letter state abbreviation (e.g., WA, CA, NY, TX)
 default_state = WA
 
 # Default country for city name disambiguation (for international weather plugin)
+# gwx replies for a city in another country name it ("Paris, FR: ...").
 # Use 2-letter country code (e.g., US, CA, GB, AU)
 default_country = US
 
 # When true, a bare "wx" or "gwx" (no location) uses bot_latitude/bot_longitude from [Bot]
-# if there is no default WXSIM source and no companion location in the database.
+# if there is no default custom source, no companion location in the database and no default_city.
 # Default: false (show usage instead)
 use_bot_location_when_no_location = false
 
-# Temperature unit for weather display
+# When true, wx and gwx name the place in every reply a place is found for ("Lake Stevens, WA: ...").
+# When false, they name it only when it adds information: a city outside default_state or
+# default_country, or a position (the sender's, the bot's or typed coordinates).
+# The name takes message length from the forecast, and a ZIP code costs one extra reverse lookup.
+# Default: false
+always_show_location = false
+
+# Temperature unit for weather display (wx, gwx, the weather service)
 # Options: fahrenheit, celsius
+# Celsius also switches distances (visibility) to kilometers.
 # Default: fahrenheit
 temperature_unit = fahrenheit
 
-# Wind speed unit for weather display
-# Options: mph, kmh, ms (meters per second)
+# Wind speed unit for weather display (wx, gwx, the weather service)
+# Options: mph, kmh, ms (meters per second), kn (knots)
 # Default: mph
 wind_speed_unit = mph
 
@@ -1595,11 +1605,11 @@ url_timeout = 10
 [Wx_Command]
 enabled = true
 
-# Temperature unit for weather reports: fahrenheit (default) or celsius
-temperature_unit = fahrenheit
-
-# Wind speed unit for weather reports: mph (default) or kmh
-wind_speed_unit = mph
+# Units come from [Weather] temperature_unit / wind_speed_unit. Set these
+# only to give wx (NOAA and WXSIM) different units from the other weather
+# commands; when set, they win for wx.
+# temperature_unit = fahrenheit
+# wind_speed_unit = mph
 # channels =
 # aliases = comma-separated additional trigger words, e.g.: aliases = weather, w
 

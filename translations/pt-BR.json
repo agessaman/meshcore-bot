@@ -175,33 +175,50 @@
       "help": "Responde 'teste' ou 't' com info de conexão"
     },
     "wx": {
-      "description": "Ver informações do tempo pra um CEP (uso: wx 12345)",
-      "usage": "Uso: wx <cep|cidade> - Exemplo: wx 12345 ou wx seattle ou wx paris, tx",
+      "description": "Ver o tempo nos EUA por CEP, cidade ou coordenadas (uso: wx 98101)",
+      "usage": "Uso: wx <cep|cidade|lat,lon> [tomorrow|hourly|Nd|alerts] - Exemplo: wx 98101 ou wx seattle 5d",
       "error_fetching": "Erro ao buscar dados do tempo no NOAA",
       "no_location_zipcode": "Não achei localização pro CEP {location}",
       "no_location_city": "Não achei a cidade '{location}' em {state}",
       "error": "Erro ao pegar dados do tempo: {error}",
       "alerts": "{count} alertas: {text}",
-      "tomorrow_not_available": "Tomorrow's forecast not available",
-      "tomorrow_error": "Error formatting tomorrow's forecast",
-      "multiday_not_available": "{num_days}-day forecast not available",
-      "multiday_error": "Error formatting {num_days}-day forecast"
+      "tomorrow_not_available": "Previsão para amanhã não disponível",
+      "tomorrow_error": "Erro ao formatar a previsão para amanhã",
+      "multiday_not_available": "Previsão de {num_days} dias não disponível",
+      "multiday_error": "Erro ao formatar a previsão de {num_days} dias",
+      "hourly_not_available": "Previsão por hora não disponível",
+      "source_option_not_available": "Não disponível para esta fonte meteorológica",
+      "mqtt_forecast_not_supported": "A previsão estendida não está disponível para fontes meteorológicas MQTT",
+      "mqtt_weather_no_data": "Nenhuma mensagem meteorológica MQTT foi recebida para este tópico ainda",
+      "mqtt_weather_no_subscriber": "O assinante meteorológico MQTT não está ativo (ative [MqttWeather] e os tópicos custom.mqtt_weather.*)",
+      "mqtt_weather_payload_error": "Erro nos dados meteorológicos MQTT: {detail}",
+      "mqtt_weather_stale": "Os dados meteorológicos MQTT estão muito antigos",
+      "day_abbrev": {
+        "Monday": "Seg",
+        "Tuesday": "Ter",
+        "Wednesday": "Qua",
+        "Thursday": "Qui",
+        "Friday": "Sex",
+        "Saturday": "Sáb",
+        "Sunday": "Dom"
+      }
     },
     "gwx": {
       "description": "Ver informações do tempo pra qualquer lugar do mundo (uso: gwx Tokyo)",
       "help": "Uso: gwx <local> - Ver tempo de qualquer lugar (cidade, país ou coordenadas)",
-      "usage": "Uso: gwx <local> - Exemplo: gwx Tokyo ou gwx Paris, France",
+      "usage": "Uso: gwx <local|lat,lon> [tomorrow|hourly|Nd] - Exemplo: gwx Tokyo ou gwx Paris, France 5d",
       "error_fetching": "Erro ao buscar dados do tempo",
       "error_fetching_api": "Erro ao buscar dados do tempo no Open-Meteo",
       "no_location": "Não achei o local '{location}'",
       "error": "Erro ao pegar dados do tempo: {error}",
-      "tomorrow_not_available": "Tomorrow's forecast not available",
-      "tomorrow_error": "Error formatting tomorrow's forecast",
-      "multiday_not_available": "{num_days}-day forecast not available",
-      "multiday_error": "Error formatting {num_days}-day forecast",
+      "tomorrow_not_available": "Previsão para amanhã não disponível",
+      "tomorrow_error": "Erro ao formatar a previsão para amanhã",
+      "multiday_not_available": "Previsão de {num_days} dias não disponível",
+      "multiday_error": "Erro ao formatar a previsão de {num_days} dias",
       "periods": {
         "today": "Hoje",
         "tonight": "Hoje à Noite",
+        "overnight": "Madrugada",
         "tomorrow": "Amanhã"
       },
       "weather_descriptions": {
@@ -232,6 +249,7 @@
         "86": "Pancadas de Neve",
         "95": "Tempestade",
         "96": "Tempestade c/Granizo",
+        "97": "Tempestade Forte",
         "99": "Tempestade Severa",
         "unknown": "Desconhecido"
       },
@@ -241,8 +259,25 @@
         "heavy_rain": "⚠️ Chuva forte",
         "thunderstorms": "⚠️ Tempestades",
         "heavy_snow": "⚠️ Nevasca",
-        "high_winds": "⚠️ Ventos fortes ({wind_speed} mph)"
-      }
+        "high_winds": "⚠️ Ventos fortes ({wind_speed} {unit})"
+      },
+      "day_abbrev": {
+        "Monday": "Seg",
+        "Tuesday": "Ter",
+        "Wednesday": "Qua",
+        "Thursday": "Qui",
+        "Friday": "Sex",
+        "Saturday": "Sáb",
+        "Sunday": "Dom"
+      },
+      "feels_like": "(sensação {value}{unit})",
+      "hourly_not_available": "Previsão por hora não disponível",
+      "source_option_not_available": "Não disponível para esta fonte meteorológica",
+      "mqtt_forecast_not_supported": "A previsão estendida não está disponível para fontes meteorológicas MQTT",
+      "mqtt_weather_no_data": "Nenhuma mensagem meteorológica MQTT foi recebida para este tópico ainda",
+      "mqtt_weather_no_subscriber": "O assinante meteorológico MQTT não está ativo (ative [MqttWeather] e os tópicos custom.mqtt_weather.*)",
+      "mqtt_weather_payload_error": "Erro nos dados meteorológicos MQTT: {detail}",
+      "mqtt_weather_stale": "Os dados meteorológicos MQTT estão muito antigos"
     },
     "sports": {
       "description": "Ver placares e horários de esportes (uso: esportes [time/liga])",
@@ -1033,6 +1068,24 @@
         "November": "Novembro",
         "December": "Dezembro"
       }
+    },
+    "wind_directions": {
+      "N": "N",
+      "NNE": "NNE",
+      "NE": "NE",
+      "ENE": "ENE",
+      "E": "L",
+      "ESE": "ESE",
+      "SE": "SE",
+      "SSE": "SSE",
+      "S": "S",
+      "SSW": "SSO",
+      "SW": "SO",
+      "WSW": "OSO",
+      "W": "O",
+      "WNW": "ONO",
+      "NW": "NO",
+      "NNW": "NNO"
     }
   },
   "categories": {

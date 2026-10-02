@@ -69,7 +69,7 @@ def test_gwx_empty_prefers_companion_over_default_city(mock_logger):
     asyncio.run(cmd.execute(_mock_message("gwx")))
 
     assert cmd.get_weather_for_location.await_count == 1
-    assert cmd.get_weather_for_location.await_args.args[0] == "1,2"
+    assert cmd.get_weather_for_location.await_args.args[0] == "1.00000,2.00000"
 
 
 def test_gwx_empty_uses_default_city_when_no_companion(mock_logger):
@@ -95,7 +95,7 @@ def test_gwx_empty_falls_back_to_bot_location_when_default_city_missing(mock_log
     asyncio.run(cmd.execute(_mock_message("gwx")))
 
     assert cmd.get_weather_for_location.await_count == 1
-    assert cmd.get_weather_for_location.await_args.args[0] == "47,-122"
+    assert cmd.get_weather_for_location.await_args.args[0] == "47.00000,-122.00000"
 
 
 def test_gwx_empty_shows_usage_without_any_fallback(mock_logger):
@@ -121,7 +121,7 @@ def test_wx_empty_prefers_companion_over_default_city(mock_logger):
     asyncio.run(cmd.execute(_mock_message("wx")))
 
     assert cmd.get_weather_for_location.await_count == 1
-    assert cmd.get_weather_for_location.await_args.args[0] == "1,2"
+    assert cmd.get_weather_for_location.await_args.args[0] == "1.00000,2.00000"
     assert cmd.get_weather_for_location.await_args.kwargs["using_companion_location"] is True
 
 
@@ -149,7 +149,7 @@ def test_wx_empty_falls_back_to_bot_location_when_default_city_missing(mock_logg
     asyncio.run(cmd.execute(_mock_message("wx")))
 
     assert cmd.get_weather_for_location.await_count == 1
-    assert cmd.get_weather_for_location.await_args.args[0] == "47,-122"
+    assert cmd.get_weather_for_location.await_args.args[0] == "47.00000,-122.00000"
     assert cmd.get_weather_for_location.await_args.kwargs["using_companion_location"] is False
 
 

@@ -647,7 +647,7 @@ def get_companion_lat_lon(
             FROM complete_contact_tracking
             WHERE public_key = ?
             AND latitude IS NOT NULL AND longitude IS NOT NULL
-            AND latitude != 0 AND longitude != 0
+            AND NOT (latitude = 0 AND longitude = 0)
             ORDER BY COALESCE(last_advert_timestamp, last_heard) DESC
             LIMIT 1
         """
@@ -677,7 +677,7 @@ def lookup_repeater_lat_lon(
             FROM complete_contact_tracking
             WHERE role IN ('repeater', 'roomserver')
             AND latitude IS NOT NULL AND longitude IS NOT NULL
-            AND latitude != 0 AND longitude != 0
+            AND NOT (latitude = 0 AND longitude = 0)
             AND LOWER(name) LIKE LOWER(?)
             ORDER BY
                 CASE

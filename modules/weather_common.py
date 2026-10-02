@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import asyncio
 import re
+from collections.abc import Iterable
+from datetime import datetime
 from typing import Any, Optional, Union
 
 from .clients.mqtt_weather import (
@@ -41,6 +43,14 @@ def load_open_meteo_model(config: Any, logger: Any) -> Optional[str]:
     return model
 
 
+# 16-point compass labels, clockwise from north, and the arrow for each 45° sector.
+_COMPASS_16 = (
+    "N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
+    "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW",
+)
+_ARROWS_8 = ("⬆️", "↗️", "➡️", "↘️", "⬇️", "↙️", "⬅️", "↖️")
+
+
 class WeatherCommandMixin:
     # Catalog namespace for this command's strings, e.g. "commands.wx".
     translation_ns: str = ""
@@ -52,6 +62,16 @@ class WeatherCommandMixin:
     translate: Any
     send_response: Any
     get_max_message_length: Any
+    _get_custom_wxsim_source: Any
+
+    @staticmethod
+    def _coordinates_query(lat: float, lon: float) -> str:
+        """A "lat,lon" location for these coordinates, in fixed decimals.
+
+        Plain str() of a float can give "1e-05", which the coordinate pattern
+        does not match, so the point would be geocoded as a place name.
+        """
+        return f"{lat:.5f},{lon:.5f}"
 
     @staticmethod
     def _parse_forecast_suffix(
@@ -93,6 +113,31 @@ class WeatherCommandMixin:
                         location_parts = location_parts[:-1]
         return location_parts, forecast_type, num_days
 
+    def _is_custom_source_name(self, word: str) -> bool:
+        """Whether *word* names a configured custom.wxsim.* or custom.mqtt_weather.* source.
+
+        Such a name is a place even when it looks like an option ("custom.wxsim.hourly").
+        """
+        return bool(self._get_custom_mqtt_weather_topic(word) or self._get_custom_wxsim_source(word))
+
+    def _split_option_only(self, parts: list[str], max_days: int) -> tuple[list[str], Optional[str], str, int]:
+        """Pull a forecast option given without a location ("wx hourly", "gwx 5d", "wx alerts").
+
+        Returns (parts without it, the option word or None, forecast type, days), so the
+        no-location fallbacks (custom default source, the sender's position, default_city,
+        the bot's position) can apply the option instead of showing usage.
+        """
+        if len(parts) == 2:
+            word = parts[1]
+            if self._is_custom_source_name(word):
+                return parts, None, "default", 7
+            if word.lower() == "alerts":
+                return parts[:1], word, "alerts", 7
+            rest, forecast_type, num_days = self._parse_forecast_suffix(parts[1:], max_days, allow_hourly=True)
+            if not rest and forecast_type != "default":
+                return parts[:1], parts[1], forecast_type, num_days
+        return parts, None, "default", 7
+
     def _format_high_low(self, high: Optional[Number], low: Optional[Number], temp_symbol: str) -> str:
         """Format high/low using [Weather] temperature_*_format templates."""
         return format_temperature_high_low(self.bot.config, high, low, temp_symbol, self.logger,
@@ -130,51 +175,87 @@ class WeatherCommandMixin:
         """Count UTF-8 byte length of text. Matches RF packet byte limit from get_max_message_length()."""
         return len(text.encode('utf-8'))
 
-    async def _send_multiday_forecast(self, message: Any, forecast_text: str) -> None:
+    @staticmethod
+    def _hour_label(start_time_str: str) -> str:
+        """12-hour label for an ISO start time; empty when missing or unparseable."""
+        if not start_time_str:
+            return ""
+        try:
+            hour = datetime.fromisoformat(start_time_str.replace('Z', '+00:00')).hour
+        except (ValueError, TypeError):
+            return ""
+        return f"{hour % 12 or 12}{'AM' if hour < 12 else 'PM'}"
+
+    @staticmethod
+    def _without_arrow(direction: str) -> str:
+        """A wind direction label without its leading arrow emoji ("↖️WNW" -> "WNW").
+
+        Hourly lines drop the arrow to keep an extra hour in the reply; the
+        letters (translated or not) stay.
+        """
+        return re.sub(r"^\W+", "", direction)
+
+    @staticmethod
+    def _short_hourly_description(description: str) -> str:
+        """Long hourly descriptions keep their first three words, or 18 characters."""
+        if len(description) > 18:
+            words = description.split()
+            return ' '.join(words[:3]) if len(words) > 3 else description[:18]
+        return description
+
+    def _pack_hourly_lines(self, hourly_lines: Iterable[str], max_length: int) -> str:
+        """Pack consecutive whole hours into one UTF-8 byte budget."""
+        lines: list[str] = []
+        for line in hourly_lines:
+            if self._count_display_width("\n".join(lines + [line])) > max_length:
+                break
+            lines.append(line)
+        return "\n".join(lines) or self.translate(f'{self.translation_ns}.hourly_not_available')
+
+    @staticmethod
+    async def _pace_reply(message: Any, seconds: float) -> None:
+        """Wait between the parts of a reply so the TX limiter lets the next through.
+
+        A scheduled {cmd:...} render collects the parts without transmitting, so it
+        does not wait: the pause would only eat into its render timeout.
+        """
+        if getattr(message, 'capture_sink', None) is None:
+            await asyncio.sleep(seconds)
+
+    async def _send_multiday_forecast(self, message: Any, forecast_text: str) -> bool:
         """Send a multi-day forecast, packing whole lines into as few messages as fit.
 
-        A line too long for one message goes out on its own. Messages after the
-        first skip the per-user rate limit and are spaced 2 s apart.
+        A line too long for one message goes out on its own. The first message
+        goes through the per-user rate limit; the ones after it skip it and are
+        spaced 2 s apart. Returns whether every message was sent.
         """
         max_length = self.get_max_message_length(message)
         lines = [line.strip() for line in forecast_text.split('\n') if line.strip()]
         if not lines:
-            return
+            return False
         if self._count_display_width(forecast_text) <= max_length:
-            await self.send_response(message, forecast_text)
-            return
+            return bool(await self.send_response(message, forecast_text))
 
+        parts: list[str] = []
         current_message = ""
-        message_count = 0
-        for i, line in enumerate(lines):
-            if not line:
-                continue
+        for line in lines:
             test_message = current_message + "\n" + line if current_message else line
-            if self._count_display_width(test_message) > max_length:
-                if current_message:
-                    await self.send_response(
-                        message, current_message,
-                        skip_user_rate_limit=(message_count > 0)
-                    )
-                    message_count += 1
-                    if i < len(lines):
-                        await asyncio.sleep(2.0)
-                    current_message = line
-                else:
-                    # Single line is too long, send it anyway (will be truncated by bot)
-                    await self.send_response(
-                        message, line,
-                        skip_user_rate_limit=(message_count > 0)
-                    )
-                    message_count += 1
-                    if i < len(lines) - 1:
-                        await asyncio.sleep(2.0)
-                    current_message = ""
-            elif current_message:
-                current_message += "\n" + line
-            else:
-                current_message = line
-
-        # Last message is a continuation, so it skips the per-user rate limit
+            if self._count_display_width(test_message) <= max_length:
+                current_message = test_message
+                continue
+            if current_message:
+                parts.append(current_message)
+            # A single line too long for one message goes out anyway (the bot splits it).
+            current_message = line
         if current_message:
-            await self.send_response(message, current_message, skip_user_rate_limit=True)
+            parts.append(current_message)
+
+        sent_all = True
+        for i, part in enumerate(parts):
+            if i > 0:
+                await self._pace_reply(message, 2.0)
+            sent = await self.send_response(message, part, skip_user_rate_limit=(i > 0))
+            if not sent:
+                sent_all = False
+                break
+        return sent_all

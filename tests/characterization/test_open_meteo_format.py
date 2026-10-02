@@ -71,6 +71,10 @@ def _load(name):
 
 
 def _run(cmd, data, now, budget=None, **kwargs):
+    if budget is None and kwargs.get("forecast_type") == "tomorrow":
+        # These goldens check tomorrow's details; the key-name translator makes the
+        # reply far longer than real text, so trimming is tested in tests/unit with real catalogs.
+        budget = 600
     if budget is not None:
         # A message makes the command ask for its budget instead of using 130.
         cmd.get_max_message_length = Mock(return_value=budget)

@@ -38,6 +38,7 @@ from ..commands.rain_command import (
 )
 from ..http_retry import make_retry_session
 from ..nws_alerts import SERVICE_SPECIAL_RULES, entry_nws_headline, entry_summary, entry_title, parse_alert_fields
+from ..nws_coverage import NWSNoCoverageCache
 from ..url_shortener import shorten_url_sync
 from ..utils import format_temperature_high_low, get_config_timezone
 from ..weather_common import load_open_meteo_model
@@ -198,8 +199,7 @@ class WeatherService(BaseServicePlugin):
         # Track last alert check time to only send new alerts
         self.last_alert_check_time: Optional[float] = None
 
-        # Lazy: None = unknown, False = NOAA alerts unavailable (non-US / no coverage)
-        self._nws_alerts_available: Optional[bool] = None
+        self._nws_no_coverage = NWSNoCoverageCache()
 
         # Background tasks
         self._alerts_task: Optional[asyncio.Task] = None
@@ -931,7 +931,7 @@ class WeatherService(BaseServicePlugin):
             return "🌧️"
         elif code in [71, 73, 75, 77, 85, 86]:
             return "❄️"
-        elif code in [95, 96, 99]:
+        elif code in [95, 96, 97, 99]:
             return "⛈️"
         else:
             return "🌤️"
@@ -972,12 +972,14 @@ class WeatherService(BaseServicePlugin):
                 # Subsequent checks: only get alerts since last check
                 time_window_start = self.last_alert_check_time
 
-            if self._nws_alerts_available is False:
+            lat, lon = self.my_position_lat, self.my_position_lon
+            if self._nws_no_coverage.is_unavailable(lat, lon):
+                self.logger.debug("Skipping NWS weather alerts for cached point %s,%s outside NWS coverage", round(lat, 2), round(lon, 2))
                 return
 
             # Round coordinates
-            lat_rounded = round(self.my_position_lat, 4)
-            lon_rounded = round(self.my_position_lon, 4)
+            lat_rounded = round(lat, 4)
+            lon_rounded = round(lon, 4)
 
             # NOAA alerts API (US-only)
             alert_url = f"https://api.weather.gov/alerts/active.atom?point={lat_rounded},{lon_rounded}"
@@ -990,12 +992,12 @@ class WeatherService(BaseServicePlugin):
                 )
                 if not alert_data.ok:
                     if nws_http_means_no_coverage(alert_data.status_code):
-                        self._nws_alerts_available = False
-                        self.logger.warning(
-                            "NWS weather alerts unavailable (HTTP %s); NOAA alerts are US-only — "
-                            "skipping future alert polls",
-                            alert_data.status_code,
-                        )
+                        if self._nws_no_coverage.mark_unavailable(lat, lon):
+                            self.logger.warning(
+                                "NWS weather alerts unavailable (HTTP %s); NOAA alerts are US-only; "
+                                "point %s,%s is outside NWS coverage",
+                                alert_data.status_code, round(lat, 2), round(lon, 2),
+                            )
                     else:
                         self.logger.debug(f"Error fetching alerts: HTTP {alert_data.status_code}")
                     return
@@ -1003,7 +1005,7 @@ class WeatherService(BaseServicePlugin):
                 self.logger.debug(f"Timeout/connection error fetching alerts: {e}")
                 return
 
-            self._nws_alerts_available = True
+            self._nws_no_coverage.mark_available(lat, lon)
 
             # Parse ATOM feed with full metadata extraction (same as wx_command)
             alerts = []

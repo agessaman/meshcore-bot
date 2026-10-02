@@ -189,33 +189,50 @@
       "help": "Responde a 'test' o 't' con información de conexión"
     },
     "wx": {
-      "description": "Obtener información meteorológica para un código postal (uso: wx 12345)",
-      "usage": "Uso: wx <código_postal|ciudad> - Ejemplo: wx 12345 o wx seattle o wx paris, tx",
+      "description": "Tiempo en EE. UU. por código postal, ciudad o coordenadas (uso: wx 98101)",
+      "usage": "Uso: wx <código_postal|ciudad|lat,lon> [tomorrow|hourly|Nd|alerts] - Ejemplo: wx 98101 o wx seattle 5d",
       "error_fetching": "Error al obtener datos meteorológicos de NOAA",
       "no_location_zipcode": "No se pudo encontrar la ubicación para el código postal {location}",
       "no_location_city": "No se pudo encontrar la ciudad '{location}' en {state}",
       "error": "Error al obtener datos meteorológicos: {error}",
       "alerts": "{count} alertas: {text}",
-      "tomorrow_not_available": "Tomorrow's forecast not available",
-      "tomorrow_error": "Error formatting tomorrow's forecast",
-      "multiday_not_available": "{num_days}-day forecast not available",
-      "multiday_error": "Error formatting {num_days}-day forecast"
+      "tomorrow_not_available": "Pronóstico de mañana no disponible",
+      "tomorrow_error": "Error al formatear el pronóstico de mañana",
+      "multiday_not_available": "Pronóstico de {num_days} días no disponible",
+      "multiday_error": "Error al formatear el pronóstico de {num_days} días",
+      "hourly_not_available": "Pronóstico por horas no disponible",
+      "source_option_not_available": "No disponible para esta fuente meteorológica",
+      "mqtt_forecast_not_supported": "El pronóstico extendido no está disponible para fuentes meteorológicas MQTT",
+      "mqtt_weather_no_data": "Aún no se ha recibido ningún mensaje meteorológico MQTT para este tema",
+      "mqtt_weather_no_subscriber": "El suscriptor meteorológico MQTT no está activo (habilite [MqttWeather] y los temas custom.mqtt_weather.*)",
+      "mqtt_weather_payload_error": "Error en los datos meteorológicos MQTT: {detail}",
+      "mqtt_weather_stale": "Los datos meteorológicos MQTT son demasiado antiguos",
+      "day_abbrev": {
+        "Monday": "Lu",
+        "Tuesday": "Ma",
+        "Wednesday": "Mi",
+        "Thursday": "Ju",
+        "Friday": "Vi",
+        "Saturday": "Sá",
+        "Sunday": "Do"
+      }
     },
     "gwx": {
       "description": "Obtener información meteorológica para cualquier ubicación global (uso: gwx Tokyo)",
       "help": "Uso: gwx <ubicación> - Obtener clima para cualquier ubicación global (ciudad, país, o coordenadas)",
-      "usage": "Uso: gwx <ubicación> - Ejemplo: gwx Tokyo o gwx París, Francia",
+      "usage": "Uso: gwx <ubicación|lat,lon> [tomorrow|hourly|Nd] - Ejemplo: gwx Tokyo o gwx París, Francia 5d",
       "error_fetching": "Error al obtener datos meteorológicos",
       "error_fetching_api": "Error al obtener datos meteorológicos de Open-Meteo",
       "no_location": "No se pudo encontrar la ubicación '{location}'",
       "error": "Error al obtener datos meteorológicos: {error}",
-      "tomorrow_not_available": "Tomorrow's forecast not available",
-      "tomorrow_error": "Error formatting tomorrow's forecast",
-      "multiday_not_available": "{num_days}-day forecast not available",
-      "multiday_error": "Error formatting {num_days}-day forecast",
+      "tomorrow_not_available": "Pronóstico de mañana no disponible",
+      "tomorrow_error": "Error al formatear el pronóstico de mañana",
+      "multiday_not_available": "Pronóstico de {num_days} días no disponible",
+      "multiday_error": "Error al formatear el pronóstico de {num_days} días",
       "periods": {
         "today": "Hoy",
         "tonight": "Esta Noche",
+        "overnight": "Madrugada",
         "tomorrow": "Mañana"
       },
       "weather_descriptions": {
@@ -246,6 +263,7 @@
         "86": "Chubascos de Nieve",
         "95": "Tormenta Eléctrica",
         "96": "Tormenta c/Granizo",
+        "97": "Tormenta Fuerte",
         "99": "Tormenta Severa",
         "unknown": "Desconocido"
       },
@@ -255,8 +273,25 @@
         "heavy_rain": "⚠️ Lluvia intensa",
         "thunderstorms": "⚠️ Tormentas eléctricas",
         "heavy_snow": "⚠️ Nevada intensa",
-        "high_winds": "⚠️ Vientos fuertes ({wind_speed} mph)"
-      }
+        "high_winds": "⚠️ Vientos fuertes ({wind_speed} {unit})"
+      },
+      "day_abbrev": {
+        "Monday": "Lu",
+        "Tuesday": "Ma",
+        "Wednesday": "Mi",
+        "Thursday": "Ju",
+        "Friday": "Vi",
+        "Saturday": "Sá",
+        "Sunday": "Do"
+      },
+      "feels_like": "(sensación {value}{unit})",
+      "hourly_not_available": "Pronóstico por horas no disponible",
+      "source_option_not_available": "No disponible para esta fuente meteorológica",
+      "mqtt_forecast_not_supported": "El pronóstico extendido no está disponible para fuentes meteorológicas MQTT",
+      "mqtt_weather_no_data": "Aún no se ha recibido ningún mensaje meteorológico MQTT para este tema",
+      "mqtt_weather_no_subscriber": "El suscriptor meteorológico MQTT no está activo (habilite [MqttWeather] y los temas custom.mqtt_weather.*)",
+      "mqtt_weather_payload_error": "Error en los datos meteorológicos MQTT: {detail}",
+      "mqtt_weather_stale": "Los datos meteorológicos MQTT son demasiado antiguos"
     },
     "sports": {
       "description": "Obtener resultados y calendarios deportivos (uso: sports [equipo/liga])",
@@ -1043,6 +1078,24 @@
         "November": "Noviembre",
         "December": "Diciembre"
       }
+    },
+    "wind_directions": {
+      "N": "N",
+      "NNE": "NNE",
+      "NE": "NE",
+      "ENE": "ENE",
+      "E": "E",
+      "ESE": "ESE",
+      "SE": "SE",
+      "SSE": "SSE",
+      "S": "S",
+      "SSW": "SSO",
+      "SW": "SO",
+      "WSW": "OSO",
+      "W": "O",
+      "WNW": "ONO",
+      "NW": "NO",
+      "NNW": "NNO"
     }
   },
   "categories": {

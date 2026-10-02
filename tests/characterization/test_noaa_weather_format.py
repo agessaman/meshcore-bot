@@ -12,20 +12,25 @@ import json
 from datetime import datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
+from zoneinfo import ZoneInfo
 
 import pytest
 
 from tests.characterization.golden_util import assert_golden
+from tests.helpers import key_name_translate
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "noaa"
 LOCATIONS = ["seattle", "denver", "miami", "anchorage"]
 FROZEN_NOW = datetime(2026, 10, 1, 15, 30, 0)
+# The same instant with its zone (the fixtures were captured in Seattle), so
+# aware comparisons do not depend on the time zone of the machine running the tests.
+FROZEN_NOW_AWARE = FROZEN_NOW.replace(tzinfo=ZoneInfo("America/Los_Angeles"))
 
 
 class _FrozenDateTime(datetime):
     @classmethod
     def now(cls, tz=None):
-        return FROZEN_NOW if tz is None else FROZEN_NOW.astimezone(tz)
+        return FROZEN_NOW if tz is None else FROZEN_NOW_AWARE.astimezone(tz)
 
 
 def _wx():
@@ -38,8 +43,9 @@ def _wx():
     bot.logger = Mock()
     bot.db_manager.get_cached_geocoding = Mock(return_value=(None, None))
     bot.command_manager.send_channel_message = AsyncMock()
-    bot.translator.translate.side_effect = lambda key, **kwargs: f"<{key}{sorted(kwargs.items()) or ''}>"
+    bot.translator.translate.side_effect = key_name_translate
     return WxCommand(bot)
+
 
 
 def _response(payload, ok=True):

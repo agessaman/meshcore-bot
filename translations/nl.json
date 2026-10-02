@@ -177,33 +177,50 @@
       "help": "Reageert op 'test' of 't' met verbindingsinfo"
     },
     "wx": {
-      "description": "Weerinfo voor een postcode (gebruik: wx 12345)",
-      "usage": "Gebruik: wx <postcode|plaats> - Voorbeeld: wx 12345 of wx amsterdam of wx parijs, tx",
+      "description": "Amerikaans weer voor postcode, plaats of coördinaten (gebruik: wx 98101)",
+      "usage": "Gebruik: wx <postcode|plaats|lat,lon> [tomorrow|hourly|Nd|alerts] - Voorbeeld: wx 98101 of wx seattle 5d",
       "error_fetching": "Fout bij ophalen weerdata van NOAA",
       "no_location_zipcode": "Locatie voor postcode {location} niet gevonden",
       "no_location_city": "Plaats '{location}' niet gevonden in {state}",
       "error": "Fout bij ophalen weerdata: {error}",
       "alerts": "{count} waarschuwingen: {text}",
-      "tomorrow_not_available": "Tomorrow's forecast not available",
-      "tomorrow_error": "Error formatting tomorrow's forecast",
-      "multiday_not_available": "{num_days}-day forecast not available",
-      "multiday_error": "Error formatting {num_days}-day forecast"
+      "tomorrow_not_available": "Verwachting voor morgen niet beschikbaar",
+      "tomorrow_error": "Fout bij het opmaken van de verwachting voor morgen",
+      "multiday_not_available": "{num_days}-daagse verwachting niet beschikbaar",
+      "multiday_error": "Fout bij het opmaken van de {num_days}-daagse verwachting",
+      "hourly_not_available": "Uurverwachting niet beschikbaar",
+      "source_option_not_available": "Niet beschikbaar voor deze weerbron",
+      "mqtt_forecast_not_supported": "Uitgebreide verwachting is niet beschikbaar voor MQTT-weerbronnen",
+      "mqtt_weather_no_data": "Nog geen MQTT-weerbericht ontvangen voor dit topic",
+      "mqtt_weather_no_subscriber": "MQTT-weerontvanger is niet actief (schakel [MqttWeather] en custom.mqtt_weather.*-topics in)",
+      "mqtt_weather_payload_error": "Fout in MQTT-weergegevens: {detail}",
+      "mqtt_weather_stale": "MQTT-weergegevens zijn te oud",
+      "day_abbrev": {
+        "Monday": "Ma",
+        "Tuesday": "Di",
+        "Wednesday": "Wo",
+        "Thursday": "Do",
+        "Friday": "Vr",
+        "Saturday": "Za",
+        "Sunday": "Zo"
+      }
     },
     "gwx": {
       "description": "Weerinfo voor elke locatie wereldwijd (gebruik: gwx Tokyo)",
       "help": "Gebruik: gwx <locatie> - Weer voor elke wereldwijde locatie (stad, land of coördinaten)",
-      "usage": "Gebruik: gwx <locatie> - Voorbeeld: gwx Tokyo of gwx Parijs, Frankrijk",
+      "usage": "Gebruik: gwx <locatie|lat,lon> [tomorrow|hourly|Nd] - Voorbeeld: gwx Tokyo of gwx Parijs, Frankrijk 5d",
       "error_fetching": "Fout bij ophalen weerdata",
       "error_fetching_api": "Fout bij ophalen weerdata van Open-Meteo",
       "no_location": "Locatie '{location}' niet gevonden",
       "error": "Fout bij ophalen weerdata: {error}",
-      "tomorrow_not_available": "Tomorrow's forecast not available",
-      "tomorrow_error": "Error formatting tomorrow's forecast",
-      "multiday_not_available": "{num_days}-day forecast not available",
-      "multiday_error": "Error formatting {num_days}-day forecast",
+      "tomorrow_not_available": "Verwachting voor morgen niet beschikbaar",
+      "tomorrow_error": "Fout bij het opmaken van de verwachting voor morgen",
+      "multiday_not_available": "{num_days}-daagse verwachting niet beschikbaar",
+      "multiday_error": "Fout bij het opmaken van de {num_days}-daagse verwachting",
       "periods": {
         "today": "Vandaag",
         "tonight": "Vanavond",
+        "overnight": "Vannacht",
         "tomorrow": "Morgen"
       },
       "weather_descriptions": {
@@ -234,6 +251,7 @@
         "86": "Sneeuwbuien",
         "95": "Onweer",
         "96": "Onweer m/hagel",
+        "97": "Hevig onweer",
         "99": "Zwaar onweer",
         "unknown": "Onbekend"
       },
@@ -243,8 +261,25 @@
         "heavy_rain": "⚠️ Zware regen",
         "thunderstorms": "⚠️ Onweer",
         "heavy_snow": "⚠️ Zware sneeuw",
-        "high_winds": "⚠️ Harde wind ({wind_speed} mph)"
-      }
+        "high_winds": "⚠️ Harde wind ({wind_speed} {unit})"
+      },
+      "day_abbrev": {
+        "Monday": "Ma",
+        "Tuesday": "Di",
+        "Wednesday": "Wo",
+        "Thursday": "Do",
+        "Friday": "Vr",
+        "Saturday": "Za",
+        "Sunday": "Zo"
+      },
+      "feels_like": "(voelt als {value}{unit})",
+      "hourly_not_available": "Uurverwachting niet beschikbaar",
+      "source_option_not_available": "Niet beschikbaar voor deze weerbron",
+      "mqtt_forecast_not_supported": "Uitgebreide verwachting is niet beschikbaar voor MQTT-weerbronnen",
+      "mqtt_weather_no_data": "Nog geen MQTT-weerbericht ontvangen voor dit topic",
+      "mqtt_weather_no_subscriber": "MQTT-weerontvanger is niet actief (schakel [MqttWeather] en custom.mqtt_weather.*-topics in)",
+      "mqtt_weather_payload_error": "Fout in MQTT-weergegevens: {detail}",
+      "mqtt_weather_stale": "MQTT-weergegevens zijn te oud"
     },
     "sports": {
       "description": "Sportuitslagen en -schema's (gebruik: sports [team/competitie])",
@@ -1035,6 +1070,24 @@
         "November": "November",
         "December": "December"
       }
+    },
+    "wind_directions": {
+      "N": "N",
+      "NNE": "NNO",
+      "NE": "NO",
+      "ENE": "ONO",
+      "E": "O",
+      "ESE": "OZO",
+      "SE": "ZO",
+      "SSE": "ZZO",
+      "S": "Z",
+      "SSW": "ZZW",
+      "SW": "ZW",
+      "WSW": "WZW",
+      "W": "W",
+      "WNW": "WNW",
+      "NW": "NW",
+      "NNW": "NNW"
     }
   },
   "categories": {
