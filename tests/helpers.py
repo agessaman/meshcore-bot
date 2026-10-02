@@ -157,3 +157,26 @@ def populate_test_graph(mesh_graph, edges: list[dict[str, Any]], prefix_hex_char
                 mesh_graph.edges[edge_key]['first_seen'] = edge['first_seen']
             if edge.get('last_seen'):
                 mesh_graph.edges[edge_key]['last_seen'] = edge['last_seen']
+
+
+_ENGLISH_CATALOG: dict[str, Any] | None = None
+# Short labels inside weather replies; stub translators show them in English so that
+# reply lengths (and byte budgets) stay those of a real English bot.
+_ENGLISH_LABEL_PREFIXES = ("common.wind_directions.", "commands.wx.day_abbrev.")
+
+
+def key_name_translate(key: str, **kwargs: Any) -> str:
+    """A stub translation: ``<key[kwargs]>``, except short weather labels, which are English."""
+    global _ENGLISH_CATALOG
+    if key.startswith(_ENGLISH_LABEL_PREFIXES):
+        if _ENGLISH_CATALOG is None:
+            import json
+            from pathlib import Path
+
+            path = Path(__file__).resolve().parents[1] / "translations" / "en.json"
+            _ENGLISH_CATALOG = json.loads(path.read_text(encoding="utf-8"))
+        node: Any = _ENGLISH_CATALOG
+        for part in key.split("."):
+            node = node[part]
+        return node
+    return f"<{key}{sorted(kwargs.items()) or ''}>"

@@ -197,8 +197,8 @@
       "help": "Polecenie 'test' lub 't' zwraca informacje o połączeniu"
     },
     "wx": {
-      "description": "Podaje pogode dla podanego kodu pocztowego (uzycie: wx 02-746)",
-      "usage": "Użycie: wx <zipcode|city> - Przykład: wx 12345 or wx seattle or wx paris, tx",
+      "description": "Pogoda w USA dla kodu pocztowego, miasta lub współrzędnych (użycie: wx 98101)",
+      "usage": "Użycie: wx <kod|miasto|lat,lon> [tomorrow|hourly|Nd|alerts] - Przykład: wx 98101 lub wx seattle 5d",
       "error_fetching": "Błąd pobrania danych pogodowych z NOAA",
       "no_location_zipcode": "Nie udało się znaleźć lokalizacji dla podanego kodu pocztowego {location}",
       "no_location_city": "Nie udało się znaleźć miasta '{location}' w stanie {state}",
@@ -207,12 +207,28 @@
       "tomorrow_not_available": "Prognoza na jutro niedostępna",
       "tomorrow_error": "Błąd formatowania prognozy na jutro",
       "multiday_not_available": "{num_days}-dniowa prognoza niedostępna",
-      "multiday_error": "Błąd formatowania {num_days}-dniowej prognozy"
+      "multiday_error": "Błąd formatowania {num_days}-dniowej prognozy",
+      "hourly_not_available": "Prognoza godzinowa niedostępna",
+      "source_option_not_available": "Niedostępne dla tego źródła pogody",
+      "mqtt_forecast_not_supported": "Prognoza rozszerzona nie jest dostępna dla źródeł pogody MQTT",
+      "mqtt_weather_no_data": "Nie otrzymano jeszcze żadnej wiadomości pogodowej MQTT dla tego tematu",
+      "mqtt_weather_no_subscriber": "Odbiornik pogody MQTT nie jest aktywny (włącz [MqttWeather] i tematy custom.mqtt_weather.*)",
+      "mqtt_weather_payload_error": "Błąd danych pogodowych MQTT: {detail}",
+      "mqtt_weather_stale": "Dane pogodowe MQTT są zbyt stare",
+      "day_abbrev": {
+        "Monday": "Pn",
+        "Tuesday": "Wt",
+        "Wednesday": "Śr",
+        "Thursday": "Cz",
+        "Friday": "Pt",
+        "Saturday": "So",
+        "Sunday": "Nd"
+      }
     },
     "gwx": {
       "description": "Pobierz informacje pogodowe dla globalnego obszaru (użycie: gwx Warszawa, Poland)",
       "help": "Użycie: gwx <location> - Pobierz dane pogodowe dla dowolnej lokalizacji globalnej (miasto, kraj lub współrzędne)",
-      "usage": "Użycie: gwx <location> - Przykład: gwx Tokyo lub gwx Paris, France",
+      "usage": "Użycie: gwx <miejsce|lat,lon> [tomorrow|hourly|Nd] - Przykład: gwx Tokyo lub gwx Paryż, Francja 5d",
       "error_fetching": "Błąd pobierania danych pogodowych",
       "error_fetching_api": "Błąd pobierania danych pogodowych z Open-Meteo",
       "no_location": "Nie udało się znaleźć lokalizacji '{location}'",
@@ -224,6 +240,7 @@
       "periods": {
         "today": "Dzisiaj",
         "tonight": "Dzisiaj wieczorem",
+        "overnight": "W nocy",
         "tomorrow": "Jutro"
       },
       "weather_descriptions": {
@@ -254,6 +271,7 @@
         "86": "Przelotne opady śniegu",
         "95": "Burza",
         "96": "Burza z gradem",
+        "97": "Silna burza",
         "99": "Silna burza z gradem",
         "unknown": "Unknown"
       },
@@ -263,8 +281,25 @@
         "heavy_rain": "⚠️ Ulewa",
         "thunderstorms": "⚠️ Burza z piorunami",
         "heavy_snow": "⚠️ Śnieżyca",
-        "high_winds": "⚠️ Silne wiatry ({wind_speed} km/h)"
-      }
+        "high_winds": "⚠️ Silne wiatry ({wind_speed} {unit})"
+      },
+      "day_abbrev": {
+        "Monday": "Pn",
+        "Tuesday": "Wt",
+        "Wednesday": "Śr",
+        "Thursday": "Cz",
+        "Friday": "Pt",
+        "Saturday": "So",
+        "Sunday": "Nd"
+      },
+      "feels_like": "(odczuwalnie {value}{unit})",
+      "hourly_not_available": "Prognoza godzinowa niedostępna",
+      "source_option_not_available": "Niedostępne dla tego źródła pogody",
+      "mqtt_forecast_not_supported": "Prognoza rozszerzona nie jest dostępna dla źródeł pogody MQTT",
+      "mqtt_weather_no_data": "Nie otrzymano jeszcze żadnej wiadomości pogodowej MQTT dla tego tematu",
+      "mqtt_weather_no_subscriber": "Odbiornik pogody MQTT nie jest aktywny (włącz [MqttWeather] i tematy custom.mqtt_weather.*)",
+      "mqtt_weather_payload_error": "Błąd danych pogodowych MQTT: {detail}",
+      "mqtt_weather_stale": "Dane pogodowe MQTT są zbyt stare"
     },
     "sports": {
       "description": "Pobiera wyniki sportowe i harmonogram meczów (użycie: sports [drużyna/liga])",

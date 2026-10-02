@@ -19,7 +19,7 @@ from ..utils import (
     geocode_city,
     geocode_zipcode,
     get_config_timezone,
-    get_nominatim_geocoder,  # noqa: F401
+    get_nominatim_geocoder,
     rate_limited_nominatim_reverse,
 )
 from .base_command import BaseCommand
@@ -98,6 +98,9 @@ class SolarforecastCommand(BaseCommand):
 
         # Get default state from config for city disambiguation
         self.default_state = self.bot.config.get('Weather', 'default_state', fallback='')
+
+        # Initialize geocoder (will use rate-limited helpers for actual calls)
+        self.geolocator = get_nominatim_geocoder()
 
         # Get database manager for geocoding cache
         self.db_manager = bot.db_manager

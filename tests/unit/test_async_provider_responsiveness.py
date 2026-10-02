@@ -165,7 +165,8 @@ async def test_weather_alert_fetch_keeps_event_loop_responsive(mock_logger: Mock
 
     await _run_with_heartbeat(service._check_weather_alerts, gate)
 
-    assert service._nws_alerts_available is True
+    assert gate.provider_started.is_set()
+    assert not service._nws_no_coverage._points
 
 
 @pytest.mark.asyncio
@@ -187,7 +188,8 @@ async def test_weather_alert_xml_parse_keeps_event_loop_responsive(
 
     await _run_with_heartbeat(service._check_weather_alerts, gate)
 
-    assert service._nws_alerts_available is True
+    service.api_session.get.assert_called_once()
+    assert not service._nws_no_coverage._points
 
 
 @pytest.mark.asyncio

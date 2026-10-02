@@ -1016,7 +1016,7 @@ def _geocode_city_steps(bot: Any, city: str, default_state: Optional[str],
             # Try major city options first
             for major_city_query in major_city_queries:
                 cached_lat, cached_lon = bot.db_manager.get_cached_geocoding(major_city_query)
-                if cached_lat and cached_lon:
+                if cached_lat is not None and cached_lon is not None:
                     lat, lon = cached_lat, cached_lon
                 else:
                     location = (yield ("geocode", major_city_query))
@@ -1051,7 +1051,7 @@ def _geocode_city_steps(bot: Any, city: str, default_state: Optional[str],
             # Try with country name directly (e.g., "Stockholm, Sweden")
             country_query = f"{city_clean}, {country_name}"
             cached_lat, cached_lon = bot.db_manager.get_cached_geocoding(country_query)
-            if cached_lat and cached_lon:
+            if cached_lat is not None and cached_lon is not None:
                 lat, lon = cached_lat, cached_lon
             else:
                 location = (yield ("geocode", country_query))
@@ -1061,7 +1061,7 @@ def _geocode_city_steps(bot: Any, city: str, default_state: Optional[str],
                 else:
                     lat, lon = None, None
 
-            if lat and lon:
+            if lat is not None and lon is not None:
                 address_info = None
                 if include_address_info:
                     # Check cache for reverse geocoding result
@@ -1084,7 +1084,7 @@ def _geocode_city_steps(bot: Any, city: str, default_state: Optional[str],
         if state_abbr:
             state_query = f"{city_clean}, {state_abbr}, {default_country}"
             cached_lat, cached_lon = bot.db_manager.get_cached_geocoding(state_query)
-            if cached_lat and cached_lon:
+            if cached_lat is not None and cached_lon is not None:
                 lat, lon = cached_lat, cached_lon
             else:
                 location = (yield ("geocode", state_query))
@@ -1094,7 +1094,7 @@ def _geocode_city_steps(bot: Any, city: str, default_state: Optional[str],
                 else:
                     lat, lon = None, None
 
-            if lat and lon:
+            if lat is not None and lon is not None:
                 address_info = None
                 if include_address_info:
                     # Check cache for reverse geocoding result
@@ -1195,7 +1195,7 @@ def _geocode_city_steps(bot: Any, city: str, default_state: Optional[str],
         if default_state and default_state.strip():
             cache_query = f"{city_clean}, {default_state}, {default_country}"
             cached_lat, cached_lon = bot.db_manager.get_cached_geocoding(cache_query)
-            if cached_lat and cached_lon:
+            if cached_lat is not None and cached_lon is not None:
                 lat, lon = cached_lat, cached_lon
             else:
                 location = (yield ("geocode", cache_query))
@@ -1205,7 +1205,7 @@ def _geocode_city_steps(bot: Any, city: str, default_state: Optional[str],
                 else:
                     lat, lon = None, None
 
-            if lat and lon:
+            if lat is not None and lon is not None:
                 address_info = None
                 if include_address_info:
                     # Check cache for reverse geocoding result

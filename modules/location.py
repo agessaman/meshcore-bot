@@ -629,29 +629,37 @@ def get_config_default_lat_lon(bot: Any, section: str) -> Optional[tuple[float, 
 
 
 def get_companion_lat_lon(
-    bot: Any, message: Any, logger: Any = None, error_level: str = "debug"
+    bot: Any, message: Any, logger: Any = None, error_level: str = "debug", trace: bool = False
 ) -> Optional[tuple[float, float]]:
     """The sender's most recent advertised position from contact tracking, or None.
 
     A lookup error is logged on ``logger`` at ``error_level`` and returns None.
+    With ``trace`` (wx and gwx), the lookup's outcome is also logged at DEBUG.
     """
     try:
         sender_pubkey = getattr(message, "sender_pubkey", None)
-        if not sender_pubkey or not hasattr(bot, "db_manager"):
+        if not sender_pubkey:
+            if trace and logger is not None:
+                logger.debug("No sender_pubkey in message for companion location lookup")
             return None
         query = """
             SELECT latitude, longitude
             FROM complete_contact_tracking
             WHERE public_key = ?
             AND latitude IS NOT NULL AND longitude IS NOT NULL
-            AND latitude != 0 AND longitude != 0
+            AND NOT (latitude = 0 AND longitude = 0)
             ORDER BY COALESCE(last_advert_timestamp, last_heard) DESC
             LIMIT 1
         """
         results = bot.db_manager.execute_query(query, (sender_pubkey,))
         if results:
             row = results[0]
-            return (float(row["latitude"]), float(row["longitude"]))
+            lat, lon = float(row["latitude"]), float(row["longitude"])
+            if trace and logger is not None:
+                logger.debug(f"Found companion location: {lat}, {lon} for pubkey {sender_pubkey[:16]}...")
+            return (lat, lon)
+        if trace and logger is not None:
+            logger.debug(f"No location found in database for pubkey {sender_pubkey[:16]}...")
     except Exception as e:
         if logger is not None:
             getattr(logger, error_level)(f"Error getting companion location: {e}")
@@ -669,7 +677,7 @@ def lookup_repeater_lat_lon(
             FROM complete_contact_tracking
             WHERE role IN ('repeater', 'roomserver')
             AND latitude IS NOT NULL AND longitude IS NOT NULL
-            AND latitude != 0 AND longitude != 0
+            AND NOT (latitude = 0 AND longitude = 0)
             AND LOWER(name) LIKE LOWER(?)
             ORDER BY
                 CASE
