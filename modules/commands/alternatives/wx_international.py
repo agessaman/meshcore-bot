@@ -560,12 +560,13 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
 
             # Get weather forecast from Open-Meteo based on type
             # Pass location_prefix_len so weather formatting can account for it
+            current = {}
             if forecast_type == "tomorrow":
                 weather_text = self.get_open_meteo_weather(lat, lon, forecast_type="tomorrow", message=message, location_prefix_len=location_prefix_len)
             elif forecast_type == "multiday":
                 weather_text = self.get_open_meteo_weather(lat, lon, forecast_type="multiday", num_days=num_days, message=message, location_prefix_len=location_prefix_len)
             else:
-                weather_text = self.get_open_meteo_weather(lat, lon, message=message, location_prefix_len=location_prefix_len)
+                weather_text, current = self._get_open_meteo_weather_with_conditions(lat, lon, message=message, location_prefix_len=location_prefix_len)
 
             # Check if it's an error (translated error message)
             error_fetching = self.translate('commands.gwx.error_fetching')
@@ -574,7 +575,7 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
 
             # Check for severe weather warnings (only for default forecast type)
             if forecast_type == "default":
-                alert_text = self._check_extreme_conditions(weather_text)
+                alert_text = self._check_extreme_conditions(current)
 
                 if alert_text:
                     # Return multi-message format
@@ -833,6 +834,13 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
         Returns:
             str: Formatted weather string or error message.
         """
+        weather, _ = self._get_open_meteo_weather_with_conditions(
+            lat, lon, forecast_type, num_days, message, location_prefix_len
+        )
+        return weather
+
+    def _get_open_meteo_weather_with_conditions(self, lat: float, lon: float, forecast_type: str = "default", num_days: int = 7, message: MeshMessage = None, location_prefix_len: int = 0) -> tuple[str, dict]:
+        """Return the reply and current conditions from the same Open-Meteo request."""
         # Get max message length dynamically, then subtract location prefix length
         max_length = self.get_max_message_length(message) if message else 130
         max_length = max_length - location_prefix_len  # Account for location prefix
@@ -867,14 +875,14 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
 
             if not response.ok:
                 self.logger.warning(f"Error fetching weather from Open-Meteo: {response.status_code}")
-                return self.translate('commands.gwx.error_fetching')
+                return self.translate('commands.gwx.error_fetching'), {}
 
             data = response.json()
 
             if forecast_type == "tomorrow":
-                return self.format_tomorrow_forecast(data)
+                return self.format_tomorrow_forecast(data), {}
             if forecast_type == "multiday":
-                return self.format_multiday_forecast(data, num_days)
+                return self.format_multiday_forecast(data, num_days), {}
 
             temp_symbol = "°F" if self.temperature_unit == 'fahrenheit' else "°C"
             weather = self._open_meteo_current(data, max_length, temp_symbol)
@@ -882,11 +890,11 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
             daily = data.get('daily', {})
             if daily:
                 weather = self._open_meteo_daily_tail(weather, daily, max_length, temp_symbol)
-            return weather
+            return weather, data.get('current', {})
 
         except Exception as e:
             self.logger.error(f"Error fetching Open-Meteo weather: {e}")
-            return self.translate('commands.gwx.error_fetching')
+            return self.translate('commands.gwx.error_fetching'), {}
 
     def _open_meteo_current(self, data: dict, max_length: int, temp_symbol: str) -> str:
         """Current conditions for the default gwx reply, with extra conditions when they fit."""
@@ -1303,61 +1311,42 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
 
         return emoji_map.get(code, "🌤️")
 
-    def _check_extreme_conditions(self, weather_text: str) -> Optional[str]:
+    def _check_extreme_conditions(self, current: dict) -> Optional[str]:
         """Check for extreme weather conditions that warrant warnings.
 
         Args:
-            weather_text: The formatted weather text to check.
+            current: Open-Meteo current conditions in the configured units.
 
         Returns:
             Optional[str]: Warning text if conditions found, None otherwise.
         """
         warnings = []
 
-        # Extract temperature from weather text
-        temp_match = re.search(r'(\d+)°F', weather_text)
-        if temp_match:
-            temp = int(temp_match.group(1))
+        # Keep the thresholds in Fahrenheit and mph, regardless of reply units.
+        temp = current.get('temperature_2m')
+        if temp is not None:
+            if self.temperature_unit == 'celsius':
+                temp = temp * 9 / 5 + 32
             if temp >= 95:
                 warnings.append(self.translate('commands.gwx.warnings.extreme_heat'))
             elif temp <= 20:
                 warnings.append(self.translate('commands.gwx.warnings.extreme_cold'))
 
-        # Check for severe weather indicators
-        # Note: We check for English strings here since weather descriptions might be in English
-        # In a fully localized version, we'd need to check translated strings too
-        heavy_rain_en = "Heavy Rain"
-        heavy_showers_en = "Heavy Showers"
-        thunderstorm_en = "Thunderstorm"
-        t_storm_en = "T-Storm"
-        heavy_snow_en = "Heavy Snow"
-        snow_showers_en = "Snow Showers"
-
-        # Also get translated versions for checking
-        heavy_rain_trans = self.translate('commands.gwx.weather_descriptions.65')
-        heavy_showers_trans = self.translate('commands.gwx.weather_descriptions.82')
-        thunderstorm_trans = self.translate('commands.gwx.weather_descriptions.95')
-        t_storm_trans = self.translate('commands.gwx.weather_descriptions.96')
-        heavy_snow_trans = self.translate('commands.gwx.weather_descriptions.75')
-        snow_showers_trans = self.translate('commands.gwx.weather_descriptions.86')
-
-        if (heavy_rain_en in weather_text or heavy_showers_en in weather_text or
-            heavy_rain_trans in weather_text or heavy_showers_trans in weather_text):
+        code = current.get('weather_code')
+        if code in (65, 82):
             warnings.append(self.translate('commands.gwx.warnings.heavy_rain'))
 
-        if (thunderstorm_en in weather_text or t_storm_en in weather_text or
-            thunderstorm_trans in weather_text or t_storm_trans in weather_text):
+        if code in (95, 96, 99):
             warnings.append(self.translate('commands.gwx.warnings.thunderstorms'))
 
-        if (heavy_snow_en in weather_text or snow_showers_en in weather_text or
-            heavy_snow_trans in weather_text or snow_showers_trans in weather_text):
+        # The old "Snow Showers" match also covered light snow showers (85).
+        if code in (75, 85, 86):
             warnings.append(self.translate('commands.gwx.warnings.heavy_snow'))
 
-        # Check for high winds
-        wind_match = re.search(r'[NESW]{1,2}(\d+)', weather_text)
-        if wind_match:
-            wind_speed = int(wind_match.group(1))
-            if wind_speed >= 30:
-                warnings.append(self.translate('commands.gwx.warnings.high_winds', wind_speed=wind_speed))
+        # Sustained wind only, as before; the warning's number is in mph like its threshold.
+        wind_factor = {'mph': 1, 'kmh': MI_TO_KM, 'ms': 0.44704}[self.wind_speed_unit]
+        wind_speed = (current.get('wind_speed_10m') or 0) / wind_factor
+        if wind_speed >= 30:
+            warnings.append(self.translate('commands.gwx.warnings.high_winds', wind_speed=int(wind_speed)))
 
         return " | ".join(warnings) if warnings else None
