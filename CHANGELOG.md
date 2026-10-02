@@ -26,6 +26,7 @@ semantic versioning.
 
 ### Changed
 
+- `wx` (NOAA) now follows `[Weather] temperature_unit` and `wind_speed_unit`, as `gwx` already did. NOAA replies were always in °F and mph, and station dew point, visibility and gusts were converted to °F, miles and mph whatever the configuration said. With `temperature_unit = celsius` the bot now asks NOAA for metric data (temperatures in °C, also in the forecast text it reads highs and lows from) and shows visibility in kilometers; wind speeds and gusts are converted to `wind_speed_unit` (mph, kmh or ms). The defaults are unchanged, so a bot on Fahrenheit and mph sees no difference. `[Wx_Command]` unit settings still override `[Weather]` for `wx`; the example config now comments them out, since a copied `temperature_unit = fahrenheit` there would keep `wx` in Fahrenheit after switching `[Weather]` to Celsius.
 - The footer's MeshCore link now points at the official site, meshcore.io.
 
 ### Fixed

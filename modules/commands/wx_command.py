@@ -272,6 +272,43 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             # Lazy: None = unknown, False = NOAA alerts unavailable (non-US / no coverage)
             self._nws_alerts_available = None
 
+    def _noaa_units(self) -> tuple[str, str]:
+        """Configured (temperature_unit, wind_speed_unit) for NOAA replies.
+
+        Same lookup as the WXSIM path: [Wx_Command], falling back to [Weather].
+        Invalid values fall back to fahrenheit/mph, as gwx does.
+        """
+        temp = str(self.get_config_value(
+            'Wx_Command', 'temperature_unit', fallback='fahrenheit', value_type='str')).lower()
+        wind = str(self.get_config_value(
+            'Wx_Command', 'wind_speed_unit', fallback='mph', value_type='str')).lower()
+        if temp not in ('fahrenheit', 'celsius'):
+            temp = 'fahrenheit'
+        if wind not in ('mph', 'kmh', 'ms'):
+            wind = 'mph'
+        return temp, wind
+
+    @property
+    def _noaa_metric_distance(self) -> bool:
+        """Kilometers instead of miles, following the temperature unit as gwx does."""
+        return self._noaa_units()[0] == 'celsius'
+
+    def _noaa_units_url(self, url: str) -> str:
+        """A NOAA forecast URL asking for SI units (°C, km/h, also in the forecast text) when Celsius is configured."""
+        if self._noaa_units()[0] != 'celsius':
+            return url
+        return f"{url}{'&' if '?' in url else '?'}units=si"
+
+    def _noaa_wind_convert(self, number: str, wind_speed_text: str) -> str:
+        """A NOAA wind number in the configured wind_speed_unit (NOAA sends mph, or km/h in SI mode)."""
+        source = 'kmh' if 'km/h' in wind_speed_text else 'mph'
+        target = self._noaa_units()[1]
+        if source == target:
+            return number
+        mph = int(number) if source == 'mph' else int(number) / 1.609344
+        value = {'mph': mph, 'kmh': mph * 1.609344, 'ms': mph * 0.44704}[target]
+        return str(int(round(value)))
+
     @staticmethod
     def _noaa_period_temp_symbol(period: dict) -> str:
         u = (period.get("temperatureUnit") or "F").upper()
@@ -1074,7 +1111,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             forecast_url = weather_json['properties']['forecast']
 
             # Get the forecast (with retry logic)
-            forecast_data = self._noaa_fetch(forecast_url, "weather forecast")
+            forecast_data = self._noaa_fetch(self._noaa_units_url(forecast_url), "weather forecast")
             if forecast_data is None:
                 return self.ERROR_FETCHING_DATA, None
 
@@ -1112,7 +1149,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             if wind_speed and wind_direction:
                 wind_match = re.search(r'(\d+)', wind_speed)
                 if wind_match:
-                    wind_num = wind_match.group(1)
+                    wind_num = self._noaa_wind_convert(wind_match.group(1), wind_speed)
                     wind_dir = self.abbreviate_wind_direction(wind_direction)
                     if wind_dir:
                         weather += f" {wind_dir}{wind_num}"
@@ -1351,7 +1388,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             if self._count_display_width(test_str) < threshold:
                 wind_match = re.search(r'(\d+)', period_wind_speed)
                 if wind_match:
-                    wind_num = wind_match.group(1)
+                    wind_num = self._noaa_wind_convert(wind_match.group(1), period_wind_speed)
                     wind_dir = self.abbreviate_wind_direction(period_wind_direction)
                     if wind_dir:
                         wind_info = f" {wind_dir}{wind_num}"
@@ -1429,7 +1466,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                 return self.ERROR_FETCHING_DATA, None
 
             # Get the hourly forecast (with retry logic)
-            hourly_data = self._noaa_fetch(hourly_forecast_url, "hourly forecast")
+            hourly_data = self._noaa_fetch(self._noaa_units_url(hourly_forecast_url), "hourly forecast")
             if hourly_data is None:
                 return self.ERROR_FETCHING_DATA, None
 
@@ -1548,7 +1585,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                 # Compact wind: the direction's first two characters, no spaces.
                 wind_dir_abbrev = wind_direction[:2] if len(wind_direction) >= 2 else wind_direction
                 wind_dir_abbrev = wind_dir_abbrev.replace(' ', '').upper()
-                line_parts.append(f"{wind_dir_abbrev}{wind_match.group(1)}")
+                line_parts.append(f"{wind_dir_abbrev}{self._noaa_wind_convert(wind_match.group(1), wind_speed)}")
         return " ".join(line_parts)
 
     def _find_tomorrow_periods(self, forecast: list) -> list:
@@ -1615,7 +1652,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                 if wind_speed and wind_direction:
                     wind_match = re.search(r'(\d+)', wind_speed)
                     if wind_match:
-                        wind_num = wind_match.group(1)
+                        wind_num = self._noaa_wind_convert(wind_match.group(1), wind_speed)
                         wind_dir = self.abbreviate_wind_direction(wind_direction)
                         if wind_dir:
                             period_str += f" {wind_dir}{wind_num}"
@@ -1776,7 +1813,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         for value, template in (
             (humidity, " {}%RH"),
             (dew_point, " 💧{}°"),
-            (visibility, " 👁️{}mi"),
+            (visibility, " 👁️{}km" if self._noaa_metric_distance else " 👁️{}mi"),
             (precip_prob, " 🌦️{}%"),
             (wind_gusts, " 💨{}"),
             (pressure, " 📊{}hPa"),
@@ -2474,22 +2511,31 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                 humidity = int(humidity_val)
                 obs_data_dict['humidity'] = str(humidity)
 
+            temp_unit, wind_unit = self._noaa_units()
+
             dewpoint_val = props.get('dewpoint', {}).get('value')
             if dewpoint_val is not None:
-                dewpoint = int(dewpoint_val * 9/5 + 32)  # Convert C to F
+                if temp_unit == 'celsius':
+                    dewpoint = int(round(dewpoint_val))
+                else:
+                    dewpoint = int(dewpoint_val * 9/5 + 32)  # Convert C to F
                 obs_data_dict['dew_point'] = str(dewpoint)
 
             visibility_val = props.get('visibility', {}).get('value')
             if visibility_val is not None:
-                visibility = int(visibility_val * 0.000621371)  # Convert m to miles
+                if self._noaa_metric_distance:
+                    visibility = int(visibility_val / 1000)  # Convert m to km
+                else:
+                    visibility = int(visibility_val * 0.000621371)  # Convert m to miles
                 if visibility > 0:
                     obs_data_dict['visibility'] = str(visibility)
 
             wind_gust_val = props.get('windGust', {}).get('value')
             if wind_gust_val is not None:
-                wind_gust = int(wind_gust_val * 2.237)  # Convert m/s to mph
-                if wind_gust > 10:
-                    obs_data_dict['wind_gusts'] = str(wind_gust)
+                # Shown only above 10 mph, whatever unit it is shown in.
+                if int(wind_gust_val * 2.237) > 10:
+                    factor = {'mph': 2.237, 'kmh': 3.6, 'ms': 1.0}[wind_unit]
+                    obs_data_dict['wind_gusts'] = str(int(wind_gust_val * factor))
 
             pressure_val = props.get('barometricPressure', {}).get('value')
             if pressure_val is not None:
@@ -2694,7 +2740,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             conditions.append(f"💧{obs_data['dew_point']}°")
 
         if 'visibility' in obs_data:
-            conditions.append(f"👁️{obs_data['visibility']}mi")
+            conditions.append(f"👁️{obs_data['visibility']}{'km' if self._noaa_metric_distance else 'mi'}")
 
         if 'wind_gusts' in obs_data:
             conditions.append(f"💨{obs_data['wind_gusts']}")
