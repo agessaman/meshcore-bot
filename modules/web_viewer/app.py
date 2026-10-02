@@ -4775,28 +4775,12 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, ChannelAdminMixin, 
         def handle_subscribe_commands():
             """Handle command stream subscription — also replays recent history to the new subscriber."""
             try:
-                client_id = getattr(request, 'sid', None)
-                with self._clients_lock:
-                    if client_id and client_id in self.connected_clients:
-                        self.connected_clients[client_id]['subscribed_commands'] = True
+                client_id = self._mark_subscribed('subscribed_commands')
                 # Keep connection/subscription success silent; navbar indicator already shows socket state.
                 self.logger.debug(f"Client {client_id} subscribed to commands")
                 # Replay recent command history so the page isn't blank on load (BUG-023 fix)
                 try:
-                    with closing(sqlite3.connect(self.db_path, timeout=10, check_same_thread=False)) as _conn:
-                        _conn.row_factory = sqlite3.Row
-                        _cur = _conn.cursor()
-                        _cur.execute(
-                            "SELECT data FROM packet_stream"
-                            " WHERE type = 'command'"
-                            " ORDER BY timestamp DESC LIMIT 50"
-                        )
-                        rows = list(reversed(_cur.fetchall()))
-                    for row in rows:
-                        try:
-                            emit('command_data', json.loads(row['data']))
-                        except (json.JSONDecodeError, KeyError, TypeError):
-                            pass
+                    self._replay_packet_stream("type = 'command'", lambda _type: 'command_data')
                 except Exception as e:
                     self.logger.warning(f"Error replaying command history: {e}", exc_info=True)
             except Exception as e:
@@ -4806,29 +4790,14 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, ChannelAdminMixin, 
         def handle_subscribe_packets():
             """Handle packet stream subscription — also replays recent history to the new subscriber."""
             try:
-                client_id = getattr(request, 'sid', None)
-                with self._clients_lock:
-                    if client_id and client_id in self.connected_clients:
-                        self.connected_clients[client_id]['subscribed_packets'] = True
+                client_id = self._mark_subscribed('subscribed_packets')
                 self.logger.debug(f"Client {client_id} subscribed to packets")
                 # Replay recent packet/command/routing history so the page isn't blank on load
                 try:
-                    with closing(sqlite3.connect(self.db_path, timeout=10, check_same_thread=False)) as _conn:
-                        _conn.row_factory = sqlite3.Row
-                        _cur = _conn.cursor()
-                        _cur.execute(
-                            "SELECT data, type FROM packet_stream"
-                            " WHERE type IN ('packet','command','routing')"
-                            " ORDER BY timestamp DESC LIMIT 50"
-                        )
-                        rows = list(reversed(_cur.fetchall()))
-                    for row in rows:
-                        try:
-                            data = json.loads(row['data'])
-                            evt = 'command_data' if row['type'] == 'command' else 'packet_data'
-                            emit(evt, data)
-                        except (json.JSONDecodeError, KeyError, TypeError):
-                            pass
+                    self._replay_packet_stream(
+                        "type IN ('packet','command','routing')",
+                        lambda _type: 'command_data' if _type == 'command' else 'packet_data',
+                    )
                 except Exception as e:
                     self.logger.warning(f"Error replaying packet history: {e}", exc_info=True)
             except Exception as e:
@@ -4838,10 +4807,7 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, ChannelAdminMixin, 
         def handle_subscribe_mesh():
             """Handle mesh graph stream subscription"""
             try:
-                client_id = getattr(request, 'sid', None)
-                with self._clients_lock:
-                    if client_id and client_id in self.connected_clients:
-                        self.connected_clients[client_id]['subscribed_mesh'] = True
+                client_id = self._mark_subscribed('subscribed_mesh')
                 self.logger.debug(f"Client {client_id} subscribed to mesh graph")
             except Exception as e:
                 self.logger.error(f"Error in handle_subscribe_mesh: {e}", exc_info=True)
@@ -4850,27 +4816,11 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, ChannelAdminMixin, 
         def handle_subscribe_messages():
             """Handle live channel message stream subscription — also replays recent messages."""
             try:
-                client_id = getattr(request, 'sid', None)
-                with self._clients_lock:
-                    if client_id and client_id in self.connected_clients:
-                        self.connected_clients[client_id]['subscribed_messages'] = True
+                client_id = self._mark_subscribed('subscribed_messages')
                 self.logger.debug(f"Client {client_id} subscribed to messages")
                 # Replay recent channel messages so the page isn't blank on load
                 try:
-                    with closing(sqlite3.connect(self.db_path, timeout=10, check_same_thread=False)) as _conn:
-                        _conn.row_factory = sqlite3.Row
-                        _cur = _conn.cursor()
-                        _cur.execute(
-                            "SELECT data FROM packet_stream"
-                            " WHERE type = 'message'"
-                            " ORDER BY timestamp DESC LIMIT 50"
-                        )
-                        rows = list(reversed(_cur.fetchall()))
-                    for row in rows:
-                        try:
-                            emit('message_data', json.loads(row['data']))
-                        except (json.JSONDecodeError, KeyError, TypeError):
-                            pass
+                    self._replay_packet_stream("type = 'message'", lambda _type: 'message_data')
                 except Exception as e:
                     self.logger.warning(f"Error replaying message history: {e}", exc_info=True)
             except Exception as e:
@@ -4880,10 +4830,7 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, ChannelAdminMixin, 
         def handle_subscribe_logs():
             """Handle live log stream subscription — also sends last 200 log lines to the new subscriber."""
             try:
-                client_id = getattr(request, 'sid', None)
-                with self._clients_lock:
-                    if client_id and client_id in self.connected_clients:
-                        self.connected_clients[client_id]['subscribed_logs'] = True
+                client_id = self._mark_subscribed('subscribed_logs')
                 self.logger.debug(f"Client {client_id} subscribed to logs")
                 # Send recent log history so the page isn't blank on load
                 log_file = ''
@@ -4927,6 +4874,36 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, ChannelAdminMixin, 
             except Exception as emit_error:
                 # If we can't emit, just log it
                 self.logger.error(f"Error emitting error message: {emit_error}")
+
+    def _mark_subscribed(self, flag: str):
+        """Set a stream flag on the requesting Socket.IO client; returns its sid (may be None)."""
+        client_id = getattr(request, 'sid', None)
+        with self._clients_lock:
+            if client_id and client_id in self.connected_clients:
+                self.connected_clients[client_id][flag] = True
+        return client_id
+
+    def _replay_packet_stream(self, where: str, event_for_type) -> None:
+        """Emit the newest 50 packet_stream rows matching *where* to the requesting client, oldest first.
+
+        ``event_for_type`` maps a row's type to its event name; rows whose data
+        does not parse are skipped.
+        """
+        with closing(sqlite3.connect(self.db_path, timeout=10, check_same_thread=False)) as _conn:
+            _conn.row_factory = sqlite3.Row
+            _cur = _conn.cursor()
+            _cur.execute(
+                "SELECT data, type FROM packet_stream"
+                f" WHERE {where}"
+                " ORDER BY timestamp DESC LIMIT 50"
+            )
+            rows = list(reversed(_cur.fetchall()))
+        for row in rows:
+            try:
+                data = json.loads(row['data'])
+                emit(event_for_type(row['type']), data)
+            except (json.JSONDecodeError, KeyError, TypeError):
+                pass
 
     def _disconnect_login_sockets(self, login_id):
         """Disconnect every Socket.IO client opened under the given admin login."""
