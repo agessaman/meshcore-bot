@@ -30,13 +30,17 @@ from ..utils import (
     format_temperature_high_low,
     geocode_city_sync,
     geocode_zipcode_sync,
-    get_nominatim_geocoder,  # noqa: F401
+    get_nominatim_geocoder,
     normalize_us_state,
 )
 from ..weather_common import WeatherCommandMixin
 from .alternatives.wx_international import GlobalWxCommand
 from .base_command import BaseCommand
 from .rain_command import nws_http_means_no_coverage
+
+# Kept for code that checked them; these imports used to be optional.
+WX_INTERNATIONAL_AVAILABLE = True
+WXSIM_PARSER_AVAILABLE = True
 
 # Multiday: plain digits (e.g. 7), 7day/7-day, or suffix form 7d/10d (min 2, max below).
 WX_MULTIDAY_MAX_DAYS = 16
@@ -239,11 +243,19 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         # Only initialize NOAA-specific attributes if not delegating
         if self.delegate_command is None:
             self.url_timeout = 8  # seconds (reduced from 10 for faster failure detection)
+            self.forecast_duration = 3  # days
+            self.num_wx_alerts = 2  # number of alerts to show
+            self.use_metric = False  # Use imperial units by default
+            self.zulu_time = False  # Use local time by default
 
             # Get default location/state/country from config for fallback/disambiguation
             self.default_city = self.bot.config.get('Weather', 'default_city', fallback='').strip()
             self.default_state = self.bot.config.get('Weather', 'default_state', fallback='')
             self.default_country = self.bot.config.get('Weather', 'default_country', fallback='US')
+
+            # Initialize geocoder (will use rate-limited helpers for actual calls)
+            # Keep geolocator for backwards compatibility, but prefer rate-limited helpers
+            self.geolocator = get_nominatim_geocoder()
 
             # Get database manager for geocoding cache
             self.db_manager = bot.db_manager

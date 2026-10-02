@@ -112,6 +112,11 @@ class WeatherCommandMixin:
         text, err = mqtt_weather_display_for_topic(topic, cache, fmt)
         if text is not None:
             return f"{location_name}: {text}" if location_name else text
+        return self._mqtt_weather_error_key(err)
+
+    def _mqtt_weather_error_key(self, err: Optional[str]) -> str:
+        """The translated reply for an MQTT weather lookup error (overridable)."""
+        ns = self.translation_ns
         if err == "no_cache":
             return self.translate(f"{ns}.mqtt_weather_no_subscriber")
         if err in ("no_data", "empty_payload", "empty_after_sanitize"):

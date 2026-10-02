@@ -29,6 +29,9 @@ from ...utils import (  # noqa: F401  format_temperature_high_low and get_nomina
 from ...weather_common import WeatherCommandMixin, load_open_meteo_model
 from ..base_command import BaseCommand
 
+# Kept for code that checked them; these imports used to be optional.
+WXSIM_PARSER_AVAILABLE = True
+
 # Multiday: plain digits, 7day/7-day, or suffix form 7d/10d (min 2, max below). Open-Meteo allows up to 16 forecast days.
 GWX_MULTIDAY_MAX_DAYS = 16
 
@@ -98,6 +101,9 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
         if self.precipitation_unit not in ['inch', 'mm']:
             self.logger.warning(f"Invalid precipitation_unit '{self.precipitation_unit}', using 'inch'")
             self.precipitation_unit = 'inch'
+
+        # Initialize geocoder (will use rate-limited helpers for actual calls)
+        self.geolocator = get_nominatim_geocoder()
 
         # Get database manager for geocoding cache
         self.db_manager = bot.db_manager

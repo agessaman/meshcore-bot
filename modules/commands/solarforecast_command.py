@@ -47,8 +47,6 @@ class SolarforecastCommand(BaseCommand):
     # Read-only informational output; safe for scheduled {cmd:...} rendering.
     render_safe = True
     name = "solarforecast"
-    honors_skip_channel_check = False
-    enabled_attr = "solarforecast_enabled"
     keywords = ['solarforecast', 'sf']
     description = "Get solar panel production forecast (usage: sf <location|repeater_name|coordinates|zipcode> [panel_size] [azimuth, 0=south] [angle])"
     category = "solar"
@@ -99,8 +97,24 @@ class SolarforecastCommand(BaseCommand):
         # Get default state from config for city disambiguation
         self.default_state = self.bot.config.get('Weather', 'default_state', fallback='')
 
+        # Initialize geocoder (will use rate-limited helpers for actual calls)
+        self.geolocator = get_nominatim_geocoder()
+
         # Get database manager for geocoding cache
         self.db_manager = bot.db_manager
+
+    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
+        """Check if this command can be executed with the given message.
+
+        Args:
+            message: The message triggering the command.
+
+        Returns:
+            bool: True if command is enabled and checks pass, False otherwise.
+        """
+        if not self.solarforecast_enabled:
+            return False
+        return super().can_execute(message)
 
     def get_help_text(self) -> str:
         return self.translate('commands.solarforecast.usage')
