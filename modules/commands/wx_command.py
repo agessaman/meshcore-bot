@@ -1472,128 +1472,17 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             if not hourly_periods:
                 return self.translate('commands.wx.hourly_not_available')
 
-            lines = []
-
-            # Filter to only future hours
-            now = datetime.now()
-            future_periods = []
-            for period in hourly_periods:
-                start_time_str = period.get('startTime', '')
-                if start_time_str:
-                    try:
-                        # Parse ISO format with timezone
-                        if 'Z' in start_time_str:
-                            start_time = datetime.fromisoformat(start_time_str.replace('Z', '+00:00'))
-                        else:
-                            start_time = datetime.fromisoformat(start_time_str)
-
-                        # Convert to local timezone if needed
-                        if start_time.tzinfo:
-                            # Make naive for comparison
-                            start_time = start_time.replace(tzinfo=None)
-
-                        if start_time > now:
-                            future_periods.append(period)
-                    except (ValueError, TypeError):
-                        # If parsing fails, include it anyway
-                        future_periods.append(period)
-                else:
-                    # If no startTime, include it
-                    future_periods.append(period)
-
+            future_periods = self._future_hourly_periods(hourly_periods)
             if not future_periods:
                 return "No future hourly periods available"
 
-            # Format each hour
+            lines: list[str] = []
             for period in future_periods:
-                start_time_str = period.get('startTime', '')
-                temp = period.get('temperature', '')
-                short_forecast = period.get('shortForecast', '')
-                wind_speed = period.get('windSpeed', '')
-                wind_direction = period.get('windDirection', '')
-                precip_prob = period.get('probabilityOfPrecipitation', {}).get('value')
-
-                # Format time (e.g., "2PM", "10AM")
-                time_str = ""
-                if start_time_str:
-                    try:
-                        # Parse ISO format - handle timezone
-                        if 'Z' in start_time_str:
-                            dt = datetime.fromisoformat(start_time_str.replace('Z', '+00:00'))
-                        elif '+' in start_time_str or start_time_str.count('-') > 2:
-                            # Has timezone info
-                            dt = datetime.fromisoformat(start_time_str)
-                        else:
-                            # No timezone, parse as naive
-                            dt = datetime.fromisoformat(start_time_str)
-
-                        # Extract hour (assume it's already in local time or close enough)
-                        hour = dt.hour
-
-                        # Format as 12-hour time
-                        if hour == 0:
-                            time_str = "12AM"
-                        elif hour < 12:
-                            time_str = f"{hour}AM"
-                        elif hour == 12:
-                            time_str = "12PM"
-                        else:
-                            time_str = f"{hour-12}PM"
-                    except (ValueError, TypeError):
-                        time_str = ""
-
-                # Build hour line: "10AM: 🌦️ 26% Chance Light Rain 49° SS5"
-                emoji = self.get_weather_emoji(short_forecast)
-
-                # Abbreviate forecast if too long
-                forecast_short = short_forecast
-                if len(forecast_short) > 18:
-                    # Take first 2-3 words
-                    words = forecast_short.split()
-                    forecast_short = ' '.join(words[:3]) if len(words) > 3 else forecast_short[:18]
-
-                # Build the line - format: "10AM: 🌦️ 26% Chance Light Rain 49° SS5"
-                line_parts = []
-                if time_str:
-                    line_parts.append(f"{time_str}:")
-
-                # Add emoji
-                line_parts.append(emoji)
-
-                # Add precip probability if > 0% (before forecast text)
-                if precip_prob is not None and precip_prob > 0:
-                    line_parts.append(f"{precip_prob}%")
-
-                # Add forecast text
-                line_parts.append(forecast_short)
-
-                # Add temperature
-                if temp:
-                    line_parts.append(f"{temp}°")
-
-                # Add wind if available (use compact format)
-                if wind_speed and wind_direction:
-                    wind_match = re.search(r'(\d+)', wind_speed)
-                    if wind_match:
-                        wind_num = wind_match.group(1)
-                        # Get direction abbreviation (first 1-2 chars)
-                        wind_dir_abbrev = wind_direction[:2] if len(wind_direction) >= 2 else wind_direction
-                        # Remove any spaces and make uppercase
-                        wind_dir_abbrev = wind_dir_abbrev.replace(' ', '').upper()
-                        line_parts.append(f"{wind_dir_abbrev}{wind_num}")
-
-                line = " ".join(line_parts)
-
-                # Check if adding this line would exceed limit
-                test_lines = lines + [line]
-                test_message = "\n".join(test_lines)
-                test_length = self._count_display_width(test_message)
-
-                if test_length <= max_length:
-                    lines.append(line)
-                else:
-                    # This line would exceed limit, stop here
+                line = self._hourly_line(period)
+                # Stop at the first hour that no longer fits.
+                if self._count_display_width("\n".join(lines + [line])) > max_length:
                     break
+                lines.append(line)
 
             if not lines:
                 return "Hourly forecast not available"
@@ -1603,6 +1492,75 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         except Exception as e:
             self.logger.error(f"Error formatting hourly forecast: {e}")
             return f"Error formatting hourly forecast: {str(e)}"
+
+    @staticmethod
+    def _parse_noaa_start_time(start_time_str: str) -> datetime:
+        """Parse a NOAA ISO ``startTime``; a trailing ``Z`` means UTC."""
+        if 'Z' in start_time_str:
+            return datetime.fromisoformat(start_time_str.replace('Z', '+00:00'))
+        return datetime.fromisoformat(start_time_str)
+
+    def _future_hourly_periods(self, hourly_periods: list) -> list:
+        """Periods starting after now (wall clock, ignoring the offset); unparseable or missing times are kept."""
+        now = datetime.now()
+        future_periods = []
+        for period in hourly_periods:
+            start_time_str = period.get('startTime', '')
+            if not start_time_str:
+                future_periods.append(period)
+                continue
+            try:
+                start_time = self._parse_noaa_start_time(start_time_str).replace(tzinfo=None)
+            except (ValueError, TypeError):
+                future_periods.append(period)
+                continue
+            if start_time > now:
+                future_periods.append(period)
+        return future_periods
+
+    def _hour_label(self, start_time_str: str) -> str:
+        """12-hour label for a period's start hour ("12AM", "2PM"); empty when missing or unparseable."""
+        if not start_time_str:
+            return ""
+        try:
+            hour = self._parse_noaa_start_time(start_time_str).hour
+        except (ValueError, TypeError):
+            return ""
+        return f"{hour % 12 or 12}{'AM' if hour < 12 else 'PM'}"
+
+    def _hourly_line(self, period: dict) -> str:
+        """One hour as "10AM: 🌦️ 26% Chance Light Rain 49° SS5"."""
+        temp = period.get('temperature', '')
+        short_forecast = period.get('shortForecast', '')
+        wind_speed = period.get('windSpeed', '')
+        wind_direction = period.get('windDirection', '')
+        precip_prob = period.get('probabilityOfPrecipitation', {}).get('value')
+        time_str = self._hour_label(period.get('startTime', ''))
+        emoji = self.get_weather_emoji(short_forecast)
+
+        # Long forecasts keep their first three words, or 18 characters.
+        forecast_short = short_forecast
+        if len(forecast_short) > 18:
+            words = forecast_short.split()
+            forecast_short = ' '.join(words[:3]) if len(words) > 3 else forecast_short[:18]
+
+        line_parts = []
+        if time_str:
+            line_parts.append(f"{time_str}:")
+        line_parts.append(emoji)
+        if precip_prob is not None and precip_prob > 0:
+            line_parts.append(f"{precip_prob}%")
+        line_parts.append(forecast_short)
+        if temp:
+            line_parts.append(f"{temp}°")
+        if wind_speed and wind_direction:
+            wind_match = re.search(r'(\d+)', wind_speed)
+            if wind_match:
+                # Compact wind: the direction's first two characters, no spaces.
+                wind_dir_abbrev = wind_direction[:2] if len(wind_direction) >= 2 else wind_direction
+                wind_dir_abbrev = wind_dir_abbrev.replace(' ', '').upper()
+                line_parts.append(f"{wind_dir_abbrev}{wind_match.group(1)}")
+        return " ".join(line_parts)
 
     def format_tomorrow_forecast(self, forecast: list, max_length: int = 130) -> str:
         """Format a detailed forecast for tomorrow"""
