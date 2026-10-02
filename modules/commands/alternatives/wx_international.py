@@ -876,21 +876,6 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
             if self.weather_model:
                 params['models'] = self.weather_model
 
-            # For tomorrow or multiday, return raw data for formatting
-            if forecast_type in ["tomorrow", "multiday"]:
-                response = requests.get(api_url, params=params, timeout=self.url_timeout)
-
-                if not response.ok:
-                    self.logger.warning(f"Error fetching weather from Open-Meteo: {response.status_code}")
-                    return self.translate('commands.gwx.error_fetching')
-
-                data = response.json()
-
-                if forecast_type == "tomorrow":
-                    return self.format_tomorrow_forecast(data)
-                elif forecast_type == "multiday":
-                    return self.format_multiday_forecast(data, num_days)
-
             response = requests.get(api_url, params=params, timeout=self.url_timeout)
 
             if not response.ok:
@@ -899,173 +884,183 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
 
             data = response.json()
 
-            # Check units in response to verify API is respecting our unit requests
-            current_units = data.get('current_units', {})
-            visibility_unit = current_units.get('visibility', 'm')
+            if forecast_type == "tomorrow":
+                return self.format_tomorrow_forecast(data)
+            if forecast_type == "multiday":
+                return self.format_multiday_forecast(data, num_days)
 
-            # Extract current conditions
-            current = data.get('current', {})
-            daily = data.get('daily', {})
-
-            # Current conditions - API should return in Fahrenheit when requested
-            temp = int(current.get('temperature_2m', 0))
-            feels_like = int(current.get('apparent_temperature', temp))
-            dewpoint = current.get('dewpoint_2m')
-            humidity = int(current.get('relative_humidity_2m', 0))
-            wind_speed = int(current.get('wind_speed_10m', 0))
-            wind_direction = self._degrees_to_direction(current.get('wind_direction_10m', 0))
-            wind_gusts = int(current.get('wind_gusts_10m', 0))
-            visibility = current.get('visibility')
-            pressure = current.get('surface_pressure')
-            weather_code = current.get('weather_code', 0)
-
-            # Convert visibility to miles based on actual unit from API
-            # API returns visibility in feet when using imperial units
-            if visibility is not None:
-                if visibility_unit == 'ft' or 'ft' in str(visibility_unit).lower():
-                    # Convert from feet to miles (1 mile = 5280 feet)
-                    visibility_mi = visibility / 5280.0
-                else:
-                    # Assume meters, convert to miles (1 mile = 1609.34 meters)
-                    visibility_mi = visibility / 1609.34
-            else:
-                visibility_mi = None
-
-            # Pressure validation - account for high elevation locations
-            # Normal sea level pressure is 1013 hPa, range is typically 950-1050 hPa
-            # At high elevations (e.g., 2500m), pressure can be 750-800 hPa, which is normal
-            # Only filter out extremely low pressures (< 600 hPa) which would be invalid
-            if pressure is not None and pressure < 600:
-                self.logger.warning(f"Extremely low pressure value: {pressure} hPa - might be invalid")
-                pressure = None
-
-            # Get weather description and emoji
-            weather_desc = self._get_weather_description(weather_code)
-            weather_emoji = self._get_weather_emoji(weather_code)
-
-            # Determine temperature unit symbol
             temp_symbol = "°F" if self.temperature_unit == 'fahrenheit' else "°C"
-
-            # Determine if it's day or night for forecast period name
-            now = datetime.now()
-            hour = now.hour
-            if 6 <= hour < 18:
-                period_name = self.translate('commands.gwx.periods.today')
-            else:
-                period_name = self.translate('commands.gwx.periods.tonight')
-
-            # Build current weather string
-            weather = f"{period_name}: {weather_emoji}{weather_desc} {temp}{temp_symbol}"
-
-            # Add feels like if significantly different
-            if abs(feels_like - temp) >= 5:
-                feels_str = self.translate('commands.gwx.feels_like', value=feels_like, unit=temp_symbol)
-                weather += f" {feels_str}"
-
-            # Add wind info (always show if >= 3 mph, show gusts if significant)
-            if wind_speed >= 3:
-                weather += f" {wind_direction}{wind_speed}"
-                if wind_gusts > wind_speed + 3:
-                    gust_str = self.translate('commands.gwx.gust', value=wind_gusts)
-                    weather += gust_str
-
-            # Add humidity
-            humidity_str = self.translate('commands.gwx.humidity', value=humidity)
-            weather += f" {humidity_str}"
-
-            # Add additional conditions if space allows
-            conditions = []
-
-            # Add dew point
-            if dewpoint is not None:
-                dewpoint_val = int(dewpoint)
-                dew_str = self.translate('commands.gwx.dew_point', value=dewpoint_val, unit=temp_symbol)
-                conditions.append(dew_str)
-
-            # Add visibility (already converted to miles above)
-            if visibility_mi is not None and visibility_mi > 0:
-                # Beyond ~20 mi visibility is essentially unlimited, so cap the
-                # display at that in whichever unit we are showing.
-                if self.metric_distance:
-                    visibility_display = min(int(visibility_mi * MI_TO_KM), VISIBILITY_CAP_KM)
-                    vis_str = self.translate('commands.gwx.visibility_km', value=visibility_display)
-                else:
-                    visibility_display = min(int(visibility_mi), VISIBILITY_CAP_MI)
-                    vis_str = self.translate('commands.gwx.visibility', value=visibility_display)
-                conditions.append(vis_str)
-
-            # Add pressure (convert from hPa to display format)
-            if pressure is not None:
-                pressure_hpa = int(pressure)
-                # Which pressure unit reads as normal is a locale convention, not
-                # a metric/imperial split: Russia uses mmHg, most of metric
-                # Europe uses hPa. The catalog names its own.
-                if self.translate('commands.gwx.pressure_unit').strip().lower() == 'mmhg':
-                    press_str = self.translate('commands.gwx.pressure_mmhg',
-                                               value=round(pressure_hpa * HPA_TO_MMHG))
-                else:
-                    press_str = self.translate('commands.gwx.pressure', value=pressure_hpa)
-                conditions.append(press_str)
-
-            # Add conditions to weather string if space allows
-            # Reserve space for forecast data (high/low and tomorrow)
-            conditions_max_length = max_length - 80  # Reserve ~80 chars for forecast data
-            if conditions and self._count_display_width(weather) < conditions_max_length:
-                weather += " " + " ".join(conditions)
-
-            # Add forecast high/low for today (without repeating period name since current conditions already show it)
-            # API should return temperatures in Fahrenheit when requested
+            weather = self._open_meteo_current(data, max_length, temp_symbol)
+            # Forecast high/low for today (the current conditions already name the period).
+            daily = data.get('daily', {})
             if daily:
-                today_high = int(daily['temperature_2m_max'][0])
-                today_low = int(daily['temperature_2m_min'][0])
-
-                weather += f" | {self._format_high_low(today_high, today_low, temp_symbol)}"
-
-                # Add tomorrow if space allows (check length more carefully)
-                if len(daily['temperature_2m_max']) > 1:
-                    tomorrow_high = int(daily['temperature_2m_max'][1])
-                    tomorrow_low = int(daily['temperature_2m_min'][1])
-
-                    tomorrow_code = daily['weather_code'][1]
-                    tomorrow_emoji = self._get_weather_emoji(tomorrow_code)
-
-                    # Get tomorrow's period name
-                    tomorrow_period = self.translate('commands.gwx.periods.tomorrow')
-                    tomorrow_str = f" | {tomorrow_period}: {tomorrow_emoji} {self._format_high_low(tomorrow_high, tomorrow_low, temp_symbol)}"
-
-                    # Only add if we have space (leave room for potential precipitation)
-                    # Use display width to account for emojis
-                    if self._count_display_width(weather + tomorrow_str) <= max_length - 10:  # Leave 10 chars buffer
-                        weather += tomorrow_str
-
-                        # Add precipitation probability and amount if significant and space allows
-                        if len(daily.get('precipitation_probability_max', [])) > 1:
-                            precip_prob = daily['precipitation_probability_max'][1]
-                            if precip_prob >= 30:
-                                # Get precipitation amount if available
-                                precip_amount = None
-                                if len(daily.get('precipitation_sum', [])) > 1:
-                                    precip_amount = daily['precipitation_sum'][1]
-
-                                # Format precipitation info
-                                if precip_amount is not None and precip_amount > 0:
-                                    # Show both probability and amount
-                                    precip_unit = "in" if self.precipitation_unit == 'inch' else "mm"
-                                    precip_str = f" 🌦️{precip_prob}% {precip_amount:.2f}{precip_unit}"
-                                else:
-                                    # Only show probability if no amount available
-                                    precip_str = f" 🌦️{precip_prob}%"
-
-                                # Use display width to check if we have space, with buffer to avoid cutting emojis
-                                # Add buffer of 5 chars to ensure we don't truncate in middle of emoji
-                                if self._count_display_width(weather + precip_str) <= max_length - 5:
-                                    weather += precip_str
-
+                weather = self._open_meteo_daily_tail(weather, daily, max_length, temp_symbol)
             return weather
 
         except Exception as e:
             self.logger.error(f"Error fetching Open-Meteo weather: {e}")
             return self.translate('commands.gwx.error_fetching')
+
+    def _open_meteo_current(self, data: dict, max_length: int, temp_symbol: str) -> str:
+        """Current conditions for the default gwx reply, with extra conditions when they fit."""
+        # Check units in response to verify API is respecting our unit requests
+        current_units = data.get('current_units', {})
+        visibility_unit = current_units.get('visibility', 'm')
+
+        # Extract current conditions
+        current = data.get('current', {})
+
+        # Current conditions - API should return in Fahrenheit when requested
+        temp = int(current.get('temperature_2m', 0))
+        feels_like = int(current.get('apparent_temperature', temp))
+        dewpoint = current.get('dewpoint_2m')
+        humidity = int(current.get('relative_humidity_2m', 0))
+        wind_speed = int(current.get('wind_speed_10m', 0))
+        wind_direction = self._degrees_to_direction(current.get('wind_direction_10m', 0))
+        wind_gusts = int(current.get('wind_gusts_10m', 0))
+        visibility = current.get('visibility')
+        pressure = current.get('surface_pressure')
+        weather_code = current.get('weather_code', 0)
+
+        # Convert visibility to miles based on actual unit from API
+        # API returns visibility in feet when using imperial units
+        if visibility is not None:
+            if visibility_unit == 'ft' or 'ft' in str(visibility_unit).lower():
+                # Convert from feet to miles (1 mile = 5280 feet)
+                visibility_mi = visibility / 5280.0
+            else:
+                # Assume meters, convert to miles (1 mile = 1609.34 meters)
+                visibility_mi = visibility / 1609.34
+        else:
+            visibility_mi = None
+
+        # Pressure validation - account for high elevation locations
+        # Normal sea level pressure is 1013 hPa, range is typically 950-1050 hPa
+        # At high elevations (e.g., 2500m), pressure can be 750-800 hPa, which is normal
+        # Only filter out extremely low pressures (< 600 hPa) which would be invalid
+        if pressure is not None and pressure < 600:
+            self.logger.warning(f"Extremely low pressure value: {pressure} hPa - might be invalid")
+            pressure = None
+
+        # Get weather description and emoji
+        weather_desc = self._get_weather_description(weather_code)
+        weather_emoji = self._get_weather_emoji(weather_code)
+
+        # Determine if it's day or night for forecast period name
+        now = datetime.now()
+        hour = now.hour
+        if 6 <= hour < 18:
+            period_name = self.translate('commands.gwx.periods.today')
+        else:
+            period_name = self.translate('commands.gwx.periods.tonight')
+
+        # Build current weather string
+        weather = f"{period_name}: {weather_emoji}{weather_desc} {temp}{temp_symbol}"
+
+        # Add feels like if significantly different
+        if abs(feels_like - temp) >= 5:
+            feels_str = self.translate('commands.gwx.feels_like', value=feels_like, unit=temp_symbol)
+            weather += f" {feels_str}"
+
+        # Add wind info (always show if >= 3 mph, show gusts if significant)
+        if wind_speed >= 3:
+            weather += f" {wind_direction}{wind_speed}"
+            if wind_gusts > wind_speed + 3:
+                gust_str = self.translate('commands.gwx.gust', value=wind_gusts)
+                weather += gust_str
+
+        # Add humidity
+        humidity_str = self.translate('commands.gwx.humidity', value=humidity)
+        weather += f" {humidity_str}"
+
+        # Add additional conditions if space allows
+        conditions = []
+
+        # Add dew point
+        if dewpoint is not None:
+            dewpoint_val = int(dewpoint)
+            dew_str = self.translate('commands.gwx.dew_point', value=dewpoint_val, unit=temp_symbol)
+            conditions.append(dew_str)
+
+        # Add visibility (already converted to miles above)
+        if visibility_mi is not None and visibility_mi > 0:
+            # Beyond ~20 mi visibility is essentially unlimited, so cap the
+            # display at that in whichever unit we are showing.
+            if self.metric_distance:
+                visibility_display = min(int(visibility_mi * MI_TO_KM), VISIBILITY_CAP_KM)
+                vis_str = self.translate('commands.gwx.visibility_km', value=visibility_display)
+            else:
+                visibility_display = min(int(visibility_mi), VISIBILITY_CAP_MI)
+                vis_str = self.translate('commands.gwx.visibility', value=visibility_display)
+            conditions.append(vis_str)
+
+        # Add pressure (convert from hPa to display format)
+        if pressure is not None:
+            pressure_hpa = int(pressure)
+            # Which pressure unit reads as normal is a locale convention, not
+            # a metric/imperial split: Russia uses mmHg, most of metric
+            # Europe uses hPa. The catalog names its own.
+            if self.translate('commands.gwx.pressure_unit').strip().lower() == 'mmhg':
+                press_str = self.translate('commands.gwx.pressure_mmhg',
+                                           value=round(pressure_hpa * HPA_TO_MMHG))
+            else:
+                press_str = self.translate('commands.gwx.pressure', value=pressure_hpa)
+            conditions.append(press_str)
+
+        # Add conditions to weather string if space allows
+        # Reserve space for forecast data (high/low and tomorrow)
+        conditions_max_length = max_length - 80  # Reserve ~80 chars for forecast data
+        if conditions and self._count_display_width(weather) < conditions_max_length:
+            weather += " " + " ".join(conditions)
+        return weather
+
+    def _open_meteo_daily_tail(self, weather: str, daily: dict, max_length: int, temp_symbol: str) -> str:
+        """Append today's high/low, then tomorrow and its precipitation while they fit."""
+        today_high = int(daily['temperature_2m_max'][0])
+        today_low = int(daily['temperature_2m_min'][0])
+
+        weather += f" | {self._format_high_low(today_high, today_low, temp_symbol)}"
+
+        # Add tomorrow if space allows (check length more carefully)
+        if len(daily['temperature_2m_max']) > 1:
+            tomorrow_high = int(daily['temperature_2m_max'][1])
+            tomorrow_low = int(daily['temperature_2m_min'][1])
+
+            tomorrow_code = daily['weather_code'][1]
+            tomorrow_emoji = self._get_weather_emoji(tomorrow_code)
+
+            # Get tomorrow's period name
+            tomorrow_period = self.translate('commands.gwx.periods.tomorrow')
+            tomorrow_str = f" | {tomorrow_period}: {tomorrow_emoji} {self._format_high_low(tomorrow_high, tomorrow_low, temp_symbol)}"
+
+            # Only add if we have space (leave room for potential precipitation)
+            # Use display width to account for emojis
+            if self._count_display_width(weather + tomorrow_str) <= max_length - 10:  # Leave 10 chars buffer
+                weather += tomorrow_str
+
+                # Add precipitation probability and amount if significant and space allows
+                if len(daily.get('precipitation_probability_max', [])) > 1:
+                    precip_prob = daily['precipitation_probability_max'][1]
+                    if precip_prob >= 30:
+                        # Get precipitation amount if available
+                        precip_amount = None
+                        if len(daily.get('precipitation_sum', [])) > 1:
+                            precip_amount = daily['precipitation_sum'][1]
+
+                        # Format precipitation info
+                        if precip_amount is not None and precip_amount > 0:
+                            # Show both probability and amount
+                            precip_unit = "in" if self.precipitation_unit == 'inch' else "mm"
+                            precip_str = f" 🌦️{precip_prob}% {precip_amount:.2f}{precip_unit}"
+                        else:
+                            # Only show probability if no amount available
+                            precip_str = f" 🌦️{precip_prob}%"
+
+                        # Use display width to check if we have space, with buffer to avoid cutting emojis
+                        # Add buffer of 5 chars to ensure we don't truncate in middle of emoji
+                        if self._count_display_width(weather + precip_str) <= max_length - 5:
+                            weather += precip_str
+        return weather
 
     def format_tomorrow_forecast(self, data: dict) -> str:
         """Format a detailed forecast for tomorrow.
