@@ -642,8 +642,6 @@ def get_companion_lat_lon(
             if trace and logger is not None:
                 logger.debug("No sender_pubkey in message for companion location lookup")
             return None
-        if not hasattr(bot, "db_manager") and not trace:
-            return None
         query = """
             SELECT latitude, longitude
             FROM complete_contact_tracking
