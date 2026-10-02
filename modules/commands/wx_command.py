@@ -605,7 +605,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             companion_location = self._get_companion_location(message)
             if companion_location:
                 # Use coordinates directly to avoid re-geocoding issues
-                location_str = f"{companion_location[0]},{companion_location[1]}"
+                location_str = self._coordinates_query(*companion_location)
                 parts = [parts[0], location_str]
                 using_companion_location = True
                 # Get city name for display
@@ -637,7 +637,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                     )
                     bot_loc = self._get_bot_location() if use_bot else None
                     if bot_loc:
-                        location_str = f"{bot_loc[0]},{bot_loc[1]}"
+                        location_str = self._coordinates_query(*bot_loc)
                         parts = [parts[0], location_str]
                         display_name = await self._coordinates_to_location_string_async(
                             bot_loc[0], bot_loc[1]
@@ -1020,7 +1020,8 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                 include_address_info=True, timeout=10
             )
 
-            if lat and lon:
+            # Explicit None checks: 0 is a valid latitude (equator) or longitude (prime meridian).
+            if lat is not None and lon is not None:
                 return lat, lon, address_info or {}
             else:
                 return None, None, None

@@ -1152,7 +1152,7 @@ async def geocode_city(bot: Any, city: str, default_state: Optional[str] = None,
             # Try major city options first
             for major_city_query in major_city_queries:
                 cached_lat, cached_lon = bot.db_manager.get_cached_geocoding(major_city_query)
-                if cached_lat and cached_lon:
+                if cached_lat is not None and cached_lon is not None:
                     lat, lon = cached_lat, cached_lon
                 else:
                     location = await rate_limited_nominatim_geocode(bot, major_city_query, timeout=timeout)
@@ -1187,7 +1187,7 @@ async def geocode_city(bot: Any, city: str, default_state: Optional[str] = None,
             # Try with country name directly (e.g., "Stockholm, Sweden")
             country_query = f"{city_clean}, {country_name}"
             cached_lat, cached_lon = bot.db_manager.get_cached_geocoding(country_query)
-            if cached_lat and cached_lon:
+            if cached_lat is not None and cached_lon is not None:
                 lat, lon = cached_lat, cached_lon
             else:
                 location = await rate_limited_nominatim_geocode(bot, country_query, timeout=timeout)
@@ -1197,7 +1197,7 @@ async def geocode_city(bot: Any, city: str, default_state: Optional[str] = None,
                 else:
                     lat, lon = None, None
 
-            if lat and lon:
+            if lat is not None and lon is not None:
                 address_info = None
                 if include_address_info:
                     # Check cache for reverse geocoding result
@@ -1220,7 +1220,7 @@ async def geocode_city(bot: Any, city: str, default_state: Optional[str] = None,
         if state_abbr:
             state_query = f"{city_clean}, {state_abbr}, {default_country}"
             cached_lat, cached_lon = bot.db_manager.get_cached_geocoding(state_query)
-            if cached_lat and cached_lon:
+            if cached_lat is not None and cached_lon is not None:
                 lat, lon = cached_lat, cached_lon
             else:
                 location = await rate_limited_nominatim_geocode(bot, state_query, timeout=timeout)
@@ -1230,7 +1230,7 @@ async def geocode_city(bot: Any, city: str, default_state: Optional[str] = None,
                 else:
                     lat, lon = None, None
 
-            if lat and lon:
+            if lat is not None and lon is not None:
                 address_info = None
                 if include_address_info:
                     # Check cache for reverse geocoding result
@@ -1323,7 +1323,7 @@ async def geocode_city(bot: Any, city: str, default_state: Optional[str] = None,
         if default_state and default_state.strip():
             cache_query = f"{city_clean}, {default_state}, {default_country}"
             cached_lat, cached_lon = bot.db_manager.get_cached_geocoding(cache_query)
-            if cached_lat and cached_lon:
+            if cached_lat is not None and cached_lon is not None:
                 lat, lon = cached_lat, cached_lon
             else:
                 location = await rate_limited_nominatim_geocode(bot, cache_query, timeout=timeout)
@@ -1333,7 +1333,7 @@ async def geocode_city(bot: Any, city: str, default_state: Optional[str] = None,
                 else:
                     lat, lon = None, None
 
-            if lat and lon:
+            if lat is not None and lon is not None:
                 address_info = None
                 if include_address_info:
                     # Check cache for reverse geocoding result
@@ -1457,7 +1457,7 @@ def geocode_city_sync(bot: Any, city: str, default_state: Optional[str] = None,
             # Try major city options first
             for major_city_query in major_city_queries:
                 cached_lat, cached_lon = bot.db_manager.get_cached_geocoding(major_city_query)
-                if cached_lat and cached_lon:
+                if cached_lat is not None and cached_lon is not None:
                     lat, lon = cached_lat, cached_lon
                 else:
                     location = rate_limited_nominatim_geocode_sync(bot, major_city_query, timeout=timeout)
@@ -1492,7 +1492,7 @@ def geocode_city_sync(bot: Any, city: str, default_state: Optional[str] = None,
             # Try with country name directly (e.g., "Stockholm, Sweden")
             country_query = f"{city_clean}, {country_name}"
             cached_lat, cached_lon = bot.db_manager.get_cached_geocoding(country_query)
-            if cached_lat and cached_lon:
+            if cached_lat is not None and cached_lon is not None:
                 lat, lon = cached_lat, cached_lon
             else:
                 location = rate_limited_nominatim_geocode_sync(bot, country_query, timeout=timeout)
@@ -1502,7 +1502,7 @@ def geocode_city_sync(bot: Any, city: str, default_state: Optional[str] = None,
                 else:
                     lat, lon = None, None
 
-            if lat and lon:
+            if lat is not None and lon is not None:
                 address_info = None
                 if include_address_info:
                     # Check cache for reverse geocoding result
@@ -1525,7 +1525,7 @@ def geocode_city_sync(bot: Any, city: str, default_state: Optional[str] = None,
         if state_abbr:
             state_query = f"{city_clean}, {state_abbr}, {default_country}"
             cached_lat, cached_lon = bot.db_manager.get_cached_geocoding(state_query)
-            if cached_lat and cached_lon:
+            if cached_lat is not None and cached_lon is not None:
                 lat, lon = cached_lat, cached_lon
             else:
                 location = rate_limited_nominatim_geocode_sync(bot, state_query, timeout=timeout)
@@ -1535,7 +1535,7 @@ def geocode_city_sync(bot: Any, city: str, default_state: Optional[str] = None,
                 else:
                     lat, lon = None, None
 
-            if lat and lon:
+            if lat is not None and lon is not None:
                 address_info = None
                 if include_address_info:
                     # Check cache for reverse geocoding result
@@ -1623,7 +1623,7 @@ def geocode_city_sync(bot: Any, city: str, default_state: Optional[str] = None,
         if default_state and default_state.strip():
             cache_query = f"{city_clean}, {default_state}, {default_country}"
             cached_lat, cached_lon = bot.db_manager.get_cached_geocoding(cache_query)
-            if cached_lat and cached_lon:
+            if cached_lat is not None and cached_lon is not None:
                 lat, lon = cached_lat, cached_lon
             else:
                 location = rate_limited_nominatim_geocode_sync(bot, cache_query, timeout=timeout)
@@ -1633,7 +1633,7 @@ def geocode_city_sync(bot: Any, city: str, default_state: Optional[str] = None,
                 else:
                     lat, lon = None, None
 
-            if lat and lon:
+            if lat is not None and lon is not None:
                 address_info = None
                 if include_address_info:
                     # Check cache for reverse geocoding result
