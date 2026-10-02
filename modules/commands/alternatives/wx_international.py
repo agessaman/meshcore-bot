@@ -5,6 +5,7 @@ Provides worldwide weather information using Open-Meteo API
 """
 
 import asyncio
+import math
 import re
 from datetime import datetime, timedelta
 from typing import Any, Optional, Union
@@ -1195,7 +1196,10 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
         """
         if degrees is None:
             return ""
-        index = int((float(degrees) % 360) / 22.5 + 0.5) % 16
+        degrees = float(degrees)
+        if not math.isfinite(degrees):
+            return ""
+        index = int((degrees % 360) / 22.5 + 0.5) % 16
         key = _COMPASS_16[index]
         arrow = _ARROWS_8[int(index / 2 + 0.5) % 8]
         translated = self.translate(f"common.wind_directions.{key}")

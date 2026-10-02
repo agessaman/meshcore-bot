@@ -43,9 +43,18 @@ def test_gwx_and_wx_agree_on_arrows_for_the_same_compass_point():
     ("Showers And Thunderstorms Likely", "⛈️"),
     ("Mostly Cloudy then Chance T-storms", "⛈️"),
     ("Chance Rain Showers", "🌦️"),
+    ("Chance Rain Showers then Mostly Cloudy", "🌦️"),
+    ("Cloudy then Chance Rain Showers", "🌦️"),
+    ("Rain And Snow Showers Likely Becoming Mostly Cloudy", "🌦️"),
+    ("Mostly Cloudy then Chance Snow", "❄️"),
     ("Heavy Rain", "🌧️"),
     ("Sunny", "☀️"),
     ("Sunny then Slight Chance Showers And Thunderstorms", "☀️"),
 ])
 def test_noaa_emoji_matches_the_strongest_condition(forecast, emoji):
     assert WxCommand(_bot()).get_weather_emoji(forecast) == emoji
+
+
+@pytest.mark.parametrize("degrees", [float("nan"), float("inf"), float("-inf")])
+def test_gwx_non_finite_wind_direction_is_left_out(degrees):
+    assert GlobalWxCommand(_bot())._degrees_to_direction(degrees) == ""

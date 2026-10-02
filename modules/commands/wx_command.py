@@ -2505,22 +2505,23 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         condition_lower = condition.lower()
 
         # Weather condition emojis
-        # Order matters: a specific phrase has to be tested before a word it contains
-        # ("partly cloudy" before "cloudy"), and thunderstorms outrank rain and cloud.
+        # Order matters: thunderstorms outrank rain, precipitation outranks cloud
+        # ("Chance Rain Showers then Mostly Cloudy" is a rain forecast), and a specific
+        # phrase has to be tested before a word it contains ("partly cloudy" before "cloudy").
         if any(word in condition_lower for word in ['sunny', 'clear']):
             return "☀️"
         elif any(word in condition_lower for word in ['heavy rain', 'heavy showers', 'excessive rain']):
             return "🌧️"  # Cloud with rain - more rain, less sun
         elif any(word in condition_lower for word in ['thunderstorm', 't-storm']):
             return "⛈️"
-        elif any(word in condition_lower for word in ['partly cloudy', 'mostly cloudy']):
-            return "⛅"
-        elif any(word in condition_lower for word in ['cloudy', 'overcast']):
-            return "☁️"
         elif any(word in condition_lower for word in ['rain', 'showers']):
             return "🌦️"
         elif any(word in condition_lower for word in ['snow', 'snow showers']):
             return "❄️"
+        elif any(word in condition_lower for word in ['partly cloudy', 'mostly cloudy']):
+            return "⛅"
+        elif any(word in condition_lower for word in ['cloudy', 'overcast']):
+            return "☁️"
         elif any(word in condition_lower for word in ['fog', 'mist', 'haze']):
             return "🌫️"
         elif any(word in condition_lower for word in ['smoke']) or any(word in condition_lower for word in ['windy', 'breezy']):
