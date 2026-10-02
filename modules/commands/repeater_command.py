@@ -127,7 +127,7 @@ class RepeaterCommand(BaseCommand):
                     batch_size = 10  # Default batch size
                     # Look for batch size argument
                     for _i, arg in enumerate(args):
-                        if arg.isdigit():
+                        if arg.isdecimal():
                             batch_size = int(arg)
                             break
                     response = await self._handle_update_geolocation(dry_run, batch_size)
@@ -313,7 +313,7 @@ class RepeaterCommand(BaseCommand):
 
                 return response
 
-            elif args[0].isdigit():
+            elif args[0].isdecimal():
                 # Purge old repeaters
                 days = int(args[0])
                 reason = " ".join(args[1:]) if len(args) > 1 else f"Auto-purge older than {days} days"
