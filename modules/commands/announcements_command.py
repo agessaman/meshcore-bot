@@ -435,9 +435,11 @@ class AnnouncementsCommand(BaseCommand):
                 # Record execution (resets cooldown timer)
                 self._record_trigger_execution(trigger_name)
 
+                # The announcement just used the reply limiter; the confirmation must not be refused by it.
                 await self.send_response(
                     message,
-                    f"Announcement '{trigger_name}' sent to {target_channel}"
+                    f"Announcement '{trigger_name}' sent to {target_channel}",
+                    skip_user_rate_limit=True,
                 )
                 self.logger.info(
                     f"User {message.sender_id} sent announcement '{trigger_name}' to {target_channel}"
