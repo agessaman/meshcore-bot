@@ -1,0 +1,30 @@
+{
+ "none-power-day0": {
+  "logs": [],
+  "text": "raised TypeError: '>' not supported between instances of 'int' and 'NoneType'"
+ },
+ "none-power-day1": {
+  "logs": [],
+  "text": "raised TypeError: '>' not supported between instances of 'NoneType' and 'int'"
+ },
+ "none-power-day2": {
+  "logs": [],
+  "text": "raised TypeError: '>=' not supported between instances of 'NoneType' and 'float'"
+ },
+ "none-power-day3": {
+  "logs": [],
+  "text": "raised TypeError: '>=' not supported between instances of 'NoneType' and 'float'"
+ },
+ "none-power-tomorrow-first": {
+  "logs": [],
+  "text": "raised TypeError: '>=' not supported between instances of 'NoneType' and 'float'"
+ },
+ "watt-hours-day-list": {
+  "logs": [],
+  "text": "raised TypeError: list indices must be integers or slices, not str"
+ },
+ "watts-none": {
+  "logs": [],
+  "text": "400W <commands.solarforecast.labels.today[('wh', 2848)]>\n<commands.solarforecast.labels.tomorrow[('wh', 1363)]>\n<commands.solarforecast.labels.day_format[('day', '<common.date_time.day_abbreviations.Sun>'), ('wh', 1499.3000000000002)]><commands.solarforecast.labels.separator><commands.solarforecast.labels.day_format[('day', '<common.date_time.day_abbreviations.Mon>'), ('wh', 1635.6)]>"
+ }
+}

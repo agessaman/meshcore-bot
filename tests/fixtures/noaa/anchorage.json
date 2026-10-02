@@ -1,0 +1,589 @@
+{
+ "points_url": "https://api.weather.gov/points/61.2181,-149.9003",
+ "points": {
+  "id": "https://api.weather.gov/points/61.2181,-149.9003",
+  "type": "Feature",
+  "properties": {
+   "@id": "https://api.weather.gov/points/61.2181,-149.9003",
+   "@type": "wx:Point",
+   "cwa": "AFC",
+   "type": "land",
+   "forecastOffice": "https://api.weather.gov/offices/AFC",
+   "gridId": "AER",
+   "gridX": 143,
+   "gridY": 236,
+   "forecast": "https://api.weather.gov/gridpoints/AER/143,236/forecast",
+   "forecastHourly": "https://api.weather.gov/gridpoints/AER/143,236/forecast/hourly",
+   "forecastGridData": "https://api.weather.gov/gridpoints/AER/143,236",
+   "observationStations": "https://api.weather.gov/gridpoints/AER/143,236/stations",
+   "timeZone": "America/Anchorage",
+   "radarStation": "PAHG",
+   "astronomicalData": {
+    "sunrise": "2026-10-01T08:07:19-08:00",
+    "sunset": "2026-10-01T19:30:54-08:00",
+    "transit": "2026-10-01T13:49:07-08:00",
+    "civilTwilightBegin": "2026-10-01T07:24:29-08:00",
+    "civilTwilightEnd": "2026-10-01T20:13:44-08:00",
+    "nauticalTwilightBegin": "2026-10-01T06:33:53-08:00",
+    "nauticalTwilightEnd": "2026-10-01T21:04:20-08:00",
+    "astronomicalTwilightBegin": "2026-10-01T05:40:21-08:00",
+    "astronomicalTwilightEnd": "2026-10-01T21:57:53-08:00"
+   },
+   "nwr": {
+    "transmitter": "KEC43",
+    "sameCode": "002020",
+    "areaBroadcast": "https://api.weather.gov/radio/KEC43/broadcast",
+    "pointBroadcast": "https://api.weather.gov/points/61.2181,-149.9003/radio"
+   }
+  }
+ },
+ "forecast_url": "https://api.weather.gov/gridpoints/AER/143,236/forecast",
+ "forecast": {
+  "type": "Feature",
+  "properties": {
+   "units": "us",
+   "forecastGenerator": "BaselineForecastGenerator",
+   "generatedAt": "2026-10-01T21:49:17+00:00",
+   "updateTime": "2026-10-01T16:23:02+00:00",
+   "validTimes": "2026-10-01T10:00:00+00:00/P7DT15H",
+   "elevation": {
+    "unitCode": "wmoUnit:m",
+    "value": 29.8704
+   },
+   "periods": [
+    {
+     "number": 1,
+     "name": "This Afternoon",
+     "startTime": "2026-10-01T13:00:00-08:00",
+     "endTime": "2026-10-01T18:00:00-08:00",
+     "isDaytime": true,
+     "temperature": 39,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 48
+     },
+     "windSpeed": "0 to 5 mph",
+     "windDirection": "N",
+     "icon": "https://api.weather.gov/icons/land/day/snow,50?size=medium",
+     "shortForecast": "Chance Rain And Snow Showers",
+     "detailedForecast": "A chance of rain and snow showers. Mostly cloudy, with a high near 39. North wind 0 to 5 mph. Chance of precipitation is 50%."
+    },
+    {
+     "number": 2,
+     "name": "Tonight",
+     "startTime": "2026-10-01T18:00:00-08:00",
+     "endTime": "2026-10-02T06:00:00-08:00",
+     "isDaytime": false,
+     "temperature": 26,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 42
+     },
+     "windSpeed": "0 to 5 mph",
+     "windDirection": "NE",
+     "icon": "https://api.weather.gov/icons/land/night/rain_showers,40/fog?size=medium",
+     "shortForecast": "Chance Rain Showers then Patchy Freezing Fog",
+     "detailedForecast": "A chance of rain showers before 10pm, then patchy freezing fog. Partly cloudy, with a low around 26. Northeast wind 0 to 5 mph. Chance of precipitation is 40%."
+    },
+    {
+     "number": 3,
+     "name": "Friday",
+     "startTime": "2026-10-02T06:00:00-08:00",
+     "endTime": "2026-10-02T18:00:00-08:00",
+     "isDaytime": true,
+     "temperature": 42,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 0
+     },
+     "windSpeed": "5 mph",
+     "windDirection": "NE",
+     "icon": "https://api.weather.gov/icons/land/day/fog/few?size=medium",
+     "shortForecast": "Patchy Freezing Fog then Sunny",
+     "detailedForecast": "Patchy freezing fog before 10am. Sunny, with a high near 42. Northeast wind around 5 mph."
+    },
+    {
+     "number": 4,
+     "name": "Friday Night",
+     "startTime": "2026-10-02T18:00:00-08:00",
+     "endTime": "2026-10-03T06:00:00-08:00",
+     "isDaytime": false,
+     "temperature": 29,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 3
+     },
+     "windSpeed": "5 to 10 mph",
+     "windDirection": "NE",
+     "icon": "https://api.weather.gov/icons/land/night/few?size=medium",
+     "shortForecast": "Mostly Clear",
+     "detailedForecast": "Mostly clear, with a low around 29. Northeast wind 5 to 10 mph."
+    },
+    {
+     "number": 5,
+     "name": "Saturday",
+     "startTime": "2026-10-03T06:00:00-08:00",
+     "endTime": "2026-10-03T18:00:00-08:00",
+     "isDaytime": true,
+     "temperature": 44,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 28
+     },
+     "windSpeed": "5 to 10 mph",
+     "windDirection": "N",
+     "icon": "https://api.weather.gov/icons/land/day/snow,30?size=medium",
+     "shortForecast": "Chance Rain And Snow",
+     "detailedForecast": "A chance of rain and snow between 10am and 1pm. Mostly cloudy, with a high near 44. North wind 5 to 10 mph. Chance of precipitation is 30%."
+    },
+    {
+     "number": 6,
+     "name": "Saturday Night",
+     "startTime": "2026-10-03T18:00:00-08:00",
+     "endTime": "2026-10-04T06:00:00-08:00",
+     "isDaytime": false,
+     "temperature": 33,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 36
+     },
+     "windSpeed": "5 to 10 mph",
+     "windDirection": "N",
+     "icon": "https://api.weather.gov/icons/land/night/rain,40?size=medium",
+     "shortForecast": "Chance Light Rain",
+     "detailedForecast": "A chance of rain after 7pm. Cloudy, with a low around 33. North wind 5 to 10 mph. Chance of precipitation is 40%."
+    },
+    {
+     "number": 7,
+     "name": "Sunday",
+     "startTime": "2026-10-04T06:00:00-08:00",
+     "endTime": "2026-10-04T18:00:00-08:00",
+     "isDaytime": true,
+     "temperature": 45,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 60
+     },
+     "windSpeed": "5 mph",
+     "windDirection": "N",
+     "icon": "https://api.weather.gov/icons/land/day/rain,40/rain,60?size=medium",
+     "shortForecast": "Light Rain Likely",
+     "detailedForecast": "Rain likely. Cloudy, with a high near 45."
+    },
+    {
+     "number": 8,
+     "name": "Sunday Night",
+     "startTime": "2026-10-04T18:00:00-08:00",
+     "endTime": "2026-10-05T06:00:00-08:00",
+     "isDaytime": false,
+     "temperature": 36,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 69
+     },
+     "windSpeed": "0 to 5 mph",
+     "windDirection": "NE",
+     "icon": "https://api.weather.gov/icons/land/night/rain,70?size=medium",
+     "shortForecast": "Light Rain Likely",
+     "detailedForecast": "Rain likely. Cloudy, with a low around 36."
+    },
+    {
+     "number": 9,
+     "name": "Monday",
+     "startTime": "2026-10-05T06:00:00-08:00",
+     "endTime": "2026-10-05T18:00:00-08:00",
+     "isDaytime": true,
+     "temperature": 49,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 62
+     },
+     "windSpeed": "0 to 5 mph",
+     "windDirection": "E",
+     "icon": "https://api.weather.gov/icons/land/day/rain,60/rain,40?size=medium",
+     "shortForecast": "Light Rain Likely",
+     "detailedForecast": "Rain likely. Cloudy, with a high near 49."
+    },
+    {
+     "number": 10,
+     "name": "Monday Night",
+     "startTime": "2026-10-05T18:00:00-08:00",
+     "endTime": "2026-10-06T06:00:00-08:00",
+     "isDaytime": false,
+     "temperature": 36,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 44
+     },
+     "windSpeed": "0 to 5 mph",
+     "windDirection": "NE",
+     "icon": "https://api.weather.gov/icons/land/night/rain,40/rain,30?size=medium",
+     "shortForecast": "Chance Light Rain",
+     "detailedForecast": "A chance of rain. Cloudy, with a low around 36."
+    },
+    {
+     "number": 11,
+     "name": "Tuesday",
+     "startTime": "2026-10-06T06:00:00-08:00",
+     "endTime": "2026-10-06T18:00:00-08:00",
+     "isDaytime": true,
+     "temperature": 49,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 46
+     },
+     "windSpeed": "0 to 5 mph",
+     "windDirection": "NE",
+     "icon": "https://api.weather.gov/icons/land/day/rain,50?size=medium",
+     "shortForecast": "Chance Light Rain",
+     "detailedForecast": "A chance of rain. Cloudy, with a high near 49."
+    },
+    {
+     "number": 12,
+     "name": "Tuesday Night",
+     "startTime": "2026-10-06T18:00:00-08:00",
+     "endTime": "2026-10-07T06:00:00-08:00",
+     "isDaytime": false,
+     "temperature": 35,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 41
+     },
+     "windSpeed": "0 to 5 mph",
+     "windDirection": "NE",
+     "icon": "https://api.weather.gov/icons/land/night/rain,40?size=medium",
+     "shortForecast": "Chance Light Rain",
+     "detailedForecast": "A chance of rain. Cloudy, with a low around 35."
+    },
+    {
+     "number": 13,
+     "name": "Wednesday",
+     "startTime": "2026-10-07T06:00:00-08:00",
+     "endTime": "2026-10-07T18:00:00-08:00",
+     "isDaytime": true,
+     "temperature": 47,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 39
+     },
+     "windSpeed": "0 to 5 mph",
+     "windDirection": "NE",
+     "icon": "https://api.weather.gov/icons/land/day/rain,40?size=medium",
+     "shortForecast": "Chance Light Rain",
+     "detailedForecast": "A chance of rain. Cloudy, with a high near 47."
+    },
+    {
+     "number": 14,
+     "name": "Wednesday Night",
+     "startTime": "2026-10-07T18:00:00-08:00",
+     "endTime": "2026-10-08T06:00:00-08:00",
+     "isDaytime": false,
+     "temperature": 34,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 36
+     },
+     "windSpeed": "0 mph",
+     "windDirection": "",
+     "icon": "https://api.weather.gov/icons/land/night/rain,40/rain,30?size=medium",
+     "shortForecast": "Chance Light Rain",
+     "detailedForecast": "A chance of rain. Mostly cloudy, with a low around 34."
+    }
+   ]
+  }
+ },
+ "stations_url": "https://api.weather.gov/gridpoints/AER/143,236/stations",
+ "stations": {
+  "type": "FeatureCollection",
+  "features": [
+   {
+    "id": "https://api.weather.gov/stations/PAMR",
+    "type": "Feature",
+    "properties": {
+     "@id": "https://api.weather.gov/stations/PAMR",
+     "@type": "wx:ObservationStation",
+     "elevation": {
+      "unitCode": "wmoUnit:m",
+      "value": 42.0624
+     },
+     "stationIdentifier": "PAMR",
+     "name": "Anchorage, Merrill Field Airport",
+     "timeZone": "America/Anchorage",
+     "provider": "ASOS-HFM",
+     "subProvider": "",
+     "distance": {
+      "unitCode": "wmoUnit:m",
+      "value": 2025.0290855549
+     },
+     "bearing": {
+      "unitCode": "wmoUnit:degree_(angle)",
+      "value": 82
+     },
+     "forecast": "https://api.weather.gov/zones/forecast/AKZ701"
+    }
+   },
+   {
+    "id": "https://api.weather.gov/stations/PALH",
+    "type": "Feature",
+    "properties": {
+     "@id": "https://api.weather.gov/stations/PALH",
+     "@type": "wx:ObservationStation",
+     "elevation": {
+      "unitCode": "wmoUnit:m",
+      "value": 21.9456
+     },
+     "stationIdentifier": "PALH",
+     "name": "Anchorage, Lake Hood Seaplane Base",
+     "timeZone": "America/Anchorage",
+     "provider": "ASOS-HFM",
+     "subProvider": "",
+     "distance": {
+      "unitCode": "wmoUnit:m",
+      "value": 5462.695498311
+     },
+     "bearing": {
+      "unitCode": "wmoUnit:degree_(angle)",
+      "value": 230
+     },
+     "forecast": "https://api.weather.gov/zones/forecast/AKZ701"
+    }
+   }
+  ],
+  "observationStations": [
+   "https://api.weather.gov/stations/PAMR",
+   "https://api.weather.gov/stations/PALH",
+   "https://api.weather.gov/stations/PANC",
+   "https://api.weather.gov/stations/PABV",
+   "https://api.weather.gov/stations/PAWS",
+   "https://api.weather.gov/stations/PAAQ",
+   "https://api.weather.gov/stations/PATO",
+   "https://api.weather.gov/stations/PASX",
+   "https://api.weather.gov/stations/PAEN",
+   "https://api.weather.gov/stations/PATK",
+   "https://api.weather.gov/stations/PAWD",
+   "https://api.weather.gov/stations/PAPT",
+   "https://api.weather.gov/stations/PAVD",
+   "https://api.weather.gov/stations/PAHO",
+   "https://api.weather.gov/stations/PASO",
+   "https://api.weather.gov/stations/PACV",
+   "https://api.weather.gov/stations/PAGK",
+   "https://api.weather.gov/stations/PAMD",
+   "https://api.weather.gov/stations/PAIN",
+   "https://api.weather.gov/stations/PASV",
+   "https://api.weather.gov/stations/PAIL",
+   "https://api.weather.gov/stations/PAMH",
+   "https://api.weather.gov/stations/PAMC",
+   "https://api.weather.gov/stations/PATL",
+   "https://api.weather.gov/stations/PANN",
+   "https://api.weather.gov/stations/PABI",
+   "https://api.weather.gov/stations/PASL",
+   "https://api.weather.gov/stations/PAFA",
+   "https://api.weather.gov/stations/PADQ",
+   "https://api.weather.gov/stations/PATA",
+   "https://api.weather.gov/stations/PAOR",
+   "https://api.weather.gov/stations/PAKN",
+   "https://api.weather.gov/stations/PANI",
+   "https://api.weather.gov/stations/PAGA",
+   "https://api.weather.gov/stations/PADL",
+   "https://api.weather.gov/stations/PAII",
+   "https://api.weather.gov/stations/PANV",
+   "https://api.weather.gov/stations/PAIM",
+   "https://api.weather.gov/stations/PAKV",
+   "https://api.weather.gov/stations/PAEG",
+   "https://api.weather.gov/stations/PAYA",
+   "https://api.weather.gov/stations/PAHL",
+   "https://api.weather.gov/stations/PATG",
+   "https://api.weather.gov/stations/PAUN",
+   "https://api.weather.gov/stations/PFYU",
+   "https://api.weather.gov/stations/PABT",
+   "https://api.weather.gov/stations/PABE",
+   "https://api.weather.gov/stations/PAPH",
+   "https://api.weather.gov/stations/PAKK",
+   "https://api.weather.gov/stations/PASM",
+   "https://api.weather.gov/stations/PAJC",
+   "https://api.weather.gov/stations/PAEH",
+   "https://api.weather.gov/stations/PAFM",
+   "https://api.weather.gov/stations/PAGL",
+   "https://api.weather.gov/stations/PAKP",
+   "https://api.weather.gov/stations/PASK",
+   "https://api.weather.gov/stations/PAEM",
+   "https://api.weather.gov/stations/PARC",
+   "https://api.weather.gov/stations/PAGB",
+   "https://api.weather.gov/stations/PAHN",
+   "https://api.weather.gov/stations/PAGY",
+   "https://api.weather.gov/stations/PAEL",
+   "https://api.weather.gov/stations/PADE",
+   "https://api.weather.gov/stations/PAGS",
+   "https://api.weather.gov/stations/PACZ",
+   "https://api.weather.gov/stations/PAHP",
+   "https://api.weather.gov/stations/PAOM",
+   "https://api.weather.gov/stations/PAOT",
+   "https://api.weather.gov/stations/PAOH",
+   "https://api.weather.gov/stations/PAMY",
+   "https://api.weather.gov/stations/PASD",
+   "https://api.weather.gov/stations/PAJN",
+   "https://api.weather.gov/stations/PAWN",
+   "https://api.weather.gov/stations/PASI",
+   "https://api.weather.gov/stations/PASH",
+   "https://api.weather.gov/stations/PASC",
+   "https://api.weather.gov/stations/PAQT",
+   "https://api.weather.gov/stations/PACD",
+   "https://api.weather.gov/stations/PAVL",
+   "https://api.weather.gov/stations/PAFE",
+   "https://api.weather.gov/stations/PABA",
+   "https://api.weather.gov/stations/PAPG",
+   "https://api.weather.gov/stations/PASA",
+   "https://api.weather.gov/stations/PPIZ",
+   "https://api.weather.gov/stations/PAPO",
+   "https://api.weather.gov/stations/PAWG",
+   "https://api.weather.gov/stations/PALU",
+   "https://api.weather.gov/stations/PAWI",
+   "https://api.weather.gov/stations/PAGM",
+   "https://api.weather.gov/stations/PAKW",
+   "https://api.weather.gov/stations/PABR",
+   "https://api.weather.gov/stations/PAHY",
+   "https://api.weather.gov/stations/PASN",
+   "https://api.weather.gov/stations/PAKT",
+   "https://api.weather.gov/stations/PAMM",
+   "https://api.weather.gov/stations/PADU",
+   "https://api.weather.gov/stations/PAAK",
+   "https://api.weather.gov/stations/PADK"
+  ],
+  "pagination": {
+   "next": "https://api.weather.gov/stations?id%5B0%5D=PAAK&id%5B1%5D=PAAP&id%5B2%5D=PAAQ&id%5B3%5D=PABA&id%5B4%5D=PABE&id%5B5%5D=PABI&id%5B6%5D=PABL&id%5B7%5D=PABN&id%5B8%5D=PABR&id%5B9%5D=PABT&id%5B10%5D=PABV&id%5B11%5D=PACD&id%5B12%5D=PACV&id%5B13%5D=PACZ&id%5B14%5D=PADE&id%5B15%5D=PADK&id%5B16%5D=PADL&id%5B17%5D=PADQ&id%5B18%5D=PADT&id%5B19%5D=PADU&id%5B20%5D=PAEC&id%5B21%5D=PAEG&id%5B22%5D=PAEH&id%5B23%5D=PAEL&id%5B24%5D=PAEM&id%5B25%5D=PAEN&id%5B26%5D=PAFA&id%5B27%5D=PAFE&id%5B28%5D=PAFK&id%5B29%5D=PAFM&id%5B30%5D=PAGA&id%5B31%5D=PAGB&id%5B32%5D=PAGK&id%5B33%5D=PAGL&id%5B34%5D=PAGM&id%5B35%5D=PAGS&id%5B36%5D=PAGY&id%5B37%5D=PAHL&id%5B38%5D=PAHN&id%5B39%5D=PAHO&id%5B40%5D=PAHP&id%5B41%5D=PAHS&id%5B42%5D=PAHV&id%5B43%5D=PAHY&id%5B44%5D=PAHZ&id%5B45%5D=PAII&id%5B46%5D=PAIL&id%5B47%5D=PAIM&id%5B48%5D=PAIN&id%5B49%5D=PAJC&id%5B50%5D=PAJN&id%5B51%5D=PAJV&id%5B52%5D=PAKK&id%5B53%5D=PAKN&id%5B54%5D=PAKP&id%5B55%5D=PAKT&id%5B56%5D=PAKV&id%5B57%5D=PAKW&id%5B58%5D=PALH&id%5B59%5D=PALJ&id%5B60%5D=PALK&id%5B61%5D=PALR&id%5B62%5D=PALU&id%5B63%5D=PALV&id%5B64%5D=PAMC&id%5B65%5D=PAMD&id%5B66%5D=PAMH&id%5B67%5D=PAML&id%5B68%5D=PAMM&id%5B69%5D=PAMR&id%5B70%5D=PAMX&id%5B71%5D=PAMY&id%5B72%5D=PANC&id%5B73%5D=PANI&id%5B74%5D=PANN&id%5B75%5D=PANT&id%5B76%5D=PANV&id%5B77%5D=PAOH&id%5B78%5D=PAOM&id%5B79%5D=PAOR&id%5B80%5D=PAOT&id%5B81%5D=PAPG&id%5B82%5D=PAPH&id%5B83%5D=PAPO&id%5B84%5D=PAPT&id%5B85%5D=PAQT&id%5B86%5D=PARC&id%5B87%5D=PARD&id%5B88%5D=PARL&id%5B89%5D=PASA&id%5B90%5D=PASC&id%5B91%5D=PASD&id%5B92%5D=PASH&id%5B93%5D=PASI&id%5B94%5D=PASK&id%5B95%5D=PASL&id%5B96%5D=PASM&id%5B97%5D=PASN&id%5B98%5D=PASO&id%5B99%5D=PASP&id%5B100%5D=PASV&id%5B101%5D=PASW&id%5B102%5D=PASX&id%5B103%5D=PATA&id%5B104%5D=PATC&id%5B105%5D=PATG&id%5B106%5D=PATK&id%5B107%5D=PATL&id%5B108%5D=PATO&id%5B109%5D=PATW&id%5B110%5D=PAUN&id%5B111%5D=PAVD&id%5B112%5D=PAVL&id%5B113%5D=PAVW&id%5B114%5D=PAWD&id%5B115%5D=PAWG&id%5B116%5D=PAWI&id%5B117%5D=PAWN&id%5B118%5D=PAWS&id%5B119%5D=PAYA&id%5B120%5D=PFYU&id%5B121%5D=PPIZ&cursor=eyJzIjo1MDB9"
+  }
+ },
+ "observation_url": "https://api.weather.gov/stations/PAMR/observations/latest",
+ "observation": {
+  "id": "https://api.weather.gov/stations/PAMR/observations/2026-10-01T22:30:00+00:00",
+  "type": "Feature",
+  "properties": {
+   "@id": "https://api.weather.gov/stations/PAMR/observations/2026-10-01T22:30:00+00:00",
+   "@type": "wx:ObservationStation",
+   "elevation": {
+    "unitCode": "wmoUnit:m",
+    "value": 42
+   },
+   "station": "https://api.weather.gov/stations/PAMR",
+   "stationId": "PAMR",
+   "stationName": "Anchorage, Merrill Field Airport",
+   "timestamp": "2026-10-01T22:30:00+00:00",
+   "rawMessage": "",
+   "textDescription": "Cloudy",
+   "icon": "https://api.weather.gov/icons/land/day/ovc?size=medium",
+   "presentWeather": [],
+   "temperature": {
+    "unitCode": "wmoUnit:degC",
+    "value": 3,
+    "qualityControl": "V"
+   },
+   "dewpoint": {
+    "unitCode": "wmoUnit:degC",
+    "value": 1,
+    "qualityControl": "V"
+   },
+   "windDirection": {
+    "unitCode": "wmoUnit:degree_(angle)",
+    "value": 80,
+    "qualityControl": "V"
+   },
+   "windSpeed": {
+    "unitCode": "wmoUnit:km_h-1",
+    "value": 9.252,
+    "qualityControl": "V"
+   },
+   "windGust": {
+    "unitCode": "wmoUnit:km_h-1",
+    "value": null,
+    "qualityControl": "Z"
+   },
+   "barometricPressure": {
+    "unitCode": "wmoUnit:Pa",
+    "value": 100948.24,
+    "qualityControl": "V"
+   },
+   "seaLevelPressure": {
+    "unitCode": "wmoUnit:Pa",
+    "value": null,
+    "qualityControl": "Z"
+   },
+   "visibility": {
+    "unitCode": "wmoUnit:m",
+    "value": 16093.44,
+    "qualityControl": "C"
+   },
+   "maxTemperatureLast24Hours": {
+    "unitCode": "wmoUnit:degC",
+    "value": null
+   },
+   "minTemperatureLast24Hours": {
+    "unitCode": "wmoUnit:degC",
+    "value": null
+   },
+   "precipitationLast3Hours": {
+    "unitCode": "wmoUnit:mm",
+    "value": null,
+    "qualityControl": "Z"
+   },
+   "relativeHumidity": {
+    "unitCode": "wmoUnit:percent",
+    "value": 86.702946851968,
+    "qualityControl": "V"
+   },
+   "windChill": {
+    "unitCode": "wmoUnit:degC",
+    "value": 0.4673325558422222,
+    "qualityControl": "V"
+   },
+   "heatIndex": {
+    "unitCode": "wmoUnit:degC",
+    "value": null,
+    "qualityControl": "V"
+   },
+   "cloudLayers": [
+    {
+     "base": {
+      "unitCode": "wmoUnit:m",
+      "value": 1402.08
+     },
+     "amount": "BKN"
+    },
+    {
+     "base": {
+      "unitCode": "wmoUnit:m",
+      "value": 1828.8
+     },
+     "amount": "OVC"
+    }
+   ]
+  }
+ }
+}

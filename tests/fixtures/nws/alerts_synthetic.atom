@@ -1,0 +1,348 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:cap="urn:oasis:names:tc:emergency:cap:1.2">
+    <title>Synthetic NWS alerts covering classifier branches</title>
+    <entry>
+        <id>urn:oid:synthetic.1</id>
+        <title>Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA</title>
+        <cap:severity>Moderate</cap:severity>
+        <cap:parameter><valueName>NWSheadline</valueName><value>DEBRIS FLOW POSSIBLE NEAR BURN SCARS</value></cap:parameter>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.2</id>
+        <title>Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA</title>
+        <cap:severity>Moderate</cap:severity>
+        <cap:parameter><valueName>NWSheadline</valueName><value>LANDSLIDE THREAT IN BURNED AREA</value></cap:parameter>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.3</id>
+        <title>Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA</title>
+        <cap:severity>Moderate</cap:severity>
+        <cap:parameter><valueName>NWSheadline</valueName><value>LANDSLIDE RISK REMAINS</value></cap:parameter>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.4</id>
+        <title>Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA</title>
+        <cap:severity>Moderate</cap:severity>
+        <cap:parameter><valueName>NWSheadline</valueName><value>FLASH FLOOD CONCERNS</value></cap:parameter>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.5</id>
+        <title>Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA</title>
+        <cap:severity>Moderate</cap:severity>
+        <cap:parameter><valueName>NWSheadline</valueName><value>RIVER FLOODING ONGOING</value></cap:parameter>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.6</id>
+        <title>Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA</title>
+        <cap:severity>Moderate</cap:severity>
+        <cap:parameter><valueName>NWSheadline</valueName><value>STRONG WIND GUSTS TONIGHT</value></cap:parameter>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.7</id>
+        <title>Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA</title>
+        <cap:severity>Moderate</cap:severity>
+        <cap:parameter><valueName>NWSheadline</valueName><value>GUSTY CONDITIONS</value></cap:parameter>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.8</id>
+        <title>Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA</title>
+        <cap:severity>Moderate</cap:severity>
+        <cap:parameter><valueName>NWSheadline</valueName><value>HEAVY RAIN EXPECTED</value></cap:parameter>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.9</id>
+        <title>Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA</title>
+        <cap:severity>Moderate</cap:severity>
+        <cap:parameter><valueName>NWSheadline</valueName><value>RAINFALL TOTALS UP TO 3 INCHES</value></cap:parameter>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.10</id>
+        <title>Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA</title>
+        <cap:severity>Moderate</cap:severity>
+        <cap:parameter><valueName>NWSheadline</valueName><value>RAIN AND WIND TOGETHER</value></cap:parameter>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.11</id>
+        <title>Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA</title>
+        <cap:severity>Moderate</cap:severity>
+        <cap:parameter><valueName>NWSheadline</valueName><value>PRECIPITATION RETURNS</value></cap:parameter>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.12</id>
+        <title>Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA</title>
+        <cap:severity>Moderate</cap:severity>
+        <cap:parameter><valueName>NWSheadline</valueName><value>BLIZZARD CONDITIONS</value></cap:parameter>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.13</id>
+        <title>Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA</title>
+        <cap:severity>Moderate</cap:severity>
+        <cap:parameter><valueName>NWSheadline</valueName><value>SNOW LEVELS LOWERING</value></cap:parameter>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.14</id>
+        <title>Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA</title>
+        <cap:severity>Moderate</cap:severity>
+        <cap:parameter><valueName>NWSheadline</valueName><value>WINTER RETURNS</value></cap:parameter>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.15</id>
+        <title>Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA</title>
+        <cap:severity>Moderate</cap:severity>
+        <cap:parameter><valueName>NWSheadline</valueName><value>DENSE FOG THIS MORNING</value></cap:parameter>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.16</id>
+        <title>Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA</title>
+        <cap:severity>Moderate</cap:severity>
+        <cap:parameter><valueName>NWSheadline</valueName><value>LOW VISIBILITY IN SMOKE</value></cap:parameter>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.17</id>
+        <title>Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA</title>
+        <cap:severity>Moderate</cap:severity>
+        <cap:parameter><valueName>NWSheadline</valueName><value>PATCHY FOG</value></cap:parameter>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.18</id>
+        <title>Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA</title>
+        <cap:severity>Moderate</cap:severity>
+        <cap:parameter><valueName>NWSheadline</valueName><value>REDUCED VISIBILITY</value></cap:parameter>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.19</id>
+        <title>Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA</title>
+        <cap:severity>Moderate</cap:severity>
+        <cap:parameter><valueName>NWSheadline</valueName><value>EXTREME HEAT THIS WEEKEND</value></cap:parameter>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.20</id>
+        <title>Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA</title>
+        <cap:severity>Moderate</cap:severity>
+        <cap:parameter><valueName>NWSheadline</valueName><value>HEAT CONTINUES</value></cap:parameter>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.21</id>
+        <title>Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA</title>
+        <cap:severity>Moderate</cap:severity>
+        <cap:parameter><valueName>NWSheadline</valueName><value>TEMPERATURE SWINGS</value></cap:parameter>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.22</id>
+        <title>Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA</title>
+        <cap:severity>Moderate</cap:severity>
+        <cap:parameter><valueName>NWSheadline</valueName><value>STORM SURGE POSSIBLE</value></cap:parameter>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.23</id>
+        <title>Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA</title>
+        <cap:severity>Moderate</cap:severity>
+        <cap:parameter><valueName>NWSheadline</valueName><value>COASTAL EROSION</value></cap:parameter>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.24</id>
+        <title>Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA</title>
+        <cap:severity>Moderate</cap:severity>
+        <cap:parameter><valueName>NWSheadline</valueName><value>MARINE LAYER</value></cap:parameter>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.25</id>
+        <title>Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA</title>
+        <cap:severity>Moderate</cap:severity>
+        <cap:parameter><valueName>NWSheadline</valueName><value>THUNDERSTORMS WILL IMPACT THE AREA</value></cap:parameter>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.26</id>
+        <title>Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA</title>
+        <cap:severity>Moderate</cap:severity>
+        <cap:parameter><valueName>NWSheadline</valueName><value>THE A AN</value></cap:parameter>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.27</id>
+        <title>Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA</title>
+        <cap:severity>Moderate</cap:severity>
+        <cap:parameter><valueName>NWSheadline</valueName><value>STRONG THUNDERSTORMS</value></cap:parameter>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.28</id>
+        <title>Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA</title>
+        <summary>Landslide risk on steep slopes.</summary>
+        <cap:severity>Moderate</cap:severity>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.29</id>
+        <title>Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA</title>
+        <summary>Hydrologic conditions along the river.</summary>
+        <cap:severity>Moderate</cap:severity>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.30</id>
+        <title>Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA</title>
+        <summary>Beach hazards and high surf.</summary>
+        <cap:severity>Moderate</cap:severity>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.31</id>
+        <title>Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA</title>
+        <summary>Avalanche danger in the mountain passes.</summary>
+        <cap:severity>Moderate</cap:severity>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.32</id>
+        <title>Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA</title>
+        <summary>Air quality degraded by smoke.</summary>
+        <cap:severity>Moderate</cap:severity>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.33</id>
+        <title>Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA</title>
+        <summary>Wind gusts to 40 mph.</summary>
+        <cap:severity>Moderate</cap:severity>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.34</id>
+        <title>Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA</title>
+        <summary>Showers likely.</summary>
+        <cap:severity>Moderate</cap:severity>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.35</id>
+        <title>Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA</title>
+        <summary>Freeze possible overnight.</summary>
+        <cap:severity>Moderate</cap:severity>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.36</id>
+        <title>Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA</title>
+        <summary>Haze reduces visibility.</summary>
+        <cap:severity>Moderate</cap:severity>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.37</id>
+        <title>Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA</title>
+        <summary>Nothing notable.</summary>
+        <cap:severity>Moderate</cap:severity>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.38</id>
+        <title>Special Statement issued October 1 at 3:00PM PDT by NWS Boise ID</title>
+        <content>Hydrologic update for the river.</content>
+        <cap:severity>Moderate</cap:severity>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.39</id>
+        <title>Special Statement issued October 1 at 3:00PM PDT by NWS Boise ID</title>
+        <cap:severity>Moderate</cap:severity>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.40</id>
+        <title>Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA</title>
+        <cap:severity>Moderate</cap:severity>
+        <parameter><valueName>NWSheadline</valueName><value>SOMETHING ODD</value></parameter>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.41</id>
+        <title>Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA</title>
+        <cap:event>Special Weather Statement</cap:event>
+        <cap:severity>Moderate</cap:severity>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.42</id>
+        <title>Hydrologic Statement issued October 1 at 3:00PM PDT until October 2 at 6:00AM PDT by NWS Portland OR</title>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.43</id>
+        <title>Tornado Warning issued October 1 at 3:00PM CDT until October 1 at 4:00PM CDT by NWS Norman OK</title>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.44</id>
+        <title>Severe Thunderstorm Watch until October 1 at 9:00PM CDT by NWS Norman OK</title>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.45</id>
+        <title>Wind Advisory issued October 1 by NWS Reno NV</title>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.46</id>
+        <title>Air Quality Alert issued October 1 at 1:00PM PDT by NWS Seattle WA</title>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.47</id>
+        <title>Blizzard Warning issued October 1 at 1:00PM MDT until October 2 at 1:00PM MDT by NWS Cheyenne WY</title>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.48</id>
+        <cap:severity>Moderate</cap:severity>
+        <cap:parameter><valueName>NWSheadline</valueName><value>NO TITLE HERE</value></cap:parameter>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.49</id>
+        <title></title>
+        <summary>empty title</summary>
+        <cap:severity>Moderate</cap:severity>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.50</id>
+        <link type="text/html" href="https://example.invalid/alert/1"/>
+        <title>Flood Warning issued October 1 at 3:00PM PDT by NWS Seattle WA</title>
+        <cap:severity>Moderate</cap:severity>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.51</id>
+        <link type="application/cap+xml" href="https://api.weather.gov/alerts/urn:oid:abc.cap"/>
+        <title>Flood Watch issued October 1 at 3:00PM PDT by NWS Seattle WA</title>
+        <cap:severity>Moderate</cap:severity>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.52</id>
+        <link href="https://example.invalid/plain"/>
+        <title>Flood Advisory issued October 1 at 3:00PM PDT by NWS Seattle WA</title>
+        <cap:severity>Moderate</cap:severity>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.53</id>
+        <link>https://api.weather.gov/alerts/urn:oid:xyz.cap</link>
+        <title>Gale Warning issued October 1 at 3:00PM PDT by NWS Seattle WA</title>
+        <cap:severity>Moderate</cap:severity>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.54</id>
+        <title>Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA</title>
+        <summary>Second wind statement for differentiation.</summary>
+        <cap:severity>Moderate</cap:severity>
+        <cap:parameter><valueName>NWSheadline</valueName><value>STRONG WIND GUSTS TONIGHT</value></cap:parameter>
+        <cap:areaDesc>King County</cap:areaDesc>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.55</id>
+        <title>Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA</title>
+        <cap:severity>Moderate</cap:severity>
+        <cap:parameter><valueName>NWSheadline</valueName><value>STRONG WIND GUSTS TONIGHT</value></cap:parameter>
+        <cap:areaDesc>Pierce County</cap:areaDesc>
+        <cap:urgency>Immediate</cap:urgency>
+        <cap:certainty>Observed</cap:certainty>
+        <cap:effective>2026-10-01T15:00:00-07:00</cap:effective>
+        <cap:expires>2026-10-01T20:00:00-07:00</cap:expires>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.nested.1</id>
+        <title>Warning issued October 1 at 3:00PM PDT until October 1 at 9:00PM PDT by NWS Seattle WA</title>
+        <cap:info>
+            <cap:event>Nested Event Warning</cap:event>
+            <cap:severity>Extreme</cap:severity>
+            <cap:urgency>Past</cap:urgency>
+            <cap:certainty>Possible</cap:certainty>
+            <cap:areaDesc>Nested Area</cap:areaDesc>
+        </cap:info>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.nested.2</id>
+        <title>Wind Advisory by NWS Seattle WA</title>
+        <cap:severity>Minor</cap:severity>
+        <cap:info>
+            <cap:severity>Severe</cap:severity>
+            <cap:effective>2026-10-01T15:00:00-07:00</cap:effective>
+            <cap:expires>2026-10-01T21:00:00-07:00</cap:expires>
+        </cap:info>
+    </entry>
+</feed>

@@ -1,0 +1,3609 @@
+{
+ "compact": [
+  "🔴Blizzard <common.alerts.event_types.Warning> <common.alerts.til> <common.alerts.time_12h[('hour', '1'), ('meridiem', '<common.alerts.pm>')]> <common.alerts.by> NWS CHEY",
+  "🔴Blizzard <common.alerts.event_types.Warning>",
+  57
+ ],
+ "errors": [],
+ "full": {
+  "alerts": [
+   {
+    "area_desc": "",
+    "certainty": "Unknown",
+    "effective": "October 1 at 1:00PM MDT",
+    "event": "Blizzard",
+    "event_type": "Warning",
+    "expires": "October 2 at 1:00PM MDT",
+    "nws_headline": "",
+    "office": "NWS Cheyenne WY",
+    "severity": "Extreme",
+    "summary": "",
+    "title": "Blizzard Warning issued October 1 at 1:00PM MDT until October 2 at 1:00PM MDT by NWS Cheyenne WY",
+    "urgency": "Immediate"
+   },
+   {
+    "area_desc": "",
+    "certainty": "Unknown",
+    "effective": "October 1 at 3:00PM CDT",
+    "event": "Tornado",
+    "event_type": "Warning",
+    "expires": "October 1 at 4:00PM CDT",
+    "nws_headline": "",
+    "office": "NWS Norman OK",
+    "severity": "Extreme",
+    "summary": "",
+    "title": "Tornado Warning issued October 1 at 3:00PM CDT until October 1 at 4:00PM CDT by NWS Norman OK",
+    "urgency": "Immediate"
+   },
+   {
+    "area_desc": "Nested Area",
+    "certainty": "Possible",
+    "effective": "October 1 at 3:00PM PDT",
+    "event": "Nested Event Warning",
+    "event_type": "Warning",
+    "expires": "October 1 at 9:00PM PDT",
+    "nws_headline": "",
+    "office": "NWS Seattle WA",
+    "severity": "Extreme",
+    "summary": "",
+    "title": "Warning issued October 1 at 3:00PM PDT until October 1 at 9:00PM PDT by NWS Seattle WA",
+    "urgency": "Past"
+   },
+   {
+    "area_desc": "",
+    "certainty": "Unknown",
+    "effective": "",
+    "event": "Severe Thunderstorm",
+    "event_type": "Watch",
+    "expires": "October 1 at 9:00PM CDT",
+    "nws_headline": "",
+    "office": "NWS Norman OK",
+    "severity": "Severe",
+    "summary": "",
+    "title": "Severe Thunderstorm Watch until October 1 at 9:00PM CDT by NWS Norman OK",
+    "urgency": "Expected"
+   },
+   {
+    "area_desc": "",
+    "certainty": "Unknown",
+    "effective": "",
+    "event": "Flood",
+    "event_type": "Warning",
+    "expires": "",
+    "nws_headline": "",
+    "office": "NWS Seattle WA",
+    "severity": "Moderate",
+    "summary": "",
+    "title": "Flood Warning issued October 1 at 3:00PM PDT by NWS Seattle WA",
+    "urgency": "Immediate"
+   },
+   {
+    "area_desc": "",
+    "certainty": "Unknown",
+    "effective": "",
+    "event": "Gale",
+    "event_type": "Warning",
+    "expires": "",
+    "nws_headline": "",
+    "office": "NWS Seattle WA",
+    "severity": "Moderate",
+    "summary": "",
+    "title": "Gale Warning issued October 1 at 3:00PM PDT by NWS Seattle WA",
+    "urgency": "Immediate"
+   },
+   {
+    "area_desc": "",
+    "certainty": "Unknown",
+    "effective": "",
+    "event": "Flood",
+    "event_type": "Watch",
+    "expires": "",
+    "nws_headline": "",
+    "office": "NWS Seattle WA",
+    "severity": "Moderate",
+    "summary": "",
+    "title": "Flood Watch issued October 1 at 3:00PM PDT by NWS Seattle WA",
+    "urgency": "Expected"
+   },
+   {
+    "area_desc": "Pierce County",
+    "certainty": "Observed",
+    "effective": "2026-10-01T15:00:00-07:00",
+    "event": "Wind (PM)",
+    "event_type": "Statement",
+    "expires": "2026-10-01T20:00:00-07:00",
+    "nws_headline": "STRONG WIND GUSTS TONIGHT",
+    "office": "NWS Seattle WA",
+    "severity": "Moderate",
+    "summary": "",
+    "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+    "urgency": "Immediate"
+   },
+   {
+    "area_desc": "",
+    "certainty": "Unknown",
+    "effective": "",
+    "event": "Flood",
+    "event_type": "Advisory",
+    "expires": "",
+    "nws_headline": "",
+    "office": "NWS Seattle WA",
+    "severity": "Moderate",
+    "summary": "",
+    "title": "Flood Advisory issued October 1 at 3:00PM PDT by NWS Seattle WA",
+    "urgency": "Future"
+   },
+   {
+    "area_desc": "",
+    "certainty": "Unknown",
+    "effective": "October 1 at 3:00PM PDT",
+    "event": "Hydrologic (3)",
+    "event_type": "Statement",
+    "expires": "October 2 at 6:00AM PDT",
+    "nws_headline": "",
+    "office": "NWS Portland OR",
+    "severity": "Minor",
+    "summary": "",
+    "title": "Hydrologic Statement issued October 1 at 3:00PM PDT until October 2 at 6:00AM PDT by NWS Portland OR",
+    "urgency": "Future"
+   },
+   {
+    "area_desc": "",
+    "certainty": "Unknown",
+    "effective": "",
+    "event": "Hydrologic (2)",
+    "event_type": "Statement",
+    "expires": "",
+    "nws_headline": "",
+    "office": "NWS Boise ID",
+    "severity": "Moderate",
+    "summary": "Hydrologic update for the river.",
+    "title": "Special Statement issued October 1 at 3:00PM PDT by NWS Boise ID",
+    "urgency": "Future"
+   },
+   {
+    "area_desc": "",
+    "certainty": "Unknown",
+    "effective": "",
+    "event": "Special",
+    "event_type": "Statement",
+    "expires": "",
+    "nws_headline": "",
+    "office": "NWS Boise ID",
+    "severity": "Moderate",
+    "summary": "",
+    "title": "Special Statement issued October 1 at 3:00PM PDT by NWS Boise ID",
+    "urgency": "Future"
+   },
+   {
+    "area_desc": "",
+    "certainty": "Unknown",
+    "effective": "",
+    "event": "Debris Flow",
+    "event_type": "Statement",
+    "expires": "",
+    "nws_headline": "DEBRIS FLOW POSSIBLE NEAR BURN SCARS",
+    "office": "NWS Seattle WA",
+    "severity": "Moderate",
+    "summary": "",
+    "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+    "urgency": "Future"
+   },
+   {
+    "area_desc": "",
+    "certainty": "Unknown",
+    "effective": "",
+    "event": "Landslide (Burn)",
+    "event_type": "Statement",
+    "expires": "",
+    "nws_headline": "LANDSLIDE THREAT IN BURNED AREA",
+    "office": "NWS Seattle WA",
+    "severity": "Moderate",
+    "summary": "",
+    "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+    "urgency": "Future"
+   },
+   {
+    "area_desc": "",
+    "certainty": "Unknown",
+    "effective": "",
+    "event": "Landslide (Ongoing)",
+    "event_type": "Statement",
+    "expires": "",
+    "nws_headline": "LANDSLIDE RISK REMAINS",
+    "office": "NWS Seattle WA",
+    "severity": "Moderate",
+    "summary": "",
+    "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+    "urgency": "Future"
+   },
+   {
+    "area_desc": "",
+    "certainty": "Unknown",
+    "effective": "",
+    "event": "Flood (1)",
+    "event_type": "Statement",
+    "expires": "",
+    "nws_headline": "FLASH FLOOD CONCERNS",
+    "office": "NWS Seattle WA",
+    "severity": "Moderate",
+    "summary": "",
+    "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+    "urgency": "Future"
+   },
+   {
+    "area_desc": "",
+    "certainty": "Unknown",
+    "effective": "",
+    "event": "Flood (2)",
+    "event_type": "Statement",
+    "expires": "",
+    "nws_headline": "RIVER FLOODING ONGOING",
+    "office": "NWS Seattle WA",
+    "severity": "Moderate",
+    "summary": "",
+    "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+    "urgency": "Future"
+   },
+   {
+    "area_desc": "",
+    "certainty": "Unknown",
+    "effective": "",
+    "event": "Wind (1)",
+    "event_type": "Statement",
+    "expires": "",
+    "nws_headline": "STRONG WIND GUSTS TONIGHT",
+    "office": "NWS Seattle WA",
+    "severity": "Moderate",
+    "summary": "",
+    "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+    "urgency": "Future"
+   },
+   {
+    "area_desc": "",
+    "certainty": "Unknown",
+    "effective": "",
+    "event": "Wind (2)",
+    "event_type": "Statement",
+    "expires": "",
+    "nws_headline": "GUSTY CONDITIONS",
+    "office": "NWS Seattle WA",
+    "severity": "Moderate",
+    "summary": "",
+    "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+    "urgency": "Future"
+   },
+   {
+    "area_desc": "",
+    "certainty": "Unknown",
+    "effective": "",
+    "event": "Heavy Rain",
+    "event_type": "Statement",
+    "expires": "",
+    "nws_headline": "HEAVY RAIN EXPECTED",
+    "office": "NWS Seattle WA",
+    "severity": "Moderate",
+    "summary": "",
+    "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+    "urgency": "Future"
+   },
+   {
+    "area_desc": "",
+    "certainty": "Unknown",
+    "effective": "",
+    "event": "Rainfall (1)",
+    "event_type": "Statement",
+    "expires": "",
+    "nws_headline": "RAINFALL TOTALS UP TO 3 INCHES",
+    "office": "NWS Seattle WA",
+    "severity": "Moderate",
+    "summary": "",
+    "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+    "urgency": "Future"
+   },
+   {
+    "area_desc": "",
+    "certainty": "Unknown",
+    "effective": "",
+    "event": "Wind (3)",
+    "event_type": "Statement",
+    "expires": "",
+    "nws_headline": "RAIN AND WIND TOGETHER",
+    "office": "NWS Seattle WA",
+    "severity": "Moderate",
+    "summary": "",
+    "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+    "urgency": "Future"
+   },
+   {
+    "area_desc": "",
+    "certainty": "Unknown",
+    "effective": "",
+    "event": "Rainfall (2)",
+    "event_type": "Statement",
+    "expires": "",
+    "nws_headline": "PRECIPITATION RETURNS",
+    "office": "NWS Seattle WA",
+    "severity": "Moderate",
+    "summary": "",
+    "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+    "urgency": "Future"
+   },
+   {
+    "area_desc": "",
+    "certainty": "Unknown",
+    "effective": "",
+    "event": "Snow (1)",
+    "event_type": "Statement",
+    "expires": "",
+    "nws_headline": "BLIZZARD CONDITIONS",
+    "office": "NWS Seattle WA",
+    "severity": "Moderate",
+    "summary": "",
+    "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+    "urgency": "Future"
+   },
+   {
+    "area_desc": "",
+    "certainty": "Unknown",
+    "effective": "",
+    "event": "Snow (Today)",
+    "event_type": "Statement",
+    "expires": "",
+    "nws_headline": "SNOW LEVELS LOWERING",
+    "office": "NWS Seattle WA",
+    "severity": "Moderate",
+    "summary": "",
+    "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+    "urgency": "Future"
+   },
+   {
+    "area_desc": "",
+    "certainty": "Unknown",
+    "effective": "",
+    "event": "Snow (3)",
+    "event_type": "Statement",
+    "expires": "",
+    "nws_headline": "WINTER RETURNS",
+    "office": "NWS Seattle WA",
+    "severity": "Moderate",
+    "summary": "",
+    "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+    "urgency": "Future"
+   },
+   {
+    "area_desc": "",
+    "certainty": "Unknown",
+    "effective": "",
+    "event": "Fog (1)",
+    "event_type": "Statement",
+    "expires": "",
+    "nws_headline": "DENSE FOG THIS MORNING",
+    "office": "NWS Seattle WA",
+    "severity": "Moderate",
+    "summary": "",
+    "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+    "urgency": "Future"
+   },
+   {
+    "area_desc": "",
+    "certainty": "Unknown",
+    "effective": "",
+    "event": "Fog (2)",
+    "event_type": "Statement",
+    "expires": "",
+    "nws_headline": "LOW VISIBILITY IN SMOKE",
+    "office": "NWS Seattle WA",
+    "severity": "Moderate",
+    "summary": "",
+    "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+    "urgency": "Future"
+   },
+   {
+    "area_desc": "",
+    "certainty": "Unknown",
+    "effective": "",
+    "event": "Visibility (1)",
+    "event_type": "Statement",
+    "expires": "",
+    "nws_headline": "PATCHY FOG",
+    "office": "NWS Seattle WA",
+    "severity": "Moderate",
+    "summary": "",
+    "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+    "urgency": "Future"
+   },
+   {
+    "area_desc": "",
+    "certainty": "Unknown",
+    "effective": "",
+    "event": "Visibility (2)",
+    "event_type": "Statement",
+    "expires": "",
+    "nws_headline": "REDUCED VISIBILITY",
+    "office": "NWS Seattle WA",
+    "severity": "Moderate",
+    "summary": "",
+    "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+    "urgency": "Future"
+   },
+   {
+    "area_desc": "",
+    "certainty": "Unknown",
+    "effective": "",
+    "event": "Heat",
+    "event_type": "Statement",
+    "expires": "",
+    "nws_headline": "EXTREME HEAT THIS WEEKEND",
+    "office": "NWS Seattle WA",
+    "severity": "Moderate",
+    "summary": "",
+    "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+    "urgency": "Future"
+   },
+   {
+    "area_desc": "",
+    "certainty": "Unknown",
+    "effective": "",
+    "event": "Temperature (Ongoing)",
+    "event_type": "Statement",
+    "expires": "",
+    "nws_headline": "HEAT CONTINUES",
+    "office": "NWS Seattle WA",
+    "severity": "Moderate",
+    "summary": "",
+    "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+    "urgency": "Future"
+   },
+   {
+    "area_desc": "",
+    "certainty": "Unknown",
+    "effective": "",
+    "event": "Temperature (2)",
+    "event_type": "Statement",
+    "expires": "",
+    "nws_headline": "TEMPERATURE SWINGS",
+    "office": "NWS Seattle WA",
+    "severity": "Moderate",
+    "summary": "",
+    "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+    "urgency": "Future"
+   },
+   {
+    "area_desc": "",
+    "certainty": "Unknown",
+    "effective": "",
+    "event": "Marine (1)",
+    "event_type": "Statement",
+    "expires": "",
+    "nws_headline": "STORM SURGE POSSIBLE",
+    "office": "NWS Seattle WA",
+    "severity": "Moderate",
+    "summary": "",
+    "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+    "urgency": "Future"
+   },
+   {
+    "area_desc": "",
+    "certainty": "Unknown",
+    "effective": "",
+    "event": "Marine (2)",
+    "event_type": "Statement",
+    "expires": "",
+    "nws_headline": "COASTAL EROSION",
+    "office": "NWS Seattle WA",
+    "severity": "Moderate",
+    "summary": "",
+    "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+    "urgency": "Future"
+   },
+   {
+    "area_desc": "",
+    "certainty": "Unknown",
+    "effective": "",
+    "event": "Marine (3)",
+    "event_type": "Statement",
+    "expires": "",
+    "nws_headline": "MARINE LAYER",
+    "office": "NWS Seattle WA",
+    "severity": "Moderate",
+    "summary": "",
+    "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+    "urgency": "Future"
+   },
+   {
+    "area_desc": "",
+    "certainty": "Unknown",
+    "effective": "",
+    "event": "Thunderstorms",
+    "event_type": "Statement",
+    "expires": "",
+    "nws_headline": "THUNDERSTORMS WILL IMPACT THE AREA",
+    "office": "NWS Seattle WA",
+    "severity": "Moderate",
+    "summary": "",
+    "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+    "urgency": "Future"
+   },
+   {
+    "area_desc": "",
+    "certainty": "Unknown",
+    "effective": "",
+    "event": "Weather (1)",
+    "event_type": "Statement",
+    "expires": "",
+    "nws_headline": "THE A AN",
+    "office": "NWS Seattle WA",
+    "severity": "Moderate",
+    "summary": "",
+    "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+    "urgency": "Future"
+   },
+   {
+    "area_desc": "",
+    "certainty": "Unknown",
+    "effective": "",
+    "event": "Strong",
+    "event_type": "Statement",
+    "expires": "",
+    "nws_headline": "STRONG THUNDERSTORMS",
+    "office": "NWS Seattle WA",
+    "severity": "Moderate",
+    "summary": "",
+    "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+    "urgency": "Future"
+   },
+   {
+    "area_desc": "",
+    "certainty": "Unknown",
+    "effective": "",
+    "event": "Landslide (2)",
+    "event_type": "Statement",
+    "expires": "",
+    "nws_headline": "",
+    "office": "NWS Seattle WA",
+    "severity": "Moderate",
+    "summary": "Landslide risk on steep slopes.",
+    "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+    "urgency": "Future"
+   },
+   {
+    "area_desc": "",
+    "certainty": "Unknown",
+    "effective": "",
+    "event": "Hydrologic (1)",
+    "event_type": "Statement",
+    "expires": "",
+    "nws_headline": "",
+    "office": "NWS Seattle WA",
+    "severity": "Moderate",
+    "summary": "Hydrologic conditions along the river.",
+    "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+    "urgency": "Future"
+   },
+   {
+    "area_desc": "",
+    "certainty": "Unknown",
+    "effective": "",
+    "event": "Marine (4)",
+    "event_type": "Statement",
+    "expires": "",
+    "nws_headline": "",
+    "office": "NWS Seattle WA",
+    "severity": "Moderate",
+    "summary": "Beach hazards and high surf.",
+    "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+    "urgency": "Future"
+   },
+   {
+    "area_desc": "",
+    "certainty": "Unknown",
+    "effective": "",
+    "event": "Avalanche",
+    "event_type": "Statement",
+    "expires": "",
+    "nws_headline": "",
+    "office": "NWS Seattle WA",
+    "severity": "Moderate",
+    "summary": "Avalanche danger in the mountain passes.",
+    "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+    "urgency": "Future"
+   },
+   {
+    "area_desc": "",
+    "certainty": "Unknown",
+    "effective": "",
+    "event": "Air Quality",
+    "event_type": "Statement",
+    "expires": "",
+    "nws_headline": "",
+    "office": "NWS Seattle WA",
+    "severity": "Moderate",
+    "summary": "Air quality degraded by smoke.",
+    "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+    "urgency": "Future"
+   },
+   {
+    "area_desc": "",
+    "certainty": "Unknown",
+    "effective": "",
+    "event": "Wind (4)",
+    "event_type": "Statement",
+    "expires": "",
+    "nws_headline": "",
+    "office": "NWS Seattle WA",
+    "severity": "Moderate",
+    "summary": "Wind gusts to 40 mph.",
+    "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+    "urgency": "Future"
+   },
+   {
+    "area_desc": "",
+    "certainty": "Unknown",
+    "effective": "",
+    "event": "Rainfall (3)",
+    "event_type": "Statement",
+    "expires": "",
+    "nws_headline": "",
+    "office": "NWS Seattle WA",
+    "severity": "Moderate",
+    "summary": "Showers likely.",
+    "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+    "urgency": "Future"
+   },
+   {
+    "area_desc": "",
+    "certainty": "Unknown",
+    "effective": "",
+    "event": "Temperature (3)",
+    "event_type": "Statement",
+    "expires": "",
+    "nws_headline": "",
+    "office": "NWS Seattle WA",
+    "severity": "Moderate",
+    "summary": "Freeze possible overnight.",
+    "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+    "urgency": "Future"
+   },
+   {
+    "area_desc": "",
+    "certainty": "Unknown",
+    "effective": "",
+    "event": "Visibility (3)",
+    "event_type": "Statement",
+    "expires": "",
+    "nws_headline": "",
+    "office": "NWS Seattle WA",
+    "severity": "Moderate",
+    "summary": "Haze reduces visibility.",
+    "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+    "urgency": "Future"
+   },
+   {
+    "area_desc": "",
+    "certainty": "Unknown",
+    "effective": "",
+    "event": "Weather (2)",
+    "event_type": "Statement",
+    "expires": "",
+    "nws_headline": "",
+    "office": "NWS Seattle WA",
+    "severity": "Moderate",
+    "summary": "Nothing notable.",
+    "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+    "urgency": "Future"
+   },
+   {
+    "area_desc": "",
+    "certainty": "Unknown",
+    "effective": "",
+    "event": "Something",
+    "event_type": "Statement",
+    "expires": "",
+    "nws_headline": "SOMETHING ODD",
+    "office": "NWS Seattle WA",
+    "severity": "Moderate",
+    "summary": "",
+    "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+    "urgency": "Future"
+   },
+   {
+    "area_desc": "",
+    "certainty": "Unknown",
+    "effective": "",
+    "event": "Weather (3)",
+    "event_type": "Statement",
+    "expires": "",
+    "nws_headline": "",
+    "office": "NWS Seattle WA",
+    "severity": "Moderate",
+    "summary": "",
+    "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+    "urgency": "Future"
+   },
+   {
+    "area_desc": "King County",
+    "certainty": "Unknown",
+    "effective": "",
+    "event": "Wind (5)",
+    "event_type": "Statement",
+    "expires": "",
+    "nws_headline": "STRONG WIND GUSTS TONIGHT",
+    "office": "NWS Seattle WA",
+    "severity": "Moderate",
+    "summary": "Second wind statement for differentiation.",
+    "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+    "urgency": "Future"
+   },
+   {
+    "area_desc": "",
+    "certainty": "Unknown",
+    "effective": "",
+    "event": "",
+    "event_type": "Unknown",
+    "expires": "",
+    "nws_headline": "NO TITLE HERE",
+    "office": "",
+    "severity": "Moderate",
+    "summary": "",
+    "title": "",
+    "urgency": "Future"
+   },
+   {
+    "area_desc": "",
+    "certainty": "Unknown",
+    "effective": "",
+    "event": "",
+    "event_type": "Unknown",
+    "expires": "",
+    "nws_headline": "",
+    "office": "",
+    "severity": "Moderate",
+    "summary": "empty title",
+    "title": "",
+    "urgency": "Future"
+   },
+   {
+    "area_desc": "",
+    "certainty": "Unknown",
+    "effective": "2026-10-01T15:00:00-07:00",
+    "event": "Wind",
+    "event_type": "Advisory",
+    "expires": "2026-10-01T21:00:00-07:00",
+    "nws_headline": "",
+    "office": "NWS Seattle WA",
+    "severity": "Minor",
+    "summary": "",
+    "title": "Wind Advisory by NWS Seattle WA",
+    "urgency": "Future"
+   },
+   {
+    "area_desc": "",
+    "certainty": "Unknown",
+    "effective": "",
+    "event": "Wind",
+    "event_type": "Advisory",
+    "expires": "",
+    "nws_headline": "",
+    "office": "NWS Reno NV",
+    "severity": "Minor",
+    "summary": "",
+    "title": "Wind Advisory issued October 1 by NWS Reno NV",
+    "urgency": "Future"
+   },
+   {
+    "area_desc": "",
+    "certainty": "Unknown",
+    "effective": "",
+    "event": "Air",
+    "event_type": "Unknown",
+    "expires": "",
+    "nws_headline": "",
+    "office": "NWS Seattle WA",
+    "severity": "Minor",
+    "summary": "",
+    "title": "Air Quality Alert issued October 1 at 1:00PM PDT by NWS Seattle WA",
+    "urgency": "Future"
+   }
+  ],
+  "count": 57,
+  "key_order": [
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ]
+  ]
+ },
+ "per_entry": [
+  {
+   "alerts": [
+    {
+     "area_desc": "",
+     "certainty": "Unknown",
+     "effective": "",
+     "event": "Debris Flow",
+     "event_type": "Statement",
+     "expires": "",
+     "nws_headline": "DEBRIS FLOW POSSIBLE NEAR BURN SCARS",
+     "office": "NWS Seattle WA",
+     "severity": "Moderate",
+     "summary": "",
+     "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+     "urgency": "Future"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "",
+     "certainty": "Unknown",
+     "effective": "",
+     "event": "Landslide (Burn)",
+     "event_type": "Statement",
+     "expires": "",
+     "nws_headline": "LANDSLIDE THREAT IN BURNED AREA",
+     "office": "NWS Seattle WA",
+     "severity": "Moderate",
+     "summary": "",
+     "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+     "urgency": "Future"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "",
+     "certainty": "Unknown",
+     "effective": "",
+     "event": "Landslide",
+     "event_type": "Statement",
+     "expires": "",
+     "nws_headline": "LANDSLIDE RISK REMAINS",
+     "office": "NWS Seattle WA",
+     "severity": "Moderate",
+     "summary": "",
+     "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+     "urgency": "Future"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "",
+     "certainty": "Unknown",
+     "effective": "",
+     "event": "Flood",
+     "event_type": "Statement",
+     "expires": "",
+     "nws_headline": "FLASH FLOOD CONCERNS",
+     "office": "NWS Seattle WA",
+     "severity": "Moderate",
+     "summary": "",
+     "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+     "urgency": "Future"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "",
+     "certainty": "Unknown",
+     "effective": "",
+     "event": "Flood",
+     "event_type": "Statement",
+     "expires": "",
+     "nws_headline": "RIVER FLOODING ONGOING",
+     "office": "NWS Seattle WA",
+     "severity": "Moderate",
+     "summary": "",
+     "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+     "urgency": "Future"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "",
+     "certainty": "Unknown",
+     "effective": "",
+     "event": "Wind",
+     "event_type": "Statement",
+     "expires": "",
+     "nws_headline": "STRONG WIND GUSTS TONIGHT",
+     "office": "NWS Seattle WA",
+     "severity": "Moderate",
+     "summary": "",
+     "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+     "urgency": "Future"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "",
+     "certainty": "Unknown",
+     "effective": "",
+     "event": "Wind",
+     "event_type": "Statement",
+     "expires": "",
+     "nws_headline": "GUSTY CONDITIONS",
+     "office": "NWS Seattle WA",
+     "severity": "Moderate",
+     "summary": "",
+     "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+     "urgency": "Future"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "",
+     "certainty": "Unknown",
+     "effective": "",
+     "event": "Heavy Rain",
+     "event_type": "Statement",
+     "expires": "",
+     "nws_headline": "HEAVY RAIN EXPECTED",
+     "office": "NWS Seattle WA",
+     "severity": "Moderate",
+     "summary": "",
+     "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+     "urgency": "Future"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "",
+     "certainty": "Unknown",
+     "effective": "",
+     "event": "Rainfall",
+     "event_type": "Statement",
+     "expires": "",
+     "nws_headline": "RAINFALL TOTALS UP TO 3 INCHES",
+     "office": "NWS Seattle WA",
+     "severity": "Moderate",
+     "summary": "",
+     "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+     "urgency": "Future"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "",
+     "certainty": "Unknown",
+     "effective": "",
+     "event": "Wind",
+     "event_type": "Statement",
+     "expires": "",
+     "nws_headline": "RAIN AND WIND TOGETHER",
+     "office": "NWS Seattle WA",
+     "severity": "Moderate",
+     "summary": "",
+     "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+     "urgency": "Future"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "",
+     "certainty": "Unknown",
+     "effective": "",
+     "event": "Rainfall",
+     "event_type": "Statement",
+     "expires": "",
+     "nws_headline": "PRECIPITATION RETURNS",
+     "office": "NWS Seattle WA",
+     "severity": "Moderate",
+     "summary": "",
+     "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+     "urgency": "Future"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "",
+     "certainty": "Unknown",
+     "effective": "",
+     "event": "Snow",
+     "event_type": "Statement",
+     "expires": "",
+     "nws_headline": "BLIZZARD CONDITIONS",
+     "office": "NWS Seattle WA",
+     "severity": "Moderate",
+     "summary": "",
+     "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+     "urgency": "Future"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "",
+     "certainty": "Unknown",
+     "effective": "",
+     "event": "Snow",
+     "event_type": "Statement",
+     "expires": "",
+     "nws_headline": "SNOW LEVELS LOWERING",
+     "office": "NWS Seattle WA",
+     "severity": "Moderate",
+     "summary": "",
+     "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+     "urgency": "Future"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "",
+     "certainty": "Unknown",
+     "effective": "",
+     "event": "Snow",
+     "event_type": "Statement",
+     "expires": "",
+     "nws_headline": "WINTER RETURNS",
+     "office": "NWS Seattle WA",
+     "severity": "Moderate",
+     "summary": "",
+     "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+     "urgency": "Future"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "",
+     "certainty": "Unknown",
+     "effective": "",
+     "event": "Fog",
+     "event_type": "Statement",
+     "expires": "",
+     "nws_headline": "DENSE FOG THIS MORNING",
+     "office": "NWS Seattle WA",
+     "severity": "Moderate",
+     "summary": "",
+     "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+     "urgency": "Future"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "",
+     "certainty": "Unknown",
+     "effective": "",
+     "event": "Fog",
+     "event_type": "Statement",
+     "expires": "",
+     "nws_headline": "LOW VISIBILITY IN SMOKE",
+     "office": "NWS Seattle WA",
+     "severity": "Moderate",
+     "summary": "",
+     "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+     "urgency": "Future"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "",
+     "certainty": "Unknown",
+     "effective": "",
+     "event": "Visibility",
+     "event_type": "Statement",
+     "expires": "",
+     "nws_headline": "PATCHY FOG",
+     "office": "NWS Seattle WA",
+     "severity": "Moderate",
+     "summary": "",
+     "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+     "urgency": "Future"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "",
+     "certainty": "Unknown",
+     "effective": "",
+     "event": "Visibility",
+     "event_type": "Statement",
+     "expires": "",
+     "nws_headline": "REDUCED VISIBILITY",
+     "office": "NWS Seattle WA",
+     "severity": "Moderate",
+     "summary": "",
+     "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+     "urgency": "Future"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "",
+     "certainty": "Unknown",
+     "effective": "",
+     "event": "Heat",
+     "event_type": "Statement",
+     "expires": "",
+     "nws_headline": "EXTREME HEAT THIS WEEKEND",
+     "office": "NWS Seattle WA",
+     "severity": "Moderate",
+     "summary": "",
+     "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+     "urgency": "Future"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "",
+     "certainty": "Unknown",
+     "effective": "",
+     "event": "Temperature",
+     "event_type": "Statement",
+     "expires": "",
+     "nws_headline": "HEAT CONTINUES",
+     "office": "NWS Seattle WA",
+     "severity": "Moderate",
+     "summary": "",
+     "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+     "urgency": "Future"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "",
+     "certainty": "Unknown",
+     "effective": "",
+     "event": "Temperature",
+     "event_type": "Statement",
+     "expires": "",
+     "nws_headline": "TEMPERATURE SWINGS",
+     "office": "NWS Seattle WA",
+     "severity": "Moderate",
+     "summary": "",
+     "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+     "urgency": "Future"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "",
+     "certainty": "Unknown",
+     "effective": "",
+     "event": "Marine",
+     "event_type": "Statement",
+     "expires": "",
+     "nws_headline": "STORM SURGE POSSIBLE",
+     "office": "NWS Seattle WA",
+     "severity": "Moderate",
+     "summary": "",
+     "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+     "urgency": "Future"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "",
+     "certainty": "Unknown",
+     "effective": "",
+     "event": "Marine",
+     "event_type": "Statement",
+     "expires": "",
+     "nws_headline": "COASTAL EROSION",
+     "office": "NWS Seattle WA",
+     "severity": "Moderate",
+     "summary": "",
+     "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+     "urgency": "Future"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "",
+     "certainty": "Unknown",
+     "effective": "",
+     "event": "Marine",
+     "event_type": "Statement",
+     "expires": "",
+     "nws_headline": "MARINE LAYER",
+     "office": "NWS Seattle WA",
+     "severity": "Moderate",
+     "summary": "",
+     "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+     "urgency": "Future"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "",
+     "certainty": "Unknown",
+     "effective": "",
+     "event": "Thunderstorms",
+     "event_type": "Statement",
+     "expires": "",
+     "nws_headline": "THUNDERSTORMS WILL IMPACT THE AREA",
+     "office": "NWS Seattle WA",
+     "severity": "Moderate",
+     "summary": "",
+     "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+     "urgency": "Future"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "",
+     "certainty": "Unknown",
+     "effective": "",
+     "event": "Weather",
+     "event_type": "Statement",
+     "expires": "",
+     "nws_headline": "THE A AN",
+     "office": "NWS Seattle WA",
+     "severity": "Moderate",
+     "summary": "",
+     "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+     "urgency": "Future"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "",
+     "certainty": "Unknown",
+     "effective": "",
+     "event": "Strong",
+     "event_type": "Statement",
+     "expires": "",
+     "nws_headline": "STRONG THUNDERSTORMS",
+     "office": "NWS Seattle WA",
+     "severity": "Moderate",
+     "summary": "",
+     "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+     "urgency": "Future"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "",
+     "certainty": "Unknown",
+     "effective": "",
+     "event": "Landslide",
+     "event_type": "Statement",
+     "expires": "",
+     "nws_headline": "",
+     "office": "NWS Seattle WA",
+     "severity": "Moderate",
+     "summary": "Landslide risk on steep slopes.",
+     "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+     "urgency": "Future"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "",
+     "certainty": "Unknown",
+     "effective": "",
+     "event": "Hydrologic",
+     "event_type": "Statement",
+     "expires": "",
+     "nws_headline": "",
+     "office": "NWS Seattle WA",
+     "severity": "Moderate",
+     "summary": "Hydrologic conditions along the river.",
+     "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+     "urgency": "Future"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "",
+     "certainty": "Unknown",
+     "effective": "",
+     "event": "Marine",
+     "event_type": "Statement",
+     "expires": "",
+     "nws_headline": "",
+     "office": "NWS Seattle WA",
+     "severity": "Moderate",
+     "summary": "Beach hazards and high surf.",
+     "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+     "urgency": "Future"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "",
+     "certainty": "Unknown",
+     "effective": "",
+     "event": "Avalanche",
+     "event_type": "Statement",
+     "expires": "",
+     "nws_headline": "",
+     "office": "NWS Seattle WA",
+     "severity": "Moderate",
+     "summary": "Avalanche danger in the mountain passes.",
+     "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+     "urgency": "Future"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "",
+     "certainty": "Unknown",
+     "effective": "",
+     "event": "Air Quality",
+     "event_type": "Statement",
+     "expires": "",
+     "nws_headline": "",
+     "office": "NWS Seattle WA",
+     "severity": "Moderate",
+     "summary": "Air quality degraded by smoke.",
+     "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+     "urgency": "Future"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "",
+     "certainty": "Unknown",
+     "effective": "",
+     "event": "Wind",
+     "event_type": "Statement",
+     "expires": "",
+     "nws_headline": "",
+     "office": "NWS Seattle WA",
+     "severity": "Moderate",
+     "summary": "Wind gusts to 40 mph.",
+     "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+     "urgency": "Future"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "",
+     "certainty": "Unknown",
+     "effective": "",
+     "event": "Rainfall",
+     "event_type": "Statement",
+     "expires": "",
+     "nws_headline": "",
+     "office": "NWS Seattle WA",
+     "severity": "Moderate",
+     "summary": "Showers likely.",
+     "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+     "urgency": "Future"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "",
+     "certainty": "Unknown",
+     "effective": "",
+     "event": "Temperature",
+     "event_type": "Statement",
+     "expires": "",
+     "nws_headline": "",
+     "office": "NWS Seattle WA",
+     "severity": "Moderate",
+     "summary": "Freeze possible overnight.",
+     "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+     "urgency": "Future"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "",
+     "certainty": "Unknown",
+     "effective": "",
+     "event": "Visibility",
+     "event_type": "Statement",
+     "expires": "",
+     "nws_headline": "",
+     "office": "NWS Seattle WA",
+     "severity": "Moderate",
+     "summary": "Haze reduces visibility.",
+     "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+     "urgency": "Future"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "",
+     "certainty": "Unknown",
+     "effective": "",
+     "event": "Weather",
+     "event_type": "Statement",
+     "expires": "",
+     "nws_headline": "",
+     "office": "NWS Seattle WA",
+     "severity": "Moderate",
+     "summary": "Nothing notable.",
+     "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+     "urgency": "Future"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "",
+     "certainty": "Unknown",
+     "effective": "",
+     "event": "Hydrologic",
+     "event_type": "Statement",
+     "expires": "",
+     "nws_headline": "",
+     "office": "NWS Boise ID",
+     "severity": "Moderate",
+     "summary": "Hydrologic update for the river.",
+     "title": "Special Statement issued October 1 at 3:00PM PDT by NWS Boise ID",
+     "urgency": "Future"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "",
+     "certainty": "Unknown",
+     "effective": "",
+     "event": "Special",
+     "event_type": "Statement",
+     "expires": "",
+     "nws_headline": "",
+     "office": "NWS Boise ID",
+     "severity": "Moderate",
+     "summary": "",
+     "title": "Special Statement issued October 1 at 3:00PM PDT by NWS Boise ID",
+     "urgency": "Future"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "",
+     "certainty": "Unknown",
+     "effective": "",
+     "event": "Something",
+     "event_type": "Statement",
+     "expires": "",
+     "nws_headline": "SOMETHING ODD",
+     "office": "NWS Seattle WA",
+     "severity": "Moderate",
+     "summary": "",
+     "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+     "urgency": "Future"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "",
+     "certainty": "Unknown",
+     "effective": "",
+     "event": "Weather",
+     "event_type": "Statement",
+     "expires": "",
+     "nws_headline": "",
+     "office": "NWS Seattle WA",
+     "severity": "Moderate",
+     "summary": "",
+     "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+     "urgency": "Future"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "",
+     "certainty": "Unknown",
+     "effective": "October 1 at 3:00PM PDT",
+     "event": "Hydrologic",
+     "event_type": "Statement",
+     "expires": "October 2 at 6:00AM PDT",
+     "nws_headline": "",
+     "office": "NWS Portland OR",
+     "severity": "Minor",
+     "summary": "",
+     "title": "Hydrologic Statement issued October 1 at 3:00PM PDT until October 2 at 6:00AM PDT by NWS Portland OR",
+     "urgency": "Future"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "",
+     "certainty": "Unknown",
+     "effective": "October 1 at 3:00PM CDT",
+     "event": "Tornado",
+     "event_type": "Warning",
+     "expires": "October 1 at 4:00PM CDT",
+     "nws_headline": "",
+     "office": "NWS Norman OK",
+     "severity": "Extreme",
+     "summary": "",
+     "title": "Tornado Warning issued October 1 at 3:00PM CDT until October 1 at 4:00PM CDT by NWS Norman OK",
+     "urgency": "Immediate"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "",
+     "certainty": "Unknown",
+     "effective": "",
+     "event": "Severe Thunderstorm",
+     "event_type": "Watch",
+     "expires": "October 1 at 9:00PM CDT",
+     "nws_headline": "",
+     "office": "NWS Norman OK",
+     "severity": "Severe",
+     "summary": "",
+     "title": "Severe Thunderstorm Watch until October 1 at 9:00PM CDT by NWS Norman OK",
+     "urgency": "Expected"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "",
+     "certainty": "Unknown",
+     "effective": "",
+     "event": "Wind",
+     "event_type": "Advisory",
+     "expires": "",
+     "nws_headline": "",
+     "office": "NWS Reno NV",
+     "severity": "Minor",
+     "summary": "",
+     "title": "Wind Advisory issued October 1 by NWS Reno NV",
+     "urgency": "Future"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "",
+     "certainty": "Unknown",
+     "effective": "",
+     "event": "Air",
+     "event_type": "Unknown",
+     "expires": "",
+     "nws_headline": "",
+     "office": "NWS Seattle WA",
+     "severity": "Minor",
+     "summary": "",
+     "title": "Air Quality Alert issued October 1 at 1:00PM PDT by NWS Seattle WA",
+     "urgency": "Future"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "",
+     "certainty": "Unknown",
+     "effective": "October 1 at 1:00PM MDT",
+     "event": "Blizzard",
+     "event_type": "Warning",
+     "expires": "October 2 at 1:00PM MDT",
+     "nws_headline": "",
+     "office": "NWS Cheyenne WY",
+     "severity": "Extreme",
+     "summary": "",
+     "title": "Blizzard Warning issued October 1 at 1:00PM MDT until October 2 at 1:00PM MDT by NWS Cheyenne WY",
+     "urgency": "Immediate"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "",
+     "certainty": "Unknown",
+     "effective": "",
+     "event": "",
+     "event_type": "Unknown",
+     "expires": "",
+     "nws_headline": "NO TITLE HERE",
+     "office": "",
+     "severity": "Moderate",
+     "summary": "",
+     "title": "",
+     "urgency": "Future"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "",
+     "certainty": "Unknown",
+     "effective": "",
+     "event": "",
+     "event_type": "Unknown",
+     "expires": "",
+     "nws_headline": "",
+     "office": "",
+     "severity": "Moderate",
+     "summary": "empty title",
+     "title": "",
+     "urgency": "Future"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "",
+     "certainty": "Unknown",
+     "effective": "",
+     "event": "Flood",
+     "event_type": "Warning",
+     "expires": "",
+     "nws_headline": "",
+     "office": "NWS Seattle WA",
+     "severity": "Moderate",
+     "summary": "",
+     "title": "Flood Warning issued October 1 at 3:00PM PDT by NWS Seattle WA",
+     "urgency": "Immediate"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "",
+     "certainty": "Unknown",
+     "effective": "",
+     "event": "Flood",
+     "event_type": "Watch",
+     "expires": "",
+     "nws_headline": "",
+     "office": "NWS Seattle WA",
+     "severity": "Moderate",
+     "summary": "",
+     "title": "Flood Watch issued October 1 at 3:00PM PDT by NWS Seattle WA",
+     "urgency": "Expected"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "",
+     "certainty": "Unknown",
+     "effective": "",
+     "event": "Flood",
+     "event_type": "Advisory",
+     "expires": "",
+     "nws_headline": "",
+     "office": "NWS Seattle WA",
+     "severity": "Moderate",
+     "summary": "",
+     "title": "Flood Advisory issued October 1 at 3:00PM PDT by NWS Seattle WA",
+     "urgency": "Future"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "",
+     "certainty": "Unknown",
+     "effective": "",
+     "event": "Gale",
+     "event_type": "Warning",
+     "expires": "",
+     "nws_headline": "",
+     "office": "NWS Seattle WA",
+     "severity": "Moderate",
+     "summary": "",
+     "title": "Gale Warning issued October 1 at 3:00PM PDT by NWS Seattle WA",
+     "urgency": "Immediate"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "King County",
+     "certainty": "Unknown",
+     "effective": "",
+     "event": "Wind",
+     "event_type": "Statement",
+     "expires": "",
+     "nws_headline": "STRONG WIND GUSTS TONIGHT",
+     "office": "NWS Seattle WA",
+     "severity": "Moderate",
+     "summary": "Second wind statement for differentiation.",
+     "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+     "urgency": "Future"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "Pierce County",
+     "certainty": "Observed",
+     "effective": "2026-10-01T15:00:00-07:00",
+     "event": "Wind",
+     "event_type": "Statement",
+     "expires": "2026-10-01T20:00:00-07:00",
+     "nws_headline": "STRONG WIND GUSTS TONIGHT",
+     "office": "NWS Seattle WA",
+     "severity": "Moderate",
+     "summary": "",
+     "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
+     "urgency": "Immediate"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "Nested Area",
+     "certainty": "Possible",
+     "effective": "October 1 at 3:00PM PDT",
+     "event": "Nested Event Warning",
+     "event_type": "Warning",
+     "expires": "October 1 at 9:00PM PDT",
+     "nws_headline": "",
+     "office": "NWS Seattle WA",
+     "severity": "Extreme",
+     "summary": "",
+     "title": "Warning issued October 1 at 3:00PM PDT until October 1 at 9:00PM PDT by NWS Seattle WA",
+     "urgency": "Past"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "",
+     "certainty": "Unknown",
+     "effective": "2026-10-01T15:00:00-07:00",
+     "event": "Wind",
+     "event_type": "Advisory",
+     "expires": "2026-10-01T21:00:00-07:00",
+     "nws_headline": "",
+     "office": "NWS Seattle WA",
+     "severity": "Minor",
+     "summary": "",
+     "title": "Wind Advisory by NWS Seattle WA",
+     "urgency": "Future"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  }
+ ],
+ "warnings": []
+}
