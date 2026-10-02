@@ -26,6 +26,7 @@ from ..http_retry import make_retry_session
 from ..location import get_bot_lat_lon, get_companion_lat_lon
 from ..models import MeshMessage
 from ..nws_alerts import WX_SPECIAL_RULES, entry_nws_headline, entry_summary, entry_title, parse_alert_fields
+from ..nws_coverage import NWSNoCoverageCache
 from ..utils import (
     format_temperature_high_low,
     geocode_city_sync,
@@ -269,8 +270,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             # threads. The lock is acquired inside the worker, never on the event loop.
             self._sync_provider_lock = threading.Lock()
 
-            # Lazy: None = unknown, False = NOAA alerts unavailable (non-US / no coverage)
-            self._nws_alerts_available = None
+            self._nws_no_coverage = NWSNoCoverageCache()
 
     @staticmethod
     def _noaa_period_temp_symbol(period: dict) -> str:
@@ -1800,7 +1800,8 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             If return_full_data=True: (list of alert dicts, alert_count)
         """
         try:
-            if getattr(self, "_nws_alerts_available", None) is False:
+            if self._nws_no_coverage.is_unavailable(lat, lon):
+                self.logger.debug("Skipping NWS weather alerts for cached point %s,%s outside NWS coverage", round(lat, 2), round(lon, 2))
                 return self.ERROR_FETCHING_DATA
 
             # Round coordinates to 4 decimal places to avoid API redirects
@@ -1813,12 +1814,12 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                 alert_data = self.noaa_session.get(alert_url, timeout=self.url_timeout)
                 if not alert_data.ok:
                     if nws_http_means_no_coverage(alert_data.status_code):
-                        self._nws_alerts_available = False
-                        self.logger.warning(
-                            "NWS weather alerts unavailable (HTTP %s); NOAA alerts are US-only — "
-                            "skipping future alert requests",
-                            alert_data.status_code,
-                        )
+                        if self._nws_no_coverage.mark_unavailable(lat, lon):
+                            self.logger.warning(
+                                "NWS weather alerts unavailable (HTTP %s); NOAA alerts are US-only; "
+                                "point %s,%s is outside NWS coverage",
+                                alert_data.status_code, round(lat, 2), round(lon, 2),
+                            )
                     else:
                         self.logger.warning(
                             f"Error fetching weather alerts from NOAA: HTTP {alert_data.status_code}"
@@ -1828,7 +1829,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                 self.logger.warning(f"Timeout/connection error fetching weather alerts from NOAA: {e}")
                 return self.ERROR_FETCHING_DATA
 
-            self._nws_alerts_available = True
+            self._nws_no_coverage.mark_available(lat, lon)
 
             alerts = []  # Store structured alert data
             alertxml = xml.dom.minidom.parseString(alert_data.text)
