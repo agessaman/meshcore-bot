@@ -11,9 +11,10 @@ import pytest
 from modules.transmission_tracker import TransmissionRecord, TransmissionTracker
 
 
-def _chan(text, idx=0):
-    """A received GRP_TXT that decrypted on channel ``idx`` to ``text``."""
-    return {"payload_type": 5, "payload_hex": "", "channel_idx": idx, "channel_text": text}
+def _chan(text, idx=0, sender=None):
+    """A received GRP_TXT that decrypted on channel ``idx`` to ``text`` (from ``sender`` when given)."""
+    message = f"{sender}: {text}" if sender else text
+    return {"payload_type": 5, "payload_hex": "", "channel_idx": idx, "channel_text": text, "channel_message": message}
 
 
 @pytest.fixture
@@ -632,3 +633,44 @@ class TestRepeatCountWrites:
         assert tracker.record_repeat("7777", "7e") is True
         tracker._db_executor.shutdown(wait=True)
         assert threads and threads[0] != threading.current_thread().name
+
+
+class TestChannelSenderIsChecked:
+    @pytest.fixture
+    def named_tracker(self, mock_bot):
+        mock_bot.meshcore = Mock(self_info={"name": "Bot [RF]: west", "public_key": "ab" * 32})
+        return TransmissionTracker(mock_bot)
+
+    def test_another_node_sending_the_same_text_does_not_claim_it(self, named_tracker):
+        rec = named_tracker.record_transmission("hello", "general", "channel", channel_idx=0)
+        assert named_tracker.match_packet_hash("8888", rec.timestamp, _chan("hello", sender="OtherNode")) is None
+        assert rec.packet_hash is None
+
+    def test_a_name_the_prefix_heuristic_cannot_split_still_matches(self, named_tracker):
+        rec = named_tracker.record_transmission("hello", "general", "channel", channel_idx=0)
+        packet = {"payload_type": 5, "payload_hex": "", "channel_idx": 0,
+                  "channel_text": "Bot [RF]: west: hello", "channel_message": "Bot [RF]: west: hello"}
+        assert named_tracker.match_packet_hash("9999", rec.timestamp, packet) is rec
+
+
+def test_close_waits_for_queued_writes_and_later_writes_run_inline(tracker, monkeypatch):
+    import threading
+    import time as _time
+
+    written = []
+
+    def slow_write(rec):
+        _time.sleep(0.05)
+        written.append(threading.current_thread().name)
+
+    monkeypatch.setattr(tracker, "_update_command_in_database", slow_write)
+
+    async def _queue():
+        tracker._schedule_command_update(TransmissionRecord(timestamp=0.0, content="x", target="c", message_type="channel"))
+
+    import asyncio
+    asyncio.run(_queue())
+    tracker.close()
+    assert len(written) == 1
+    tracker._schedule_command_update(TransmissionRecord(timestamp=0.0, content="y", target="c", message_type="channel"))
+    assert written[-1] == threading.current_thread().name

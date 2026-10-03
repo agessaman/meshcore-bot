@@ -78,6 +78,7 @@ class TransmissionTracker:
 
         # One worker keeps repeat-count writes in order and off the event loop
         self._db_executor: Optional[ThreadPoolExecutor] = None
+        self._db_closed = False
 
         # Track our bot's public key prefix (first 2 hex chars) for filtering
         self.bot_prefix: Optional[str] = None
@@ -153,8 +154,9 @@ class TransmissionTracker:
             packet_hash: Packet hash from received RF data
             rf_timestamp: Timestamp when RF data was received
             packet: What the packet says about itself: ``payload_type`` and
-                ``payload_hex``, plus ``channel_idx`` and ``channel_text`` for a
-                channel message that decrypted with one of our channel keys
+                ``payload_hex``, plus ``channel_idx``, ``channel_message`` (the full
+                decrypted text) and ``channel_text`` (without the sender name) for
+                a channel message that decrypted with one of our channel keys
 
         Returns:
             TransmissionRecord if matched, None otherwise
@@ -191,6 +193,12 @@ class TransmissionTracker:
 
         return None
 
+    def _own_name(self) -> Optional[str]:
+        """The radio's advertised name, or None before it is known."""
+        self_info = getattr(self.bot.meshcore, "self_info", None) if self.bot.meshcore else None
+        name = self_info.get("name") if isinstance(self_info, dict) else None
+        return name if isinstance(name, str) and name else None
+
     def _own_key_byte(self) -> Optional[str]:
         """First byte (hex) of the radio's public key, or None before it is known."""
         self_info = getattr(self.bot.meshcore, "self_info", None) if self.bot.meshcore else None
@@ -202,7 +210,8 @@ class TransmissionTracker:
     def _packet_is_ours(self, record: TransmissionRecord, packet: Optional[dict[str, Any]]) -> bool:
         """Whether ``packet`` is this transmission, judged by what both carry.
 
-        A channel message must decrypt on the same channel to the same text; a DM
+        A channel message must decrypt on the same channel to our name and the
+        same text; a DM
         must be a TXT_MSG addressed to the recipient's hash, from ours when known;
         a trace must carry the same tag.
         """
@@ -211,12 +220,17 @@ class TransmissionTracker:
         payload_type = packet.get("payload_type")
         payload_hex = packet.get("payload_hex") or ""
         if record.message_type == "channel":
-            return (
-                payload_type == _PAYLOAD_GRP_TXT
-                and record.channel_idx is not None
-                and packet.get("channel_idx") == record.channel_idx
-                and packet.get("channel_text") == record.content
-            )
+            if (
+                payload_type != _PAYLOAD_GRP_TXT
+                or record.channel_idx is None
+                or packet.get("channel_idx") != record.channel_idx
+            ):
+                return False
+            # The radio sends "<its name>: <text>"; without the name, only the text can be compared.
+            name = self._own_name()
+            if name:
+                return packet.get("channel_message") == f"{name}: {record.content}"
+            return packet.get("channel_text") == record.content
         if record.message_type == "dm":
             if payload_type != _PAYLOAD_TXT_MSG or not record.recipient_key or len(payload_hex) < 4:
                 return False
@@ -296,9 +310,19 @@ class TransmissionTracker:
         except RuntimeError:
             self._update_command_in_database(snapshot)
             return
+        if self._db_closed:
+            self._update_command_in_database(snapshot)
+            return
         if self._db_executor is None:
             self._db_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="tx-tracker-db")
         self._db_executor.submit(self._update_command_in_database, snapshot)
+
+    def close(self) -> None:
+        """Wait for queued repeat-count writes; later writes run inline."""
+        self._db_closed = True
+        if self._db_executor is not None:
+            self._db_executor.shutdown(wait=True)
+            self._db_executor = None
 
     def _update_command_in_database(self, record: TransmissionRecord):
         """Update command entry in database with latest repeat information"""

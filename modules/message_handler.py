@@ -530,8 +530,8 @@ class MessageHandler:
     ) -> dict[str, Any] | None:
         """Authenticate a decoded GRP_TXT packet and derive its CHAN identity.
 
-        ``include_text`` adds the decrypted text without its sender prefix as
-        ``channel_text``.
+        ``include_text`` adds the full decrypted text as ``channel_message`` and
+        the text without its sender prefix as ``channel_text``.
         """
         if not packet_info or packet_info.get("payload_type") != self._grp_txt_payload_type_int():
             return None
@@ -570,6 +570,7 @@ class MessageHandler:
             }
             if include_text:
                 result["channel_text"] = decrypted["text"]
+                result["channel_message"] = decrypted["message"]
             return result
         return None
 
@@ -583,6 +584,7 @@ class MessageHandler:
         if channel:
             evidence["channel_idx"] = channel["channel_idx"]
             evidence["channel_text"] = channel["channel_text"]
+            evidence["channel_message"] = channel["channel_message"]
         return evidence
 
     def _cache_authenticated_channel_rf_data(
