@@ -98,6 +98,14 @@ class TelegramBridgeService(ChannelBridgeBase):
     def __init__(self, bot: Any):
         super().__init__(bot)
 
+        # State stop() relies on, set before any early return so a bridge left
+        # disabled by missing config still stops cleanly at shutdown.
+        self.channel_chat_ids: dict[str, str] = {}
+        self.message_queues: dict[str, list[QueuedMessage]] = {}
+        self.send_times: dict[str, deque] = {}
+        self.http_session: Optional[aiohttp.ClientSession] = None
+        self._queue_processor_task: Optional[asyncio.Task] = None
+
         if not AIOHTTP_AVAILABLE and not REQUESTS_AVAILABLE:
             self.logger.error(
                 "Neither aiohttp nor requests available. Telegram bridge requires one of these."
@@ -115,7 +123,6 @@ class TelegramBridgeService(ChannelBridgeBase):
             self.enabled = False
             return
 
-        self.channel_chat_ids: dict[str, str] = {}
         self._load_channel_mappings()
 
         # Optional settings
@@ -142,15 +149,10 @@ class TelegramBridgeService(ChannelBridgeBase):
         )
 
         # Rate limiting: ~1 message per second per chat
-        self.message_queues: dict[str, list[QueuedMessage]] = {}
-        self.send_times: dict[str, deque] = {}
         self.rate_limit_min_interval = 1.0
         self.max_retries = 5
         self.retry_delay_base = 1.0
         self.max_queue_age = 300
-
-        self.http_session: Optional[aiohttp.ClientSession] = None
-        self._queue_processor_task: Optional[asyncio.Task] = None
 
         if not self.channel_chat_ids:
             self.logger.warning(
