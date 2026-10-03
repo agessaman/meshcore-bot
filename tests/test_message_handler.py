@@ -2944,3 +2944,32 @@ class TestChannelPayloadCorrelation:
 
         assert result[RF_MATCH_KEY] == RF_MATCH_FALLBACK
         assert result["packet_prefix"] == "cc" * 16
+
+
+@pytest.mark.asyncio
+class TestNewContactCapacityLogs:
+    """The contact-capacity check after a companion advert, in device and bot mode."""
+
+    @pytest.mark.parametrize(
+        "mode, near_limit, level, message",
+        [
+            ("device", True, "warning", "Contact list near limit (%.1f%%) — managing capacity"),
+            ("device", False, "info", "Companion %s — contact list has adequate space"),
+            ("bot", True, "warning", "Contact list near limit (%.1f%%) — managing capacity after add"),
+            ("bot", False, "info", "Companion %s — contact list has adequate space after add attempt"),
+        ],
+    )
+    async def test_capacity_log_and_cleanup(self, new_contact_env, mode, near_limit, level, message):
+        bot, handler, rm, mesh = new_contact_env
+        bot.config.set("Bot", "auto_manage_contacts", mode)
+        rm.get_contact_list_status = AsyncMock(
+            return_value={"is_near_limit": near_limit, "usage_percentage": 92.5}
+        )
+        await handler.handle_new_contact(_NewContactEvent(_companion_contact_payload()), None)
+        expected_arg = 92.5 if near_limit else "Alice"
+        calls = getattr(bot.logger, level).call_args_list
+        assert any(c.args == (message, expected_arg) for c in calls), calls
+        if near_limit:
+            rm.manage_contact_list.assert_awaited_once_with(auto_cleanup=True)
+        else:
+            rm.manage_contact_list.assert_not_called()

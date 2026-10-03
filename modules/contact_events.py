@@ -16,6 +16,7 @@ class ContactEventsMixin:
     """Mixed into MessageHandler."""
 
     _advert_rf: Any
+    _mesh_graph_capturing: Any
     _new_contact_adds: Any
     _store_observed_path: Any
     _update_mesh_graph_from_advert: Any
@@ -124,13 +125,7 @@ class ContactEventsMixin:
                 # This can trigger many send_mesh_edge_update() calls in quick succession;
                 # if the web viewer is down, that produces a wave of connection-refused logs.
                 path_byte_length = packet_info.get("path_byte_length") or (len(out_path) // 2 if out_path else 0)
-                if (
-                    out_path
-                    and out_path_len > 0
-                    and hasattr(self.bot, "mesh_graph")
-                    and self.bot.mesh_graph
-                    and self.bot.mesh_graph.capture_enabled
-                ):
+                if out_path and out_path_len > 0 and self._mesh_graph_capturing():
                     self._update_mesh_graph_from_advert(advert_data, out_path, path_byte_length, packet_info)
 
                 # Store complete path in observed_paths table. Empty-path (direct RF)
@@ -348,6 +343,21 @@ class ContactEventsMixin:
             del self._new_contact_adds[next(iter(self._new_contact_adds))]
         return True
 
+    async def _manage_contact_capacity(self, contact_name: str, after_add: bool = False) -> None:
+        """Clean up the device contact list when it is near its limit; log either way."""
+        status = await self.bot.repeater_manager.get_contact_list_status()
+        if status and status.get("is_near_limit", False):
+            self.logger.warning(
+                "Contact list near limit (%.1f%%) — managing capacity" + (" after add" if after_add else ""),
+                status["usage_percentage"],
+            )
+            await self.bot.repeater_manager.manage_contact_list(auto_cleanup=True)
+        else:
+            self.logger.info(
+                "Companion %s — contact list has adequate space" + (" after add attempt" if after_add else ""),
+                contact_name,
+            )
+
     async def handle_new_contact(self, event: Any, metadata: dict[str, Any] | None = None) -> None:
         """Handle NEW_CONTACT events for automatic contact management"""
         try:
@@ -505,18 +515,7 @@ class ContactEventsMixin:
                             "Device mode — companion %s tracked; firmware handles addition; bot may manage capacity",
                             contact_name,
                         )
-                        status = await self.bot.repeater_manager.get_contact_list_status()
-                        if status and status.get("is_near_limit", False):
-                            self.logger.warning(
-                                "Contact list near limit (%.1f%%) — managing capacity",
-                                status["usage_percentage"],
-                            )
-                            await self.bot.repeater_manager.manage_contact_list(auto_cleanup=True)
-                        else:
-                            self.logger.info(
-                                "Companion %s — contact list has adequate space",
-                                contact_name,
-                            )
+                        await self._manage_contact_capacity(contact_name)
                     elif auto_manage_setting == "bot":
                         # One add per advert: NEW_CONTACT can repeat for the same packet. The
                         # tracking result can't tell, since the advert packet itself was
@@ -549,18 +548,7 @@ class ContactEventsMixin:
                                 self._release_new_contact_add(public_key, packet_hash)
                                 self.logger.error("Error adding companion %s to device: %s", contact_name, e)
 
-                            status = await self.bot.repeater_manager.get_contact_list_status()
-                            if status and status.get("is_near_limit", False):
-                                self.logger.warning(
-                                    "Contact list near limit (%.1f%%) — managing capacity after add",
-                                    status["usage_percentage"],
-                                )
-                                await self.bot.repeater_manager.manage_contact_list(auto_cleanup=True)
-                            else:
-                                self.logger.info(
-                                    "Companion %s — contact list has adequate space after add attempt",
-                                    contact_name,
-                                )
+                            await self._manage_contact_capacity(contact_name, after_add=True)
                     else:
                         self.logger.warning(
                             "Unknown auto_manage_contacts value %r — treating as manual for %s",

@@ -1992,11 +1992,7 @@ class MessageHandler(MeshGraphRecorderMixin, ContactEventsMixin):
                         if path_hashes:
                             path_string = ",".join(path_hashes)
                             self.logger.debug(f"Path from TRACE packet: {path_string} ({len(path_hashes)} hops)")
-                            if (
-                                hasattr(self.bot, "mesh_graph")
-                                and self.bot.mesh_graph
-                                and self.bot.mesh_graph.capture_enabled
-                            ):
+                            if self._mesh_graph_capturing():
                                 self._update_mesh_graph_from_trace(path_hashes, packet_info)
                         else:
                             path_string = "Direct" if hops == 0 else f"Unknown routing ({hops} hops)"
@@ -2006,13 +2002,7 @@ class MessageHandler(MeshGraphRecorderMixin, ContactEventsMixin):
                         path_string, path_nodes, hops = self._get_path_from_rf_data(
                             recent_rf_data, payload_hex=payload_hex, packet_info=packet_info
                         )
-                        if (
-                            path_string
-                            and path_nodes
-                            and hasattr(self.bot, "mesh_graph")
-                            and self.bot.mesh_graph
-                            and self.bot.mesh_graph.capture_enabled
-                        ):
+                        if path_string and path_nodes and self._mesh_graph_capturing():
                             self._update_mesh_graph(path_nodes, packet_info)
                         if path_string and not had_routing_nodes:
                             self.logger.debug(f"Path from fallback decode: {path_string} ({hops} hops)")
