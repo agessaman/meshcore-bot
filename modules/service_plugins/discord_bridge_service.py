@@ -111,6 +111,14 @@ class DiscordBridgeService(BaseServicePlugin):
         # Use bot's logger directly (inherited from BaseServicePlugin)
         # self.logger is already set by super().__init__(bot)
 
+        # State stop() relies on, set before the early return below so the
+        # service still stops cleanly when it disables itself.
+        self.channel_webhooks: dict[str, list[str]] = {}
+        self.message_queues: dict[str, list[Any]] = {}
+        self.send_times: dict[str, deque] = {}
+        self.http_session: Optional[aiohttp.ClientSession] = None
+        self._queue_processor_task: Optional[asyncio.Task] = None
+
         # Check if HTTP library is available
         if not AIOHTTP_AVAILABLE and not REQUESTS_AVAILABLE:
             self.logger.error("Neither aiohttp nor requests library is available. Discord bridge requires one of these.")
@@ -119,7 +127,6 @@ class DiscordBridgeService(BaseServicePlugin):
 
         # Load channel mappings from config (bridge.* pattern)
         # Map MeshCore channel name → list of Discord webhook URLs
-        self.channel_webhooks: dict[str, list[str]] = {}
         self._load_channel_mappings()
 
         # NEVER bridge DMs (hardcoded for privacy)
@@ -154,23 +161,17 @@ class DiscordBridgeService(BaseServicePlugin):
 
         # Message queue per webhook to handle rate limits and retries
         # Using list instead of deque for easier removal of arbitrary items
-        self.message_queues: dict[str, list[Any]] = {}
         self.max_retries = 5  # Maximum retry attempts per message
         self.retry_delay_base = 1.0  # Base delay in seconds for exponential backoff
         self.max_queue_age = 300  # Max age in seconds before dropping message (5 minutes)
 
         # Proactive rate limiting: track send times per webhook
         # Discord allows 30 messages per 60 seconds, so we'll throttle to ~25/min for safety
-        self.send_times: dict[str, deque] = {}  # Track timestamps of sent messages (deque for efficient popleft)
         self.rate_limit_window = 60.0  # 60 second window
         self.rate_limit_max = 25  # Conservative limit (25/min instead of 30/min for safety)
 
-        # HTTP session for async requests
-        self.http_session: Optional[aiohttp.ClientSession] = None
-
         # Background task handles
         self._message_handler_task: Optional[asyncio.Task] = None
-        self._queue_processor_task: Optional[asyncio.Task] = None
 
         if not self.channel_webhooks:
             self.logger.warning("No Discord channel mappings configured. Discord bridge will not post any messages.")
