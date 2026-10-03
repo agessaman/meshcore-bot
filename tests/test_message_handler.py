@@ -2564,7 +2564,7 @@ class TestZeroHopObservedPathWriter:
         )
         pk = "ab" * 32
         with patch(
-            "modules.message_handler.upsert_zero_hop_observed_path_via_manager"
+            "modules.contact_events.upsert_zero_hop_observed_path_via_manager"
         ) as upsert:
             await handler._process_advertisement_packet(
                 {
