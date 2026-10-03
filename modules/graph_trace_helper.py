@@ -7,6 +7,8 @@ Shared by message_handler (on RX) and trace command (when TRACE_DATA is received
 import time
 from typing import Any, Optional
 
+from .transmission_tracker import own_public_key
+
 
 def update_mesh_graph_from_trace_data(
     bot: Any,
@@ -44,13 +46,18 @@ def update_mesh_graph_from_trace_data(
         return
 
     mesh_graph = bot.mesh_graph
-    bot_prefix = bot.transmission_tracker.bot_prefix
+    # Name the bot at the trace's own hash width, so its edges match the hops'
+    bot_key = own_public_key(bot)
+    width = len(path_hashes[-1])
+    bot_prefix = bot_key[:width] if bot_key and len(bot_key) >= width else bot.transmission_tracker.bot_prefix
 
     if not bot_prefix:
         bot.logger.debug("Mesh graph: Bot prefix not available, skipping trace update")
         return
 
     bot_prefix = bot_prefix.lower()
+    # 2-byte and wider hashes confirm the link at that width
+    edge_width = {"prefix_bytes": 2} if width >= 4 else {}
 
     # Resolve is_our_trace
     if is_our_trace is None:
@@ -121,19 +128,6 @@ def update_mesh_graph_from_trace_data(
         except Exception as e:
             bot.logger.debug(f"Error checking uniqueness for immediate neighbor {neighbor_prefix}: {e}")
 
-        bot_key = None
-        if hasattr(bot, "meshcore") and bot.meshcore and getattr(bot.meshcore, "device", None):
-            try:
-                device_info = bot.meshcore.device
-                if hasattr(device_info, "public_key"):
-                    pubkey = device_info.public_key
-                    if isinstance(pubkey, str):
-                        bot_key = pubkey
-                    elif isinstance(pubkey, bytes):
-                        bot_key = pubkey.hex()
-            except Exception as e:
-                bot.logger.debug(f"Could not get bot public key: {e}")
-
         geographic_distance = None
         try:
             if bot_location:
@@ -157,6 +151,7 @@ def update_mesh_graph_from_trace_data(
             to_public_key=neighbor_key,
             hop_position=1,
             geographic_distance=geographic_distance,
+            **edge_width,
         )
         mesh_graph.add_edge(
             from_prefix=neighbor_prefix,
@@ -165,6 +160,7 @@ def update_mesh_graph_from_trace_data(
             to_public_key=bot_key,
             hop_position=1,
             geographic_distance=geographic_distance,
+            **edge_width,
         )
         bot.logger.info(f"Mesh graph: Created trusted bidirectional edge with immediate neighbor {neighbor_prefix}")
         return
@@ -198,19 +194,6 @@ def update_mesh_graph_from_trace_data(
     except Exception as e:
         bot.logger.debug(f"Error checking uniqueness for trace last_node {last_node}: {e}")
 
-    bot_key = None
-    if hasattr(bot, "meshcore") and bot.meshcore and getattr(bot.meshcore, "device", None):
-        try:
-            device_info = bot.meshcore.device
-            if hasattr(device_info, "public_key"):
-                pubkey = device_info.public_key
-                if isinstance(pubkey, str):
-                    bot_key = pubkey
-                elif isinstance(pubkey, bytes):
-                    bot_key = pubkey.hex()
-        except Exception as e:
-            bot.logger.debug(f"Could not get bot public key: {e}")
-
     try:
         if bot_location:
             last_node_result = _get_node_location_from_db(bot, last_node, bot_location, recency_days)
@@ -233,6 +216,7 @@ def update_mesh_graph_from_trace_data(
         to_public_key=bot_key,
         hop_position=len(path_hashes),
         geographic_distance=geographic_distance,
+        **edge_width,
     )
 
     # Create edges between nodes in the pathHashes (if more than one)
@@ -303,4 +287,5 @@ def update_mesh_graph_from_trace_data(
             to_public_key=to_node_key,
             hop_position=hop_position,
             geographic_distance=geographic_distance,
+            **edge_width,
         )

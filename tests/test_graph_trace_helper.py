@@ -37,10 +37,10 @@ def _make_bot(bot_prefix="aa", has_mesh_graph=True, has_transmission_tracker=Tru
     bot.db_manager = MagicMock()
     bot.db_manager.execute_query = Mock(return_value=[])
 
-    # meshcore device (optional)
+    # The radio's key, consistent with bot_prefix (none when bot_prefix is empty)
     bot.meshcore = MagicMock()
-    bot.meshcore.device = MagicMock()
-    bot.meshcore.device.public_key = "aa" * 32
+    bot.meshcore.self_info = {"public_key": (bot_prefix.lower() * 64)[:64]} if bot_prefix else {}
+    bot.meshcore.device = None
 
     return bot
 
@@ -85,14 +85,12 @@ class TestEarlyExits:
         # No crash expected
 
     def test_empty_bot_prefix_returns_immediately(self):
-        bot = _make_bot()
-        bot.transmission_tracker.bot_prefix = None
+        bot = _make_bot(bot_prefix=None)
         update_mesh_graph_from_trace_data(bot, ["ab"], {})
         bot.mesh_graph.add_edge.assert_not_called()
 
     def test_empty_string_bot_prefix_returns_immediately(self):
-        bot = _make_bot()
-        bot.transmission_tracker.bot_prefix = ""
+        bot = _make_bot(bot_prefix="")
         update_mesh_graph_from_trace_data(bot, ["ab"], {})
         bot.mesh_graph.add_edge.assert_not_called()
 
@@ -213,9 +211,11 @@ class TestImmediateNeighbor:
     def test_single_hop_device_pubkey_bytes(self):
         """Device public key as bytes is hex-encoded."""
         bot = _make_bot(bot_prefix="aa")
-        bot.meshcore.device.public_key = b"\xaa\xbb"
+        bot.meshcore.self_info = {}
+        bot.meshcore.device = MagicMock(public_key=b"\xaa\xbb")
         update_mesh_graph_from_trace_data(bot, ["bb"], {}, is_our_trace=True)
         assert bot.mesh_graph.add_edge.call_count == 2
+        assert bot.mesh_graph.add_edge.call_args_list[0].kwargs["from_public_key"] == "aabb"
 
 
 # ---------------------------------------------------------------------------
@@ -317,3 +317,25 @@ class TestMultiHopEdges:
         bot.meshcore = None
         update_mesh_graph_from_trace_data(bot, ["aa", "bb"], {})
         assert bot.mesh_graph.add_edge.call_count == 2
+
+
+
+class TestBotIdentityFromRadio:
+    """The bot's node comes from the radio's key (meshcore self_info), at the trace's hash width."""
+
+    def test_one_byte_trace_names_the_bot_by_its_first_byte(self):
+        bot = _make_bot(bot_prefix=None)
+        bot.meshcore.self_info = {"public_key": "c3d4" + "00" * 30}
+        update_mesh_graph_from_trace_data(bot, ["aa"], {})
+        kwargs = bot.mesh_graph.add_edge.call_args.kwargs
+        assert kwargs["to_prefix"] == "c3"
+        assert kwargs["to_public_key"] == "c3d4" + "00" * 30
+        assert "prefix_bytes" not in kwargs
+
+    def test_two_byte_trace_names_the_bot_by_two_bytes_and_flags_the_edge(self):
+        bot = _make_bot(bot_prefix=None)
+        bot.meshcore.self_info = {"public_key": "c3d4" + "00" * 30}
+        update_mesh_graph_from_trace_data(bot, ["a1b2", "e5f6"], {})
+        last = bot.mesh_graph.add_edge.call_args_list[0].kwargs
+        assert (last["from_prefix"], last["to_prefix"]) == ("e5f6", "c3d4")
+        assert all(c.kwargs.get("prefix_bytes") == 2 for c in bot.mesh_graph.add_edge.call_args_list)

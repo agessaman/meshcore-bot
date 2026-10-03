@@ -296,6 +296,20 @@ def _make_db_with_packet_stream(db_path: str) -> None:
 # Tests for _update_bot_prefix (lines 57-67)
 # ---------------------------------------------------------------------------
 
+class TestBotPrefixFromSelfInfo:
+    """meshcore_py reports the radio's key in self_info, after the tracker is created."""
+
+    def test_prefix_is_read_once_the_radio_reports_its_key(self, mock_logger):
+        bot = Mock()
+        bot.logger = mock_logger
+        bot.prefix_hex_chars = 2
+        bot.meshcore = Mock(self_info={})
+        tracker = TransmissionTracker(bot)
+        assert tracker.bot_prefix is None
+        bot.meshcore.self_info = {"public_key": "C3D4" + "00" * 30}
+        assert tracker.bot_prefix == "c3"
+
+
 class TestUpdateBotPrefix:
     """Cover lines 57-67: _update_bot_prefix with str and bytes public_key."""
 

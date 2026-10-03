@@ -23,6 +23,28 @@ _PAYLOAD_GRP_TXT = 0x05
 _PAYLOAD_TRACE = 0x09
 
 
+
+def own_public_key(bot: Any) -> Optional[str]:
+    """The radio's public key as lowercase hex, or None before it is known.
+
+    meshcore_py keeps it in ``meshcore.self_info``; ``meshcore.device`` is read
+    as a fallback for objects that provide one.
+    """
+    meshcore = getattr(bot, "meshcore", None)
+    if not meshcore:
+        return None
+    try:
+        self_info = getattr(meshcore, "self_info", None)
+        key = self_info.get("public_key") if isinstance(self_info, dict) else None
+        if not key:
+            device = getattr(meshcore, "device", None)
+            key = getattr(device, "public_key", None) if device is not None else None
+    except Exception:
+        return None
+    if isinstance(key, (bytes, bytearray)):
+        key = bytes(key).hex()
+    return key.lower() if isinstance(key, str) and key else None
+
 @dataclass
 class TransmissionRecord:
     """Record of a transmitted message"""
@@ -80,24 +102,28 @@ class TransmissionTracker:
         self._db_executor: Optional[ThreadPoolExecutor] = None
         self._db_closed = False
 
-        # Track our bot's public key prefix (first 2 hex chars) for filtering
-        self.bot_prefix: Optional[str] = None
+        # Our radio's public key prefix, for filtering. Read lazily: the tracker is
+        # created before the radio connects and reports its key.
+        self._bot_prefix: Optional[str] = None
         self._update_bot_prefix()
 
+    @property
+    def bot_prefix(self) -> Optional[str]:
+        """Our radio's public key prefix (``prefix_hex_chars`` long), or None before it is known."""
+        if self._bot_prefix is None:
+            self._update_bot_prefix()
+        return self._bot_prefix
+
+    @bot_prefix.setter
+    def bot_prefix(self, value: Optional[str]) -> None:
+        self._bot_prefix = value
+
     def _update_bot_prefix(self):
-        """Update bot prefix from meshcore device info"""
-        if self.bot.meshcore and hasattr(self.bot.meshcore, 'device'):
-            try:
-                device_info = self.bot.meshcore.device
-                if hasattr(device_info, 'public_key'):
-                    pubkey = device_info.public_key
-                    if isinstance(pubkey, str) and len(pubkey) >= 2:
-                        self.bot_prefix = pubkey[:self.bot.prefix_hex_chars].lower()
-                    elif isinstance(pubkey, bytes) and len(pubkey) >= 1:
-                        self.bot_prefix = f"{pubkey[0]:02x}".lower()
-                    self.logger.debug(f"Bot prefix set to: {self.bot_prefix}")
-            except Exception as e:
-                self.logger.debug(f"Could not determine bot prefix: {e}")
+        """Update bot prefix from the radio's public key"""
+        key = own_public_key(self.bot)
+        if key and len(key) >= 2:
+            self._bot_prefix = key[:self.bot.prefix_hex_chars].lower()
+            self.logger.debug(f"Bot prefix set to: {self._bot_prefix}")
 
     def record_transmission(self, content: str, target: str, message_type: str,
                           command_id: Optional[str] = None, *,
@@ -201,11 +227,8 @@ class TransmissionTracker:
 
     def _own_key_byte(self) -> Optional[str]:
         """First byte (hex) of the radio's public key, or None before it is known."""
-        self_info = getattr(self.bot.meshcore, "self_info", None) if self.bot.meshcore else None
-        pubkey = self_info.get("public_key") if isinstance(self_info, dict) else None
-        if isinstance(pubkey, str) and len(pubkey) >= 2:
-            return pubkey[:2].lower()
-        return None
+        key = own_public_key(self.bot)
+        return key[:2] if key and len(key) >= 2 else None
 
     def _packet_is_ours(self, record: TransmissionRecord, packet: Optional[dict[str, Any]]) -> bool:
         """Whether ``packet`` is this transmission, judged by what both carry.
