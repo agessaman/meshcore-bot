@@ -336,6 +336,35 @@ class TestBotIdentityFromRadio:
         bot = _make_bot(bot_prefix=None)
         bot.meshcore.self_info = {"public_key": "c3d4" + "00" * 30}
         update_mesh_graph_from_trace_data(bot, ["a1b2", "e5f6"], {})
-        last = bot.mesh_graph.add_edge.call_args_list[0].kwargs
+        last = bot.mesh_graph.add_edge.call_args_list[-1].kwargs
         assert (last["from_prefix"], last["to_prefix"]) == ("e5f6", "c3d4")
         assert all(c.kwargs.get("prefix_bytes") == 2 for c in bot.mesh_graph.add_edge.call_args_list)
+
+
+
+class TestOwnTraceChain:
+    def test_our_trace_adds_the_bot_to_first_hop_edge_in_path_order(self):
+        bot = _make_bot(bot_prefix="dd")
+        update_mesh_graph_from_trace_data(bot, ["aa", "bb", "cc"], {}, is_our_trace=True)
+        edges = [(c.kwargs["from_prefix"], c.kwargs["to_prefix"], c.kwargs["hop_position"])
+                 for c in bot.mesh_graph.add_edge.call_args_list]
+        assert edges == [("dd", "aa", 1), ("aa", "bb", 2), ("bb", "cc", 3), ("cc", "dd", 4)]
+
+    def test_someone_elses_trace_starts_at_its_first_hop(self):
+        bot = _make_bot(bot_prefix="dd")
+        update_mesh_graph_from_trace_data(bot, ["aa", "bb"], {}, is_our_trace=False)
+        edges = [(c.kwargs["from_prefix"], c.kwargs["to_prefix"], c.kwargs["hop_position"])
+                 for c in bot.mesh_graph.add_edge.call_args_list]
+        assert edges == [("aa", "bb", 1), ("bb", "dd", 2)]
+
+    def test_a_location_guess_is_not_stored_as_the_public_key(self, monkeypatch):
+        import modules.utils as utils
+
+        bot = _make_bot(bot_prefix="dd")
+        bot.db_manager.execute_query = Mock(return_value=[{"count": 2}])  # two repeaters share "aa"
+        monkeypatch.setattr(utils, "_get_node_location_from_db", lambda *a, **k: ((47.0, -122.0), "aa11" + "0" * 60))
+        update_mesh_graph_from_trace_data(bot, ["aa"], {}, is_our_trace=False)
+        update_mesh_graph_from_trace_data(bot, ["aa"], {}, is_our_trace=True)
+        for c in bot.mesh_graph.add_edge.call_args_list:
+            assert c.kwargs["from_public_key"] != "aa11" + "0" * 60
+            assert c.kwargs["to_public_key"] != "aa11" + "0" * 60

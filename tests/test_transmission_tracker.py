@@ -195,10 +195,11 @@ class TestExtractRepeaterPrefixes:
         result = tracker.extract_repeater_prefixes_from_path(None, path_nodes=["01", "7e", "86"])
         assert result == ["86"]
 
-    def test_filters_own_prefix(self, tracker):
+    def test_a_repeater_sharing_our_prefix_keeps_the_repeat(self, tracker):
+        """A companion never forwards, so a last hop matching our prefix is a repeater."""
         tracker.bot_prefix = "86"
-        result = tracker.extract_repeater_prefixes_from_path("01,7e,86")
-        assert result == []
+        assert tracker.extract_repeater_prefixes_from_path("01,86") == ["86"]
+        assert tracker.extract_repeater_prefixes_from_path(None, ["01", "86"]) == ["86"]
 
     def test_empty_path_returns_empty(self, tracker):
         result = tracker.extract_repeater_prefixes_from_path(None)
@@ -308,6 +309,18 @@ class TestBotPrefixFromSelfInfo:
         assert tracker.bot_prefix is None
         bot.meshcore.self_info = {"public_key": "C3D4" + "00" * 30}
         assert tracker.bot_prefix == "c3"
+
+
+class TestBotPrefixFollowsReconnect:
+    def test_a_reconnect_to_another_radio_changes_the_prefix(self, mock_logger):
+        bot = Mock()
+        bot.logger = mock_logger
+        bot.prefix_hex_chars = 2
+        bot.meshcore = Mock(self_info={"public_key": "c3" + "00" * 31})
+        tracker = TransmissionTracker(bot)
+        assert tracker.bot_prefix == "c3"
+        bot.meshcore = Mock(self_info={"public_key": "e5" + "00" * 31})
+        assert tracker.bot_prefix == "e5"
 
 
 class TestUpdateBotPrefix:

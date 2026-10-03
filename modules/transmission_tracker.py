@@ -109,21 +109,26 @@ class TransmissionTracker:
 
     @property
     def bot_prefix(self) -> Optional[str]:
-        """Our radio's public key prefix (``prefix_hex_chars`` long), or None before it is known."""
-        if self._bot_prefix is None:
-            self._update_bot_prefix()
-        return self._bot_prefix
+        """Our radio's public key prefix (``prefix_hex_chars`` long), or None before it is known.
+
+        Read from the radio's current key each time, so a reconnect to another radio
+        is picked up; a value assigned to it is kept instead.
+        """
+        if self._bot_prefix is not None:
+            return self._bot_prefix
+        key = own_public_key(self.bot)
+        if key and len(key) >= 2:
+            return key[:self.bot.prefix_hex_chars].lower()
+        return None
 
     @bot_prefix.setter
     def bot_prefix(self, value: Optional[str]) -> None:
         self._bot_prefix = value
 
     def _update_bot_prefix(self):
-        """Update bot prefix from the radio's public key"""
-        key = own_public_key(self.bot)
-        if key and len(key) >= 2:
-            self._bot_prefix = key[:self.bot.prefix_hex_chars].lower()
-            self.logger.debug(f"Bot prefix set to: {self._bot_prefix}")
+        """Log the bot prefix once the radio's key is known (kept for callers; the property reads it live)."""
+        if self.bot_prefix:
+            self.logger.debug(f"Bot prefix set to: {self.bot_prefix}")
 
     def record_transmission(self, content: str, target: str, message_type: str,
                           command_id: Optional[str] = None, *,
@@ -463,10 +468,9 @@ class TransmissionTracker:
             last_node = path_nodes[-1]
             if isinstance(last_node, str) and len(last_node) >= 2:
                 # Take first 2 characters as prefix
-                prefix = last_node[:self.bot.prefix_hex_chars].lower()
-                # Filter out our own prefix
-                if prefix != self.bot_prefix:
-                    return [prefix]
+                # A companion radio never forwards, so the last hop is never us; a
+                # repeater sharing our short prefix still gets the repeat.
+                return [last_node[:self.bot.prefix_hex_chars].lower()]
 
         # Fallback to parsing path string
         elif path:
@@ -481,10 +485,7 @@ class TransmissionTracker:
             if parts:
                 last_part = parts[-1]
                 if len(last_part) >= 2:
-                    prefix = last_part[:self.bot.prefix_hex_chars].lower()
-                    # Filter out our own prefix
-                    if prefix != self.bot_prefix:
-                        return [prefix]
+                    return [last_part[:self.bot.prefix_hex_chars].lower()]
 
         return []  # No valid prefix found
 
