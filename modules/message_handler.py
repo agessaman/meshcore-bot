@@ -1842,21 +1842,14 @@ class MessageHandler(MeshGraphRecorderMixin, ContactEventsMixin, RfCorrelationMi
         try:
             # First try to find the contact by name
             if hasattr(self.bot.meshcore, "contacts") and self.bot.meshcore.contacts:
-                contact = None
                 pubkey_prefix = rf_data.get("pubkey_prefix", "")
 
                 # Look for contact by name first
-                for _contact_key, contact_data in self.bot.meshcore.contacts.items():
-                    if contact_data.get("adv_name") == sender_id:
-                        contact = contact_data
-                        break
+                contact = self._find_contact(lambda c: c.get("adv_name") == sender_id)
 
                 # If not found by name, try by pubkey prefix
                 if not contact and pubkey_prefix:
-                    for _contact_key, contact_data in self.bot.meshcore.contacts.items():
-                        if contact_data.get("public_key", "").startswith(pubkey_prefix):
-                            contact = contact_data
-                            break
+                    contact = self._find_contact(lambda c: c.get("public_key", "").startswith(pubkey_prefix))
 
                 if contact:
                     # Use the stored path information if available
