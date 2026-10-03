@@ -517,7 +517,7 @@ class CommandManager:
         return isinstance(payload, dict) and payload.get('reason') == 'no_event_received'
 
     def _record_transmission(
-        self, content: str, target: str, message_type: str, command_id: str | None
+        self, content: str, target: str, message_type: str, command_id: str | None, **extra: Any
     ) -> str | None:
         """Register an outgoing send for repeat tracking; never lets tracking break the send.
 
@@ -532,7 +532,8 @@ class CommandManager:
                     content=content,
                     target=target,
                     message_type=message_type,
-                    command_id=command_id
+                    command_id=command_id,
+                    **extra,
                 )
         except Exception as e:
             self.logger.debug(f"Error recording transmission for repeat tracking: {e}")
@@ -1260,7 +1261,10 @@ class CommandManager:
             else:
                 self.logger.info("Sending DM to %s", sanitize_name(contact_name))
 
-            command_id = self._record_transmission(content, contact_name, 'dm', command_id)
+            command_id = self._record_transmission(
+                content, contact_name, 'dm', command_id,
+                recipient_key=contact.get('public_key') if isinstance(contact, dict) else None,
+            )
 
             # Central DM length guard: firmware MAX_TEXT_LEN is 160; bot budget is 158.
             dm_max_bytes = DM_BODY_LIMIT
@@ -1484,7 +1488,7 @@ class CommandManager:
 
             self.logger.info(f"Sending channel message to {channel} (channel {channel_num}): {content}")
 
-            command_id = self._record_transmission(content, channel, 'channel', command_id)
+            command_id = self._record_transmission(content, channel, 'channel', command_id, channel_idx=channel_num)
 
             # Optional flood scope (region): set before send, restore after
             resolved = self.resolve_channel_send_scope(scope=scope, channel=channel)

@@ -37,10 +37,10 @@ def _make_bot(bot_prefix="aa", has_mesh_graph=True, has_transmission_tracker=Tru
     bot.db_manager = MagicMock()
     bot.db_manager.execute_query = Mock(return_value=[])
 
-    # meshcore device (optional)
+    # The radio's key, consistent with bot_prefix (none when bot_prefix is empty)
     bot.meshcore = MagicMock()
-    bot.meshcore.device = MagicMock()
-    bot.meshcore.device.public_key = "aa" * 32
+    bot.meshcore.self_info = {"public_key": (bot_prefix.lower() * 64)[:64]} if bot_prefix else {}
+    bot.meshcore.device = None
 
     return bot
 
@@ -85,14 +85,12 @@ class TestEarlyExits:
         # No crash expected
 
     def test_empty_bot_prefix_returns_immediately(self):
-        bot = _make_bot()
-        bot.transmission_tracker.bot_prefix = None
+        bot = _make_bot(bot_prefix=None)
         update_mesh_graph_from_trace_data(bot, ["ab"], {})
         bot.mesh_graph.add_edge.assert_not_called()
 
     def test_empty_string_bot_prefix_returns_immediately(self):
-        bot = _make_bot()
-        bot.transmission_tracker.bot_prefix = ""
+        bot = _make_bot(bot_prefix="")
         update_mesh_graph_from_trace_data(bot, ["ab"], {})
         bot.mesh_graph.add_edge.assert_not_called()
 
@@ -213,9 +211,11 @@ class TestImmediateNeighbor:
     def test_single_hop_device_pubkey_bytes(self):
         """Device public key as bytes is hex-encoded."""
         bot = _make_bot(bot_prefix="aa")
-        bot.meshcore.device.public_key = b"\xaa\xbb"
+        bot.meshcore.self_info = {}
+        bot.meshcore.device = MagicMock(public_key=b"\xaa\xbb")
         update_mesh_graph_from_trace_data(bot, ["bb"], {}, is_our_trace=True)
         assert bot.mesh_graph.add_edge.call_count == 2
+        assert bot.mesh_graph.add_edge.call_args_list[0].kwargs["from_public_key"] == "aabb"
 
 
 # ---------------------------------------------------------------------------
@@ -317,3 +317,79 @@ class TestMultiHopEdges:
         bot.meshcore = None
         update_mesh_graph_from_trace_data(bot, ["aa", "bb"], {})
         assert bot.mesh_graph.add_edge.call_count == 2
+
+
+
+class TestBotIdentityFromRadio:
+    """The bot's node comes from the radio's key (meshcore self_info), at the trace's hash width."""
+
+    def test_one_byte_trace_names_the_bot_by_its_first_byte(self):
+        bot = _make_bot(bot_prefix=None)
+        bot.meshcore.self_info = {"public_key": "c3d4" + "00" * 30}
+        update_mesh_graph_from_trace_data(bot, ["aa"], {})
+        kwargs = bot.mesh_graph.add_edge.call_args.kwargs
+        assert kwargs["to_prefix"] == "c3"
+        assert kwargs["to_public_key"] == "c3d4" + "00" * 30
+        assert "prefix_bytes" not in kwargs
+
+    def test_two_byte_trace_names_the_bot_by_two_bytes_and_flags_the_edge(self):
+        bot = _make_bot(bot_prefix=None)
+        bot.meshcore.self_info = {"public_key": "c3d4" + "00" * 30}
+        update_mesh_graph_from_trace_data(bot, ["a1b2", "e5f6"], {})
+        last = bot.mesh_graph.add_edge.call_args_list[-1].kwargs
+        assert (last["from_prefix"], last["to_prefix"]) == ("e5f6", "c3d4")
+        assert all(c.kwargs.get("prefix_bytes") == 2 for c in bot.mesh_graph.add_edge.call_args_list)
+
+
+
+class TestOwnTraceChain:
+    def test_our_trace_adds_the_bot_to_first_hop_edge_in_path_order(self):
+        bot = _make_bot(bot_prefix="dd")
+        update_mesh_graph_from_trace_data(bot, ["aa", "bb", "cc"], {}, is_our_trace=True)
+        edges = [(c.kwargs["from_prefix"], c.kwargs["to_prefix"], c.kwargs["hop_position"])
+                 for c in bot.mesh_graph.add_edge.call_args_list]
+        assert edges == [("dd", "aa", 1), ("aa", "bb", 2), ("bb", "cc", 3), ("cc", "dd", 4)]
+
+    def test_someone_elses_trace_starts_at_its_first_hop(self):
+        bot = _make_bot(bot_prefix="dd")
+        update_mesh_graph_from_trace_data(bot, ["aa", "bb"], {}, is_our_trace=False)
+        edges = [(c.kwargs["from_prefix"], c.kwargs["to_prefix"], c.kwargs["hop_position"])
+                 for c in bot.mesh_graph.add_edge.call_args_list]
+        assert edges == [("aa", "bb", 1), ("bb", "dd", 2)]
+
+    def test_a_location_guess_is_not_stored_as_the_public_key(self, monkeypatch):
+        import modules.utils as utils
+
+        bot = _make_bot(bot_prefix="dd")
+        bot.db_manager.execute_query = Mock(return_value=[{"count": 2}])  # two repeaters share "aa"
+        monkeypatch.setattr(utils, "_get_node_location_from_db", lambda *a, **k: ((47.0, -122.0), "aa11" + "0" * 60))
+        update_mesh_graph_from_trace_data(bot, ["aa"], {}, is_our_trace=False)
+        update_mesh_graph_from_trace_data(bot, ["aa"], {}, is_our_trace=True)
+        for c in bot.mesh_graph.add_edge.call_args_list:
+            assert c.kwargs["from_public_key"] != "aa11" + "0" * 60
+            assert c.kwargs["to_public_key"] != "aa11" + "0" * 60
+
+
+    def test_a_hop_sharing_the_bots_prefix_is_not_given_the_bots_key(self):
+        bot = _make_bot(bot_prefix="dd")
+        update_mesh_graph_from_trace_data(bot, ["aa", "dd"], {}, is_our_trace=True)
+        calls = [c.kwargs for c in bot.mesh_graph.add_edge.call_args_list]
+        assert [(c["from_prefix"], c["to_prefix"]) for c in calls] == [("dd", "aa"), ("aa", "dd")]
+        assert calls[0]["from_public_key"] == "dd" * 32
+        assert calls[1]["to_public_key"] is None  # the hop "dd", not the bot
+
+
+    def test_a_neighbor_sharing_the_bots_prefix_adds_no_self_loop(self):
+        bot = _make_bot(bot_prefix="dd")
+        update_mesh_graph_from_trace_data(bot, ["dd"], {}, is_our_trace=True)
+        bot.mesh_graph.add_edge.assert_not_called()
+
+    def test_a_bad_stored_location_still_records_the_edges(self, monkeypatch):
+        import modules.utils as utils
+
+        bot = _make_bot(bot_prefix="dd")
+        monkeypatch.setattr(utils, "_get_node_location_from_db", lambda *a, **k: ((float("inf"), 0.0), None))
+        monkeypatch.setattr(utils, "calculate_distance", Mock(side_effect=ValueError("math domain error")))
+        update_mesh_graph_from_trace_data(bot, ["aa", "bb"], {})
+        assert bot.mesh_graph.add_edge.call_count == 2
+        assert all(c.kwargs["geographic_distance"] is None for c in bot.mesh_graph.add_edge.call_args_list)

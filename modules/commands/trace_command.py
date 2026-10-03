@@ -263,7 +263,10 @@ class TraceCommand(BaseCommand):
                 await asyncio.sleep(wait_s)
                 await self.send_response(message, response)
 
-        if result.success and self.update_graph_one_byte and result.path_nodes:
+        # 1-byte hashes follow update_graph_one_byte; 2-byte and wider, update_graph_two_byte
+        hash_bytes = 1 << ((result.flags or 0) & 3)
+        update_graph = self.update_graph_one_byte if hash_bytes == 1 else self.update_graph_two_byte
+        if result.success and update_graph and result.path_nodes:
             path_hashes = [n.get("hash") for n in result.path_nodes if n.get("hash")]
             if path_hashes and hasattr(self.bot, "mesh_graph") and self.bot.mesh_graph and self.bot.mesh_graph.capture_enabled:
                 update_mesh_graph_from_trace_data(
