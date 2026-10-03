@@ -83,7 +83,6 @@ def mh() -> MessageHandler:
     handler.rf_data_timeout = 15.0
     handler.enhanced_correlation = False
     handler.recent_rf_data = []
-    handler.pending_messages = {}
     return handler
 
 

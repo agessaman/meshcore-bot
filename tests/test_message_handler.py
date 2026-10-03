@@ -1391,107 +1391,6 @@ class TestParseAdvert:
 
 
 # ---------------------------------------------------------------------------
-# store_message_for_correlation and cleanup_old_messages
-# ---------------------------------------------------------------------------
-
-class TestMessageCorrelation:
-    """Tests for store_message_for_correlation(), cleanup_old_messages(), and
-    correlate_message_with_rf_data()."""
-
-    def test_store_message_adds_to_pending(self, handler):
-        handler.store_message_for_correlation("msg-001", {"pubkey_prefix": "aa"})
-        assert "msg-001" in handler.pending_messages
-        entry = handler.pending_messages["msg-001"]
-        assert entry["data"] == {"pubkey_prefix": "aa"}
-        assert entry["processed"] is False
-        assert isinstance(entry["timestamp"], float)
-
-    def test_store_message_overwrites_existing(self, handler):
-        handler.store_message_for_correlation("dup", {"v": 1})
-        handler.store_message_for_correlation("dup", {"v": 2})
-        assert handler.pending_messages["dup"]["data"]["v"] == 2
-
-    def test_cleanup_removes_expired_entries(self, handler):
-        handler.message_timeout = 5.0
-        # Store a message then backdate its timestamp well past the timeout
-        handler.store_message_for_correlation("old-msg", {"x": 1})
-        handler.pending_messages["old-msg"]["timestamp"] = time.time() - 100
-        handler.cleanup_old_messages()
-        assert "old-msg" not in handler.pending_messages
-
-    def test_cleanup_keeps_fresh_entries(self, handler):
-        handler.message_timeout = 60.0
-        handler.store_message_for_correlation("fresh", {"x": 2})
-        handler.cleanup_old_messages()
-        assert "fresh" in handler.pending_messages
-
-    def test_cleanup_empty_pending_is_safe(self, handler):
-        handler.pending_messages = {}
-        handler.cleanup_old_messages()  # Should not raise
-
-    def test_correlate_unknown_message_id_returns_none(self, handler):
-        result = handler.correlate_message_with_rf_data("nonexistent-id")
-        assert result is None
-
-    def test_correlate_message_with_matching_rf_data(self, handler):
-        handler.store_message_for_correlation("m1", {"pubkey_prefix": "aabb"})
-        rf = {
-            "timestamp": time.time(),
-            "snr": 5,
-            "rssi": -80,
-            "packet_prefix": "aabb",
-            "pubkey_prefix": "aabb",
-        }
-        handler.recent_rf_data = [rf]
-        handler.rf_data_timeout = 60
-        result = handler.correlate_message_with_rf_data("m1")
-        assert result is not None
-        assert handler.pending_messages["m1"]["processed"] is True
-
-    def test_correlate_no_matching_rf_returns_none(self, handler):
-        handler.store_message_for_correlation("m2", {"pubkey_prefix": "ffff"})
-        handler.recent_rf_data = []
-        result = handler.correlate_message_with_rf_data("m2")
-        assert result is None
-
-
-# ---------------------------------------------------------------------------
-# try_correlate_pending_messages
-# ---------------------------------------------------------------------------
-
-class TestTryCorrelatePendingMessages:
-    """Tests for MessageHandler.try_correlate_pending_messages()."""
-
-    def test_marks_matching_message_processed(self, handler):
-        handler.store_message_for_correlation("pm1", {"pubkey_prefix": "ccdd"})
-        rf_data = {"pubkey_prefix": "ccdd", "packet_prefix": "ccdd", "timestamp": time.time()}
-        handler.try_correlate_pending_messages(rf_data)
-        assert handler.pending_messages["pm1"]["processed"] is True
-
-    def test_skips_already_processed_messages(self, handler):
-        handler.store_message_for_correlation("pm2", {"pubkey_prefix": "eeff"})
-        handler.pending_messages["pm2"]["processed"] = True
-        rf_data = {"pubkey_prefix": "eeff", "packet_prefix": "eeff", "timestamp": time.time()}
-        # Should not raise; processed flag remains True
-        handler.try_correlate_pending_messages(rf_data)
-        assert handler.pending_messages["pm2"]["processed"] is True
-
-    def test_no_match_does_not_mark_processed(self, handler):
-        handler.store_message_for_correlation("pm3", {"pubkey_prefix": "1111"})
-        rf_data = {"pubkey_prefix": "9999", "packet_prefix": "9999", "timestamp": time.time()}
-        handler.try_correlate_pending_messages(rf_data)
-        assert handler.pending_messages["pm3"]["processed"] is False
-
-    def test_partial_prefix_match_16chars(self, handler):
-        # If both pubkey_prefixes share first 16 chars, they correlate
-        long_key = "aabbccddeeff0011aabbccddeeff0011"
-        handler.store_message_for_correlation("pm4", {"pubkey_prefix": long_key})
-        rf_data = {"pubkey_prefix": long_key, "packet_prefix": long_key, "timestamp": time.time()}
-        handler.try_correlate_pending_messages(rf_data)
-        assert handler.pending_messages["pm4"]["processed"] is True
-
-
-# ---------------------------------------------------------------------------
 # handle_rf_log_data
 # ---------------------------------------------------------------------------
 
@@ -2944,3 +2843,49 @@ class TestChannelPayloadCorrelation:
 
         assert result[RF_MATCH_KEY] == RF_MATCH_FALLBACK
         assert result["packet_prefix"] == "cc" * 16
+
+
+# ---------------------------------------------------------------------------
+# _correlate_channel_message_rf_data: the short wait for a trailing RF log row
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+class TestChannelCorrelationWait:
+    @staticmethod
+    def _late_row() -> dict:
+        import time as _time
+
+        return {"timestamp": _time.time(), "packet_prefix": "ab" * 16, "raw_hex": "ab" * 16}
+
+    async def test_row_logged_during_the_wait_is_found(self, handler):
+        handler.enhanced_correlation = True
+        late = self._late_row()
+
+        async def fake_sleep(seconds):
+            assert seconds == 0.1
+            handler.recent_rf_data.append(late)
+
+        with patch("modules.message_handler.asyncio.sleep", side_effect=fake_sleep) as sleep:
+            result = await handler._correlate_channel_message_rf_data(
+                None, "", {"channel_idx": 0, "text": "hi"}, scope_eligible_only=False, extended_timeout=30.0
+            )
+        sleep.assert_awaited_once()
+        assert result is not None and result["packet_prefix"] == late["packet_prefix"]
+
+    async def test_no_wait_without_enhanced_correlation(self, handler):
+        handler.enhanced_correlation = False
+        with patch("modules.message_handler.asyncio.sleep") as sleep:
+            result = await handler._correlate_channel_message_rf_data(
+                None, "", {"channel_idx": 0, "text": "hi"}, scope_eligible_only=False, extended_timeout=30.0
+            )
+        sleep.assert_not_called()
+        assert result is None
+
+    async def test_no_wait_for_scope_lookups(self, handler):
+        handler.enhanced_correlation = True
+        with patch("modules.message_handler.asyncio.sleep") as sleep:
+            await handler._correlate_channel_message_rf_data(
+                None, "", {"channel_idx": 0, "text": "hi"}, scope_eligible_only=True, extended_timeout=30.0
+            )
+        sleep.assert_not_called()

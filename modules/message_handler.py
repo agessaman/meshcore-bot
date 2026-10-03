@@ -11,7 +11,7 @@ import time
 from collections import OrderedDict
 from collections.abc import Iterable
 from hashlib import sha256
-from typing import Any, TypedDict
+from typing import Any
 
 from .enums import AdvertFlags, DeviceRole, PayloadType, PayloadVersion, RouteType
 from .graph_trace_helper import update_mesh_graph_from_trace_data
@@ -54,12 +54,6 @@ def rf_data_is_correlated(rf_data: dict | None) -> bool:
     return rf_data.get(RF_MATCH_KEY, RF_MATCH_FALLBACK) != RF_MATCH_FALLBACK
 
 
-class PendingMessageEntry(TypedDict):
-    data: dict[str, Any]
-    timestamp: float
-    processed: bool
-
-
 class MessageHandler:
     """Handles incoming messages and routes them to command processors.
 
@@ -94,9 +88,6 @@ class MessageHandler:
         # A queued CHANNEL_MSG_RECV can be delayed while the mesh stays busy.
         self.channel_rf_data: list[dict[str, Any]] = []
         self._channel_rf_cache_timeout = max(300.0, self.rf_data_timeout * 4)
-
-        # Message correlation system to prevent race conditions
-        self.pending_messages: dict[str, PendingMessageEntry] = {}  # Store messages waiting for RF data
 
         # Enhanced RF data storage with better correlation
         self.rf_data_by_timestamp: dict[int | float, dict[str, Any]] = {}  # Index by timestamp for faster lookup
@@ -1644,13 +1635,7 @@ class MessageHandler:
                     # Clean up old data from all indexes
                     self._cleanup_stale_cache_entries(current_time)
 
-                    # Try to correlate with any pending messages
-                    self.try_correlate_pending_messages(rf_data)
-
                     self.logger.debug(f"Stored recent RF data with routing info: {rf_data}")
-
-                    # Clean up old pending messages
-                    self.cleanup_old_messages()
 
         except Exception as e:
             self.logger.error(f"Error handling RF log data: {e}")
@@ -1850,9 +1835,7 @@ class MessageHandler:
             )
 
         if not recent_rf_data and self.enhanced_correlation and not scope_eligible_only:
-            correlation_key = message_packet_prefix or message_pubkey
-            message_id = f"{correlation_key}_{int(time.time() * 1000)}"
-            self.store_message_for_correlation(message_id, payload)
+            # The RF log row can trail the message event; give it a moment, then look again
             await asyncio.sleep(0.1)
             authenticated, authenticated_identity_seen = self._find_authenticated_channel_rf_data(payload)
             if authenticated_identity_seen:
@@ -1861,7 +1844,7 @@ class MessageHandler:
                 if scope_eligible_only and not self._is_rf_data_scope_eligible(authenticated):
                     return None
                 return authenticated
-            recent_rf_data = self.correlate_message_with_rf_data(message_id)
+            recent_rf_data = self.find_recent_rf_data(payload.get("pubkey_prefix", ""))
 
         if not recent_rf_data:
             if message_packet_prefix:
@@ -2137,65 +2120,6 @@ class MessageHandler:
             return {**most_recent, RF_MATCH_KEY: RF_MATCH_FALLBACK}
 
         return None
-
-    def store_message_for_correlation(self, message_id: str, message_data: dict[str, Any]) -> None:
-        """Store a message temporarily to wait for RF data correlation"""
-        import time
-
-        self.pending_messages[message_id] = {"data": message_data, "timestamp": time.time(), "processed": False}
-        self.logger.debug(f"Stored message {message_id} for RF data correlation")
-
-    def correlate_message_with_rf_data(self, message_id: str) -> dict[str, Any] | None:
-        """Try to correlate a stored message with available RF data"""
-        if message_id not in self.pending_messages:
-            return None
-
-        message_info = self.pending_messages[message_id]
-        message_data = message_info["data"]
-
-        # Try to find RF data for this message
-        pubkey_prefix = message_data.get("pubkey_prefix", "")
-        rf_data = self.find_recent_rf_data(pubkey_prefix)
-
-        if rf_data:
-            self.logger.debug(f"Successfully correlated message {message_id} with RF data")
-            message_info["processed"] = True
-            return rf_data
-
-        return None
-
-    def cleanup_old_messages(self) -> None:
-        """Clean up old pending messages that couldn't be correlated"""
-        import time
-
-        current_time = time.time()
-
-        to_remove = []
-        for message_id, message_info in self.pending_messages.items():
-            if current_time - message_info["timestamp"] > self.message_timeout:
-                to_remove.append(message_id)
-
-        for message_id in to_remove:
-            del self.pending_messages[message_id]
-            self.logger.debug(f"Cleaned up old pending message {message_id}")
-
-    def try_correlate_pending_messages(self, rf_data: dict[str, Any]) -> None:
-        """Try to correlate new RF data with any pending messages"""
-        pubkey_prefix = rf_data.get("pubkey_prefix", "") or ""
-
-        for message_id, message_info in self.pending_messages.items():
-            if message_info["processed"]:
-                continue
-
-            message_pubkey = message_info["data"].get("pubkey_prefix", "") or ""
-
-            # Check if this RF data matches the pending message
-            if pubkey_prefix == message_pubkey or (
-                len(pubkey_prefix) >= 16 and len(message_pubkey) >= 16 and pubkey_prefix[:16] == message_pubkey[:16]
-            ):
-                self.logger.debug(f"Correlated RF data with pending message {message_id}")
-                message_info["processed"] = True
-                break
 
     def decode_meshcore_packet(self, raw_hex: str, payload_hex: str | None = None) -> dict | None:
         """

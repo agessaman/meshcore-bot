@@ -1282,7 +1282,7 @@ bot_name = MeshCoreBot
 # Time window for correlating RF data with messages (seconds)
 rf_data_timeout = 15.0
 
-# Time to wait for RF data correlation (seconds)
+# Oldest RF log row (seconds) a channel message can be matched to by its contents
 message_correlation_timeout = 10.0
 
 # Enable enhanced correlation strategies
