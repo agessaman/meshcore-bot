@@ -78,7 +78,6 @@ class ChannelMessageMixin:
         self, payload: dict[str, Any], metadata: dict[str, Any] | None, snr_payload_keys: tuple[str, ...]
     ) -> tuple[float | None, int | None]:
         """A message's SNR and RSSI from its payload or metadata, else the signal cache by pubkey prefix."""
-        # Get SNR and RSSI using the same logic as contact messages
         snr: float | None = None
         rssi: int | None = None
 

@@ -283,28 +283,9 @@ class MessageHandler(MeshGraphRecorderMixin, ContactEventsMixin, RfCorrelationMi
                 self._log_dm_routing_from_rf(message_pubkey)
 
             # Get additional metadata - try multiple sources for SNR and RSSI
-            snr: float | None = None
-            rssi: int | None = None
-
-            # Try to get SNR from payload first - check multiple possible field names
-            snr = _signal_value(payload, metadata, ("SNR", "snr", "signal_to_noise", "signal_noise_ratio"), ("snr", "SNR"), float)
-
-            # If still no SNR, try to get it from the cache using pubkey prefix from payload
-            if snr is None:
-                pubkey_prefix = payload.get("pubkey_prefix", "")
-                if pubkey_prefix and pubkey_prefix in self.snr_cache:
-                    snr = self.snr_cache[pubkey_prefix]
-                    self.logger.debug(f"Retrieved cached SNR {snr} for pubkey {pubkey_prefix}")
-
-            # Try to get RSSI from payload first
-            rssi = _signal_value(payload, metadata, ("RSSI", "rssi", "signal_strength"), ("rssi", "RSSI"), int)
-
-            # If still no RSSI, try to get it from the cache using pubkey prefix from payload
-            if rssi is None:
-                pubkey_prefix = payload.get("pubkey_prefix", "")
-                if pubkey_prefix and pubkey_prefix in self.rssi_cache:
-                    rssi = int(self.rssi_cache[pubkey_prefix])
-                    self.logger.debug(f"Retrieved cached RSSI {rssi} for pubkey {pubkey_prefix}")
+            snr, rssi = self._message_signal(
+                payload, metadata, ("SNR", "snr", "signal_to_noise", "signal_noise_ratio")
+            )
 
             # For DMs, we can't decode the encrypted packet, but we can get SNR/RSSI from the payload
             # For channel messages, we can decode the packet since they use shared keys
