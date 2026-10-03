@@ -5,7 +5,6 @@ Posts MeshCore channel messages to Telegram via the Bot API (one-way, read-only)
 """
 
 import asyncio
-import copy
 import html
 import os
 import re
@@ -13,8 +12,6 @@ import time
 from collections import deque
 from dataclasses import dataclass
 from typing import Any, Optional
-
-from meshcore import EventType
 
 try:
     import aiohttp
@@ -30,10 +27,10 @@ except ImportError:
     requests = None  # type: ignore[assignment]
     REQUESTS_AVAILABLE = False
 
-import contextlib
 
-from ..profanity_filter import censor, contains_profanity
-from .base_service import BaseServicePlugin
+from ..profanity_filter import censor, contains_profanity  # noqa: F401  re-exported
+from .base_service import BaseServicePlugin  # noqa: F401  re-exported
+from .channel_bridge_utils import ChannelBridgeBase
 
 # Telegram API
 TELEGRAM_API_BASE = "https://api.telegram.org/bot"
@@ -58,7 +55,7 @@ class QueuedMessage:
             self.next_retry_at = time.time()
 
 
-class TelegramBridgeService(BaseServicePlugin):
+class TelegramBridgeService(ChannelBridgeBase):
     """Telegram bridge service.
 
     Posts MeshCore channel messages to Telegram channels/groups via the Bot API.
@@ -161,6 +158,58 @@ class TelegramBridgeService(BaseServicePlugin):
                 "Add bridge.<channelname> = <chat_id> in [TelegramBridge]"
             )
 
+    bridge_label = "Telegram"
+    payload_text_key = "text"
+    old_message_log = "Dropping old message from queue [{channel}]: age {age:.1f}s > {max_age}s"
+    retry_log = "Message failed, retry in {delay:.1f}s ({retry}/{max_retries}) [{channel}]"
+    processor_error_log = "Error in Telegram queue processor: {error}"
+
+    @property
+    def _bridge_mappings(self) -> dict[str, str]:
+        return self.channel_chat_ids
+
+    def _open_http_session(self) -> None:
+        if AIOHTTP_AVAILABLE:
+            self.http_session = aiohttp.ClientSession()
+        else:
+            self.logger.debug("Using requests for HTTP (fallback)")
+
+    def _init_queues(self) -> None:
+        for chat_id in self.channel_chat_ids.values():
+            self.message_queues[chat_id] = []
+            self.send_times[chat_id] = deque()
+
+    def _targets_for(self, channel_name: str) -> Optional[str]:
+        # Normalize: strip leading # and compare case-insensitively so bridge.HowlTest matches #howltest
+        channel_key = channel_name.lstrip('#').lower()
+        for config_channel, cid in self.channel_chat_ids.items():
+            if config_channel.lstrip('#').lower() == channel_key:
+                return cid
+        return None
+
+    async def _deliver(self, targets: str, sender_name: str, message_text: str, channel_name: str) -> None:
+        full_text = self._build_message_text(sender_name, message_text, channel_name)
+        full_text = self._truncate_text(full_text)
+        await self._queue_message(targets, full_text, channel_name)
+
+    def _throttled(self, key: str, queue: Any, current_time: float) -> bool:
+        # Enforce min interval per chat
+        if key in self.send_times:
+            st = self.send_times[key]
+            while st and (current_time - st[0]) > self.rate_limit_min_interval:
+                st.popleft()
+            if st and (current_time - st[-1]) < self.rate_limit_min_interval:
+                return True
+        return False
+
+    async def _send_queued(self, queued_msg: QueuedMessage) -> bool:
+        return await self._send_to_telegram(
+            queued_msg.chat_id,
+            queued_msg.payload,
+            queued_msg.channel_name,
+            queued_msg,
+        )
+
     def _load_channel_mappings(self) -> None:
         """Load bridge.<channel> = chat_id from config."""
         if not self.bot.config.has_section('TelegramBridge'):
@@ -220,124 +269,6 @@ class TelegramBridgeService(BaseServicePlugin):
         self.logger.debug(f"Truncating message from {len(text)} to {self.max_message_length} chars")
         return text[: self.max_message_length - 1].rstrip() + "…"
 
-    async def start(self) -> None:
-        if not self.enabled:
-            self.logger.info("Telegram bridge service is disabled")
-            return
-        if not self.channel_chat_ids:
-            self.logger.warning("Telegram bridge enabled but no channels configured")
-            return
-
-        self.logger.info("Starting Telegram bridge service...")
-        if AIOHTTP_AVAILABLE:
-            self.http_session = aiohttp.ClientSession()
-        else:
-            self.logger.debug("Using requests for HTTP (fallback)")
-
-        if hasattr(self.bot, 'meshcore') and self.bot.meshcore:
-            self._subscribe(self.bot.meshcore, EventType.CHANNEL_MSG_RECV, self._on_mesh_channel_message)
-            self.logger.info("Subscribed to CHANNEL_MSG_RECV events")
-        else:
-            self.logger.error("Cannot subscribe to events - meshcore not available")
-            if self.http_session is not None:
-                await self.http_session.close()
-                self.http_session = None
-            return
-
-        # Register for bot-sent channel messages so bot responses are bridged too
-        if self.bridge_bot_responses and getattr(self.bot, 'channel_sent_listeners', None) is not None:
-            self.bot.channel_sent_listeners.append(self._on_mesh_channel_message)
-            self.logger.info("Registered for bot channel-sent events (bridge_bot_responses=true)")
-
-        for chat_id in self.channel_chat_ids.values():
-            self.message_queues[chat_id] = []
-            self.send_times[chat_id] = deque()
-
-        self._queue_processor_task = asyncio.create_task(self._process_message_queues())
-        self._running = True
-        self.logger.info(
-            f"Telegram bridge service started (bridging {len(self.channel_chat_ids)} channels)"
-        )
-
-    async def on_transport_reconnected(self) -> None:
-        """Re-subscribe to channel messages on the new meshcore instance."""
-        if not self._running or not getattr(self.bot, 'meshcore', None):
-            return
-        self._unsubscribe_all()
-        self._subscribe(self.bot.meshcore, EventType.CHANNEL_MSG_RECV, self._on_mesh_channel_message)
-        self.logger.info("Telegram bridge re-subscribed to CHANNEL_MSG_RECV after transport reconnect")
-
-    async def stop(self) -> None:
-        self.logger.info("Stopping Telegram bridge service...")
-        self._running = False
-        self._unsubscribe_all()
-
-        # Unregister bot channel-sent listener
-        if getattr(self.bot, 'channel_sent_listeners', None) is not None:
-            with contextlib.suppress(ValueError):
-                self.bot.channel_sent_listeners.remove(self._on_mesh_channel_message)
-
-        await self._cancel_tasks(self._queue_processor_task)
-        if self.http_session:
-            await self.http_session.close()
-            self.http_session = None
-        self.logger.info("Telegram bridge service stopped")
-
-    async def _on_mesh_channel_message(self, event, metadata=None) -> None:
-        try:
-            payload = copy.deepcopy(event.payload) if hasattr(event, 'payload') else None
-            if payload is None:
-                self.logger.warning("Channel message event has no payload")
-                return
-
-            channel_idx = payload.get('channel_idx', 0)
-            channel_name = self.bot.channel_manager.get_channel_name(channel_idx)
-            text = payload.get('text', '')
-            sender = 'Unknown'
-
-            if ':' in text and not text.startswith('http'):
-                parts = text.split(':', 1)
-                sender = parts[0].strip()
-
-            if not channel_name or channel_name.lower() in ('dm', 'direct', 'private'):
-                self.logger.debug("Ignoring DM (DMs are never bridged)")
-                return
-
-            chat_id = None
-            # Normalize: strip leading # and compare case-insensitively so bridge.HowlTest matches #howltest
-            channel_key = channel_name.lstrip('#').lower()
-            for config_channel, cid in self.channel_chat_ids.items():
-                if config_channel.lstrip('#').lower() == channel_key:
-                    chat_id = cid
-                    break
-            if not chat_id:
-                self.logger.debug(f"Channel '{channel_name}' not configured for Telegram bridge")
-                return
-
-            if ':' in text and not text.startswith('http'):
-                parts = text.split(':', 1)
-                sender_name = parts[0].strip()
-                message_text = parts[1].strip() if len(parts) > 1 else text
-            else:
-                sender_name = sender
-                message_text = text
-
-            # Profanity filter: drop (don't bridge), censor (replace with ****), or off
-            if self.filter_profanity == 'drop':
-                if contains_profanity(sender_name, self.logger) or contains_profanity(message_text, self.logger):
-                    self.logger.debug(f"Telegram bridge: dropping message with profanity from [{channel_name}]")
-                    return
-            elif self.filter_profanity == 'censor':
-                sender_name = censor(sender_name, self.logger)
-                message_text = censor(message_text, self.logger)
-
-            full_text = self._build_message_text(sender_name, message_text, channel_name)
-            full_text = self._truncate_text(full_text)
-
-            await self._queue_message(chat_id, full_text, channel_name)
-        except Exception as e:
-            self.logger.error(f"Error handling mesh channel message: {e}", exc_info=True)
-
     async def _queue_message(self, chat_id: str, text: str, channel_name: str) -> None:
         payload: dict[str, Any] = {
             "chat_id": chat_id,
@@ -357,72 +288,6 @@ class TelegramBridgeService(BaseServicePlugin):
             self.message_queues[chat_id] = []
         self.message_queues[chat_id].append(queued)
         self.logger.debug(f"Queued message for Telegram [{channel_name}]: {text[:50]}...")
-
-    async def _process_message_queues(self) -> None:
-        while self._running:
-            try:
-                current_time = time.time()
-                for chat_id, queue in list(self.message_queues.items()):
-                    if not queue:
-                        continue
-                    # Enforce min interval per chat
-                    if chat_id in self.send_times:
-                        st = self.send_times[chat_id]
-                        while st and (current_time - st[0]) > self.rate_limit_min_interval:
-                            st.popleft()
-                        if st and (current_time - st[-1]) < self.rate_limit_min_interval:
-                            continue
-
-                    queued_msg = None
-                    for msg in queue:
-                        if current_time >= msg.next_retry_at:
-                            queued_msg = msg
-                            break
-                    if queued_msg is None:
-                        continue
-
-                    age = current_time - queued_msg.first_queued
-                    if age > self.max_queue_age:
-                        queue.remove(queued_msg)
-                        self.logger.warning(
-                            f"Dropping old message from queue [{queued_msg.channel_name}]: "
-                            f"age {age:.1f}s > {self.max_queue_age}s"
-                        )
-                        continue
-
-                    success = await self._send_to_telegram(
-                        queued_msg.chat_id,
-                        queued_msg.payload,
-                        queued_msg.channel_name,
-                        queued_msg,
-                    )
-                    if success:
-                        queue.remove(queued_msg)
-                        if chat_id not in self.send_times:
-                            self.send_times[chat_id] = deque()
-                        self.send_times[chat_id].append(current_time)
-                    else:
-                        queued_msg.retry_count += 1
-                        if queued_msg.retry_count > self.max_retries:
-                            queue.remove(queued_msg)
-                            self.logger.error(
-                                f"Dropping message after {self.max_retries} retries "
-                                f"[{queued_msg.channel_name}]: {queued_msg.payload['text'][:50]}..."
-                            )
-                        else:
-                            delay = self.retry_delay_base * (2 ** (queued_msg.retry_count - 1))
-                            queued_msg.next_retry_at = current_time + delay
-                            self.logger.debug(
-                                f"Message failed, retry in {delay:.1f}s "
-                                f"({queued_msg.retry_count}/{self.max_retries}) [{queued_msg.channel_name}]"
-                            )
-
-                await asyncio.sleep(0.1)
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                self.logger.error(f"Error in Telegram queue processor: {e}", exc_info=True)
-                await asyncio.sleep(1.0)
 
     async def _send_to_telegram(
         self,

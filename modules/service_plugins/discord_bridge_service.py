@@ -5,16 +5,12 @@ Posts MeshCore channel messages to Discord via webhooks (one-way, read-only)
 """
 
 import asyncio
-import copy
 import time
 from collections import deque
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Optional
-
-# Import meshcore
-from meshcore import EventType
 
 # Try to import aiohttp for async HTTP (preferred)
 try:
@@ -32,16 +28,14 @@ except ImportError:
     requests = None  # type: ignore[assignment]
     REQUESTS_AVAILABLE = False
 
-# Import base service
-import contextlib
-
 from ..bridge_outbound import (
     DISCORD_WEBHOOK_ALLOWED_MENTIONS,
     neutralize_discord_mention_content,
 )
-from ..profanity_filter import censor, contains_profanity
+from ..profanity_filter import censor, contains_profanity  # noqa: F401  re-exported
 from ..security_utils import sanitize_name
-from .base_service import BaseServicePlugin
+from .base_service import BaseServicePlugin  # noqa: F401  re-exported
+from .channel_bridge_utils import ChannelBridgeBase
 
 
 @dataclass
@@ -61,7 +55,7 @@ class QueuedMessage:
             self.next_retry_at = time.time()
 
 
-class DiscordBridgeService(BaseServicePlugin):
+class DiscordBridgeService(ChannelBridgeBase):
     """Discord bridge service.
 
     Posts MeshCore channel messages to Discord channels via webhooks.
@@ -175,6 +169,76 @@ class DiscordBridgeService(BaseServicePlugin):
         if not self.channel_webhooks:
             self.logger.warning("No Discord channel mappings configured. Discord bridge will not post any messages.")
             self.logger.info("Add channel mappings in config: bridge.<channelname> = <webhook_url>")
+
+    bridge_label = "Discord"
+    payload_text_key = "content"
+    old_message_log = "Dropping old message from queue [{channel}]: age {age:.1f}s exceeds max {max_age}s"
+    retry_log = "Message failed, will retry in {delay:.1f}s (attempt {retry}/{max_retries}) [{channel}]"
+    processor_error_log = "Error in message queue processor: {error}"
+
+    @property
+    def _bridge_mappings(self) -> dict[str, list[str]]:
+        return self.channel_webhooks
+
+    def _open_http_session(self) -> None:
+        # Create aiohttp session if available
+        if AIOHTTP_AVAILABLE:
+            self.http_session = aiohttp.ClientSession()
+            self.logger.debug("Using aiohttp for async HTTP requests")
+        else:
+            self.logger.debug("Using requests library for HTTP requests (fallback)")
+
+    def _init_queues(self) -> None:
+        # Initialize message queues for each webhook
+        for webhook_urls in self.channel_webhooks.values():
+            for webhook_url in webhook_urls:
+                self.message_queues[webhook_url] = deque()
+                self.send_times[webhook_url] = deque()
+
+    def _targets_for(self, channel_name: str) -> Optional[list[str]]:
+        # Check if this channel is configured for bridging (case-insensitive)
+        for config_channel, urls in self.channel_webhooks.items():
+            if config_channel.lower() == channel_name.lower():
+                return urls
+        return None
+
+    def _prepare_message_text(self, message_text: str) -> str:
+        # Clean up MeshCore @ mentions: @[username] → **@username**
+        message_text = self._format_mentions(message_text)
+        return neutralize_discord_mention_content(message_text)
+
+    async def _deliver(self, targets: list[str], sender_name: str, message_text: str, channel_name: str) -> None:
+        # Fan out to all configured webhooks for this channel
+        for webhook_url in targets:
+            await self._queue_message(webhook_url, message_text, channel_name, sender_name)
+
+    def _throttled(self, key: str, queue: Any, current_time: float) -> bool:
+        # Clean up old send times (outside rate limit window)
+        if key in self.send_times:
+            send_times = self.send_times[key]
+            while send_times and (current_time - send_times[0]) > self.rate_limit_window:
+                send_times.popleft()
+
+        # Check if we can send (proactive rate limiting)
+        can_send = True
+        if key in self.send_times:
+            recent_sends = len(self.send_times[key])
+            if recent_sends >= self.rate_limit_max:
+                can_send = False
+                # Calculate wait time until oldest message expires
+                oldest_send = self.send_times[key][0]
+                wait_time = (oldest_send + self.rate_limit_window) - current_time
+                if wait_time > 0:
+                    self.logger.debug(f"Rate limit throttling [{queue[0].channel_name}]: waiting {wait_time:.1f}s")
+        return not can_send
+
+    async def _send_queued(self, queued_msg: QueuedMessage) -> bool:
+        return await self._post_to_webhook(
+            queued_msg.webhook_url,
+            queued_msg.payload,
+            queued_msg.channel_name,
+            queued_msg
+        )
 
     def _load_channel_mappings(self) -> None:
         """Load channel webhook mappings from config.
@@ -309,170 +373,6 @@ class DiscordBridgeService(BaseServicePlugin):
             return '/'.join(parts)
         return url[:50] + '...'
 
-    async def start(self) -> None:
-        """Start the Discord bridge service.
-
-        Sets up message event handlers and initializes HTTP session.
-        """
-        if not self.enabled:
-            self.logger.info("Discord bridge service is disabled")
-            return
-
-        if not self.channel_webhooks:
-            self.logger.warning("Discord bridge enabled but no channels configured")
-            return
-
-        self.logger.info("Starting Discord bridge service...")
-
-        # Create aiohttp session if available
-        if AIOHTTP_AVAILABLE:
-            self.http_session = aiohttp.ClientSession()
-            self.logger.debug("Using aiohttp for async HTTP requests")
-        else:
-            self.logger.debug("Using requests library for HTTP requests (fallback)")
-
-        # Subscribe to channel message events
-        # NOTE: We do NOT subscribe to CONTACT_MSG_RECV (DMs are never bridged)
-        if hasattr(self.bot, 'meshcore') and self.bot.meshcore:
-            self._subscribe(self.bot.meshcore, EventType.CHANNEL_MSG_RECV, self._on_mesh_channel_message)
-            self.logger.info("Subscribed to CHANNEL_MSG_RECV events")
-        else:
-            self.logger.error("Cannot subscribe to events - meshcore not available")
-            if self.http_session is not None:
-                await self.http_session.close()
-                self.http_session = None
-            return
-
-        # Register for bot-sent channel messages so bot responses are bridged too
-        if self.bridge_bot_responses and getattr(self.bot, 'channel_sent_listeners', None) is not None:
-            self.bot.channel_sent_listeners.append(self._on_mesh_channel_message)
-            self.logger.info("Registered for bot channel-sent events (bridge_bot_responses=true)")
-
-        # Initialize message queues for each webhook
-        for webhook_urls in self.channel_webhooks.values():
-            for webhook_url in webhook_urls:
-                self.message_queues[webhook_url] = deque()
-                self.send_times[webhook_url] = deque()
-
-        # Start background queue processor task
-        self._queue_processor_task = asyncio.create_task(self._process_message_queues())
-
-        self._running = True
-        self.logger.info(f"Discord bridge service started (bridging {len(self.channel_webhooks)} channels)")
-
-    async def on_transport_reconnected(self) -> None:
-        """Re-subscribe to channel messages on the new meshcore instance."""
-        if not self._running or not getattr(self.bot, 'meshcore', None):
-            return
-        self._unsubscribe_all()
-        self._subscribe(self.bot.meshcore, EventType.CHANNEL_MSG_RECV, self._on_mesh_channel_message)
-        self.logger.info("Discord bridge re-subscribed to CHANNEL_MSG_RECV after transport reconnect")
-
-    async def stop(self) -> None:
-        """Stop the Discord bridge service.
-
-        Cleans up HTTP session and event handlers.
-        """
-        self.logger.info("Stopping Discord bridge service...")
-        self._running = False
-        self._unsubscribe_all()
-
-        # Unregister bot channel-sent listener
-        if getattr(self.bot, 'channel_sent_listeners', None) is not None:
-            with contextlib.suppress(ValueError):
-                self.bot.channel_sent_listeners.remove(self._on_mesh_channel_message)
-
-        # Cancel background tasks
-        await self._cancel_tasks(self._queue_processor_task)
-
-        # Close aiohttp session
-        if self.http_session:
-            await self.http_session.close()
-            self.http_session = None
-
-        self.logger.info("Discord bridge service stopped")
-
-    async def _on_mesh_channel_message(self, event, metadata=None) -> None:
-        """Handle incoming mesh channel messages.
-
-        Posts messages to corresponding Discord channels via webhooks.
-        DMs are explicitly ignored for privacy.
-
-        Args:
-            event: The MeshCore event object containing the message payload.
-            metadata: Optional metadata dictionary associated with the event.
-        """
-        try:
-            # Copy payload immediately to avoid segfault if event is freed
-            payload = copy.deepcopy(event.payload) if hasattr(event, 'payload') else None
-            if payload is None:
-                self.logger.warning("Channel message event has no payload")
-                return
-
-            # Extract channel index and convert to channel name
-            channel_idx = payload.get('channel_idx', 0)
-            channel_name = self.bot.channel_manager.get_channel_name(channel_idx)
-
-            # Extract sender and text
-            # Sender is embedded in the text (format: "sender: message")
-            text = payload.get('text', '')
-            sender = 'Unknown'
-
-            # Try to extract sender from text
-            if ':' in text and not text.startswith('http'):
-                parts = text.split(':', 1)
-                sender = parts[0].strip()
-                # Don't modify text - keep it as is with sender included
-
-            # NEVER bridge DMs (double-check for safety)
-            if not channel_name or channel_name.lower() in ['dm', 'direct', 'private']:
-                self.logger.debug("Ignoring DM (DMs are never bridged)")
-                return
-
-            # Check if this channel is configured for bridging (case-insensitive)
-            webhook_urls = None
-            for config_channel, url in self.channel_webhooks.items():
-                if config_channel.lower() == channel_name.lower():
-                    webhook_urls = url
-                    break
-
-            if not webhook_urls:
-                self.logger.debug(f"Channel '{channel_name}' not configured for Discord bridge")
-                return
-
-            # Extract sender and message for better Discord formatting
-            # Format the message for better visual separation
-            if ':' in text and not text.startswith('http'):
-                # Split on first colon to separate sender from message
-                parts = text.split(':', 1)
-                sender_name = parts[0].strip()
-                message_text = parts[1].strip() if len(parts) > 1 else text
-            else:
-                # No clear sender format, use whole text
-                sender_name = sender  # From earlier extraction
-                message_text = text
-
-            # Clean up MeshCore @ mentions: @[username] → **@username**
-            message_text = self._format_mentions(message_text)
-            message_text = neutralize_discord_mention_content(message_text)
-
-            # Profanity filter: drop (don't bridge), censor (replace with ****), or off
-            if self.filter_profanity == 'drop':
-                if contains_profanity(sender_name, self.logger) or contains_profanity(message_text, self.logger):
-                    self.logger.debug(f"Discord bridge: dropping message with profanity from [{channel_name}]")
-                    return
-            elif self.filter_profanity == 'censor':
-                sender_name = censor(sender_name, self.logger)
-                message_text = censor(message_text, self.logger)
-
-            # Queue message for posting (with rate limiting and retry logic)
-            # Fan out to all configured webhooks for this channel
-            for webhook_url in webhook_urls:
-                await self._queue_message(webhook_url, message_text, channel_name, sender_name)
-
-        except Exception as e:
-            self.logger.error(f"Error handling mesh channel message: {e}", exc_info=True)
-
     async def _queue_message(self, webhook_url: str, message: str, channel_name: str, sender_name: Optional[str] = None) -> None:
         """Queue a message for posting to Discord webhook.
 
@@ -515,108 +415,6 @@ class DiscordBridgeService(BaseServicePlugin):
 
         except Exception as e:
             self.logger.error(f"Failed to queue message for Discord webhook [{channel_name}]: {e}", exc_info=True)
-
-    async def _process_message_queues(self) -> None:
-        """Background task to process message queues with rate limiting and retries.
-
-        Processes messages from queues, respecting rate limits and retrying failed messages.
-        """
-        while self._running:
-            try:
-                current_time = time.time()
-
-                # Process each webhook's queue
-                for webhook_url, queue in list(self.message_queues.items()):
-                    if not queue:
-                        continue
-
-                    # Clean up old send times (outside rate limit window)
-                    if webhook_url in self.send_times:
-                        send_times = self.send_times[webhook_url]
-                        while send_times and (current_time - send_times[0]) > self.rate_limit_window:
-                            send_times.popleft()
-
-                    # Check if we can send (proactive rate limiting)
-                    can_send = True
-                    if webhook_url in self.send_times:
-                        recent_sends = len(self.send_times[webhook_url])
-                        if recent_sends >= self.rate_limit_max:
-                            can_send = False
-                            # Calculate wait time until oldest message expires
-                            oldest_send = self.send_times[webhook_url][0]
-                            wait_time = (oldest_send + self.rate_limit_window) - current_time
-                            if wait_time > 0:
-                                self.logger.debug(f"Rate limit throttling [{queue[0].channel_name}]: waiting {wait_time:.1f}s")
-
-                    if not can_send:
-                        continue
-
-                    # Find next message ready to be sent (not waiting for retry delay)
-                    queued_msg = None
-                    for msg in queue:
-                        if current_time >= msg.next_retry_at:
-                            queued_msg = msg
-                            break
-
-                    # If no message is ready, skip this webhook
-                    if queued_msg is None:
-                        continue
-
-                    # Check if message is too old
-                    age = current_time - queued_msg.first_queued
-                    if age > self.max_queue_age:
-                        # Remove old message from queue
-                        queue.remove(queued_msg)
-                        self.logger.warning(
-                            f"Dropping old message from queue [{queued_msg.channel_name}]: "
-                            f"age {age:.1f}s exceeds max {self.max_queue_age}s"
-                        )
-                        continue
-
-                    # Try to send the message
-                    success = await self._post_to_webhook(
-                        queued_msg.webhook_url,
-                        queued_msg.payload,
-                        queued_msg.channel_name,
-                        queued_msg
-                    )
-
-                    if success:
-                        # Success - remove from queue
-                        queue.remove(queued_msg)
-                        # Track send time for rate limiting
-                        if webhook_url not in self.send_times:
-                            self.send_times[webhook_url] = deque()
-                        self.send_times[webhook_url].append(current_time)
-                    else:
-                        # Failed - increment retry count and schedule retry
-                        queued_msg.retry_count += 1
-                        if queued_msg.retry_count > self.max_retries:
-                            # Max retries exceeded - drop message
-                            queue.remove(queued_msg)
-                            self.logger.error(
-                                f"Dropping message after {self.max_retries} retries "
-                                f"[{queued_msg.channel_name}]: {queued_msg.payload['content'][:50]}..."
-                            )
-                        else:
-                            # Calculate exponential backoff delay
-                            delay = self.retry_delay_base * (2 ** (queued_msg.retry_count - 1))
-                            queued_msg.next_retry_at = current_time + delay
-                            self.logger.debug(
-                                f"Message failed, will retry in {delay:.1f}s "
-                                f"(attempt {queued_msg.retry_count}/{self.max_retries}) "
-                                f"[{queued_msg.channel_name}]"
-                            )
-                            # Message stays in queue, will be retried later
-
-                # Small delay to prevent tight loop
-                await asyncio.sleep(0.1)
-
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                self.logger.error(f"Error in message queue processor: {e}", exc_info=True)
-                await asyncio.sleep(1.0)  # Wait a bit before retrying on error
 
     async def _post_to_webhook(self, webhook_url: str, payload: dict[str, Any], channel_name: str, queued_msg: Optional[QueuedMessage] = None) -> bool:
         """Post message to Discord webhook.
