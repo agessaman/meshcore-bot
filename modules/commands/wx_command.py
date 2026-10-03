@@ -1251,18 +1251,18 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                     if period_head:
                         period_str = self._noaa_period_wind(weather, period_head, period, max_length - 10, max_length)
 
-                    # Add additional details (humidity, dew point, visibility, etc.)
-                    # But only if current period isn't too long - prioritize current period details
-                    current_weather_len = self._count_display_width(weather)
-                    # Only add details to additional periods if current period is under max_length - 20 chars
-                    # This ensures we prioritize current period details first
-                    if current_weather_len < max_length - 20:
-                        period_str = self._add_period_details(period_str, period_detailed, current_weather_len, max_length=max_length)
+                        # Add additional details (humidity, dew point, visibility, etc.)
+                        # But only if current period isn't too long - prioritize current period details
+                        current_weather_len = self._count_display_width(weather)
+                        # Only add details to additional periods if current period is under max_length - 20 chars
+                        # This ensures we prioritize current period details first
+                        if current_weather_len < max_length - 20:
+                            period_str = self._add_period_details(period_str, period_detailed, current_weather_len, max_length=max_length)
 
-                    # Only add if we have space (using display width)
-                    # Be more conservative - only add if current period is reasonable length
-                    if current_weather_len < max_length - 20 and self._count_display_width(weather + period_str) <= max_length:
-                        weather += period_str
+                        # Only add if we have space (using display width)
+                        # Be more conservative - only add if current period is reasonable length
+                        if current_weather_len < max_length - 20 and self._count_display_width(weather + period_str) <= max_length:
+                            weather += period_str
 
             # Always try to add Tomorrow if available (especially if current is Tonight)
             # Prioritize adding Tomorrow when current is Tonight to use more of the available message length
