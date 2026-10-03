@@ -1211,25 +1211,8 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             # If current is a night period, prioritize adding Today (the upcoming daytime)
             # When today_period is a day name (like "Tuesday"), we still add it as tomorrow's daytime period
             if is_current_night and today_period:
-                period = today_period[1]
                 # Always add today_period - it represents tomorrow's daytime when current is Tonight
-                period_detailed = period.get('detailedForecast', '')
-                period_head = self._noaa_period_str(period)
-                if period_head:
-                    period_str = self._noaa_period_wind(weather, period_head, period, max_length - 10, max_length)
-
-                    # Add additional details (humidity, dew point, visibility, etc.)
-                    # But only if current period isn't too long - prioritize current period details
-                    current_weather_len = self._count_display_width(weather)
-                    # Only add details to additional periods if current period is under max_length - 20 chars
-                    # This ensures we prioritize current period details first
-                    if current_weather_len < max_length - 20:
-                        period_str = self._add_period_details(period_str, period_detailed, current_weather_len, max_length=max_length)
-
-                    # Only add if we have space (using display width)
-                    # Be more conservative - only add if current period is reasonable length
-                    if current_weather_len < max_length - 20 and self._count_display_width(weather + period_str) <= max_length:
-                        weather += period_str
+                weather = self._append_noaa_period(weather, today_period[1], max_length)
 
             # Add Tonight if it's the immediate next period (and current is not already Tonight)
             # If we already added Today, we can still add Tonight if it's the next period after Today
@@ -1245,24 +1228,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                     should_add_tonight = True
 
                 if should_add_tonight:
-                    period = tonight_period[1]
-                    period_detailed = period.get('detailedForecast', '')
-                    period_head = self._noaa_period_str(period)
-                    if period_head:
-                        period_str = self._noaa_period_wind(weather, period_head, period, max_length - 10, max_length)
-
-                        # Add additional details (humidity, dew point, visibility, etc.)
-                        # But only if current period isn't too long - prioritize current period details
-                        current_weather_len = self._count_display_width(weather)
-                        # Only add details to additional periods if current period is under max_length - 20 chars
-                        # This ensures we prioritize current period details first
-                        if current_weather_len < max_length - 20:
-                            period_str = self._add_period_details(period_str, period_detailed, current_weather_len, max_length=max_length)
-
-                        # Only add if we have space (using display width)
-                        # Be more conservative - only add if current period is reasonable length
-                        if current_weather_len < max_length - 20 and self._count_display_width(weather + period_str) <= max_length:
-                            weather += period_str
+                    weather = self._append_noaa_period(weather, tonight_period[1], max_length)
 
             # Always try to add Tomorrow if available (especially if current is Tonight)
             # Prioritize adding Tomorrow when current is Tonight to use more of the available message length
@@ -1310,6 +1276,31 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         except Exception as e:
             self.logger.error(f"Error fetching NOAA weather: {e}")
             return self.ERROR_FETCHING_DATA, None
+
+    def _append_noaa_period(self, weather: str, period: dict, max_length: int) -> str:
+        """``weather`` with a Today or Tonight period appended when it fits.
+
+        The period gets wind and details only while the reply so far leaves room,
+        so the current period keeps its full details first.
+        """
+        period_detailed = period.get('detailedForecast', '')
+        period_head = self._noaa_period_str(period)
+        if period_head:
+            period_str = self._noaa_period_wind(weather, period_head, period, max_length - 10, max_length)
+
+            # Add additional details (humidity, dew point, visibility, etc.)
+            # But only if current period isn't too long - prioritize current period details
+            current_weather_len = self._count_display_width(weather)
+            # Only add details to additional periods if current period is under max_length - 20 chars
+            # This ensures we prioritize current period details first
+            if current_weather_len < max_length - 20:
+                period_str = self._add_period_details(period_str, period_detailed, current_weather_len, max_length=max_length)
+
+            # Only add if we have space (using display width)
+            # Be more conservative - only add if current period is reasonable length
+            if current_weather_len < max_length - 20 and self._count_display_width(weather + period_str) <= max_length:
+                weather += period_str
+        return weather
 
     def _noaa_followup_periods(self, forecast: list, current: dict) -> tuple:
         """The ``(index, period)`` pairs for Today, Tonight and Tomorrow after ``current``, and whether
