@@ -169,18 +169,25 @@ def update_mesh_graph_from_trace_data(
     if is_our_trace:
         chain = [bot_prefix] + chain
     chain = chain + [bot_prefix]
+    # Which chain positions are the bot itself (a hop may share its short prefix)
+    is_bot = [is_our_trace and i == 0 or i == len(chain) - 1 for i in range(len(chain))]
 
-    keys: dict[str, Optional[str]] = {bot_prefix: bot_key}
-    for node in chain:
-        if node not in keys:
-            keys[node] = _unique_repeater_key(bot, node, recency_days)
+    hop_keys: dict[str, Optional[str]] = {}
+    keys: list[Optional[str]] = []
+    for i, node in enumerate(chain):
+        if is_bot[i]:
+            keys.append(bot_key)
+        else:
+            if node not in hop_keys:
+                hop_keys[node] = _unique_repeater_key(bot, node, recency_days)
+            keys.append(hop_keys[node])
 
     # Locations only feed distances; a location match among colliding prefixes is a
     # guess, so it never becomes the stored public key.
     locations: dict[int, Optional[tuple[float, float]]] = {}
     reference = bot_location
     for i, node in enumerate(chain):
-        if node == bot_prefix:
+        if is_bot[i]:
             locations[i] = bot_location
         else:
             locations[i] = None
@@ -195,6 +202,9 @@ def update_mesh_graph_from_trace_data(
 
     for i in range(len(chain) - 1):
         from_node, to_node = chain[i], chain[i + 1]
+        if from_node == to_node:
+            # A hop sharing its neighbor's prefix: the graph, keyed by prefix, can't tell them apart
+            continue
         geographic_distance = None
         from_location, to_location = locations[i], locations[i + 1]
         if from_location and to_location:
@@ -204,8 +214,8 @@ def update_mesh_graph_from_trace_data(
         mesh_graph.add_edge(
             from_prefix=from_node,
             to_prefix=to_node,
-            from_public_key=keys.get(from_node),
-            to_public_key=keys.get(to_node),
+            from_public_key=keys[i],
+            to_public_key=keys[i + 1],
             hop_position=i + 1,
             geographic_distance=geographic_distance,
             **edge_width,

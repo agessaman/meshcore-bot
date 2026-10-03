@@ -368,3 +368,12 @@ class TestOwnTraceChain:
         for c in bot.mesh_graph.add_edge.call_args_list:
             assert c.kwargs["from_public_key"] != "aa11" + "0" * 60
             assert c.kwargs["to_public_key"] != "aa11" + "0" * 60
+
+
+    def test_a_hop_sharing_the_bots_prefix_is_not_given_the_bots_key(self):
+        bot = _make_bot(bot_prefix="dd")
+        update_mesh_graph_from_trace_data(bot, ["aa", "dd"], {}, is_our_trace=True)
+        calls = [c.kwargs for c in bot.mesh_graph.add_edge.call_args_list]
+        assert [(c["from_prefix"], c["to_prefix"]) for c in calls] == [("dd", "aa"), ("aa", "dd")]
+        assert calls[0]["from_public_key"] == "dd" * 32
+        assert calls[1]["to_public_key"] is None  # the hop "dd", not the bot
