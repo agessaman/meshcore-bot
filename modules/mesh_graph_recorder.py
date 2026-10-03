@@ -16,9 +16,14 @@ class MeshGraphRecorderMixin:
     bot: Any
     logger: Any
 
-    def _mesh_graph_capturing(self) -> Any:
-        """Truthy when the bot has a mesh graph and it is capturing edges."""
-        return hasattr(self.bot, "mesh_graph") and self.bot.mesh_graph and self.bot.mesh_graph.capture_enabled
+    def _mesh_graph_capturing(self) -> bool:
+        """True when the bot has a mesh graph and it is capturing edges.
+
+        Truth-tests the graph and capture_enabled once each, as the inline guards did.
+        """
+        if not hasattr(self.bot, "mesh_graph") or not self.bot.mesh_graph:
+            return False
+        return bool(self.bot.mesh_graph.capture_enabled)
 
     def _update_mesh_graph(self, path_nodes: list[str], packet_info: dict[str, Any]) -> None:
         """Update mesh graph with edges from a message path.

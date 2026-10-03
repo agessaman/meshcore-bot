@@ -3,7 +3,7 @@
 import asyncio
 import configparser
 import time
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
@@ -2973,3 +2973,25 @@ class TestNewContactCapacityLogs:
             rm.manage_contact_list.assert_awaited_once_with(auto_cleanup=True)
         else:
             rm.manage_contact_list.assert_not_called()
+
+
+class TestMeshGraphCapturing:
+    """_mesh_graph_capturing truth-tests the graph and capture_enabled once each."""
+
+    def test_falsy_graph_is_tested_once(self, handler, bot):
+        graph = MagicMock()
+        graph.__bool__ = Mock(side_effect=[False, RuntimeError("tested twice")])
+        bot.mesh_graph = graph
+        assert handler._mesh_graph_capturing() is False
+        assert graph.__bool__.call_count == 1
+
+    def test_capture_enabled_is_tested_once(self, handler, bot):
+        flag = MagicMock()
+        flag.__bool__ = Mock(side_effect=[True, RuntimeError("tested twice")])
+        bot.mesh_graph = Mock(capture_enabled=flag)
+        assert handler._mesh_graph_capturing() is True
+        assert flag.__bool__.call_count == 1
+
+    def test_no_graph_attribute(self, handler, bot):
+        del bot.mesh_graph
+        assert handler._mesh_graph_capturing() is False
