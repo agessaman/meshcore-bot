@@ -771,7 +771,7 @@ tracer
 ```
 With no path, both use the path your message took to reach the bot (like the test command).
 
-**Config:** `[Trace_Command]` — `enabled`, `maximum_hops`, `trace_mode` (one_byte/two_byte), `timeout_base_seconds` (default 1.0), `timeout_per_hop_seconds` (default 0.5), `trace_retry_count` (default 2 attempts), `trace_retry_delay_seconds` (default 1.0), `update_graph_one_byte`, `update_graph_two_byte`. Total wait per attempt = base + (hops × per_hop). On failure, waits then retries up to `trace_retry_count` times.
+**Config:** `[Trace_Command]` — `enabled`, `maximum_hops`, `trace_mode` (one_byte/two_byte), `timeout_base_seconds` (default 2.0), `timeout_per_hop_seconds` (default 1.5), `trace_retry_count` (default 2 attempts), `trace_retry_delay_seconds` (default 1.0), `update_graph_one_byte`, `update_graph_two_byte`. Total wait per attempt = base + (hops × per_hop). On failure, waits then retries up to `trace_retry_count` times; a reply to an earlier attempt still counts until the last attempt times out.
 
 **Response:** Compact trace result: tag, hop count, SNR per hop, and optional graph update when enabled.
 
