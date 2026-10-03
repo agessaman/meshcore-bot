@@ -150,6 +150,17 @@ class ChannelBridgeBase(BaseServicePlugin):
             channel_name = self.bot.channel_manager.get_channel_name(channel_idx)
             text = payload.get('text', '')
 
+            # Sender is embedded in the text ("sender: message"). Split before the
+            # guards below, as before: a text that can't be split fails here, logged
+            # as an error, even for a DM or an unmapped channel.
+            if ':' in text and not text.startswith('http'):
+                parts = text.split(':', 1)
+                sender_name = parts[0].strip()
+                message_text = parts[1].strip() if len(parts) > 1 else text
+            else:
+                sender_name = 'Unknown'
+                message_text = text
+
             # NEVER bridge DMs (double-check for safety)
             if not channel_name or channel_name.lower() in ('dm', 'direct', 'private'):
                 self.logger.debug("Ignoring DM (DMs are never bridged)")
@@ -159,15 +170,6 @@ class ChannelBridgeBase(BaseServicePlugin):
             if not targets:
                 self.logger.debug(f"Channel '{channel_name}' not configured for {self.bridge_label} bridge")
                 return
-
-            # Sender is embedded in the text ("sender: message")
-            if ':' in text and not text.startswith('http'):
-                parts = text.split(':', 1)
-                sender_name = parts[0].strip()
-                message_text = parts[1].strip() if len(parts) > 1 else text
-            else:
-                sender_name = 'Unknown'
-                message_text = text
 
             message_text = self._prepare_message_text(message_text)
 
