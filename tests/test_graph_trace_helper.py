@@ -377,3 +377,19 @@ class TestOwnTraceChain:
         assert [(c["from_prefix"], c["to_prefix"]) for c in calls] == [("dd", "aa"), ("aa", "dd")]
         assert calls[0]["from_public_key"] == "dd" * 32
         assert calls[1]["to_public_key"] is None  # the hop "dd", not the bot
+
+
+    def test_a_neighbor_sharing_the_bots_prefix_adds_no_self_loop(self):
+        bot = _make_bot(bot_prefix="dd")
+        update_mesh_graph_from_trace_data(bot, ["dd"], {}, is_our_trace=True)
+        bot.mesh_graph.add_edge.assert_not_called()
+
+    def test_a_bad_stored_location_still_records_the_edges(self, monkeypatch):
+        import modules.utils as utils
+
+        bot = _make_bot(bot_prefix="dd")
+        monkeypatch.setattr(utils, "_get_node_location_from_db", lambda *a, **k: ((float("inf"), 0.0), None))
+        monkeypatch.setattr(utils, "calculate_distance", Mock(side_effect=ValueError("math domain error")))
+        update_mesh_graph_from_trace_data(bot, ["aa", "bb"], {})
+        assert bot.mesh_graph.add_edge.call_count == 2
+        assert all(c.kwargs["geographic_distance"] is None for c in bot.mesh_graph.add_edge.call_args_list)

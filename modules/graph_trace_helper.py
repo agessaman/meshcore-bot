@@ -100,6 +100,10 @@ def update_mesh_graph_from_trace_data(
 
     if is_immediate_neighbor:
         neighbor_prefix = path_hashes[0].lower()
+        if neighbor_prefix == bot_prefix:
+            # The graph, keyed by prefix, can't tell this neighbor from the bot
+            bot.logger.debug(f"Mesh graph: Neighbor {neighbor_prefix} shares the bot's prefix, skipping trace update")
+            return
         neighbor_key = None
         try:
             count_query = f"""
@@ -208,9 +212,12 @@ def update_mesh_graph_from_trace_data(
         geographic_distance = None
         from_location, to_location = locations[i], locations[i + 1]
         if from_location and to_location:
-            geographic_distance = calculate_distance(
-                from_location[0], from_location[1], to_location[0], to_location[1],
-            )
+            try:
+                geographic_distance = calculate_distance(
+                    from_location[0], from_location[1], to_location[0], to_location[1],
+                )
+            except Exception as e:
+                bot.logger.debug(f"Could not calculate distance for trace edge {from_node}->{to_node}: {e}")
         mesh_graph.add_edge(
             from_prefix=from_node,
             to_prefix=to_node,
