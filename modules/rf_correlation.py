@@ -30,6 +30,7 @@ class RfCorrelationMixin:
     _is_rf_data_scope_eligible: Any
     _last_cache_cleanup: Any
     _max_rf_cache_size: Any
+    _max_signal_cache_size: Any
     bot: Any
     channel_rf_data: Any
     enhanced_correlation: Any
@@ -39,6 +40,41 @@ class RfCorrelationMixin:
     rf_data_by_pubkey: Any
     rf_data_by_timestamp: Any
     rf_data_timeout: Any
+
+    def _remember_signal(self, cache: Any, packet_prefix: str, value: Any, label: str) -> None:
+        """Cache an SNR or RSSI value for a packet prefix (LRU-bounded)."""
+        cache[packet_prefix] = value
+        cache.move_to_end(packet_prefix)
+        while len(cache) > self._max_signal_cache_size:
+            cache.popitem(last=False)
+        self.logger.debug(f"Cached {label} {value} for packet prefix {packet_prefix}")
+
+    def _insert_rf_row(self, rf_data: dict[str, Any], decoded_packet: Any, current_time: float) -> None:
+        """Add a received packet's row to the RF caches and indexes, then evict stale entries."""
+        packet_prefix = rf_data["packet_prefix"]
+        self._cache_authenticated_channel_rf_data(
+            rf_data, decoded_packet, current_time
+        )
+        if rf_data.get("route_type_int") == 0:
+            self.logger.debug(
+                "TC_FLOOD scope fields: tc_code1=%s payload_type=%s payload_hex_prefix=%s",
+                rf_data.get("transport_code1"),
+                rf_data.get("payload_type_int"),
+                (rf_data.get("scope_payload_hex") or "")[:16],
+            )
+        self.recent_rf_data.append(rf_data)
+
+        # Update correlation indexes
+        self.rf_data_by_timestamp[current_time] = rf_data
+        if packet_prefix:
+            if packet_prefix not in self.rf_data_by_pubkey:
+                self.rf_data_by_pubkey[packet_prefix] = []
+            self.rf_data_by_pubkey[packet_prefix].append(rf_data)
+
+        # Clean up old data from all indexes
+        self._cleanup_stale_cache_entries(current_time)
+
+        self.logger.debug(f"Stored recent RF data with routing info: {rf_data}")
 
     @staticmethod
     def _channel_message_identity(

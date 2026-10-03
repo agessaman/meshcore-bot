@@ -580,23 +580,13 @@ class MessageHandler(MeshGraphRecorderMixin, ContactEventsMixin, RfCorrelationMi
                         self.logger.debug(f"Got pubkey_prefix from metadata: {pubkey_prefix[:16]}...")
 
                 if packet_prefix and snr_value is not None:
-                    # Cache the SNR value for this packet prefix (LRU-bounded)
-                    self.snr_cache[packet_prefix] = snr_value
-                    self.snr_cache.move_to_end(packet_prefix)
-                    while len(self.snr_cache) > self._max_signal_cache_size:
-                        self.snr_cache.popitem(last=False)
-                    self.logger.debug(f"Cached SNR {snr_value} for packet prefix {packet_prefix}")
+                    self._remember_signal(self.snr_cache, packet_prefix, snr_value, "SNR")
 
                 # Extract and cache RSSI if available
                 if "rssi" in payload:
                     rssi_value = payload.get("rssi")
                     if packet_prefix and rssi_value is not None:
-                        # Cache the RSSI value for this packet prefix (LRU-bounded)
-                        self.rssi_cache[packet_prefix] = rssi_value
-                        self.rssi_cache.move_to_end(packet_prefix)
-                        while len(self.rssi_cache) > self._max_signal_cache_size:
-                            self.rssi_cache.popitem(last=False)
-                        self.logger.debug(f"Cached RSSI {rssi_value} for packet prefix {packet_prefix}")
+                        self._remember_signal(self.rssi_cache, packet_prefix, rssi_value, "RSSI")
 
                 # Store recent RF data with timestamp for SNR/RSSI matching only
                 if packet_prefix:
@@ -903,29 +893,7 @@ class MessageHandler(MeshGraphRecorderMixin, ContactEventsMixin, RfCorrelationMi
                         if _lib_pkt_hex
                         else (decoded_packet.get("payload_hex") if decoded_packet else None),
                     }
-                    self._cache_authenticated_channel_rf_data(
-                        rf_data, decoded_packet, current_time
-                    )
-                    if rf_data.get("route_type_int") == 0:
-                        self.logger.debug(
-                            "TC_FLOOD scope fields: tc_code1=%s payload_type=%s payload_hex_prefix=%s",
-                            rf_data.get("transport_code1"),
-                            rf_data.get("payload_type_int"),
-                            (rf_data.get("scope_payload_hex") or "")[:16],
-                        )
-                    self.recent_rf_data.append(rf_data)
-
-                    # Update correlation indexes
-                    self.rf_data_by_timestamp[current_time] = rf_data
-                    if packet_prefix:
-                        if packet_prefix not in self.rf_data_by_pubkey:
-                            self.rf_data_by_pubkey[packet_prefix] = []
-                        self.rf_data_by_pubkey[packet_prefix].append(rf_data)
-
-                    # Clean up old data from all indexes
-                    self._cleanup_stale_cache_entries(current_time)
-
-                    self.logger.debug(f"Stored recent RF data with routing info: {rf_data}")
+                    self._insert_rf_row(rf_data, decoded_packet, current_time)
 
         except Exception as e:
             self.logger.error(f"Error handling RF log data: {e}")
