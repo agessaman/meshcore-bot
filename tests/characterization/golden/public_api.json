@@ -874,8 +874,6 @@
  ],
  "modules/message_handler.py": [
   "MessageHandler",
-  "MessageHandler.cleanup_old_messages",
-  "MessageHandler.correlate_message_with_rf_data",
   "MessageHandler.decode_meshcore_packet",
   "MessageHandler.discover_message_path",
   "MessageHandler.extract_path_from_raw_hex",
@@ -888,10 +886,7 @@
   "MessageHandler.handle_rf_log_data",
   "MessageHandler.parse_advert",
   "MessageHandler.process_message",
-  "MessageHandler.should_process_message",
-  "MessageHandler.store_message_for_correlation",
-  "MessageHandler.try_correlate_pending_messages",
-  "PendingMessageEntry"
+  "MessageHandler.should_process_message"
  ],
  "modules/models.py": [
   "MeshMessage",
