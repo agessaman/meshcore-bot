@@ -84,6 +84,12 @@ class MessageHandler:
         # Time-based cache for recent RF log data
         self.recent_rf_data: list[dict[str, Any]] = []
 
+        # Adverts heard on RF, recorded before any await so NEW_CONTACT can find its own
+        self._advert_rf: list[dict[str, Any]] = []
+
+        # (public_key, packet_hash) of adverts NEW_CONTACT already added to the device
+        self._new_contact_adds: dict[tuple[str, str], None] = {}
+
         # Authenticated channel rows outlive the short best-effort RF window.
         # A queued CHANNEL_MSG_RECV can be delayed while the mesh stays busy.
         self.channel_rf_data: list[dict[str, Any]] = []
@@ -1538,6 +1544,9 @@ class MessageHandler:
                                     "rssi": payload.get("rssi") if "rssi" in payload else None,
                                     "hops": routing_info["path_length"],
                                 }
+                                self._remember_advert_rf(
+                                    decoded_packet, routing_info, packet_hash, signal_info, current_time
+                                )
                                 await self._process_advertisement_packet(decoded_packet, signal_info)
 
                     # Prefer library-provided scope fields (already parsed by meshcore-py).
@@ -4117,6 +4126,80 @@ class MessageHandler:
         contact_data["out_path_hash_mode"] = (pb >> 6) & 0x03
         contact_data["out_path_len"] = pb & 0x3F
 
+    def _remember_advert_rf(
+        self,
+        packet_info: dict[str, Any],
+        routing_info: dict[str, Any],
+        packet_hash: str | None,
+        signal_info: dict[str, Any],
+        current_time: float,
+    ) -> None:
+        """Record an advert heard on RF for handle_new_contact.
+
+        Called before the advert is processed, which can yield, so a NEW_CONTACT
+        handled meanwhile still finds it. An ADVERT payload starts with the
+        sender's 32-byte public key and its 4-byte advert timestamp.
+        """
+        payload_hex = packet_info.get("payload_hex")
+        if not isinstance(payload_hex, str) or len(payload_hex) < 72:
+            return
+        try:
+            advert_timestamp = int.from_bytes(bytes.fromhex(payload_hex[64:72]), "little")
+        except ValueError:
+            return
+        self._advert_rf.append({
+            "timestamp": current_time,
+            "public_key": payload_hex[:64].lower(),
+            "advert_timestamp": advert_timestamp,
+            "routing_info": routing_info,
+            "packet_hash": packet_hash,
+            "snr": signal_info.get("snr"),
+            "rssi": signal_info.get("rssi"),
+        })
+        cutoff = current_time - self.rf_data_timeout
+        self._advert_rf = [entry for entry in self._advert_rf if entry["timestamp"] >= cutoff][-256:]
+
+    def _find_advert_rf_data(self, public_key: str, advert_timestamp: Any = None) -> dict[str, Any] | None:
+        """The first copy heard of ``public_key``'s advert, or None.
+
+        With ``advert_timestamp`` (NEW_CONTACT's ``last_advert``, 0 included) only
+        that advert matches; without it, the most recent one. Copies of one advert heard over
+        different paths share its timestamp; the first is the one the device acted on.
+        """
+        if not public_key:
+            return None
+        key = public_key.lower()
+        now = time.time()
+        matches = [
+            entry
+            for entry in self._advert_rf
+            if entry["public_key"] == key and now - entry["timestamp"] < self.rf_data_timeout
+        ]
+        if isinstance(advert_timestamp, int) and not isinstance(advert_timestamp, bool) and advert_timestamp >= 0:
+            matches = [entry for entry in matches if entry["advert_timestamp"] == advert_timestamp]
+        elif matches:
+            newest = max(matches, key=lambda entry: entry["timestamp"])["advert_timestamp"]
+            matches = [entry for entry in matches if entry["advert_timestamp"] == newest]
+        if not matches:
+            return None
+        return min(matches, key=lambda entry: entry["timestamp"])
+
+    def _release_new_contact_add(self, public_key: str, packet_hash: str | None) -> None:
+        """Let a later NEW_CONTACT for this advert try again after a failed add."""
+        self._new_contact_adds.pop((public_key, packet_hash or ""), None)
+
+    def _claim_new_contact_add(self, public_key: str, packet_hash: str | None) -> bool:
+        """False when a NEW_CONTACT for this advert packet already added the contact."""
+        if not packet_hash or packet_hash == "0000000000000000":
+            return True
+        key = (public_key, packet_hash)
+        if key in self._new_contact_adds:
+            return False
+        self._new_contact_adds[key] = None
+        while len(self._new_contact_adds) > 256:
+            del self._new_contact_adds[next(iter(self._new_contact_adds))]
+        return True
+
     async def handle_new_contact(self, event: Any, metadata: dict[str, Any] | None = None) -> None:
         """Handle NEW_CONTACT events for automatic contact management"""
         try:
@@ -4145,90 +4228,59 @@ class MessageHandler:
             if metadata:
                 signal_info.update(metadata)
 
-            # Try to get signal data, packet_hash, and path information from recent RF data correlation
+            # Take the route, signal data and packet_hash from this contact's own ADVERT
+            # packet. Its mesh-graph edges and observed path were already recorded when
+            # the packet itself was processed, so they are not recorded again here.
             # Only collect RSSI/SNR for zero-hop (direct) advertisements
             packet_hash = None
             try:
-                # Look for recent RF data that might correlate with this contact
-                recent_rf_data = self.bot.message_handler.recent_rf_data
-                if recent_rf_data:
-                    # Find RF data that might match this contact's public key
-                    for rf_entry in recent_rf_data[-10:]:  # Check last 10 RF entries
-                        if "routing_info" in rf_entry:
-                            routing_info = rf_entry["routing_info"]
+                rf_entry = self._find_advert_rf_data(public_key, contact_data.get("last_advert"))
+                if rf_entry:
+                    routing_info = rf_entry["routing_info"]
 
-                            # Extract packet_hash if available
-                            packet_hash = routing_info.get("packet_hash") or rf_entry.get("packet_hash")
+                    # Extract packet_hash if available
+                    packet_hash = routing_info.get("packet_hash") or rf_entry.get("packet_hash")
 
-                            # Extract path information from routing_info
-                            path_hex = routing_info.get("path_hex", "")
-                            path_length = routing_info.get("path_length", 0)
+                    # Extract path information from routing_info
+                    path_hex = routing_info.get("path_hex", "")
+                    path_length = routing_info.get("path_length", 0)
 
-                            # Add path information to contact_data if not already present
-                            if "out_path" not in contact_data or not contact_data.get("out_path"):
-                                if path_hex and path_length > 0:
-                                    contact_data["out_path"] = path_hex
-                                    contact_data["out_bytes_per_hop"] = routing_info.get("bytes_per_hop", 1) or 1
-                                    bph = contact_data["out_bytes_per_hop"]
-                                    pb = routing_info.get("path_len_byte")
-                                    if pb is None or pb == 255:
-                                        try:
-                                            pb = encode_path_len_byte(path_length, bph)
-                                        except ValueError:
-                                            pb = encode_path_len_byte(path_length, 1)
-                                    contact_data["out_path_hash_mode"] = (pb >> 6) & 0x03
-                                    contact_data["out_path_len"] = pb & 0x3F
-                                elif path_length == 0:
-                                    contact_data["out_path"] = ""
-                                    contact_data["out_path_len"] = 0
-                                    contact_data["out_path_hash_mode"] = 0
-
-                            # Update mesh graph with this NEW_CONTACT event's path information
-                            # This captures public keys for edges that we might not see in regular message paths
-                            if path_hex and path_length > 0 and public_key:
+                    # Add path information to contact_data if not already present
+                    if "out_path" not in contact_data or not contact_data.get("out_path"):
+                        if path_hex and path_length > 0:
+                            contact_data["out_path"] = path_hex
+                            contact_data["out_bytes_per_hop"] = routing_info.get("bytes_per_hop", 1) or 1
+                            bph = contact_data["out_bytes_per_hop"]
+                            pb = routing_info.get("path_len_byte")
+                            if pb is None or pb == 255:
                                 try:
-                                    packet_info = {
-                                        "routing_info": routing_info,
-                                        "packet_hash": packet_hash,
-                                        "bytes_per_hop": routing_info.get("bytes_per_hop", 1),
-                                    }
-                                    path_byte_len = routing_info.get("path_byte_length") or (len(path_hex) // 2)
-                                    self._update_mesh_graph_from_advert(
-                                        contact_data, path_hex, path_byte_len, packet_info
-                                    )
-                                    self.logger.debug(
-                                        f"Mesh graph: Updated from NEW_CONTACT event for {contact_name} (key: {public_key[:16]}...)"
-                                    )
-                                    # Store complete path in observed_paths table
-                                    self._store_observed_path(
-                                        contact_data,
-                                        path_hex,
-                                        path_byte_len,
-                                        "advert",
-                                        packet_hash=packet_hash,
-                                        bytes_per_hop=routing_info.get("bytes_per_hop", 1),
-                                    )
-                                except Exception as e:
-                                    self.logger.debug(f"Error updating mesh graph from NEW_CONTACT: {e}")
+                                    pb = encode_path_len_byte(path_length, bph)
+                                except ValueError:
+                                    pb = encode_path_len_byte(path_length, 1)
+                            contact_data["out_path_hash_mode"] = (pb >> 6) & 0x03
+                            contact_data["out_path_len"] = pb & 0x3F
+                        elif path_length == 0:
+                            contact_data["out_path"] = ""
+                            contact_data["out_path_len"] = 0
+                            contact_data["out_path_hash_mode"] = 0
 
-                            # Only collect signal data for direct (zero-hop) advertisements
-                            if path_length == 0:
-                                # Direct advertisement - collect signal data
-                                if "snr" in rf_entry:
-                                    signal_info["snr"] = rf_entry["snr"]
-                                if "rssi" in rf_entry:
-                                    signal_info["rssi"] = rf_entry["rssi"]
-                                signal_info["hops"] = 0
-                                self.logger.debug(
-                                    f"📡 Direct advertisement - collecting signal data: SNR={rf_entry.get('snr')}, RSSI={rf_entry.get('rssi')}"
-                                )
-                            else:
-                                # Multi-hop advertisement - only collect hop count, not signal data
-                                signal_info["hops"] = path_length
-                                self.logger.debug(
-                                    f"📡 Multi-hop advertisement ({path_length} hops) - skipping signal data collection"
-                                )
-                            break
+                    # Only collect signal data for direct (zero-hop) advertisements
+                    if path_length == 0:
+                        # Direct advertisement - collect signal data
+                        if "snr" in rf_entry:
+                            signal_info["snr"] = rf_entry["snr"]
+                        if "rssi" in rf_entry:
+                            signal_info["rssi"] = rf_entry["rssi"]
+                        signal_info["hops"] = 0
+                        self.logger.debug(
+                            f"📡 Direct advertisement - collecting signal data: SNR={rf_entry.get('snr')}, RSSI={rf_entry.get('rssi')}"
+                        )
+                    else:
+                        # Multi-hop advertisement - only collect hop count, not signal data
+                        signal_info["hops"] = path_length
+                        self.logger.debug(
+                            f"📡 Multi-hop advertisement ({path_length} hops) - skipping signal data collection"
+                        )
             except Exception as e:
                 self.logger.debug(f"Could not correlate RF data: {e}")
 
@@ -4295,7 +4347,7 @@ class MessageHandler:
                             auto_manage_setting,
                         )
 
-                    track_result = await self.bot.repeater_manager.track_contact_advertisement(
+                    await self.bot.repeater_manager.track_contact_advertisement(
                         contact_data, signal_info, packet_hash=packet_hash
                     )
 
@@ -4322,8 +4374,10 @@ class MessageHandler:
                                 contact_name,
                             )
                     elif auto_manage_setting == "bot":
-                        # packet_hash dedupe: when absent, every NEW_CONTACT may still trigger add_contact.
-                        if track_result.duplicate_packet:
+                        # One add per advert: NEW_CONTACT can repeat for the same packet. The
+                        # tracking result can't tell, since the advert packet itself was
+                        # usually tracked first. Without a packet_hash every event adds.
+                        if not self._claim_new_contact_add(public_key, packet_hash):
                             self.logger.debug(
                                 "Skipping add_companion — duplicate packet_hash for %s (already tracked)",
                                 contact_name,
@@ -4339,11 +4393,16 @@ class MessageHandler:
                                     contact_data, contact_name, public_key
                                 )
                                 if not ok:
+                                    self._release_new_contact_add(public_key, packet_hash)
                                     self.logger.warning(
                                         "Failed to add companion contact %s to device after managed add/retry",
                                         contact_name,
                                     )
+                            except asyncio.CancelledError:
+                                self._release_new_contact_add(public_key, packet_hash)
+                                raise
                             except Exception as e:
+                                self._release_new_contact_add(public_key, packet_hash)
                                 self.logger.error("Error adding companion %s to device: %s", contact_name, e)
 
                             status = await self.bot.repeater_manager.get_contact_list_status()
