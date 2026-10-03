@@ -4162,8 +4162,8 @@ class MessageHandler:
     def _find_advert_rf_data(self, public_key: str, advert_timestamp: Any = None) -> dict[str, Any] | None:
         """The first copy heard of ``public_key``'s advert, or None.
 
-        With ``advert_timestamp`` (NEW_CONTACT's ``last_advert``) only that advert
-        matches; without it, the most recent one. Copies of one advert heard over
+        With ``advert_timestamp`` (NEW_CONTACT's ``last_advert``, 0 included) only
+        that advert matches; without it, the most recent one. Copies of one advert heard over
         different paths share its timestamp; the first is the one the device acted on.
         """
         if not public_key:
@@ -4175,7 +4175,7 @@ class MessageHandler:
             for entry in self._advert_rf
             if entry["public_key"] == key and now - entry["timestamp"] < self.rf_data_timeout
         ]
-        if isinstance(advert_timestamp, int) and not isinstance(advert_timestamp, bool) and advert_timestamp > 0:
+        if isinstance(advert_timestamp, int) and not isinstance(advert_timestamp, bool) and advert_timestamp >= 0:
             matches = [entry for entry in matches if entry["advert_timestamp"] == advert_timestamp]
         elif matches:
             newest = max(matches, key=lambda entry: entry["timestamp"])["advert_timestamp"]
@@ -4398,6 +4398,9 @@ class MessageHandler:
                                         "Failed to add companion contact %s to device after managed add/retry",
                                         contact_name,
                                     )
+                            except asyncio.CancelledError:
+                                self._release_new_contact_add(public_key, packet_hash)
+                                raise
                             except Exception as e:
                                 self._release_new_contact_add(public_key, packet_hash)
                                 self.logger.error("Error adding companion %s to device: %s", contact_name, e)

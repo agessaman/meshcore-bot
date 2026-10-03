@@ -322,7 +322,7 @@ class TestNewContactRouteSource:
     @pytest.mark.asyncio
     async def test_an_advert_older_than_the_rf_window_is_not_used(self, companion_new_contact_setup):
         bot, mh = companion_new_contact_setup
-        mh.recent_rf_data = [_rf(self.PK, "c1c2", packet_hash="00cc00cc00cc00cc", age=60.0)]
+        mh._advert_rf = [_rf(self.PK, "c1c2", packet_hash="00cc00cc00cc00cc", age=60.0)]
         passed = await self._added(bot, mh)
         assert passed["out_path"] == ""
 
@@ -341,6 +341,18 @@ class TestNewContactRouteSource:
         await mh.handle_new_contact(event)
         assert bot.meshcore.commands.add_contact.await_args[0][0]["out_path"] == "b2b2"
 
+
+    @pytest.mark.asyncio
+    async def test_last_advert_zero_is_matched_exactly(self, companion_new_contact_setup):
+        bot, mh = companion_new_contact_setup
+        mh._advert_rf = [
+            _rf(self.PK, "a0a0", packet_hash="000a000a000a000a", advert_timestamp=0, age=3.0),
+            _rf(self.PK, "a1a1", packet_hash="000b000b000b000b", advert_timestamp=1, age=1.0),
+        ]
+        event = MagicMock()
+        event.payload = {**_flood_contact(self.PK), "last_advert": 0}
+        await mh.handle_new_contact(event)
+        assert bot.meshcore.commands.add_contact.await_args[0][0]["out_path"] == "a0a0"
 
 class TestAdvertSeenBeforeProcessing:
     @pytest.mark.asyncio

@@ -2444,6 +2444,18 @@ class TestHandleNewContactAutoManage:
         await handler.handle_new_contact(_NewContactEvent(_companion_contact_payload()), None)
         assert rm.add_companion_from_contact_data.await_count == 2
 
+    async def test_bot_mode_cancelled_add_lets_the_next_event_retry(self, new_contact_env):
+        import asyncio
+
+        bot, handler, rm, mesh = new_contact_env
+        bot.config.set("Bot", "auto_manage_contacts", "bot")
+        rm.add_companion_from_contact_data = AsyncMock(side_effect=[asyncio.CancelledError(), True])
+        handler._advert_rf = [_advert_rf_entry("ab" * 32, packet_hash="1122334455667788")]
+        with pytest.raises(asyncio.CancelledError):
+            await handler.handle_new_contact(_NewContactEvent(_companion_contact_payload()), None)
+        await handler.handle_new_contact(_NewContactEvent(_companion_contact_payload()), None)
+        assert rm.add_companion_from_contact_data.await_count == 2
+
     async def test_bot_mode_without_an_advert_packet_adds_every_time(self, new_contact_env):
         bot, handler, rm, mesh = new_contact_env
         bot.config.set("Bot", "auto_manage_contacts", "bot")
