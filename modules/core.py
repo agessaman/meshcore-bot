@@ -2839,6 +2839,14 @@ long_jokes = false
                 except Exception as e:
                     self.logger.warning("Error during meshcore disconnect: %s", e)
 
+            # Finish queued repeat-count writes now that no more packets arrive
+            tracker = getattr(self, 'transmission_tracker', None)
+            if tracker:
+                try:
+                    await asyncio.to_thread(tracker.close)
+                except Exception as e:
+                    self.logger.warning("Error finishing transmission tracker writes: %s", e)
+
             try:
                 self.logger.info("Bot stopped")
             except (AttributeError, TypeError):

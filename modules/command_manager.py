@@ -1244,7 +1244,8 @@ class CommandManager:
                         content=content,
                         target=contact_name,
                         message_type='dm',
-                        command_id=command_id
+                        command_id=command_id,
+                        recipient_key=contact.get('public_key') if isinstance(contact, dict) else None,
                     )
             except Exception as e:
                 self.logger.debug(f"Error recording transmission for repeat tracking: {e}")
@@ -1491,7 +1492,8 @@ class CommandManager:
                         content=content,
                         target=channel,
                         message_type='channel',
-                        command_id=command_id
+                        command_id=command_id,
+                        channel_idx=channel_num,
                     )
             except Exception as e:
                 self.logger.debug(f"Error recording transmission for repeat tracking: {e}")

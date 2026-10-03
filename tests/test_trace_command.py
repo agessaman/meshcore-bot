@@ -481,3 +481,32 @@ class TestFlagsAutoDetection:
             await self.cmd.execute(mock_message(content="trace feed,6ddf,feed"))
         mock_run.assert_called_once()
         assert mock_run.call_args.kwargs["flags"] == 1
+
+
+class TestTraceGraphUpdateGate:
+    """update_graph_one_byte gates 1-byte traces; update_graph_two_byte gates 2-byte ones."""
+
+    @pytest.mark.parametrize(("flags", "one", "two", "updates"), [
+        (0, "true", "false", True),
+        (0, "false", "true", False),
+        (1, "false", "true", True),
+        (1, "true", "false", False),
+    ])
+    def test_gate_follows_the_trace_hash_width(self, flags, one, two, updates):
+        import asyncio
+
+        bot = _make_bot()
+        bot.config.set("Trace_Command", "update_graph_one_byte", one)
+        bot.config.set("Trace_Command", "update_graph_two_byte", two)
+        bot.mesh_graph = MagicMock(capture_enabled=True)
+        cmd = TraceCommand(bot)
+        cmd.send_response = AsyncMock(return_value=True)
+        width = 2 << flags
+        result = RunTraceResult(
+            success=True, tag=1, flags=flags,
+            path_nodes=[{"hash": "a" * width, "snr": 5.0}, {"snr": 4.0}],
+        )
+        with patch("modules.commands.trace_command.run_trace", AsyncMock(return_value=result)), \
+             patch("modules.commands.trace_command.update_mesh_graph_from_trace_data") as update:
+            asyncio.run(cmd.execute(mock_message(content=f"trace {'a' * width}", path=None)))
+        assert update.called is updates

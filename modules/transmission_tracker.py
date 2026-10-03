@@ -4,12 +4,46 @@ Transmission tracker for monitoring message transmission success
 Tracks transmitted message hashes and detects repeats from neighboring repeaters
 """
 
+import asyncio
+import json
+import sqlite3
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Optional
 
+from .utils import resolve_path
+
+# MeshCore payload types a transmission can be recognized by
+_PAYLOAD_TXT_MSG = 0x02
+_PAYLOAD_GRP_TXT = 0x05
+_PAYLOAD_TRACE = 0x09
+
+
+
+def own_public_key(bot: Any) -> Optional[str]:
+    """The radio's public key as lowercase hex, or None before it is known.
+
+    meshcore_py keeps it in ``meshcore.self_info``; ``meshcore.device`` is read
+    as a fallback for objects that provide one.
+    """
+    meshcore = getattr(bot, "meshcore", None)
+    if not meshcore:
+        return None
+    try:
+        self_info = getattr(meshcore, "self_info", None)
+        key = self_info.get("public_key") if isinstance(self_info, dict) else None
+        if not key:
+            device = getattr(meshcore, "device", None)
+            key = getattr(device, "public_key", None) if device is not None else None
+    except Exception:
+        return None
+    if isinstance(key, (bytes, bytearray)):
+        key = bytes(key).hex()
+    return key.lower() if isinstance(key, str) and key else None
 
 @dataclass
 class TransmissionRecord:
@@ -23,6 +57,12 @@ class TransmissionRecord:
     repeater_prefixes: set[str] = field(default_factory=set)
     repeater_counts: dict[str, int] = field(default_factory=dict)  # Count per repeater prefix
     command_id: Optional[str] = None  # For correlating with command data
+    # What identifies this transmission's packet when it is heard again: the
+    # channel index for a channel message, the recipient's key for a DM, the
+    # tag for a trace. A record without one is never matched to a packet.
+    channel_idx: Optional[int] = None
+    recipient_key: Optional[str] = None
+    trace_tag: Optional[int] = None
 
 
 class TransmissionTracker:
@@ -58,34 +98,53 @@ class TransmissionTracker:
         # Lock protects record mutations (repeat_count, repeater_prefixes, etc.)
         self._lock = threading.Lock()
 
-        # Track our bot's public key prefix (first 2 hex chars) for filtering
-        self.bot_prefix: Optional[str] = None
+        # One worker keeps repeat-count writes in order and off the event loop
+        self._db_executor: Optional[ThreadPoolExecutor] = None
+        self._db_closed = False
+
+        # Our radio's public key prefix, for filtering. Read lazily: the tracker is
+        # created before the radio connects and reports its key.
+        self._bot_prefix: Optional[str] = None
         self._update_bot_prefix()
 
+    @property
+    def bot_prefix(self) -> Optional[str]:
+        """Our radio's public key prefix (``prefix_hex_chars`` long), or None before it is known.
+
+        Read from the radio's current key each time, so a reconnect to another radio
+        is picked up; a value assigned to it is kept instead.
+        """
+        if self._bot_prefix is not None:
+            return self._bot_prefix
+        key = own_public_key(self.bot)
+        if key and len(key) >= 2:
+            return key[:self.bot.prefix_hex_chars].lower()
+        return None
+
+    @bot_prefix.setter
+    def bot_prefix(self, value: Optional[str]) -> None:
+        self._bot_prefix = value
+
     def _update_bot_prefix(self):
-        """Update bot prefix from meshcore device info"""
-        if self.bot.meshcore and hasattr(self.bot.meshcore, 'device'):
-            try:
-                device_info = self.bot.meshcore.device
-                if hasattr(device_info, 'public_key'):
-                    pubkey = device_info.public_key
-                    if isinstance(pubkey, str) and len(pubkey) >= 2:
-                        self.bot_prefix = pubkey[:self.bot.prefix_hex_chars].lower()
-                    elif isinstance(pubkey, bytes) and len(pubkey) >= 1:
-                        self.bot_prefix = f"{pubkey[0]:02x}".lower()
-                    self.logger.debug(f"Bot prefix set to: {self.bot_prefix}")
-            except Exception as e:
-                self.logger.debug(f"Could not determine bot prefix: {e}")
+        """Log the bot prefix once the radio's key is known (kept for callers; the property reads it live)."""
+        if self.bot_prefix:
+            self.logger.debug(f"Bot prefix set to: {self.bot_prefix}")
 
     def record_transmission(self, content: str, target: str, message_type: str,
-                          command_id: Optional[str] = None) -> TransmissionRecord:
+                          command_id: Optional[str] = None, *,
+                          channel_idx: Optional[int] = None,
+                          recipient_key: Optional[str] = None,
+                          trace_tag: Optional[int] = None) -> TransmissionRecord:
         """Record a transmission attempt.
 
         Args:
             content: Message content
             target: Channel name or recipient ID
-            message_type: 'channel' or 'dm'
+            message_type: 'channel', 'dm' or 'trace'
             command_id: Optional command ID for correlation
+            channel_idx: Channel index a channel message was sent on
+            recipient_key: Recipient public key (hex) of a DM
+            trace_tag: Tag of a trace
 
         Returns:
             TransmissionRecord: The created record
@@ -95,7 +154,10 @@ class TransmissionTracker:
             content=content,
             target=target,
             message_type=message_type,
-            command_id=command_id
+            command_id=command_id,
+            channel_idx=channel_idx,
+            recipient_key=recipient_key,
+            trace_tag=trace_tag,
         )
 
         # Store in pending transmissions (by rounded timestamp)
@@ -111,12 +173,21 @@ class TransmissionTracker:
 
         return record
 
-    def match_packet_hash(self, packet_hash: str, rf_timestamp: float) -> Optional[TransmissionRecord]:
+    def match_packet_hash(self, packet_hash: str, rf_timestamp: float,
+                          packet: Optional[dict[str, Any]] = None) -> Optional[TransmissionRecord]:
         """Match a received packet hash to a pending transmission.
+
+        A pending transmission is claimed only by a packet that carries its
+        identity (see ``_packet_is_ours``); without ``packet`` only hashes that
+        were already matched are found.
 
         Args:
             packet_hash: Packet hash from received RF data
             rf_timestamp: Timestamp when RF data was received
+            packet: What the packet says about itself: ``payload_type`` and
+                ``payload_hex``, plus ``channel_idx``, ``channel_message`` (the full
+                decrypted text) and ``channel_text`` (without the sender name) for
+                a channel message that decrypted with one of our channel keys
 
         Returns:
             TransmissionRecord if matched, None otherwise
@@ -127,6 +198,9 @@ class TransmissionTracker:
         # Check if we already have this hash confirmed
         if packet_hash in self.confirmed_transmissions:
             return self.confirmed_transmissions[packet_hash]
+
+        if packet is None:
+            return None
 
         # Search in pending transmissions within the match window
         search_start = int(rf_timestamp - self.match_window)
@@ -141,7 +215,7 @@ class TransmissionTracker:
                 time_diff = abs(rf_timestamp - record.timestamp)
                 if time_diff <= self.match_window:
                     # This is a potential match - store the hash
-                    if record.packet_hash is None:
+                    if record.packet_hash is None and self._packet_is_ours(record, packet):
                         record.packet_hash = packet_hash
                         # Move to confirmed transmissions
                         self.confirmed_transmissions[packet_hash] = record
@@ -149,6 +223,57 @@ class TransmissionTracker:
                         return record
 
         return None
+
+    def _own_name(self) -> Optional[str]:
+        """The radio's advertised name, or None before it is known."""
+        self_info = getattr(self.bot.meshcore, "self_info", None) if self.bot.meshcore else None
+        name = self_info.get("name") if isinstance(self_info, dict) else None
+        return name if isinstance(name, str) and name else None
+
+    def _own_key_byte(self) -> Optional[str]:
+        """First byte (hex) of the radio's public key, or None before it is known."""
+        key = own_public_key(self.bot)
+        return key[:2] if key and len(key) >= 2 else None
+
+    def _packet_is_ours(self, record: TransmissionRecord, packet: Optional[dict[str, Any]]) -> bool:
+        """Whether ``packet`` is this transmission, judged by what both carry.
+
+        A channel message must decrypt on the same channel to our name and the
+        same text; a DM
+        must be a TXT_MSG addressed to the recipient's hash, from ours when known;
+        a trace must carry the same tag.
+        """
+        if not packet:
+            return False
+        payload_type = packet.get("payload_type")
+        payload_hex = packet.get("payload_hex") or ""
+        if record.message_type == "channel":
+            if (
+                payload_type != _PAYLOAD_GRP_TXT
+                or record.channel_idx is None
+                or packet.get("channel_idx") != record.channel_idx
+            ):
+                return False
+            # The radio sends "<its name>: <text>"; without the name, only the text can be compared.
+            name = self._own_name()
+            if name:
+                return packet.get("channel_message") == f"{name}: {record.content}"
+            return packet.get("channel_text") == record.content
+        if record.message_type == "dm":
+            if payload_type != _PAYLOAD_TXT_MSG or not record.recipient_key or len(payload_hex) < 4:
+                return False
+            if payload_hex[:2].lower() != record.recipient_key[:2].lower():
+                return False
+            own = self._own_key_byte()
+            return own is None or payload_hex[2:4].lower() == own
+        if record.message_type == "trace":
+            if payload_type != _PAYLOAD_TRACE or record.trace_tag is None or len(payload_hex) < 8:
+                return False
+            try:
+                return int.from_bytes(bytes.fromhex(payload_hex[:8]), "little") == record.trace_tag
+            except ValueError:
+                return False
+        return False
 
     def record_repeat(self, packet_hash: str, repeater_prefix: Optional[str] = None) -> bool:
         """Record that we heard a repeat of one of our transmissions.
@@ -188,23 +313,48 @@ class TransmissionTracker:
 
             # Update the database entry if we have a command_id
             if record.command_id and hasattr(self.bot, 'web_viewer_integration'):
-                self._update_command_in_database(record)
+                self._schedule_command_update(record)
 
             return True
 
         return False
 
+    def _schedule_command_update(self, record: TransmissionRecord) -> None:
+        """Write the record's repeat counts to the database, off the event loop when one is running."""
+        with self._lock:
+            snapshot = TransmissionRecord(
+                timestamp=record.timestamp,
+                content=record.content,
+                target=record.target,
+                message_type=record.message_type,
+                packet_hash=record.packet_hash,
+                repeat_count=record.repeat_count,
+                repeater_prefixes=set(record.repeater_prefixes),
+                repeater_counts=dict(record.repeater_counts),
+                command_id=record.command_id,
+            )
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            self._update_command_in_database(snapshot)
+            return
+        if self._db_closed:
+            self._update_command_in_database(snapshot)
+            return
+        if self._db_executor is None:
+            self._db_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="tx-tracker-db")
+        self._db_executor.submit(self._update_command_in_database, snapshot)
+
+    def close(self) -> None:
+        """Wait for queued repeat-count writes; later writes run inline."""
+        self._db_closed = True
+        if self._db_executor is not None:
+            self._db_executor.shutdown(wait=True)
+            self._db_executor = None
+
     def _update_command_in_database(self, record: TransmissionRecord):
         """Update command entry in database with latest repeat information"""
         try:
-            import json
-            import os
-            import sqlite3
-            import sys
-            # Add parent directory to path for imports
-            sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-            from modules.utils import resolve_path
-
             if not record.command_id:
                 return
 
@@ -214,7 +364,6 @@ class TransmissionTracker:
                     and self.bot.config.get('Web_Viewer', 'db_path', fallback='').strip()):
                 db_path = resolve_path(self.bot.config.get('Web_Viewer', 'db_path').strip(), base_dir)
             else:
-                from pathlib import Path
                 db_path = str(Path(self.bot.db_manager.db_path).resolve())
 
             with closing(sqlite3.connect(str(db_path), timeout=30.0)) as conn:
@@ -319,10 +468,9 @@ class TransmissionTracker:
             last_node = path_nodes[-1]
             if isinstance(last_node, str) and len(last_node) >= 2:
                 # Take first 2 characters as prefix
-                prefix = last_node[:self.bot.prefix_hex_chars].lower()
-                # Filter out our own prefix
-                if prefix != self.bot_prefix:
-                    return [prefix]
+                # A companion radio never forwards, so the last hop is never us; a
+                # repeater sharing our short prefix still gets the repeat.
+                return [last_node[:self.bot.prefix_hex_chars].lower()]
 
         # Fallback to parsing path string
         elif path:
@@ -337,10 +485,7 @@ class TransmissionTracker:
             if parts:
                 last_part = parts[-1]
                 if len(last_part) >= 2:
-                    prefix = last_part[:self.bot.prefix_hex_chars].lower()
-                    # Filter out our own prefix
-                    if prefix != self.bot_prefix:
-                        return [prefix]
+                    return [last_part[:self.bot.prefix_hex_chars].lower()]
 
         return []  # No valid prefix found
 

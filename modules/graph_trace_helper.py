@@ -7,6 +7,8 @@ Shared by message_handler (on RX) and trace command (when TRACE_DATA is received
 import time
 from typing import Any, Optional
 
+from .transmission_tracker import own_public_key
+
 
 def update_mesh_graph_from_trace_data(
     bot: Any,
@@ -44,13 +46,18 @@ def update_mesh_graph_from_trace_data(
         return
 
     mesh_graph = bot.mesh_graph
-    bot_prefix = bot.transmission_tracker.bot_prefix
+    # Name the bot at the trace's own hash width, so its edges match the hops'
+    bot_key = own_public_key(bot)
+    width = len(path_hashes[-1])
+    bot_prefix = bot_key[:width] if bot_key and len(bot_key) >= width else bot.transmission_tracker.bot_prefix
 
     if not bot_prefix:
         bot.logger.debug("Mesh graph: Bot prefix not available, skipping trace update")
         return
 
     bot_prefix = bot_prefix.lower()
+    # 2-byte and wider hashes confirm the link at that width
+    edge_width = {"prefix_bytes": 2} if width >= 4 else {}
 
     # Resolve is_our_trace
     if is_our_trace is None:
@@ -90,10 +97,13 @@ def update_mesh_graph_from_trace_data(
     if len(path_hashes) == 0:
         return
 
-    last_node = path_hashes[-1].lower()
 
     if is_immediate_neighbor:
         neighbor_prefix = path_hashes[0].lower()
+        if neighbor_prefix == bot_prefix:
+            # The graph, keyed by prefix, can't tell this neighbor from the bot
+            bot.logger.debug(f"Mesh graph: Neighbor {neighbor_prefix} shares the bot's prefix, skipping trace update")
+            return
         neighbor_key = None
         try:
             count_query = f"""
@@ -121,27 +131,13 @@ def update_mesh_graph_from_trace_data(
         except Exception as e:
             bot.logger.debug(f"Error checking uniqueness for immediate neighbor {neighbor_prefix}: {e}")
 
-        bot_key = None
-        if hasattr(bot, "meshcore") and bot.meshcore and getattr(bot.meshcore, "device", None):
-            try:
-                device_info = bot.meshcore.device
-                if hasattr(device_info, "public_key"):
-                    pubkey = device_info.public_key
-                    if isinstance(pubkey, str):
-                        bot_key = pubkey
-                    elif isinstance(pubkey, bytes):
-                        bot_key = pubkey.hex()
-            except Exception as e:
-                bot.logger.debug(f"Could not get bot public key: {e}")
-
         geographic_distance = None
         try:
             if bot_location:
                 neighbor_result = _get_node_location_from_db(bot, neighbor_prefix, bot_location, recency_days)
                 if neighbor_result:
-                    neighbor_location, selected_neighbor_key = neighbor_result
-                    if not neighbor_key and selected_neighbor_key:
-                        neighbor_key = selected_neighbor_key
+                    # The location match is only for the distance, not the neighbor's identity
+                    neighbor_location, _ = neighbor_result
                     if neighbor_location and bot_location:
                         geographic_distance = calculate_distance(
                             neighbor_location[0], neighbor_location[1],
@@ -157,6 +153,7 @@ def update_mesh_graph_from_trace_data(
             to_public_key=neighbor_key,
             hop_position=1,
             geographic_distance=geographic_distance,
+            **edge_width,
         )
         mesh_graph.add_edge(
             from_prefix=neighbor_prefix,
@@ -165,13 +162,75 @@ def update_mesh_graph_from_trace_data(
             to_public_key=bot_key,
             hop_position=1,
             geographic_distance=geographic_distance,
+            **edge_width,
         )
         bot.logger.info(f"Mesh graph: Created trusted bidirectional edge with immediate neighbor {neighbor_prefix}")
         return
 
-    # Regular case: trace from elsewhere, bot is destination
-    geographic_distance = None
-    last_node_key = None
+    # Regular case: the bot received the trace at the end of its path. Our own
+    # trace also left from the bot, so it confirms the bot -> first hop link too.
+    chain = [h.lower() for h in path_hashes]
+    if is_our_trace:
+        chain = [bot_prefix] + chain
+    chain = chain + [bot_prefix]
+    # Which chain positions are the bot itself (a hop may share its short prefix)
+    is_bot = [is_our_trace and i == 0 or i == len(chain) - 1 for i in range(len(chain))]
+
+    hop_keys: dict[str, Optional[str]] = {}
+    keys: list[Optional[str]] = []
+    for i, node in enumerate(chain):
+        if is_bot[i]:
+            keys.append(bot_key)
+        else:
+            if node not in hop_keys:
+                hop_keys[node] = _unique_repeater_key(bot, node, recency_days)
+            keys.append(hop_keys[node])
+
+    # Locations only feed distances; a location match among colliding prefixes is a
+    # guess, so it never becomes the stored public key.
+    locations: dict[int, Optional[tuple[float, float]]] = {}
+    reference = bot_location
+    for i, node in enumerate(chain):
+        if is_bot[i]:
+            locations[i] = bot_location
+        else:
+            locations[i] = None
+            try:
+                found = _get_node_location_from_db(bot, node, reference, recency_days)
+                if found and found[0]:
+                    locations[i] = found[0]
+            except Exception as e:
+                bot.logger.debug(f"Could not locate trace node {node}: {e}")
+        if locations[i]:
+            reference = locations[i]
+
+    for i in range(len(chain) - 1):
+        from_node, to_node = chain[i], chain[i + 1]
+        if from_node == to_node:
+            # A hop sharing its neighbor's prefix: the graph, keyed by prefix, can't tell them apart
+            continue
+        geographic_distance = None
+        from_location, to_location = locations[i], locations[i + 1]
+        if from_location and to_location:
+            try:
+                geographic_distance = calculate_distance(
+                    from_location[0], from_location[1], to_location[0], to_location[1],
+                )
+            except Exception as e:
+                bot.logger.debug(f"Could not calculate distance for trace edge {from_node}->{to_node}: {e}")
+        mesh_graph.add_edge(
+            from_prefix=from_node,
+            to_prefix=to_node,
+            from_public_key=keys[i],
+            to_public_key=keys[i + 1],
+            hop_position=i + 1,
+            geographic_distance=geographic_distance,
+            **edge_width,
+        )
+
+
+def _unique_repeater_key(bot: Any, prefix: str, recency_days: int) -> Optional[str]:
+    """The public key of the only recently heard repeater or room server with ``prefix``, else None."""
     try:
         count_query = f"""
             SELECT COUNT(DISTINCT public_key) as count
@@ -180,7 +239,7 @@ def update_mesh_graph_from_trace_data(
             AND role IN ('repeater', 'roomserver')
             AND COALESCE(last_advert_timestamp, last_heard) >= datetime('now', '-{recency_days} days')
         """
-        prefix_pattern = f"{last_node}%"
+        prefix_pattern = f"{prefix}%"
         count_results = bot.db_manager.execute_query(count_query, (prefix_pattern,))
         if count_results and count_results[0].get("count", 0) == 1:
             query = f"""
@@ -194,113 +253,7 @@ def update_mesh_graph_from_trace_data(
             """
             results = bot.db_manager.execute_query(query, (prefix_pattern,))
             if results and results[0].get("public_key"):
-                last_node_key = results[0]["public_key"]
+                return results[0]["public_key"]
     except Exception as e:
-        bot.logger.debug(f"Error checking uniqueness for trace last_node {last_node}: {e}")
-
-    bot_key = None
-    if hasattr(bot, "meshcore") and bot.meshcore and getattr(bot.meshcore, "device", None):
-        try:
-            device_info = bot.meshcore.device
-            if hasattr(device_info, "public_key"):
-                pubkey = device_info.public_key
-                if isinstance(pubkey, str):
-                    bot_key = pubkey
-                elif isinstance(pubkey, bytes):
-                    bot_key = pubkey.hex()
-        except Exception as e:
-            bot.logger.debug(f"Could not get bot public key: {e}")
-
-    try:
-        if bot_location:
-            last_node_result = _get_node_location_from_db(bot, last_node, bot_location, recency_days)
-            if last_node_result:
-                last_node_location, selected_key = last_node_result
-                if not last_node_key and selected_key:
-                    last_node_key = selected_key
-                if last_node_location and bot_location:
-                    geographic_distance = calculate_distance(
-                        last_node_location[0], last_node_location[1],
-                        bot_location[0], bot_location[1],
-                    )
-    except Exception as e:
-        bot.logger.debug(f"Could not calculate distance for trace edge {last_node}->{bot_prefix}: {e}")
-
-    mesh_graph.add_edge(
-        from_prefix=last_node,
-        to_prefix=bot_prefix,
-        from_public_key=last_node_key,
-        to_public_key=bot_key,
-        hop_position=len(path_hashes),
-        geographic_distance=geographic_distance,
-    )
-
-    # Create edges between nodes in the pathHashes (if more than one)
-    previous_location = bot_location
-    for i in range(len(path_hashes) - 1, 0, -1):
-        from_node = path_hashes[i - 1].lower()
-        to_node = path_hashes[i].lower()
-        hop_position = len(path_hashes) - i
-
-        from_node_key = None
-        to_node_key = None
-        for node, key_var in [(from_node, "from_node_key"), (to_node, "to_node_key")]:
-            try:
-                count_query = f"""
-                    SELECT COUNT(DISTINCT public_key) as count
-                    FROM complete_contact_tracking
-                    WHERE public_key LIKE ?
-                    AND role IN ('repeater', 'roomserver')
-                    AND COALESCE(last_advert_timestamp, last_heard) >= datetime('now', '-{recency_days} days')
-                """
-                prefix_pattern = f"{node}%"
-                count_results = bot.db_manager.execute_query(count_query, (prefix_pattern,))
-                if count_results and count_results[0].get("count", 0) == 1:
-                    query = f"""
-                        SELECT public_key
-                        FROM complete_contact_tracking
-                        WHERE public_key LIKE ?
-                        AND role IN ('repeater', 'roomserver')
-                        AND COALESCE(last_advert_timestamp, last_heard) >= datetime('now', '-{recency_days} days')
-                        ORDER BY is_starred DESC, COALESCE(last_advert_timestamp, last_heard) DESC
-                        LIMIT 1
-                    """
-                    results = bot.db_manager.execute_query(query, (prefix_pattern,))
-                    if results and results[0].get("public_key"):
-                        if key_var == "from_node_key":
-                            from_node_key = results[0]["public_key"]
-                        else:
-                            to_node_key = results[0]["public_key"]
-            except Exception as e:
-                bot.logger.debug(f"Error checking uniqueness for trace node {node}: {e}")
-
-        geographic_distance = None
-        try:
-            if previous_location:
-                from_result = _get_node_location_from_db(bot, from_node, previous_location, recency_days)
-                if from_result:
-                    from_location, selected_from_key = from_result
-                    if not from_node_key and selected_from_key:
-                        from_node_key = selected_from_key
-                    to_result = _get_node_location_from_db(bot, to_node, from_location, recency_days)
-                    if to_result:
-                        to_location, selected_to_key = to_result
-                        if not to_node_key and selected_to_key:
-                            to_node_key = selected_to_key
-                        if from_location and to_location:
-                            geographic_distance = calculate_distance(
-                                from_location[0], from_location[1],
-                                to_location[0], to_location[1],
-                            )
-                            previous_location = from_location
-        except Exception as e:
-            bot.logger.debug(f"Could not calculate distance for trace edge {from_node}->{to_node}: {e}")
-
-        mesh_graph.add_edge(
-            from_prefix=from_node,
-            to_prefix=to_node,
-            from_public_key=from_node_key,
-            to_public_key=to_node_key,
-            hop_position=hop_position,
-            geographic_distance=geographic_distance,
-        )
+        bot.logger.debug(f"Error checking uniqueness for trace node {prefix}: {e}")
+    return None
