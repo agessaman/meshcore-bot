@@ -77,6 +77,8 @@ def _read_limited_requests_response(
 class FeedSubscriptionsMixin:
     """Feed subscription CRUD, activity/error queries, preview and item formatting."""
 
+    _db_connection: Any
+    _get_db_connection: Any
     config: Any
     logger: Any
 
@@ -188,7 +190,7 @@ class FeedSubscriptionsMixin:
             cursor = conn.cursor()
 
             updates = []
-            params = []
+            params: list[Any] = []
 
             if 'channel_name' in data:
                 channel_name = str(data['channel_name']).strip() if data['channel_name'] is not None else ''

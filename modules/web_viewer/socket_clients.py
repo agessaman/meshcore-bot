@@ -39,7 +39,7 @@ class SocketClientsMixin:
         def handle_connect():
             """Handle client connection"""
             try:
-                client_id = request.sid
+                client_id = request.sid  # type: ignore[attr-defined]  # Flask-SocketIO sets sid on the request
                 if not client_id:
                     self.logger.warning("Connect event received but client_id is None")
                     return False

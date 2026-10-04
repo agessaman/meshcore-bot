@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 
 class ContactTrackingMixin:
@@ -136,7 +136,8 @@ class ContactTrackingMixin:
                 limit_clause = ''
                 if pagination is not None:
                     limit_clause = ' LIMIT ? OFFSET ?'
-                    query_params.extend([page_size, (page - 1) * page_size])
+                    # pagination is only set when page and page_size are both ints
+                    query_params.extend([page_size, (cast(int, page) - 1) * cast(int, page_size)])
 
                 cursor.execute("""
                 SELECT
@@ -157,7 +158,7 @@ class ContactTrackingMixin:
 
                 main_rows = cursor.fetchall()
 
-                paths_by_key = {}
+                paths_by_key: dict[Any, Any] = {}
                 path_rows = []
                 if main_rows:
                     path_params: list[Any] = []
@@ -207,14 +208,14 @@ class ContactTrackingMixin:
                 multibyte_hop_chunks = self._get_cached_contact_multibyte_hop_chunks(cursor)
                 chunk_buckets = self._bucket_hop_chunks(multibyte_hop_chunks)
 
-                tracking = []
+                tracking: list[Any] = []
                 self._tracking_entries(main_rows, paths_by_key, chunk_buckets, bot_lat, bot_lon, include_detail, tracking)
 
                 # Get server statistics for daily tracking using direct database queries
-                server_stats = {}
+                server_stats: dict[str, Any] = {}
                 self._tracking_server_stats(cursor, server_stats)
 
-                result = {
+                result: dict[str, Any] = {
                     'tracking_data': tracking,
                     'server_stats': server_stats
                 }
@@ -522,7 +523,7 @@ class ContactTrackingMixin:
                 daily_data_by_role = cursor.fetchall()
 
                 # Organize data by date and role
-                daily_by_role = {}
+                daily_by_role: dict[Any, Any] = {}
                 for row in daily_data_by_role:
                     date_str = row[0]
                     role = (row[1] or 'unknown').lower()
