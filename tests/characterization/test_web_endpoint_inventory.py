@@ -19,6 +19,10 @@ import pytest
 
 from tests.characterization.golden_util import assert_golden
 
+# Static files get their type from the platform's MIME table: macOS maps .ico to
+# image/x-icon, Debian/Ubuntu's /etc/mime.types to image/vnd.microsoft.icon.
+PLATFORM_MIME_ALIASES = {"image/vnd.microsoft.icon": "image/x-icon"}
+
 SKIP_GET = {
     # Streams or long-polls; not a single request/response.
     "/socket.io/",
@@ -54,12 +58,17 @@ def _viewer(tmp_path, password: str):
     return viewer
 
 
+def _content_type(resp) -> str:
+    content_type = (resp.headers.get("Content-Type") or "").split(";")[0]
+    return PLATFORM_MIME_ALIASES.get(content_type, content_type)
+
+
 def _headers(resp):
     csp = resp.headers.get("Content-Security-Policy", "")
     script_src = next((p.strip() for p in csp.split(";") if p.strip().startswith("script-src")), "")
     return {
         "status": resp.status_code,
-        "content_type": (resp.headers.get("Content-Type") or "").split(";")[0],
+        "content_type": _content_type(resp),
         "location": re.sub(r"https?://[^/]+", "", resp.headers.get("Location", "")),
         "csp_script_src": re.sub(r"'nonce-[^']+'", "'nonce-X'", script_src),
         "x_frame_options": resp.headers.get("X-Frame-Options"),
