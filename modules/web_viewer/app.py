@@ -57,7 +57,7 @@ from modules.database_restore import (
     DatabaseRestoreError,
     stage_database_restore,
 )
-from modules.db_retention import (
+from modules.db_retention import (  # noqa: F401  kept for modules.web_viewer.app.<name>
     delete_timestamp_rows_in_chunks,
     retention_delete_settings,
 )
@@ -166,6 +166,7 @@ from modules.repeater_manager import RepeaterManager, validate_repeater_tables
 from modules.security_utils import SafeUrlPolicy, create_safe_requests_session, safe_requests_request  # noqa: F401
 from modules.utils import resolve_path
 from modules.web_viewer.channels import ChannelAdminMixin
+from modules.web_viewer.cleanup import CleanupSchedulerMixin
 from modules.web_viewer.config_panels import CONFIG_PANELS, PANEL_CATEGORIES
 from modules.web_viewer.dashboard import DashboardSnapshotMixin
 from modules.web_viewer.database_admin import DatabaseAdminMixin
@@ -189,7 +190,7 @@ from modules.web_viewer.socket_clients import SocketClientsMixin
 from modules.web_viewer.tracking import ContactTrackingMixin
 
 
-class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin, ChannelAdminMixin, DatabaseAdminMixin, ContactTrackingMixin, MeshEvidenceMixin, MultibyteRolloutMixin, FeedSubscriptionsMixin):
+class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin, CleanupSchedulerMixin, ChannelAdminMixin, DatabaseAdminMixin, ContactTrackingMixin, MeshEvidenceMixin, MultibyteRolloutMixin, FeedSubscriptionsMixin):
     """Complete web interface using Flask-SocketIO 5.x best practices"""
 
     # Whitelist of allowed tables for security
@@ -4704,67 +4705,6 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
                 return jsonify({'error': 'flood must be true or false'}), 400
             op_id = self._queue_operation('radio_advert', {'flood': flood})
             return jsonify({'success': True, 'operation_id': op_id})
-
-    def _start_cleanup_scheduler(self):
-        """Start background thread for periodic database cleanup"""
-        import threading
-
-        def cleanup_scheduler():
-            import time
-            while True:
-                try:
-                    # Clean up stale clients every 5 minutes
-                    for _ in range(12):  # 12 x 5 minutes = 1 hour
-                        time.sleep(300)  # 5 minutes
-                        self._cleanup_stale_clients()
-
-                    # Clean up old data every hour (after 12 stale client cleanups)
-                    self._cleanup_old_data()
-
-                except Exception as e:
-                    self.logger.error(f"Error in cleanup scheduler: {e}", exc_info=True)
-                    time.sleep(60)  # Sleep on error
-
-        # Start the cleanup thread
-        cleanup_thread = threading.Thread(target=cleanup_scheduler, daemon=True)
-        cleanup_thread.start()
-        self.logger.info("Cleanup scheduler started")
-
-    def _cleanup_old_data(self, days_to_keep: int | None = None):
-        """Clean up old packet stream data to prevent database bloat.
-        Uses [Data_Retention] packet_stream_retention_days when days_to_keep is not provided."""
-        try:
-            import sqlite3
-
-            if days_to_keep is None:
-                days_to_keep = 3
-                if self.config.has_section('Data_Retention') and self.config.has_option('Data_Retention', 'packet_stream_retention_days'):
-                    with suppress(ValueError, TypeError):
-                        days_to_keep = self.config.getint('Data_Retention', 'packet_stream_retention_days')
-
-            cutoff_time = time.time() - (days_to_keep * 24 * 60 * 60)
-            batch_size, pause_seconds = retention_delete_settings(self.config)
-            total_deleted = delete_timestamp_rows_in_chunks(
-                self._with_db_connection,
-                'packet_stream',
-                'timestamp',
-                cutoff_time,
-                batch_size=batch_size,
-                pause_seconds=pause_seconds,
-                logger=self.logger,
-                progress_label='packet stream',
-            )
-            if total_deleted > 0:
-                self.logger.info(
-                    f"Cleaned up {total_deleted} old packet stream entries "
-                    f"(older than {days_to_keep} days)"
-                )
-
-        except sqlite3.OperationalError as e:
-            self.logger.warning(f"Database busy during cleanup (will retry next cycle): {e}")
-        except Exception as e:
-            self.logger.error(f"Error cleaning up old packet stream data: {e}", exc_info=True)
-
 
     def _get_bot_uptime(self):
         """Get bot uptime in seconds from database"""
