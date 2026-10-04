@@ -792,104 +792,18 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             using_companion_location: If True, always include location prefix even if same state
         """
         try:
-            # Convert location to lat/lon based on type
+            # Convert location to lat/lon based on type, with the location prefix the reply carries
             if location_type == "coordinates":
-                # Parse coordinates from "lat,lon" format
-                try:
-                    lat_str, lon_str = location.split(',')
-                    lat = float(lat_str.strip())
-                    lon = float(lon_str.strip())
-
-                    # Validate coordinate ranges
-                    if not (-90 <= lat <= 90):
-                        return self.translate('commands.wx.error', error=f"Invalid latitude: {lat}")
-                    if not (-180 <= lon <= 180):
-                        return self.translate('commands.wx.error', error=f"Invalid longitude: {lon}")
-
-                    # Get address_info for location display via reverse geocoding
-                    location_str = self._coordinates_to_location_string(lat, lon)
-                    if location_str:
-                        # Parse the location string to get city and state for address_info
-                        parts = location_str.split(',')
-                        if len(parts) >= 2:
-                            city = parts[0].strip()
-                            state = parts[1].strip()
-                            address_info = {'city': city, 'state': state}
-                        else:
-                            address_info = {'city': location_str}
-                    else:
-                        address_info = {}
-                except ValueError:
-                    return self.translate('commands.wx.error', error=f"Invalid coordinates format: {location}")
+                reply, lat, lon, location_prefix = self._locate_coordinates(location)
             elif location_type == "zipcode":
-                lat, lon = self.zipcode_to_lat_lon(location)
-                if lat is None or lon is None:
-                    return self.translate('commands.wx.no_location_zipcode', location=location)
-                address_info = None
+                reply, lat, lon, location_prefix = self._locate_zipcode(location, using_companion_location)
             else:  # city
-                result = self.city_to_lat_lon(location)
-                if len(result) == 3:
-                    lat, lon, address_info = result
-                else:
-                    lat, lon = result
-                    address_info = None
-
-                if lat is None or lon is None:
-                    region = self.default_state or self.default_country
-                    return self.translate('commands.wx.no_location_city', location=location, state=region)
-
-                # Check if the found city is in a different state than default
-                actual_city = location
-                actual_state = self.default_state or self.default_country
-                if address_info:
-                    # Try to get the best city name from various address fields
-                    actual_city = (address_info.get('city') or
-                                 address_info.get('town') or
-                                 address_info.get('village') or
-                                 address_info.get('hamlet') or
-                                 address_info.get('municipality') or
-                                 location)
-                    actual_state = address_info.get('state', self.default_state)
-                    # Convert full state name to abbreviation if needed using the us library
-                    if len(actual_state) > 2:
-                        state_abbr, _ = normalize_us_state(actual_state)
-                        if state_abbr:
-                            actual_state = state_abbr
-
-                    # Also check if the default state needs to be converted for comparison
-                    default_state_full = self.default_state
-                    if len(self.default_state) == 2:
-                        # Convert abbreviation to full name for comparison
-                        _, default_state_full = normalize_us_state(self.default_state)
-                        if not default_state_full:
-                            default_state_full = self.default_state
-
-            # Add location info if city is in a different state than default, or if using companion location
-            location_prefix = ""
-            if location_type == "coordinates" and address_info:
-                # For coordinates, always show location if we have address info
-                city = address_info.get('city', '')
-                state = address_info.get('state', '')
-                if city and state:
-                    # Normalize state to abbreviation
-                    state_abbr, _ = normalize_us_state(state)
-                    if state_abbr:
-                        state = state_abbr
-                    location_prefix = f"{city}, {state}: "
-                elif city:
-                    location_prefix = f"{city}: "
-            elif location_type == "city" and address_info:
-                # Compare states (handle both full names and abbreviations)
-                states_different = (actual_state != self.default_state and
-                                  actual_state != default_state_full)
-                # Always show location if using companion location, or if state is different
-                if using_companion_location or states_different or self.always_show_location:
-                    location_prefix = f"{actual_city}, {actual_state}: " if actual_state else f"{actual_city}: "
-            elif location_type == "zipcode" and (using_companion_location or self.always_show_location):
-                # For zipcode with companion location, try to get city name from reverse geocoding
-                location_str = self._coordinates_to_location_string(lat, lon)
-                if location_str:
-                    location_prefix = f"{location_str}: "
+                reply, lat, lon, location_prefix = self._locate_city(location, using_companion_location)
+                if location_type != "city":
+                    # An unrecognized type geocodes as a city but never carries the city prefix
+                    location_prefix = ""
+            if reply is not None:
+                return reply
 
             # Get max message length dynamically
             max_length = self.get_max_message_length(message) if message else 130
@@ -904,57 +818,179 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                 max_length - self._count_display_width(location_prefix), self.MIN_BODY_BUDGET
             )
 
-            # Get weather forecast based on type
-            if forecast_type == "tomorrow":
-                forecast_periods, points_data = self.get_noaa_weather(lat, lon, return_periods=True, max_length=body_max_length)
-                if forecast_periods == self.ERROR_FETCHING_DATA:
-                    return self.translate('commands.wx.error_fetching')
-                weather = self.format_tomorrow_forecast(forecast_periods, max_length=body_max_length)
-            elif forecast_type == "multiday":
-                forecast_periods, points_data = self.get_noaa_weather(lat, lon, return_periods=True, max_length=body_max_length)
-                if forecast_periods == self.ERROR_FETCHING_DATA:
-                    return self.translate('commands.wx.error_fetching')
-                weather = self.format_multiday_forecast(forecast_periods, num_days, max_length=body_max_length)
-            elif forecast_type == "hourly":
-                hourly_periods, points_data = self.get_noaa_hourly_weather(lat, lon)
-                if hourly_periods == self.ERROR_FETCHING_DATA:
-                    return self.translate('commands.wx.error_fetching')
-                weather = self.format_hourly_forecast(hourly_periods, max_length=body_max_length)
-            else:  # default
-                weather, points_data = self.get_noaa_weather(lat, lon, max_length=body_max_length)
-                if weather == self.ERROR_FETCHING_DATA:
-                    return self.translate('commands.wx.error_fetching')
-
-                # Note: Current conditions are now integrated directly into the current period
-                # via _add_period_details() using observation station data
+            reply, weather = self._noaa_forecast_body(lat, lon, forecast_type, num_days, body_max_length)
+            if reply is not None:
+                return reply
 
             # Get weather alerts (only for default forecast type to avoid cluttering)
             if forecast_type == "default":
-                alerts_result = self.get_weather_alerts_noaa(lat, lon, return_full_data=False)
-                if alerts_result == self.ERROR_FETCHING_DATA or alerts_result == self.NO_ALERTS:
-                    pass
-                else:
-                    full_alert_text, abbreviated_alert_text, alert_count = alerts_result
-                    if alert_count > 0:
-                        # Get full alert data for prioritized formatting
-                        alerts_full_result = self.get_weather_alerts_noaa(lat, lon, return_full_data=True)
-                        if alerts_full_result not in [self.ERROR_FETCHING_DATA, self.NO_ALERTS]:
-                            alerts_list, _ = alerts_full_result
-                            # Format with prioritization and summary
-                            formatted_alert_text = self._format_alerts_compact_summary(alerts_list, alert_count, max_length=max_length)
-                        else:
-                            # Fallback to old format
-                            formatted_alert_text = full_alert_text
-
-                        # Always send weather first, then alerts in separate message
-                        self.logger.info(f"Found {alert_count} alerts - using two-message mode")
-                        return ("multi_message", f"{location_prefix}{weather}", formatted_alert_text, alert_count)
+                return self._with_noaa_alerts(lat, lon, location_prefix, weather, max_length)
 
             return f"{location_prefix}{weather}"
 
         except Exception as e:
             self.logger.error(f"Error getting weather for {location_type} {location}: {e}")
             return self.translate('commands.wx.error', error=str(e))
+
+    def _locate_coordinates(self, location: str) -> tuple:
+        """(error reply or None, lat, lon, location prefix) for a "lat,lon" location."""
+        # Parse coordinates from "lat,lon" format
+        try:
+            lat_str, lon_str = location.split(',')
+            lat = float(lat_str.strip())
+            lon = float(lon_str.strip())
+
+            # Validate coordinate ranges
+            if not (-90 <= lat <= 90):
+                return self.translate('commands.wx.error', error=f"Invalid latitude: {lat}"), None, None, ""
+            if not (-180 <= lon <= 180):
+                return self.translate('commands.wx.error', error=f"Invalid longitude: {lon}"), None, None, ""
+
+            # Get address_info for location display via reverse geocoding
+            location_str = self._coordinates_to_location_string(lat, lon)
+            if location_str:
+                # Parse the location string to get city and state for address_info
+                parts = location_str.split(',')
+                if len(parts) >= 2:
+                    city = parts[0].strip()
+                    state = parts[1].strip()
+                    address_info = {'city': city, 'state': state}
+                else:
+                    address_info = {'city': location_str}
+            else:
+                address_info = {}
+        except ValueError:
+            return self.translate('commands.wx.error', error=f"Invalid coordinates format: {location}"), None, None, ""
+
+        location_prefix = ""
+        if address_info:
+            # For coordinates, always show location if we have address info
+            city = address_info.get('city', '')
+            state = address_info.get('state', '')
+            if city and state:
+                # Normalize state to abbreviation
+                state_abbr, _ = normalize_us_state(state)
+                if state_abbr:
+                    state = state_abbr
+                location_prefix = f"{city}, {state}: "
+            elif city:
+                location_prefix = f"{city}: "
+        return None, lat, lon, location_prefix
+
+    def _locate_zipcode(self, location: str, using_companion_location: bool) -> tuple:
+        """(error reply or None, lat, lon, location prefix) for a zipcode location."""
+        lat, lon = self.zipcode_to_lat_lon(location)
+        if lat is None or lon is None:
+            return self.translate('commands.wx.no_location_zipcode', location=location), None, None, ""
+
+        location_prefix = ""
+        if using_companion_location or self.always_show_location:
+            # For zipcode with companion location, try to get city name from reverse geocoding
+            location_str = self._coordinates_to_location_string(lat, lon)
+            if location_str:
+                location_prefix = f"{location_str}: "
+        return None, lat, lon, location_prefix
+
+    def _locate_city(self, location: str, using_companion_location: bool) -> tuple:
+        """(error reply or None, lat, lon, location prefix) for a city location."""
+        result = self.city_to_lat_lon(location)
+        if len(result) == 3:
+            lat, lon, address_info = result
+        else:
+            lat, lon = result
+            address_info = None
+
+        if lat is None or lon is None:
+            region = self.default_state or self.default_country
+            return self.translate('commands.wx.no_location_city', location=location, state=region), None, None, ""
+
+        # Check if the found city is in a different state than default
+        actual_city = location
+        actual_state = self.default_state or self.default_country
+        if address_info:
+            # Try to get the best city name from various address fields
+            actual_city = (address_info.get('city') or
+                         address_info.get('town') or
+                         address_info.get('village') or
+                         address_info.get('hamlet') or
+                         address_info.get('municipality') or
+                         location)
+            actual_state = address_info.get('state', self.default_state)
+            # Convert full state name to abbreviation if needed using the us library
+            if len(actual_state) > 2:
+                state_abbr, _ = normalize_us_state(actual_state)
+                if state_abbr:
+                    actual_state = state_abbr
+
+            # Also check if the default state needs to be converted for comparison
+            default_state_full = self.default_state
+            if len(self.default_state) == 2:
+                # Convert abbreviation to full name for comparison
+                _, default_state_full = normalize_us_state(self.default_state)
+                if not default_state_full:
+                    default_state_full = self.default_state
+
+        # Add location info if city is in a different state than default, or if using companion location
+        location_prefix = ""
+        if address_info:
+            # Compare states (handle both full names and abbreviations)
+            states_different = (actual_state != self.default_state and
+                              actual_state != default_state_full)
+            # Always show location if using companion location, or if state is different
+            if using_companion_location or states_different or self.always_show_location:
+                location_prefix = f"{actual_city}, {actual_state}: " if actual_state else f"{actual_city}: "
+        return None, lat, lon, location_prefix
+
+    def _noaa_forecast_body(self, lat: float, lon: float, forecast_type: str, num_days: int, body_max_length: int) -> tuple:
+        """(error reply or None, formatted forecast) for one forecast type."""
+        # Get weather forecast based on type
+        if forecast_type == "tomorrow":
+            forecast_periods, points_data = self.get_noaa_weather(lat, lon, return_periods=True, max_length=body_max_length)
+            if forecast_periods == self.ERROR_FETCHING_DATA:
+                return self.translate('commands.wx.error_fetching'), None
+            weather = self.format_tomorrow_forecast(forecast_periods, max_length=body_max_length)
+        elif forecast_type == "multiday":
+            forecast_periods, points_data = self.get_noaa_weather(lat, lon, return_periods=True, max_length=body_max_length)
+            if forecast_periods == self.ERROR_FETCHING_DATA:
+                return self.translate('commands.wx.error_fetching'), None
+            weather = self.format_multiday_forecast(forecast_periods, num_days, max_length=body_max_length)
+        elif forecast_type == "hourly":
+            hourly_periods, points_data = self.get_noaa_hourly_weather(lat, lon)
+            if hourly_periods == self.ERROR_FETCHING_DATA:
+                return self.translate('commands.wx.error_fetching'), None
+            weather = self.format_hourly_forecast(hourly_periods, max_length=body_max_length)
+        else:  # default
+            weather, points_data = self.get_noaa_weather(lat, lon, max_length=body_max_length)
+            if weather == self.ERROR_FETCHING_DATA:
+                return self.translate('commands.wx.error_fetching'), None
+
+            # Note: Current conditions are now integrated directly into the current period
+            # via _add_period_details() using observation station data
+        return None, weather
+
+    def _with_noaa_alerts(self, lat: float, lon: float, location_prefix: str, weather: str, max_length: int) -> str | tuple:
+        """The default forecast reply, as a two-message tuple when NOAA has active alerts."""
+        alerts_result = self.get_weather_alerts_noaa(lat, lon, return_full_data=False)
+        if alerts_result == self.ERROR_FETCHING_DATA or alerts_result == self.NO_ALERTS:
+            pass
+        else:
+            full_alert_text, abbreviated_alert_text, alert_count = alerts_result
+            if alert_count > 0:
+                # Get full alert data for prioritized formatting
+                alerts_full_result = self.get_weather_alerts_noaa(lat, lon, return_full_data=True)
+                if alerts_full_result not in [self.ERROR_FETCHING_DATA, self.NO_ALERTS]:
+                    alerts_list, _ = alerts_full_result
+                    # Format with prioritization and summary
+                    formatted_alert_text = self._format_alerts_compact_summary(alerts_list, alert_count, max_length=max_length)
+                else:
+                    # Fallback to old format
+                    formatted_alert_text = full_alert_text
+
+                # Always send weather first, then alerts in separate message
+                self.logger.info(f"Found {alert_count} alerts - using two-message mode")
+                return ("multi_message", f"{location_prefix}{weather}", formatted_alert_text, alert_count)
+
+        return f"{location_prefix}{weather}"
 
     def zipcode_to_lat_lon(self, zipcode: str) -> tuple:
         """Convert zipcode to latitude and longitude"""
