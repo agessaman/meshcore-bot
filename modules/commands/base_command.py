@@ -4,7 +4,6 @@ Base command class for all MeshCore Bot commands
 Provides common functionality and interface for command implementations
 """
 
-import inspect
 import re
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterator
@@ -51,24 +50,22 @@ _CONFIG_VALUE_TYPES = frozenset({'str', 'list', *_CONFIG_TYPED_GETTERS})
 
 
 def help_text_for(command: Any, message: Any) -> str:
-    """``command.get_help_text(message)``, or ``get_help_text()`` when it takes no message.
+    """``command.get_help_text(message)``, retrying without the message for local plugins.
 
-    Bundled commands all take the message; a local plugin may implement
-    ``get_help_text(self)``. The signature decides which call to make, so an
-    error raised inside a help body propagates instead of being retried.
+    Every bundled command's get_help_text takes the message, so it is called
+    once and an error from its body propagates. Anything defined outside
+    ``modules`` (a local plugin, which may implement ``get_help_text(self)``)
+    keeps the old contract: a TypeError from the message call is retried
+    without the message.
     """
     get_help_text = command.get_help_text
+    defined_in = getattr(get_help_text, "__module__", None) or ""
+    if defined_in.startswith("modules."):
+        return get_help_text(message)
     try:
-        inspect.signature(get_help_text).bind(message)
+        return get_help_text(message)
     except TypeError:
         return get_help_text()
-    except ValueError:
-        # No introspectable signature: try the message form, as before.
-        try:
-            return get_help_text(message)
-        except TypeError:
-            return get_help_text()
-    return get_help_text(message)
 
 
 class BaseCommand(ABC):

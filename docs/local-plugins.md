@@ -82,7 +82,7 @@ Restart the bot so the service is loaded and started.
 |---|---|
 | `enabled_attr = "my_enabled"` | `can_execute` refuses while `self.my_enabled` is false, before any other check. Set the attribute in `__init__`, for example from `self.get_config_value('MyCommand_Command', 'enabled', fallback=True, value_type='bool')`. |
 | `admin_only = True` | The command always requires admin access, whatever `[Admin_ACL] admin_commands` lists. `requires_admin_access()` is still what callers ask. |
-| `keywords_format_key = "mycommand"` | `get_response_format()` returns `[Keywords] mycommand` (surrounding double quotes stripped) when it is set; `handle_keyword_match` then replies with it through `format_response`. |
+| `keywords_format_key = "mycommand"` | `get_response_format()` returns `[Keywords] mycommand` (surrounding double quotes stripped). When that is non-empty, `handle_keyword_match` replies with it through `format_response`; unset or empty means no reply. |
 | `get_help_text(self, message=None)` | The signature every bundled command uses; `help` passes the requesting message so the text can depend on it (DM vs channel). A plugin written as `get_help_text(self)` still works. |
 | `self.translated_or(key, fallback, kind=list)` | The translation at `key` when it is a non-empty `kind` (a list of greetings, a dict), else your built-in `fallback`. |
 
@@ -94,7 +94,7 @@ Restart the bot so the service is loaded and started.
 | `await self._cancel_tasks(task_a, task_b)` | Cancels each task (None is skipped) and waits for it; use it in `stop()`. |
 | `self._subscribe(meshcore, event_type, handler)` / `self._unsubscribe_all()` | Subscribe to meshcore events through `_subscribe` and call `_unsubscribe_all()` in `stop()`: a health restart calls `start()` again, and a subscription left behind would deliver every event twice. |
 
-A service that forwards channel messages to another chat system can subclass `ChannelBridgeBase` (`modules/service_plugins/channel_bridge_utils.py`), which the Discord and Telegram bridges use for start/stop, message intake and the retrying send queue; the subclass supplies `_bridge_mappings`, `_targets_for`, `_deliver`, `_throttled` and `_send_queued`. Files named `*_utils.py` are never loaded as services, so shared code like this can live next to your plugins.
+A service that forwards channel messages to another chat system can subclass `ChannelBridgeBase` (`modules/service_plugins/channel_bridge_utils.py`), which the Discord and Telegram bridges use for start/stop, message intake and the retrying send queue; the subclass supplies `_bridge_mappings`, `_open_http_session`, `_init_queues`, `_targets_for`, `_deliver`, `_throttled` and `_send_queued` (the base versions raise `NotImplementedError`). Files named `*_utils.py` are never loaded as services, so shared code like this can live next to your plugins.
 
 ## Configuration
 

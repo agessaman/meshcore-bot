@@ -217,21 +217,42 @@ class TestGetSpecificHelp:
         result = cmd.get_specific_help("foo")
         assert isinstance(result, str)
 
-    def test_error_inside_help_body_is_not_retried(self):
-        """A TypeError raised by the help body itself propagates after one call."""
+    def test_error_inside_bundled_help_body_is_not_retried(self):
+        """A TypeError raised by a bundled command's help body propagates after one call."""
+        from modules.commands.ping_command import PingCommand
+
+        bot = _make_bot()
+        ping = object.__new__(PingCommand)
+        calls = []
+
+        def broken_translate(key, **kwargs):
+            calls.append(key)
+            raise TypeError("bug in help body")
+
+        ping.translate = broken_translate
+        bot.command_manager.commands = {"ping": ping}
+        cmd = HelpCommand(bot)
+        with pytest.raises(TypeError):
+            cmd.get_specific_help("ping", None)
+        assert len(calls) == 1
+
+    def test_local_plugin_help_keeps_the_typeerror_retry(self):
+        """A local get_help_text(message=None) that raises TypeError is retried without it."""
         bot = _make_bot()
         calls = []
 
-        class Broken:
+        class LocalCommand:
             def get_help_text(self, message=None):
                 calls.append(message)
-                raise TypeError("bug in help body")
+                if message is not None:
+                    raise TypeError("message-specific help failed")
+                return "Generic help"
 
-        bot.command_manager.commands = {"foo": Broken()}
+        bot.command_manager.commands = {"foo": LocalCommand()}
         cmd = HelpCommand(bot)
-        with pytest.raises(TypeError):
-            cmd.get_specific_help("foo", None)
-        assert len(calls) == 1
+        message = Mock()
+        cmd.get_specific_help("foo", message)
+        assert calls == [message, None]
 
     def test_unknown_command_returns_unknown_key(self):
         bot = _make_bot()
