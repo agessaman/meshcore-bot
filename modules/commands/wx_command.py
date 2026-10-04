@@ -727,36 +727,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             # Special handling for "alerts" command
             if show_full_alerts:
                 # Get alerts only (no weather forecast)
-                lat, lon = None, None
-                if location_type == "coordinates":
-                    try:
-                        lat_str, lon_str = location.split(',')
-                        lat = float(lat_str.strip())
-                        lon = float(lon_str.strip())
-                        if not (-90 <= lat <= 90) or not (-180 <= lon <= 180):
-                            await self.send_response(message, self.translate('commands.wx.error', error="Invalid coordinates"))
-                            return True
-                    except ValueError:
-                        await self.send_response(message, self.translate('commands.wx.error', error=f"Invalid coordinates format: {location}"))
-                        return True
-                elif location_type == "zipcode":
-                    lat, lon = await self._zipcode_to_lat_lon_async(location)
-                    if lat is None or lon is None:
-                        await self.send_response(message, self.translate('commands.wx.no_location_zipcode', location=location))
-                        return True
-                else:  # city
-                    result = await self._city_to_lat_lon_async(location)
-                    if len(result) == 3:
-                        lat, lon, address_info = result
-                    else:
-                        lat, lon = result
-                    if lat is None or lon is None:
-                        region = self.default_state or self.default_country
-                        await self.send_response(message, self.translate('commands.wx.no_location_city', location=location, state=region))
-                        return True
-
-                # Get and display full alert list
-                return await self._send_full_alert_list(message, lat, lon)
+                return await self._send_alert_list_for(message, location, location_type)
 
             # Get weather data for the location
             weather_data = await self.get_weather_for_location(location, location_type, forecast_type, num_days, message, using_companion_location=using_companion_location)
@@ -767,6 +738,39 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             self.logger.error(f"Error in weather command: {e}")
             await self.send_response(message, self.translate('commands.wx.error', error=str(e)))
             return True
+
+    async def _send_alert_list_for(self, message: MeshMessage, location: str, location_type: str) -> bool:
+        """The "wx alerts" reply: geocode the location, then send its full alert list."""
+        lat, lon = None, None
+        if location_type == "coordinates":
+            try:
+                lat_str, lon_str = location.split(',')
+                lat = float(lat_str.strip())
+                lon = float(lon_str.strip())
+                if not (-90 <= lat <= 90) or not (-180 <= lon <= 180):
+                    await self.send_response(message, self.translate('commands.wx.error', error="Invalid coordinates"))
+                    return True
+            except ValueError:
+                await self.send_response(message, self.translate('commands.wx.error', error=f"Invalid coordinates format: {location}"))
+                return True
+        elif location_type == "zipcode":
+            lat, lon = await self._zipcode_to_lat_lon_async(location)
+            if lat is None or lon is None:
+                await self.send_response(message, self.translate('commands.wx.no_location_zipcode', location=location))
+                return True
+        else:  # city
+            result = await self._city_to_lat_lon_async(location)
+            if len(result) == 3:
+                lat, lon, address_info = result
+            else:
+                lat, lon = result
+            if lat is None or lon is None:
+                region = self.default_state or self.default_country
+                await self.send_response(message, self.translate('commands.wx.no_location_city', location=location, state=region))
+                return True
+
+        # Get and display full alert list
+        return await self._send_full_alert_list(message, lat, lon)
 
     async def get_weather_for_location(self, location: str, location_type: str, forecast_type: str = "default", num_days: int = 7, message: MeshMessage = None, using_companion_location: bool = False) -> str:
         """Run the ordered synchronous geocode/NOAA workflow off the event loop."""
