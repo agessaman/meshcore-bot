@@ -157,39 +157,9 @@ class AnnouncementsCommand(BaseCommand):
             self.logger.warning("No announcements ACL configured")
             return False
 
-        # Get sender's public key - NEVER fall back to sender_id
-        sender_pubkey = getattr(message, 'sender_pubkey', None)
-        if not sender_pubkey:
-            self.logger.warning(
-                f"No sender public key available for {message.sender_id} - "
-                "announcements access denied (missing pubkey)"
-            )
-            return False
-
-        # Validate sender pubkey format
-        if not validate_pubkey_format(sender_pubkey, expected_length=64):
-            self.logger.warning(
-                f"Invalid sender pubkey format from {message.sender_id}: "
-                f"{sender_pubkey[:16]}... - announcements access denied"
-            )
-            return False
-
-        # Normalize and compare
-        sender_pubkey_normalized = sender_pubkey.lower()
-        has_access = sender_pubkey_normalized in self.announcements_acl
-
-        if not has_access:
-            self.logger.warning(
-                f"Announcements access denied for {message.sender_id} "
-                f"(pubkey: {sender_pubkey[:16]}...) - not in announcements ACL"
-            )
-        else:
-            self.logger.info(
-                f"Announcements access granted for {message.sender_id} "
-                f"(pubkey: {sender_pubkey[:16]}...)"
-            )
-
-        return has_access
+        return self._pubkey_in_acl(
+            message, self.announcements_acl, "announcements", "Announcements access denied"
+        )
 
     def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
         """Check if announcements command can be executed.

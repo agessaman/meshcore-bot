@@ -4,7 +4,7 @@ Ping command for the MeshCore Bot
 Handles the 'ping' keyword response
 """
 
-from typing import Optional
+from typing import Optional  # noqa: F401  importable from this module on dev
 
 from ..models import MeshMessage
 from .base_command import BaseCommand
@@ -21,6 +21,7 @@ class PingCommand(BaseCommand):
     name = "ping"
     honors_skip_channel_check = False
     enabled_attr = "ping_enabled"
+    keywords_format_key = "ping"
     keywords = ['ping']
     description = "Responds to 'ping' with 'Pong!'"
     category = "basic"
@@ -46,17 +47,6 @@ class PingCommand(BaseCommand):
             str: The help text for this command.
         """
         return self.translate('commands.ping.description')
-
-    def get_response_format(self) -> Optional[str]:
-        """Get the response format from config.
-
-        Returns:
-            Optional[str]: The format string for the response, or None if not configured.
-        """
-        if self.bot.config.has_section('Keywords'):
-            format_str = self.bot.config.get('Keywords', 'ping', fallback=None)
-            return self._strip_quotes_from_config(format_str) if format_str else None
-        return None
 
     async def execute(self, message: MeshMessage) -> bool:
         """Execute the ping command.

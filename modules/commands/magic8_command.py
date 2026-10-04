@@ -4,7 +4,7 @@ Magic 8-ball command for the MeshCore Bot
 Handles the 'magic8' keyword response
 """
 import random
-from typing import Optional
+from typing import Optional  # noqa: F401  importable from this module on dev
 
 from ..models import MeshMessage
 from .base_command import BaseCommand
@@ -28,6 +28,7 @@ class Magic8Command(BaseCommand):
     name = "magic8"
     honors_skip_channel_check = False
     enabled_attr = "magic8_enabled"
+    keywords_format_key = "magic8"
     keywords = ['magic8']
     description = "Emulates the classic Magic 8-ball toy'"
     category = "games"
@@ -53,17 +54,6 @@ class Magic8Command(BaseCommand):
             str: The help text for this command.
         """
         return self.translate('commands.magic8.description')
-
-    def get_response_format(self) -> Optional[str]:
-        """Get the response format from config.
-
-        Returns:
-            Optional[str]: The format string for the response, or None if not configured.
-        """
-        if self.bot.config.has_section('Keywords'):
-            format_str = self.bot.config.get('Keywords', 'magic8', fallback=None)
-            return self._strip_quotes_from_config(format_str) if format_str else None
-        return None
 
     async def execute(self, message: MeshMessage) -> bool:
         """Execute the magic8 command.

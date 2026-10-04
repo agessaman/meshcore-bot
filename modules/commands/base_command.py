@@ -85,6 +85,11 @@ class BaseCommand(ABC):
     # lists. requires_admin_access() is still the method callers ask.
     admin_only: bool = False
 
+    # The [Keywords] option whose value, when set, is this command's response
+    # format (quotes stripped). None: get_response_format() returns None unless
+    # the command overrides it.
+    keywords_format_key: Optional[str] = None
+
     # Whether can_execute honors skip_channel_check. Commands whose own override
     # used to drop the argument (it called super().can_execute(message)) set this
     # to False so they keep enforcing their channel list even when a delegating
@@ -1323,8 +1328,16 @@ class BaseCommand(ABC):
             return response_format
 
     def get_response_format(self) -> Optional[str]:
-        """Get the response format for this command from config"""
-        # Override in subclasses to provide custom response formats
+        """Get the response format for this command from config.
+
+        Reads ``[Keywords] <keywords_format_key>`` when the class names one;
+        override for any other source.
+        """
+        if self.keywords_format_key is None:
+            return None
+        if self.bot.config.has_section('Keywords'):
+            format_str = self.bot.config.get('Keywords', self.keywords_format_key, fallback=None)
+            return self._strip_quotes_from_config(format_str) if format_str else None
         return None
 
     def requires_admin_access(self) -> bool:
@@ -1346,6 +1359,46 @@ class BaseCommand(ABC):
         except Exception as e:
             self.logger.warning(f"Error checking admin access requirement: {e}")
             return False
+
+    def _pubkey_in_acl(self, message: MeshMessage, acl: Any, kind: str, denied: str) -> bool:
+        """Whether the sender's validated public key is in ``acl`` (lowercase keys).
+
+        Never falls back to sender_id. ``kind`` names the access in the log
+        lines ("admin", "announcements"); ``denied`` starts the not-in-ACL line.
+        """
+        # Get sender's public key - NEVER fall back to sender_id
+        sender_pubkey = getattr(message, 'sender_pubkey', None)
+        if not sender_pubkey:
+            self.logger.warning(
+                f"No sender public key available for {message.sender_id} - "
+                f"{kind} access denied (missing pubkey)"
+            )
+            return False
+
+        # Validate sender pubkey format
+        if not validate_pubkey_format(sender_pubkey, expected_length=64):
+            self.logger.warning(
+                f"Invalid sender pubkey format from {message.sender_id}: "
+                f"{sender_pubkey[:16]}... - {kind} access denied"
+            )
+            return False
+
+        # Normalize and compare
+        sender_pubkey_normalized = sender_pubkey.lower()
+        has_access = sender_pubkey_normalized in acl
+
+        if not has_access:
+            self.logger.warning(
+                f"{denied} for {message.sender_id} "
+                f"(pubkey: {sender_pubkey[:16]}...) - not in {kind} ACL"
+            )
+        else:
+            self.logger.info(
+                f"{kind.capitalize()} access granted for {message.sender_id} "
+                f"(pubkey: {sender_pubkey[:16]}...)"
+            )
+
+        return has_access
 
     def _check_admin_access(self, message: MeshMessage) -> bool:
         """
@@ -1388,39 +1441,7 @@ class BaseCommand(ABC):
                 self.logger.error("No valid admin pubkeys found in config after validation")
                 return False
 
-            # Get sender's public key - NEVER fall back to sender_id
-            sender_pubkey = getattr(message, 'sender_pubkey', None)
-            if not sender_pubkey:
-                self.logger.warning(
-                    f"No sender public key available for {message.sender_id} - "
-                    "admin access denied (missing pubkey)"
-                )
-                return False
-
-            # Validate sender pubkey format
-            if not validate_pubkey_format(sender_pubkey, expected_length=64):
-                self.logger.warning(
-                    f"Invalid sender pubkey format from {message.sender_id}: "
-                    f"{sender_pubkey[:16]}... - admin access denied"
-                )
-                return False
-
-            # Normalize and compare
-            sender_pubkey_normalized = sender_pubkey.lower()
-            is_admin = sender_pubkey_normalized in admin_pubkey_list
-
-            if not is_admin:
-                self.logger.warning(
-                    f"Access denied for {message.sender_id} "
-                    f"(pubkey: {sender_pubkey[:16]}...) - not in admin ACL"
-                )
-            else:
-                self.logger.info(
-                    f"Admin access granted for {message.sender_id} "
-                    f"(pubkey: {sender_pubkey[:16]}...)"
-                )
-
-            return is_admin
+            return self._pubkey_in_acl(message, admin_pubkey_list, "admin", "Access denied")
 
         except Exception as e:
             self.logger.error(f"Error checking admin access: {e}")
