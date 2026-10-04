@@ -766,6 +766,27 @@ class CommandManager:
             max_length -= CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD
         return max_length
 
+    def _send_scope(
+        self, *, scope: str | None, channel: str | None
+    ) -> tuple[str | None, str, bool]:
+        """``(resolved, scope_to_use, is_global)`` for a channel send.
+
+        ``resolved`` is resolve_channel_send_scope's answer (None: fall back to
+        outgoing_flood_scope_override); ``scope_to_use`` is normalized unless the
+        scope is global, where it is the raw marker.
+        """
+        resolved = self.resolve_channel_send_scope(scope=scope, channel=channel)
+        scope_to_use = (
+            resolved if resolved is not None else self._outgoing_flood_scope_override()
+        ) or ""
+        # is_global_marker, not a bare membership test: a hand-written
+        # "none" normalizes to the global marker everywhere else, so
+        # treating it as the region "#none" here would send scoped.
+        scope_is_global = is_global_marker(scope_to_use)
+        if not scope_is_global:
+            scope_to_use = self._normalize_scope_name(scope_to_use)
+        return resolved, scope_to_use, scope_is_global
+
     def effective_channel_send_scope(
         self, *, channel: str | None = None, scope: str | None = None
     ) -> str | None:
@@ -780,16 +801,13 @@ class CommandManager:
             The scope string the send will use, or ``None`` for global flood.
         """
         try:
-            resolved = self.resolve_channel_send_scope(scope=scope, channel=channel)
-            scope_to_use = (
-                resolved if resolved is not None else self._outgoing_flood_scope_override()
-            ) or ""
-            # is_global_marker, exactly as send_channel_message tests it: this
-            # function exists to predict that decision, so any divergence sizes
-            # the body against a scope the send will not use.
-            if is_global_marker(scope_to_use):
+            # The same resolution send_channel_message runs: this function exists
+            # to predict that decision, so any divergence would size the body
+            # against a scope the send will not use.
+            _, scope_to_use, scope_is_global = self._send_scope(scope=scope, channel=channel)
+            if scope_is_global:
                 return None
-            return self._normalize_scope_name(scope_to_use)
+            return scope_to_use
         except Exception:  # noqa: BLE001 - budgeting must never break a send
             # Unknown means assume regional, which only ever makes bodies smaller.
             return "#unknown"
@@ -1491,16 +1509,7 @@ class CommandManager:
             command_id = self._record_transmission(content, channel, 'channel', command_id, channel_idx=channel_num)
 
             # Optional flood scope (region): set before send, restore after
-            resolved = self.resolve_channel_send_scope(scope=scope, channel=channel)
-            scope_to_use = (
-                resolved if resolved is not None else self._outgoing_flood_scope_override()
-            ) or ""
-            # is_global_marker, not a bare membership test: a hand-written
-            # "none" normalizes to the global marker everywhere else, so
-            # treating it as the region "#none" here would send scoped.
-            scope_is_global = is_global_marker(scope_to_use)
-            if not scope_is_global:
-                scope_to_use = self._normalize_scope_name(scope_to_use)
+            resolved, scope_to_use, scope_is_global = self._send_scope(scope=scope, channel=channel)
             override_cfg = self._outgoing_flood_scope_override()
             if scope_is_global:
                 if override_cfg:
