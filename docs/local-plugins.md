@@ -72,6 +72,30 @@ enabled = true
 
 Restart the bot so the service is loaded and started.
 
+## Base class hooks
+
+`BaseCommand` and `BaseServicePlugin` take care of a few things for you when you set a class attribute or call a helper, instead of overriding a method:
+
+**Commands** (`modules/commands/base_command.py`):
+
+| Hook | What it does |
+|---|---|
+| `enabled_attr = "my_enabled"` | `can_execute` refuses while `self.my_enabled` is false, before any other check. Set the attribute in `__init__`, for example from `self.get_config_value('MyCommand_Command', 'enabled', fallback=True, value_type='bool')`. |
+| `admin_only = True` | The command always requires admin access, whatever `[Admin_ACL] admin_commands` lists. `requires_admin_access()` is still what callers ask. |
+| `keywords_format_key = "mycommand"` | `get_response_format()` returns `[Keywords] mycommand` (surrounding double quotes stripped) when it is set; `handle_keyword_match` then replies with it through `format_response`. |
+| `get_help_text(self, message=None)` | The signature every bundled command uses; `help` passes the requesting message so the text can depend on it (DM vs channel). A plugin written as `get_help_text(self)` still works. |
+| `self.translated_or(key, fallback, kind=list)` | The translation at `key` when it is a non-empty `kind` (a list of greetings, a dict), else your built-in `fallback`. |
+
+**Services** (`modules/service_plugins/base_service.py`):
+
+| Helper | What it does |
+|---|---|
+| `await self.run_periodic(work, interval, error_message, error_delay=60)` | Calls `await work()` every `interval()` seconds while `self._running`; an exception is logged as `"<error_message>: <error>"` and retried after `error_delay`. Run it as a task from `start()`. |
+| `await self._cancel_tasks(task_a, task_b)` | Cancels each task (None is skipped) and waits for it; use it in `stop()`. |
+| `self._subscribe(meshcore, event_type, handler)` / `self._unsubscribe_all()` | Subscribe to meshcore events through `_subscribe` and call `_unsubscribe_all()` in `stop()`: a health restart calls `start()` again, and a subscription left behind would deliver every event twice. |
+
+A service that forwards channel messages to another chat system can subclass `ChannelBridgeBase` (`modules/service_plugins/channel_bridge_utils.py`), which the Discord and Telegram bridges use for start/stop, message intake and the retrying send queue; the subclass supplies `_bridge_mappings`, `_targets_for`, `_deliver`, `_throttled` and `_send_queued`. Files named `*_utils.py` are never loaded as services, so shared code like this can live next to your plugins.
+
 ## Configuration
 
 - **Main config** is read first, then **local/config.ini** if it exists. So `bot.config` contains both; later file wins on overlapping sections/keys.
