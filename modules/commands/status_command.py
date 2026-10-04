@@ -17,6 +17,8 @@ class StatusCommand(BaseCommand):
     """Report high-level runtime status for operators."""
 
     name = "status"
+    admin_only = True
+    enabled_attr = "status_enabled"
     keywords = ["status"]
     description = "Show runtime status (DM only, admin only)"
     requires_dm = True
@@ -36,16 +38,6 @@ class StatusCommand(BaseCommand):
             fallback=True,
             value_type="bool",
         )
-
-    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
-        if not self.status_enabled:
-            return False
-        if not self.requires_admin_access():
-            return False
-        return super().can_execute(message, skip_channel_check=skip_channel_check)
-
-    def requires_admin_access(self) -> bool:
-        return True
 
     async def execute(self, message: MeshMessage) -> bool:
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")

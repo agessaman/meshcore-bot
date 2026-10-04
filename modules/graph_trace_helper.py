@@ -7,6 +7,7 @@ Shared by message_handler (on RX) and trace command (when TRACE_DATA is received
 import time
 from typing import Any, Optional
 
+from .contacts_repo import unique_recent_repeater_key
 from .transmission_tracker import own_public_key
 
 
@@ -106,28 +107,9 @@ def update_mesh_graph_from_trace_data(
             return
         neighbor_key = None
         try:
-            count_query = f"""
-                SELECT COUNT(DISTINCT public_key) as count
-                FROM complete_contact_tracking
-                WHERE public_key LIKE ?
-                AND role IN ('repeater', 'roomserver')
-                AND COALESCE(last_advert_timestamp, last_heard) >= datetime('now', '-{recency_days} days')
-            """
-            prefix_pattern = f"{neighbor_prefix}%"
-            count_results = bot.db_manager.execute_query(count_query, (prefix_pattern,))
-            if count_results and count_results[0].get("count", 0) == 1:
-                query = f"""
-                    SELECT public_key
-                    FROM complete_contact_tracking
-                    WHERE public_key LIKE ?
-                    AND role IN ('repeater', 'roomserver')
-                    AND COALESCE(last_advert_timestamp, last_heard) >= datetime('now', '-{recency_days} days')
-                    ORDER BY is_starred DESC, COALESCE(last_advert_timestamp, last_heard) DESC
-                    LIMIT 1
-                """
-                results = bot.db_manager.execute_query(query, (prefix_pattern,))
-                if results and results[0].get("public_key"):
-                    neighbor_key = results[0]["public_key"]
+            _, unique_key = unique_recent_repeater_key(bot.db_manager, neighbor_prefix, recency_days)
+            if unique_key:
+                neighbor_key = unique_key
         except Exception as e:
             bot.logger.debug(f"Error checking uniqueness for immediate neighbor {neighbor_prefix}: {e}")
 
@@ -232,28 +214,9 @@ def update_mesh_graph_from_trace_data(
 def _unique_repeater_key(bot: Any, prefix: str, recency_days: int) -> Optional[str]:
     """The public key of the only recently heard repeater or room server with ``prefix``, else None."""
     try:
-        count_query = f"""
-            SELECT COUNT(DISTINCT public_key) as count
-            FROM complete_contact_tracking
-            WHERE public_key LIKE ?
-            AND role IN ('repeater', 'roomserver')
-            AND COALESCE(last_advert_timestamp, last_heard) >= datetime('now', '-{recency_days} days')
-        """
-        prefix_pattern = f"{prefix}%"
-        count_results = bot.db_manager.execute_query(count_query, (prefix_pattern,))
-        if count_results and count_results[0].get("count", 0) == 1:
-            query = f"""
-                SELECT public_key
-                FROM complete_contact_tracking
-                WHERE public_key LIKE ?
-                AND role IN ('repeater', 'roomserver')
-                AND COALESCE(last_advert_timestamp, last_heard) >= datetime('now', '-{recency_days} days')
-                ORDER BY is_starred DESC, COALESCE(last_advert_timestamp, last_heard) DESC
-                LIMIT 1
-            """
-            results = bot.db_manager.execute_query(query, (prefix_pattern,))
-            if results and results[0].get("public_key"):
-                return results[0]["public_key"]
+        _, unique_key = unique_recent_repeater_key(bot.db_manager, prefix, recency_days)
+        if unique_key:
+            return unique_key
     except Exception as e:
         bot.logger.debug(f"Error checking uniqueness for trace node {prefix}: {e}")
     return None

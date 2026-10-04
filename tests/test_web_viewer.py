@@ -4342,11 +4342,11 @@ class TestFeedPreviewResponseLimits:
         with (
             patch("modules.web_viewer.app.SafeUrlPolicy.validate", return_value=True),
             patch(
-                "modules.web_viewer.app.create_safe_requests_session",
+                "modules.web_viewer.feeds.create_safe_requests_session",
                 return_value=session_context,
             ),
             patch(
-                "modules.web_viewer.app.safe_requests_request",
+                "modules.web_viewer.feeds.safe_requests_request",
                 return_value=response,
             ) as request_mock,
             pytest.raises(ValueError, match="exceeds .* byte limit"),
@@ -4372,11 +4372,11 @@ class TestFeedPreviewResponseLimits:
         with (
             patch("modules.web_viewer.app.SafeUrlPolicy.validate", return_value=True),
             patch(
-                "modules.web_viewer.app.create_safe_requests_session",
+                "modules.web_viewer.feeds.create_safe_requests_session",
                 return_value=session_context,
             ),
             patch(
-                "modules.web_viewer.app.safe_requests_request",
+                "modules.web_viewer.feeds.safe_requests_request",
                 return_value=response,
             ),
             pytest.raises(ValueError, match="exceeds .* byte limit"),

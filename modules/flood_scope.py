@@ -15,6 +15,7 @@ through ``config.ini``, live here and both sides call in.
 from __future__ import annotations
 
 from hashlib import sha256
+from typing import Any
 
 # Scope values that mean "no region" — an ordinary FLOOD every repeater
 # rebroadcasts. Empty is how config.ini spells "unset".
@@ -148,3 +149,46 @@ def validate_device_scope_name(scope: str) -> str:
             f"{MAX_DEVICE_SCOPE_NAME_LENGTH} characters, which is all the radio stores"
         )
     return canonical
+
+
+# ── Config lookups shared by every send path ───────────────────────────────
+#
+# These return what config.ini says, not a decision. Callers keep their own
+# contracts on top: MeshMessage reports raw values, CommandManager normalizes
+# them, and the send path falls back to the override last.
+
+
+def normalize_channel_for_scope(channel: str) -> str:
+    """Channel name as matched against ``flood_scope.<channel>`` keys."""
+    return channel.strip().removeprefix("#").lower()
+
+
+def channel_scope_entry(config: Any, channel: str | None) -> str | None:
+    """Stripped value of ``[Channels] flood_scope.<channel>``, or None with no entry.
+
+    Matching ignores case and a leading ``#`` on both sides. An entry may hold a
+    global marker; that is returned as-is (an explicit "send this channel
+    globally").
+    """
+    if not channel or not config.has_section("Channels"):
+        return None
+    channel_key = normalize_channel_for_scope(channel)
+    for key, value in config.items("Channels"):
+        if key.startswith("flood_scope.") and normalize_channel_for_scope(key[len("flood_scope."):]) == channel_key:
+            return (value or "").strip()
+    return None
+
+
+def outgoing_override(config: Any) -> str:
+    """Stripped ``[Channels] outgoing_flood_scope_override``, or ``""`` when unset."""
+    if config.has_section("Channels") and config.has_option("Channels", "outgoing_flood_scope_override"):
+        return (config.get("Channels", "outgoing_flood_scope_override") or "").strip()
+    return ""
+
+
+def section_flood_scope(config: Any, section: str | None) -> str | None:
+    """Normalized ``flood_scope`` from a plugin/service section, or None when unset or empty."""
+    if not section or not config.has_section(section):
+        return None
+    raw = (config.get(section, "flood_scope", fallback="") or "").strip()
+    return normalize_scope_name(raw) if raw else None

@@ -1,0 +1,1157 @@
+{
+ "dict[adv_name=''] config_bot_name=''": {
+  "cm.channel_body_budget": 150,
+  "cm.get_max_message_length": 150,
+  "cmd._get_bot_name": "",
+  "cmd.get_max_message_length": 150,
+  "scheduler._channel_body_budget": 150
+ },
+ "dict[adv_name=''] config_bot_name='CfgBot'": {
+  "cm.channel_body_budget": 147,
+  "cm.get_max_message_length": 147,
+  "cmd._get_bot_name": "CfgBot",
+  "cmd.get_max_message_length": 147,
+  "scheduler._channel_body_budget": 147
+ },
+ "dict[adv_name=''] config_bot_name=None": {
+  "cm.channel_body_budget": 150,
+  "cm.get_max_message_length": 150,
+  "cmd._get_bot_name": "Bot",
+  "cmd.get_max_message_length": 150,
+  "scheduler._channel_body_budget": 150
+ },
+ "dict[adv_name='Dev-adv_name'] config_bot_name=''": {
+  "cm.channel_body_budget": 150,
+  "cm.get_max_message_length": 150,
+  "cmd._get_bot_name": "Dev-adv_name",
+  "cmd.get_max_message_length": 150,
+  "scheduler._channel_body_budget": 150
+ },
+ "dict[adv_name='Dev-adv_name'] config_bot_name='CfgBot'": {
+  "cm.channel_body_budget": 147,
+  "cm.get_max_message_length": 147,
+  "cmd._get_bot_name": "Dev-adv_name",
+  "cmd.get_max_message_length": 147,
+  "scheduler._channel_body_budget": 147
+ },
+ "dict[adv_name='Dev-adv_name'] config_bot_name=None": {
+  "cm.channel_body_budget": 150,
+  "cm.get_max_message_length": 150,
+  "cmd._get_bot_name": "Dev-adv_name",
+  "cmd.get_max_message_length": 150,
+  "scheduler._channel_body_budget": 150
+ },
+ "dict[empty] config_bot_name=''": {
+  "cm.channel_body_budget": 150,
+  "cm.get_max_message_length": 150,
+  "cmd._get_bot_name": "",
+  "cmd.get_max_message_length": 150,
+  "scheduler._channel_body_budget": 150
+ },
+ "dict[empty] config_bot_name='CfgBot'": {
+  "cm.channel_body_budget": 147,
+  "cm.get_max_message_length": 147,
+  "cmd._get_bot_name": "CfgBot",
+  "cmd.get_max_message_length": 147,
+  "scheduler._channel_body_budget": 147
+ },
+ "dict[empty] config_bot_name=None": {
+  "cm.channel_body_budget": 150,
+  "cm.get_max_message_length": 150,
+  "cmd._get_bot_name": "Bot",
+  "cmd.get_max_message_length": 150,
+  "scheduler._channel_body_budget": 150
+ },
+ "dict[name='',adv_name=''] config_bot_name=''": {
+  "cm.channel_body_budget": 150,
+  "cm.get_max_message_length": 150,
+  "cmd._get_bot_name": "",
+  "cmd.get_max_message_length": 150,
+  "scheduler._channel_body_budget": 150
+ },
+ "dict[name='',adv_name=''] config_bot_name='CfgBot'": {
+  "cm.channel_body_budget": 147,
+  "cm.get_max_message_length": 147,
+  "cmd._get_bot_name": "CfgBot",
+  "cmd.get_max_message_length": 147,
+  "scheduler._channel_body_budget": 147
+ },
+ "dict[name='',adv_name=''] config_bot_name=None": {
+  "cm.channel_body_budget": 150,
+  "cm.get_max_message_length": 150,
+  "cmd._get_bot_name": "Bot",
+  "cmd.get_max_message_length": 150,
+  "scheduler._channel_body_budget": 150
+ },
+ "dict[name='',adv_name='Dev-adv_name'] config_bot_name=''": {
+  "cm.channel_body_budget": 150,
+  "cm.get_max_message_length": 150,
+  "cmd._get_bot_name": "Dev-adv_name",
+  "cmd.get_max_message_length": 150,
+  "scheduler._channel_body_budget": 150
+ },
+ "dict[name='',adv_name='Dev-adv_name'] config_bot_name='CfgBot'": {
+  "cm.channel_body_budget": 147,
+  "cm.get_max_message_length": 147,
+  "cmd._get_bot_name": "Dev-adv_name",
+  "cmd.get_max_message_length": 147,
+  "scheduler._channel_body_budget": 147
+ },
+ "dict[name='',adv_name='Dev-adv_name'] config_bot_name=None": {
+  "cm.channel_body_budget": 150,
+  "cm.get_max_message_length": 150,
+  "cmd._get_bot_name": "Dev-adv_name",
+  "cmd.get_max_message_length": 150,
+  "scheduler._channel_body_budget": 150
+ },
+ "dict[name='',user_name='',adv_name=''] config_bot_name=''": {
+  "cm.channel_body_budget": 150,
+  "cm.get_max_message_length": 150,
+  "cmd._get_bot_name": "",
+  "cmd.get_max_message_length": 150,
+  "scheduler._channel_body_budget": 150
+ },
+ "dict[name='',user_name='',adv_name=''] config_bot_name='CfgBot'": {
+  "cm.channel_body_budget": 147,
+  "cm.get_max_message_length": 147,
+  "cmd._get_bot_name": "CfgBot",
+  "cmd.get_max_message_length": 147,
+  "scheduler._channel_body_budget": 147
+ },
+ "dict[name='',user_name='',adv_name=''] config_bot_name=None": {
+  "cm.channel_body_budget": 150,
+  "cm.get_max_message_length": 150,
+  "cmd._get_bot_name": "Bot",
+  "cmd.get_max_message_length": 150,
+  "scheduler._channel_body_budget": 150
+ },
+ "dict[name='',user_name='',adv_name='Dev-adv_name'] config_bot_name=''": {
+  "cm.channel_body_budget": 150,
+  "cm.get_max_message_length": 150,
+  "cmd._get_bot_name": "Dev-adv_name",
+  "cmd.get_max_message_length": 150,
+  "scheduler._channel_body_budget": 150
+ },
+ "dict[name='',user_name='',adv_name='Dev-adv_name'] config_bot_name='CfgBot'": {
+  "cm.channel_body_budget": 147,
+  "cm.get_max_message_length": 147,
+  "cmd._get_bot_name": "Dev-adv_name",
+  "cmd.get_max_message_length": 147,
+  "scheduler._channel_body_budget": 147
+ },
+ "dict[name='',user_name='',adv_name='Dev-adv_name'] config_bot_name=None": {
+  "cm.channel_body_budget": 150,
+  "cm.get_max_message_length": 150,
+  "cmd._get_bot_name": "Dev-adv_name",
+  "cmd.get_max_message_length": 150,
+  "scheduler._channel_body_budget": 150
+ },
+ "dict[name='',user_name=''] config_bot_name=''": {
+  "cm.channel_body_budget": 150,
+  "cm.get_max_message_length": 150,
+  "cmd._get_bot_name": "",
+  "cmd.get_max_message_length": 150,
+  "scheduler._channel_body_budget": 150
+ },
+ "dict[name='',user_name=''] config_bot_name='CfgBot'": {
+  "cm.channel_body_budget": 147,
+  "cm.get_max_message_length": 147,
+  "cmd._get_bot_name": "CfgBot",
+  "cmd.get_max_message_length": 147,
+  "scheduler._channel_body_budget": 147
+ },
+ "dict[name='',user_name=''] config_bot_name=None": {
+  "cm.channel_body_budget": 150,
+  "cm.get_max_message_length": 150,
+  "cmd._get_bot_name": "Bot",
+  "cmd.get_max_message_length": 150,
+  "scheduler._channel_body_budget": 150
+ },
+ "dict[name='',user_name='Dev-user_name',adv_name=''] config_bot_name=''": {
+  "cm.channel_body_budget": 140,
+  "cm.get_max_message_length": 140,
+  "cmd._get_bot_name": "",
+  "cmd.get_max_message_length": 140,
+  "scheduler._channel_body_budget": 140
+ },
+ "dict[name='',user_name='Dev-user_name',adv_name=''] config_bot_name='CfgBot'": {
+  "cm.channel_body_budget": 140,
+  "cm.get_max_message_length": 140,
+  "cmd._get_bot_name": "CfgBot",
+  "cmd.get_max_message_length": 140,
+  "scheduler._channel_body_budget": 140
+ },
+ "dict[name='',user_name='Dev-user_name',adv_name=''] config_bot_name=None": {
+  "cm.channel_body_budget": 140,
+  "cm.get_max_message_length": 140,
+  "cmd._get_bot_name": "Bot",
+  "cmd.get_max_message_length": 140,
+  "scheduler._channel_body_budget": 140
+ },
+ "dict[name='',user_name='Dev-user_name',adv_name='Dev-adv_name'] config_bot_name=''": {
+  "cm.channel_body_budget": 140,
+  "cm.get_max_message_length": 140,
+  "cmd._get_bot_name": "Dev-adv_name",
+  "cmd.get_max_message_length": 140,
+  "scheduler._channel_body_budget": 140
+ },
+ "dict[name='',user_name='Dev-user_name',adv_name='Dev-adv_name'] config_bot_name='CfgBot'": {
+  "cm.channel_body_budget": 140,
+  "cm.get_max_message_length": 140,
+  "cmd._get_bot_name": "Dev-adv_name",
+  "cmd.get_max_message_length": 140,
+  "scheduler._channel_body_budget": 140
+ },
+ "dict[name='',user_name='Dev-user_name',adv_name='Dev-adv_name'] config_bot_name=None": {
+  "cm.channel_body_budget": 140,
+  "cm.get_max_message_length": 140,
+  "cmd._get_bot_name": "Dev-adv_name",
+  "cmd.get_max_message_length": 140,
+  "scheduler._channel_body_budget": 140
+ },
+ "dict[name='',user_name='Dev-user_name'] config_bot_name=''": {
+  "cm.channel_body_budget": 140,
+  "cm.get_max_message_length": 140,
+  "cmd._get_bot_name": "",
+  "cmd.get_max_message_length": 140,
+  "scheduler._channel_body_budget": 140
+ },
+ "dict[name='',user_name='Dev-user_name'] config_bot_name='CfgBot'": {
+  "cm.channel_body_budget": 140,
+  "cm.get_max_message_length": 140,
+  "cmd._get_bot_name": "CfgBot",
+  "cmd.get_max_message_length": 140,
+  "scheduler._channel_body_budget": 140
+ },
+ "dict[name='',user_name='Dev-user_name'] config_bot_name=None": {
+  "cm.channel_body_budget": 140,
+  "cm.get_max_message_length": 140,
+  "cmd._get_bot_name": "Bot",
+  "cmd.get_max_message_length": 140,
+  "scheduler._channel_body_budget": 140
+ },
+ "dict[name=''] config_bot_name=''": {
+  "cm.channel_body_budget": 150,
+  "cm.get_max_message_length": 150,
+  "cmd._get_bot_name": "",
+  "cmd.get_max_message_length": 150,
+  "scheduler._channel_body_budget": 150
+ },
+ "dict[name=''] config_bot_name='CfgBot'": {
+  "cm.channel_body_budget": 147,
+  "cm.get_max_message_length": 147,
+  "cmd._get_bot_name": "CfgBot",
+  "cmd.get_max_message_length": 147,
+  "scheduler._channel_body_budget": 147
+ },
+ "dict[name=''] config_bot_name=None": {
+  "cm.channel_body_budget": 150,
+  "cm.get_max_message_length": 150,
+  "cmd._get_bot_name": "Bot",
+  "cmd.get_max_message_length": 150,
+  "scheduler._channel_body_budget": 150
+ },
+ "dict[name='Dev-name',adv_name=''] config_bot_name=''": {
+  "cm.channel_body_budget": 145,
+  "cm.get_max_message_length": 145,
+  "cmd._get_bot_name": "Dev-name",
+  "cmd.get_max_message_length": 145,
+  "scheduler._channel_body_budget": 145
+ },
+ "dict[name='Dev-name',adv_name=''] config_bot_name='CfgBot'": {
+  "cm.channel_body_budget": 145,
+  "cm.get_max_message_length": 145,
+  "cmd._get_bot_name": "Dev-name",
+  "cmd.get_max_message_length": 145,
+  "scheduler._channel_body_budget": 145
+ },
+ "dict[name='Dev-name',adv_name=''] config_bot_name=None": {
+  "cm.channel_body_budget": 145,
+  "cm.get_max_message_length": 145,
+  "cmd._get_bot_name": "Dev-name",
+  "cmd.get_max_message_length": 145,
+  "scheduler._channel_body_budget": 145
+ },
+ "dict[name='Dev-name',adv_name='Dev-adv_name'] config_bot_name=''": {
+  "cm.channel_body_budget": 145,
+  "cm.get_max_message_length": 145,
+  "cmd._get_bot_name": "Dev-name",
+  "cmd.get_max_message_length": 145,
+  "scheduler._channel_body_budget": 145
+ },
+ "dict[name='Dev-name',adv_name='Dev-adv_name'] config_bot_name='CfgBot'": {
+  "cm.channel_body_budget": 145,
+  "cm.get_max_message_length": 145,
+  "cmd._get_bot_name": "Dev-name",
+  "cmd.get_max_message_length": 145,
+  "scheduler._channel_body_budget": 145
+ },
+ "dict[name='Dev-name',adv_name='Dev-adv_name'] config_bot_name=None": {
+  "cm.channel_body_budget": 145,
+  "cm.get_max_message_length": 145,
+  "cmd._get_bot_name": "Dev-name",
+  "cmd.get_max_message_length": 145,
+  "scheduler._channel_body_budget": 145
+ },
+ "dict[name='Dev-name',user_name='',adv_name=''] config_bot_name=''": {
+  "cm.channel_body_budget": 145,
+  "cm.get_max_message_length": 145,
+  "cmd._get_bot_name": "Dev-name",
+  "cmd.get_max_message_length": 145,
+  "scheduler._channel_body_budget": 145
+ },
+ "dict[name='Dev-name',user_name='',adv_name=''] config_bot_name='CfgBot'": {
+  "cm.channel_body_budget": 145,
+  "cm.get_max_message_length": 145,
+  "cmd._get_bot_name": "Dev-name",
+  "cmd.get_max_message_length": 145,
+  "scheduler._channel_body_budget": 145
+ },
+ "dict[name='Dev-name',user_name='',adv_name=''] config_bot_name=None": {
+  "cm.channel_body_budget": 145,
+  "cm.get_max_message_length": 145,
+  "cmd._get_bot_name": "Dev-name",
+  "cmd.get_max_message_length": 145,
+  "scheduler._channel_body_budget": 145
+ },
+ "dict[name='Dev-name',user_name='',adv_name='Dev-adv_name'] config_bot_name=''": {
+  "cm.channel_body_budget": 145,
+  "cm.get_max_message_length": 145,
+  "cmd._get_bot_name": "Dev-name",
+  "cmd.get_max_message_length": 145,
+  "scheduler._channel_body_budget": 145
+ },
+ "dict[name='Dev-name',user_name='',adv_name='Dev-adv_name'] config_bot_name='CfgBot'": {
+  "cm.channel_body_budget": 145,
+  "cm.get_max_message_length": 145,
+  "cmd._get_bot_name": "Dev-name",
+  "cmd.get_max_message_length": 145,
+  "scheduler._channel_body_budget": 145
+ },
+ "dict[name='Dev-name',user_name='',adv_name='Dev-adv_name'] config_bot_name=None": {
+  "cm.channel_body_budget": 145,
+  "cm.get_max_message_length": 145,
+  "cmd._get_bot_name": "Dev-name",
+  "cmd.get_max_message_length": 145,
+  "scheduler._channel_body_budget": 145
+ },
+ "dict[name='Dev-name',user_name=''] config_bot_name=''": {
+  "cm.channel_body_budget": 145,
+  "cm.get_max_message_length": 145,
+  "cmd._get_bot_name": "Dev-name",
+  "cmd.get_max_message_length": 145,
+  "scheduler._channel_body_budget": 145
+ },
+ "dict[name='Dev-name',user_name=''] config_bot_name='CfgBot'": {
+  "cm.channel_body_budget": 145,
+  "cm.get_max_message_length": 145,
+  "cmd._get_bot_name": "Dev-name",
+  "cmd.get_max_message_length": 145,
+  "scheduler._channel_body_budget": 145
+ },
+ "dict[name='Dev-name',user_name=''] config_bot_name=None": {
+  "cm.channel_body_budget": 145,
+  "cm.get_max_message_length": 145,
+  "cmd._get_bot_name": "Dev-name",
+  "cmd.get_max_message_length": 145,
+  "scheduler._channel_body_budget": 145
+ },
+ "dict[name='Dev-name',user_name='Dev-user_name',adv_name=''] config_bot_name=''": {
+  "cm.channel_body_budget": 145,
+  "cm.get_max_message_length": 145,
+  "cmd._get_bot_name": "Dev-name",
+  "cmd.get_max_message_length": 145,
+  "scheduler._channel_body_budget": 145
+ },
+ "dict[name='Dev-name',user_name='Dev-user_name',adv_name=''] config_bot_name='CfgBot'": {
+  "cm.channel_body_budget": 145,
+  "cm.get_max_message_length": 145,
+  "cmd._get_bot_name": "Dev-name",
+  "cmd.get_max_message_length": 145,
+  "scheduler._channel_body_budget": 145
+ },
+ "dict[name='Dev-name',user_name='Dev-user_name',adv_name=''] config_bot_name=None": {
+  "cm.channel_body_budget": 145,
+  "cm.get_max_message_length": 145,
+  "cmd._get_bot_name": "Dev-name",
+  "cmd.get_max_message_length": 145,
+  "scheduler._channel_body_budget": 145
+ },
+ "dict[name='Dev-name',user_name='Dev-user_name',adv_name='Dev-adv_name'] config_bot_name=''": {
+  "cm.channel_body_budget": 145,
+  "cm.get_max_message_length": 145,
+  "cmd._get_bot_name": "Dev-name",
+  "cmd.get_max_message_length": 145,
+  "scheduler._channel_body_budget": 145
+ },
+ "dict[name='Dev-name',user_name='Dev-user_name',adv_name='Dev-adv_name'] config_bot_name='CfgBot'": {
+  "cm.channel_body_budget": 145,
+  "cm.get_max_message_length": 145,
+  "cmd._get_bot_name": "Dev-name",
+  "cmd.get_max_message_length": 145,
+  "scheduler._channel_body_budget": 145
+ },
+ "dict[name='Dev-name',user_name='Dev-user_name',adv_name='Dev-adv_name'] config_bot_name=None": {
+  "cm.channel_body_budget": 145,
+  "cm.get_max_message_length": 145,
+  "cmd._get_bot_name": "Dev-name",
+  "cmd.get_max_message_length": 145,
+  "scheduler._channel_body_budget": 145
+ },
+ "dict[name='Dev-name',user_name='Dev-user_name'] config_bot_name=''": {
+  "cm.channel_body_budget": 145,
+  "cm.get_max_message_length": 145,
+  "cmd._get_bot_name": "Dev-name",
+  "cmd.get_max_message_length": 145,
+  "scheduler._channel_body_budget": 145
+ },
+ "dict[name='Dev-name',user_name='Dev-user_name'] config_bot_name='CfgBot'": {
+  "cm.channel_body_budget": 145,
+  "cm.get_max_message_length": 145,
+  "cmd._get_bot_name": "Dev-name",
+  "cmd.get_max_message_length": 145,
+  "scheduler._channel_body_budget": 145
+ },
+ "dict[name='Dev-name',user_name='Dev-user_name'] config_bot_name=None": {
+  "cm.channel_body_budget": 145,
+  "cm.get_max_message_length": 145,
+  "cmd._get_bot_name": "Dev-name",
+  "cmd.get_max_message_length": 145,
+  "scheduler._channel_body_budget": 145
+ },
+ "dict[name='Dev-name'] config_bot_name=''": {
+  "cm.channel_body_budget": 145,
+  "cm.get_max_message_length": 145,
+  "cmd._get_bot_name": "Dev-name",
+  "cmd.get_max_message_length": 145,
+  "scheduler._channel_body_budget": 145
+ },
+ "dict[name='Dev-name'] config_bot_name='CfgBot'": {
+  "cm.channel_body_budget": 145,
+  "cm.get_max_message_length": 145,
+  "cmd._get_bot_name": "Dev-name",
+  "cmd.get_max_message_length": 145,
+  "scheduler._channel_body_budget": 145
+ },
+ "dict[name='Dev-name'] config_bot_name=None": {
+  "cm.channel_body_budget": 145,
+  "cm.get_max_message_length": 145,
+  "cmd._get_bot_name": "Dev-name",
+  "cmd.get_max_message_length": 145,
+  "scheduler._channel_body_budget": 145
+ },
+ "dict[user_name='',adv_name=''] config_bot_name=''": {
+  "cm.channel_body_budget": 150,
+  "cm.get_max_message_length": 150,
+  "cmd._get_bot_name": "",
+  "cmd.get_max_message_length": 150,
+  "scheduler._channel_body_budget": 150
+ },
+ "dict[user_name='',adv_name=''] config_bot_name='CfgBot'": {
+  "cm.channel_body_budget": 147,
+  "cm.get_max_message_length": 147,
+  "cmd._get_bot_name": "CfgBot",
+  "cmd.get_max_message_length": 147,
+  "scheduler._channel_body_budget": 147
+ },
+ "dict[user_name='',adv_name=''] config_bot_name=None": {
+  "cm.channel_body_budget": 150,
+  "cm.get_max_message_length": 150,
+  "cmd._get_bot_name": "Bot",
+  "cmd.get_max_message_length": 150,
+  "scheduler._channel_body_budget": 150
+ },
+ "dict[user_name='',adv_name='Dev-adv_name'] config_bot_name=''": {
+  "cm.channel_body_budget": 150,
+  "cm.get_max_message_length": 150,
+  "cmd._get_bot_name": "Dev-adv_name",
+  "cmd.get_max_message_length": 150,
+  "scheduler._channel_body_budget": 150
+ },
+ "dict[user_name='',adv_name='Dev-adv_name'] config_bot_name='CfgBot'": {
+  "cm.channel_body_budget": 147,
+  "cm.get_max_message_length": 147,
+  "cmd._get_bot_name": "Dev-adv_name",
+  "cmd.get_max_message_length": 147,
+  "scheduler._channel_body_budget": 147
+ },
+ "dict[user_name='',adv_name='Dev-adv_name'] config_bot_name=None": {
+  "cm.channel_body_budget": 150,
+  "cm.get_max_message_length": 150,
+  "cmd._get_bot_name": "Dev-adv_name",
+  "cmd.get_max_message_length": 150,
+  "scheduler._channel_body_budget": 150
+ },
+ "dict[user_name=''] config_bot_name=''": {
+  "cm.channel_body_budget": 150,
+  "cm.get_max_message_length": 150,
+  "cmd._get_bot_name": "",
+  "cmd.get_max_message_length": 150,
+  "scheduler._channel_body_budget": 150
+ },
+ "dict[user_name=''] config_bot_name='CfgBot'": {
+  "cm.channel_body_budget": 147,
+  "cm.get_max_message_length": 147,
+  "cmd._get_bot_name": "CfgBot",
+  "cmd.get_max_message_length": 147,
+  "scheduler._channel_body_budget": 147
+ },
+ "dict[user_name=''] config_bot_name=None": {
+  "cm.channel_body_budget": 150,
+  "cm.get_max_message_length": 150,
+  "cmd._get_bot_name": "Bot",
+  "cmd.get_max_message_length": 150,
+  "scheduler._channel_body_budget": 150
+ },
+ "dict[user_name='Dev-user_name',adv_name=''] config_bot_name=''": {
+  "cm.channel_body_budget": 140,
+  "cm.get_max_message_length": 140,
+  "cmd._get_bot_name": "",
+  "cmd.get_max_message_length": 140,
+  "scheduler._channel_body_budget": 140
+ },
+ "dict[user_name='Dev-user_name',adv_name=''] config_bot_name='CfgBot'": {
+  "cm.channel_body_budget": 140,
+  "cm.get_max_message_length": 140,
+  "cmd._get_bot_name": "CfgBot",
+  "cmd.get_max_message_length": 140,
+  "scheduler._channel_body_budget": 140
+ },
+ "dict[user_name='Dev-user_name',adv_name=''] config_bot_name=None": {
+  "cm.channel_body_budget": 140,
+  "cm.get_max_message_length": 140,
+  "cmd._get_bot_name": "Bot",
+  "cmd.get_max_message_length": 140,
+  "scheduler._channel_body_budget": 140
+ },
+ "dict[user_name='Dev-user_name',adv_name='Dev-adv_name'] config_bot_name=''": {
+  "cm.channel_body_budget": 140,
+  "cm.get_max_message_length": 140,
+  "cmd._get_bot_name": "Dev-adv_name",
+  "cmd.get_max_message_length": 140,
+  "scheduler._channel_body_budget": 140
+ },
+ "dict[user_name='Dev-user_name',adv_name='Dev-adv_name'] config_bot_name='CfgBot'": {
+  "cm.channel_body_budget": 140,
+  "cm.get_max_message_length": 140,
+  "cmd._get_bot_name": "Dev-adv_name",
+  "cmd.get_max_message_length": 140,
+  "scheduler._channel_body_budget": 140
+ },
+ "dict[user_name='Dev-user_name',adv_name='Dev-adv_name'] config_bot_name=None": {
+  "cm.channel_body_budget": 140,
+  "cm.get_max_message_length": 140,
+  "cmd._get_bot_name": "Dev-adv_name",
+  "cmd.get_max_message_length": 140,
+  "scheduler._channel_body_budget": 140
+ },
+ "dict[user_name='Dev-user_name'] config_bot_name=''": {
+  "cm.channel_body_budget": 140,
+  "cm.get_max_message_length": 140,
+  "cmd._get_bot_name": "",
+  "cmd.get_max_message_length": 140,
+  "scheduler._channel_body_budget": 140
+ },
+ "dict[user_name='Dev-user_name'] config_bot_name='CfgBot'": {
+  "cm.channel_body_budget": 140,
+  "cm.get_max_message_length": 140,
+  "cmd._get_bot_name": "CfgBot",
+  "cmd.get_max_message_length": 140,
+  "scheduler._channel_body_budget": 140
+ },
+ "dict[user_name='Dev-user_name'] config_bot_name=None": {
+  "cm.channel_body_budget": 140,
+  "cm.get_max_message_length": 140,
+  "cmd._get_bot_name": "Bot",
+  "cmd.get_max_message_length": 140,
+  "scheduler._channel_body_budget": 140
+ },
+ "obj[adv_name=''] config_bot_name=''": {
+  "cm.channel_body_budget": 150,
+  "cm.get_max_message_length": 150,
+  "cmd._get_bot_name": "",
+  "cmd.get_max_message_length": 150,
+  "scheduler._channel_body_budget": 150
+ },
+ "obj[adv_name=''] config_bot_name='CfgBot'": {
+  "cm.channel_body_budget": 147,
+  "cm.get_max_message_length": 147,
+  "cmd._get_bot_name": "CfgBot",
+  "cmd.get_max_message_length": 147,
+  "scheduler._channel_body_budget": 147
+ },
+ "obj[adv_name=''] config_bot_name=None": {
+  "cm.channel_body_budget": 150,
+  "cm.get_max_message_length": 150,
+  "cmd._get_bot_name": "Bot",
+  "cmd.get_max_message_length": 150,
+  "scheduler._channel_body_budget": 150
+ },
+ "obj[adv_name='Dev-adv_name'] config_bot_name=''": {
+  "cm.channel_body_budget": 150,
+  "cm.get_max_message_length": 150,
+  "cmd._get_bot_name": "Dev-adv_name",
+  "cmd.get_max_message_length": 150,
+  "scheduler._channel_body_budget": 150
+ },
+ "obj[adv_name='Dev-adv_name'] config_bot_name='CfgBot'": {
+  "cm.channel_body_budget": 147,
+  "cm.get_max_message_length": 147,
+  "cmd._get_bot_name": "Dev-adv_name",
+  "cmd.get_max_message_length": 147,
+  "scheduler._channel_body_budget": 147
+ },
+ "obj[adv_name='Dev-adv_name'] config_bot_name=None": {
+  "cm.channel_body_budget": 150,
+  "cm.get_max_message_length": 150,
+  "cmd._get_bot_name": "Dev-adv_name",
+  "cmd.get_max_message_length": 150,
+  "scheduler._channel_body_budget": 150
+ },
+ "obj[empty] config_bot_name=''": {
+  "cm.channel_body_budget": 150,
+  "cm.get_max_message_length": 150,
+  "cmd._get_bot_name": "",
+  "cmd.get_max_message_length": 150,
+  "scheduler._channel_body_budget": 150
+ },
+ "obj[empty] config_bot_name='CfgBot'": {
+  "cm.channel_body_budget": 147,
+  "cm.get_max_message_length": 147,
+  "cmd._get_bot_name": "CfgBot",
+  "cmd.get_max_message_length": 147,
+  "scheduler._channel_body_budget": 147
+ },
+ "obj[empty] config_bot_name=None": {
+  "cm.channel_body_budget": 150,
+  "cm.get_max_message_length": 150,
+  "cmd._get_bot_name": "Bot",
+  "cmd.get_max_message_length": 150,
+  "scheduler._channel_body_budget": 150
+ },
+ "obj[name='',adv_name=''] config_bot_name=''": {
+  "cm.channel_body_budget": 150,
+  "cm.get_max_message_length": 150,
+  "cmd._get_bot_name": "",
+  "cmd.get_max_message_length": 150,
+  "scheduler._channel_body_budget": 150
+ },
+ "obj[name='',adv_name=''] config_bot_name='CfgBot'": {
+  "cm.channel_body_budget": 147,
+  "cm.get_max_message_length": 147,
+  "cmd._get_bot_name": "CfgBot",
+  "cmd.get_max_message_length": 147,
+  "scheduler._channel_body_budget": 147
+ },
+ "obj[name='',adv_name=''] config_bot_name=None": {
+  "cm.channel_body_budget": 150,
+  "cm.get_max_message_length": 150,
+  "cmd._get_bot_name": "Bot",
+  "cmd.get_max_message_length": 150,
+  "scheduler._channel_body_budget": 150
+ },
+ "obj[name='',adv_name='Dev-adv_name'] config_bot_name=''": {
+  "cm.channel_body_budget": 150,
+  "cm.get_max_message_length": 150,
+  "cmd._get_bot_name": "",
+  "cmd.get_max_message_length": 150,
+  "scheduler._channel_body_budget": 150
+ },
+ "obj[name='',adv_name='Dev-adv_name'] config_bot_name='CfgBot'": {
+  "cm.channel_body_budget": 147,
+  "cm.get_max_message_length": 147,
+  "cmd._get_bot_name": "CfgBot",
+  "cmd.get_max_message_length": 147,
+  "scheduler._channel_body_budget": 147
+ },
+ "obj[name='',adv_name='Dev-adv_name'] config_bot_name=None": {
+  "cm.channel_body_budget": 150,
+  "cm.get_max_message_length": 150,
+  "cmd._get_bot_name": "Bot",
+  "cmd.get_max_message_length": 150,
+  "scheduler._channel_body_budget": 150
+ },
+ "obj[name='',user_name='',adv_name=''] config_bot_name=''": {
+  "cm.channel_body_budget": 150,
+  "cm.get_max_message_length": 150,
+  "cmd._get_bot_name": "",
+  "cmd.get_max_message_length": 150,
+  "scheduler._channel_body_budget": 150
+ },
+ "obj[name='',user_name='',adv_name=''] config_bot_name='CfgBot'": {
+  "cm.channel_body_budget": 147,
+  "cm.get_max_message_length": 147,
+  "cmd._get_bot_name": "CfgBot",
+  "cmd.get_max_message_length": 147,
+  "scheduler._channel_body_budget": 147
+ },
+ "obj[name='',user_name='',adv_name=''] config_bot_name=None": {
+  "cm.channel_body_budget": 150,
+  "cm.get_max_message_length": 150,
+  "cmd._get_bot_name": "Bot",
+  "cmd.get_max_message_length": 150,
+  "scheduler._channel_body_budget": 150
+ },
+ "obj[name='',user_name='',adv_name='Dev-adv_name'] config_bot_name=''": {
+  "cm.channel_body_budget": 150,
+  "cm.get_max_message_length": 150,
+  "cmd._get_bot_name": "",
+  "cmd.get_max_message_length": 150,
+  "scheduler._channel_body_budget": 150
+ },
+ "obj[name='',user_name='',adv_name='Dev-adv_name'] config_bot_name='CfgBot'": {
+  "cm.channel_body_budget": 147,
+  "cm.get_max_message_length": 147,
+  "cmd._get_bot_name": "CfgBot",
+  "cmd.get_max_message_length": 147,
+  "scheduler._channel_body_budget": 147
+ },
+ "obj[name='',user_name='',adv_name='Dev-adv_name'] config_bot_name=None": {
+  "cm.channel_body_budget": 150,
+  "cm.get_max_message_length": 150,
+  "cmd._get_bot_name": "Bot",
+  "cmd.get_max_message_length": 150,
+  "scheduler._channel_body_budget": 150
+ },
+ "obj[name='',user_name=''] config_bot_name=''": {
+  "cm.channel_body_budget": 150,
+  "cm.get_max_message_length": 150,
+  "cmd._get_bot_name": "",
+  "cmd.get_max_message_length": 150,
+  "scheduler._channel_body_budget": 150
+ },
+ "obj[name='',user_name=''] config_bot_name='CfgBot'": {
+  "cm.channel_body_budget": 147,
+  "cm.get_max_message_length": 147,
+  "cmd._get_bot_name": "CfgBot",
+  "cmd.get_max_message_length": 147,
+  "scheduler._channel_body_budget": 147
+ },
+ "obj[name='',user_name=''] config_bot_name=None": {
+  "cm.channel_body_budget": 150,
+  "cm.get_max_message_length": 150,
+  "cmd._get_bot_name": "Bot",
+  "cmd.get_max_message_length": 150,
+  "scheduler._channel_body_budget": 150
+ },
+ "obj[name='',user_name='Dev-user_name',adv_name=''] config_bot_name=''": {
+  "cm.channel_body_budget": 140,
+  "cm.get_max_message_length": 140,
+  "cmd._get_bot_name": "",
+  "cmd.get_max_message_length": 150,
+  "scheduler._channel_body_budget": 140
+ },
+ "obj[name='',user_name='Dev-user_name',adv_name=''] config_bot_name='CfgBot'": {
+  "cm.channel_body_budget": 140,
+  "cm.get_max_message_length": 140,
+  "cmd._get_bot_name": "CfgBot",
+  "cmd.get_max_message_length": 147,
+  "scheduler._channel_body_budget": 140
+ },
+ "obj[name='',user_name='Dev-user_name',adv_name=''] config_bot_name=None": {
+  "cm.channel_body_budget": 140,
+  "cm.get_max_message_length": 140,
+  "cmd._get_bot_name": "Bot",
+  "cmd.get_max_message_length": 150,
+  "scheduler._channel_body_budget": 140
+ },
+ "obj[name='',user_name='Dev-user_name',adv_name='Dev-adv_name'] config_bot_name=''": {
+  "cm.channel_body_budget": 140,
+  "cm.get_max_message_length": 140,
+  "cmd._get_bot_name": "",
+  "cmd.get_max_message_length": 150,
+  "scheduler._channel_body_budget": 140
+ },
+ "obj[name='',user_name='Dev-user_name',adv_name='Dev-adv_name'] config_bot_name='CfgBot'": {
+  "cm.channel_body_budget": 140,
+  "cm.get_max_message_length": 140,
+  "cmd._get_bot_name": "CfgBot",
+  "cmd.get_max_message_length": 147,
+  "scheduler._channel_body_budget": 140
+ },
+ "obj[name='',user_name='Dev-user_name',adv_name='Dev-adv_name'] config_bot_name=None": {
+  "cm.channel_body_budget": 140,
+  "cm.get_max_message_length": 140,
+  "cmd._get_bot_name": "Bot",
+  "cmd.get_max_message_length": 150,
+  "scheduler._channel_body_budget": 140
+ },
+ "obj[name='',user_name='Dev-user_name'] config_bot_name=''": {
+  "cm.channel_body_budget": 140,
+  "cm.get_max_message_length": 140,
+  "cmd._get_bot_name": "",
+  "cmd.get_max_message_length": 150,
+  "scheduler._channel_body_budget": 140
+ },
+ "obj[name='',user_name='Dev-user_name'] config_bot_name='CfgBot'": {
+  "cm.channel_body_budget": 140,
+  "cm.get_max_message_length": 140,
+  "cmd._get_bot_name": "CfgBot",
+  "cmd.get_max_message_length": 147,
+  "scheduler._channel_body_budget": 140
+ },
+ "obj[name='',user_name='Dev-user_name'] config_bot_name=None": {
+  "cm.channel_body_budget": 140,
+  "cm.get_max_message_length": 140,
+  "cmd._get_bot_name": "Bot",
+  "cmd.get_max_message_length": 150,
+  "scheduler._channel_body_budget": 140
+ },
+ "obj[name=''] config_bot_name=''": {
+  "cm.channel_body_budget": 150,
+  "cm.get_max_message_length": 150,
+  "cmd._get_bot_name": "",
+  "cmd.get_max_message_length": 150,
+  "scheduler._channel_body_budget": 150
+ },
+ "obj[name=''] config_bot_name='CfgBot'": {
+  "cm.channel_body_budget": 147,
+  "cm.get_max_message_length": 147,
+  "cmd._get_bot_name": "CfgBot",
+  "cmd.get_max_message_length": 147,
+  "scheduler._channel_body_budget": 147
+ },
+ "obj[name=''] config_bot_name=None": {
+  "cm.channel_body_budget": 150,
+  "cm.get_max_message_length": 150,
+  "cmd._get_bot_name": "Bot",
+  "cmd.get_max_message_length": 150,
+  "scheduler._channel_body_budget": 150
+ },
+ "obj[name='Dev-name',adv_name=''] config_bot_name=''": {
+  "cm.channel_body_budget": 145,
+  "cm.get_max_message_length": 145,
+  "cmd._get_bot_name": "Dev-name",
+  "cmd.get_max_message_length": 145,
+  "scheduler._channel_body_budget": 145
+ },
+ "obj[name='Dev-name',adv_name=''] config_bot_name='CfgBot'": {
+  "cm.channel_body_budget": 145,
+  "cm.get_max_message_length": 145,
+  "cmd._get_bot_name": "Dev-name",
+  "cmd.get_max_message_length": 145,
+  "scheduler._channel_body_budget": 145
+ },
+ "obj[name='Dev-name',adv_name=''] config_bot_name=None": {
+  "cm.channel_body_budget": 145,
+  "cm.get_max_message_length": 145,
+  "cmd._get_bot_name": "Dev-name",
+  "cmd.get_max_message_length": 145,
+  "scheduler._channel_body_budget": 145
+ },
+ "obj[name='Dev-name',adv_name='Dev-adv_name'] config_bot_name=''": {
+  "cm.channel_body_budget": 145,
+  "cm.get_max_message_length": 145,
+  "cmd._get_bot_name": "Dev-name",
+  "cmd.get_max_message_length": 145,
+  "scheduler._channel_body_budget": 145
+ },
+ "obj[name='Dev-name',adv_name='Dev-adv_name'] config_bot_name='CfgBot'": {
+  "cm.channel_body_budget": 145,
+  "cm.get_max_message_length": 145,
+  "cmd._get_bot_name": "Dev-name",
+  "cmd.get_max_message_length": 145,
+  "scheduler._channel_body_budget": 145
+ },
+ "obj[name='Dev-name',adv_name='Dev-adv_name'] config_bot_name=None": {
+  "cm.channel_body_budget": 145,
+  "cm.get_max_message_length": 145,
+  "cmd._get_bot_name": "Dev-name",
+  "cmd.get_max_message_length": 145,
+  "scheduler._channel_body_budget": 145
+ },
+ "obj[name='Dev-name',user_name='',adv_name=''] config_bot_name=''": {
+  "cm.channel_body_budget": 145,
+  "cm.get_max_message_length": 145,
+  "cmd._get_bot_name": "Dev-name",
+  "cmd.get_max_message_length": 145,
+  "scheduler._channel_body_budget": 145
+ },
+ "obj[name='Dev-name',user_name='',adv_name=''] config_bot_name='CfgBot'": {
+  "cm.channel_body_budget": 145,
+  "cm.get_max_message_length": 145,
+  "cmd._get_bot_name": "Dev-name",
+  "cmd.get_max_message_length": 145,
+  "scheduler._channel_body_budget": 145
+ },
+ "obj[name='Dev-name',user_name='',adv_name=''] config_bot_name=None": {
+  "cm.channel_body_budget": 145,
+  "cm.get_max_message_length": 145,
+  "cmd._get_bot_name": "Dev-name",
+  "cmd.get_max_message_length": 145,
+  "scheduler._channel_body_budget": 145
+ },
+ "obj[name='Dev-name',user_name='',adv_name='Dev-adv_name'] config_bot_name=''": {
+  "cm.channel_body_budget": 145,
+  "cm.get_max_message_length": 145,
+  "cmd._get_bot_name": "Dev-name",
+  "cmd.get_max_message_length": 145,
+  "scheduler._channel_body_budget": 145
+ },
+ "obj[name='Dev-name',user_name='',adv_name='Dev-adv_name'] config_bot_name='CfgBot'": {
+  "cm.channel_body_budget": 145,
+  "cm.get_max_message_length": 145,
+  "cmd._get_bot_name": "Dev-name",
+  "cmd.get_max_message_length": 145,
+  "scheduler._channel_body_budget": 145
+ },
+ "obj[name='Dev-name',user_name='',adv_name='Dev-adv_name'] config_bot_name=None": {
+  "cm.channel_body_budget": 145,
+  "cm.get_max_message_length": 145,
+  "cmd._get_bot_name": "Dev-name",
+  "cmd.get_max_message_length": 145,
+  "scheduler._channel_body_budget": 145
+ },
+ "obj[name='Dev-name',user_name=''] config_bot_name=''": {
+  "cm.channel_body_budget": 145,
+  "cm.get_max_message_length": 145,
+  "cmd._get_bot_name": "Dev-name",
+  "cmd.get_max_message_length": 145,
+  "scheduler._channel_body_budget": 145
+ },
+ "obj[name='Dev-name',user_name=''] config_bot_name='CfgBot'": {
+  "cm.channel_body_budget": 145,
+  "cm.get_max_message_length": 145,
+  "cmd._get_bot_name": "Dev-name",
+  "cmd.get_max_message_length": 145,
+  "scheduler._channel_body_budget": 145
+ },
+ "obj[name='Dev-name',user_name=''] config_bot_name=None": {
+  "cm.channel_body_budget": 145,
+  "cm.get_max_message_length": 145,
+  "cmd._get_bot_name": "Dev-name",
+  "cmd.get_max_message_length": 145,
+  "scheduler._channel_body_budget": 145
+ },
+ "obj[name='Dev-name',user_name='Dev-user_name',adv_name=''] config_bot_name=''": {
+  "cm.channel_body_budget": 145,
+  "cm.get_max_message_length": 145,
+  "cmd._get_bot_name": "Dev-name",
+  "cmd.get_max_message_length": 145,
+  "scheduler._channel_body_budget": 145
+ },
+ "obj[name='Dev-name',user_name='Dev-user_name',adv_name=''] config_bot_name='CfgBot'": {
+  "cm.channel_body_budget": 145,
+  "cm.get_max_message_length": 145,
+  "cmd._get_bot_name": "Dev-name",
+  "cmd.get_max_message_length": 145,
+  "scheduler._channel_body_budget": 145
+ },
+ "obj[name='Dev-name',user_name='Dev-user_name',adv_name=''] config_bot_name=None": {
+  "cm.channel_body_budget": 145,
+  "cm.get_max_message_length": 145,
+  "cmd._get_bot_name": "Dev-name",
+  "cmd.get_max_message_length": 145,
+  "scheduler._channel_body_budget": 145
+ },
+ "obj[name='Dev-name',user_name='Dev-user_name',adv_name='Dev-adv_name'] config_bot_name=''": {
+  "cm.channel_body_budget": 145,
+  "cm.get_max_message_length": 145,
+  "cmd._get_bot_name": "Dev-name",
+  "cmd.get_max_message_length": 145,
+  "scheduler._channel_body_budget": 145
+ },
+ "obj[name='Dev-name',user_name='Dev-user_name',adv_name='Dev-adv_name'] config_bot_name='CfgBot'": {
+  "cm.channel_body_budget": 145,
+  "cm.get_max_message_length": 145,
+  "cmd._get_bot_name": "Dev-name",
+  "cmd.get_max_message_length": 145,
+  "scheduler._channel_body_budget": 145
+ },
+ "obj[name='Dev-name',user_name='Dev-user_name',adv_name='Dev-adv_name'] config_bot_name=None": {
+  "cm.channel_body_budget": 145,
+  "cm.get_max_message_length": 145,
+  "cmd._get_bot_name": "Dev-name",
+  "cmd.get_max_message_length": 145,
+  "scheduler._channel_body_budget": 145
+ },
+ "obj[name='Dev-name',user_name='Dev-user_name'] config_bot_name=''": {
+  "cm.channel_body_budget": 145,
+  "cm.get_max_message_length": 145,
+  "cmd._get_bot_name": "Dev-name",
+  "cmd.get_max_message_length": 145,
+  "scheduler._channel_body_budget": 145
+ },
+ "obj[name='Dev-name',user_name='Dev-user_name'] config_bot_name='CfgBot'": {
+  "cm.channel_body_budget": 145,
+  "cm.get_max_message_length": 145,
+  "cmd._get_bot_name": "Dev-name",
+  "cmd.get_max_message_length": 145,
+  "scheduler._channel_body_budget": 145
+ },
+ "obj[name='Dev-name',user_name='Dev-user_name'] config_bot_name=None": {
+  "cm.channel_body_budget": 145,
+  "cm.get_max_message_length": 145,
+  "cmd._get_bot_name": "Dev-name",
+  "cmd.get_max_message_length": 145,
+  "scheduler._channel_body_budget": 145
+ },
+ "obj[name='Dev-name'] config_bot_name=''": {
+  "cm.channel_body_budget": 145,
+  "cm.get_max_message_length": 145,
+  "cmd._get_bot_name": "Dev-name",
+  "cmd.get_max_message_length": 145,
+  "scheduler._channel_body_budget": 145
+ },
+ "obj[name='Dev-name'] config_bot_name='CfgBot'": {
+  "cm.channel_body_budget": 145,
+  "cm.get_max_message_length": 145,
+  "cmd._get_bot_name": "Dev-name",
+  "cmd.get_max_message_length": 145,
+  "scheduler._channel_body_budget": 145
+ },
+ "obj[name='Dev-name'] config_bot_name=None": {
+  "cm.channel_body_budget": 145,
+  "cm.get_max_message_length": 145,
+  "cmd._get_bot_name": "Dev-name",
+  "cmd.get_max_message_length": 145,
+  "scheduler._channel_body_budget": 145
+ },
+ "obj[user_name='',adv_name=''] config_bot_name=''": {
+  "cm.channel_body_budget": 150,
+  "cm.get_max_message_length": 150,
+  "cmd._get_bot_name": "",
+  "cmd.get_max_message_length": 150,
+  "scheduler._channel_body_budget": 150
+ },
+ "obj[user_name='',adv_name=''] config_bot_name='CfgBot'": {
+  "cm.channel_body_budget": 147,
+  "cm.get_max_message_length": 147,
+  "cmd._get_bot_name": "CfgBot",
+  "cmd.get_max_message_length": 147,
+  "scheduler._channel_body_budget": 147
+ },
+ "obj[user_name='',adv_name=''] config_bot_name=None": {
+  "cm.channel_body_budget": 150,
+  "cm.get_max_message_length": 150,
+  "cmd._get_bot_name": "Bot",
+  "cmd.get_max_message_length": 150,
+  "scheduler._channel_body_budget": 150
+ },
+ "obj[user_name='',adv_name='Dev-adv_name'] config_bot_name=''": {
+  "cm.channel_body_budget": 150,
+  "cm.get_max_message_length": 150,
+  "cmd._get_bot_name": "Dev-adv_name",
+  "cmd.get_max_message_length": 150,
+  "scheduler._channel_body_budget": 150
+ },
+ "obj[user_name='',adv_name='Dev-adv_name'] config_bot_name='CfgBot'": {
+  "cm.channel_body_budget": 147,
+  "cm.get_max_message_length": 147,
+  "cmd._get_bot_name": "Dev-adv_name",
+  "cmd.get_max_message_length": 147,
+  "scheduler._channel_body_budget": 147
+ },
+ "obj[user_name='',adv_name='Dev-adv_name'] config_bot_name=None": {
+  "cm.channel_body_budget": 150,
+  "cm.get_max_message_length": 150,
+  "cmd._get_bot_name": "Dev-adv_name",
+  "cmd.get_max_message_length": 150,
+  "scheduler._channel_body_budget": 150
+ },
+ "obj[user_name=''] config_bot_name=''": {
+  "cm.channel_body_budget": 150,
+  "cm.get_max_message_length": 150,
+  "cmd._get_bot_name": "",
+  "cmd.get_max_message_length": 150,
+  "scheduler._channel_body_budget": 150
+ },
+ "obj[user_name=''] config_bot_name='CfgBot'": {
+  "cm.channel_body_budget": 147,
+  "cm.get_max_message_length": 147,
+  "cmd._get_bot_name": "CfgBot",
+  "cmd.get_max_message_length": 147,
+  "scheduler._channel_body_budget": 147
+ },
+ "obj[user_name=''] config_bot_name=None": {
+  "cm.channel_body_budget": 150,
+  "cm.get_max_message_length": 150,
+  "cmd._get_bot_name": "Bot",
+  "cmd.get_max_message_length": 150,
+  "scheduler._channel_body_budget": 150
+ },
+ "obj[user_name='Dev-user_name',adv_name=''] config_bot_name=''": {
+  "cm.channel_body_budget": 140,
+  "cm.get_max_message_length": 140,
+  "cmd._get_bot_name": "",
+  "cmd.get_max_message_length": 140,
+  "scheduler._channel_body_budget": 140
+ },
+ "obj[user_name='Dev-user_name',adv_name=''] config_bot_name='CfgBot'": {
+  "cm.channel_body_budget": 140,
+  "cm.get_max_message_length": 140,
+  "cmd._get_bot_name": "CfgBot",
+  "cmd.get_max_message_length": 140,
+  "scheduler._channel_body_budget": 140
+ },
+ "obj[user_name='Dev-user_name',adv_name=''] config_bot_name=None": {
+  "cm.channel_body_budget": 140,
+  "cm.get_max_message_length": 140,
+  "cmd._get_bot_name": "Bot",
+  "cmd.get_max_message_length": 140,
+  "scheduler._channel_body_budget": 140
+ },
+ "obj[user_name='Dev-user_name',adv_name='Dev-adv_name'] config_bot_name=''": {
+  "cm.channel_body_budget": 140,
+  "cm.get_max_message_length": 140,
+  "cmd._get_bot_name": "Dev-adv_name",
+  "cmd.get_max_message_length": 140,
+  "scheduler._channel_body_budget": 140
+ },
+ "obj[user_name='Dev-user_name',adv_name='Dev-adv_name'] config_bot_name='CfgBot'": {
+  "cm.channel_body_budget": 140,
+  "cm.get_max_message_length": 140,
+  "cmd._get_bot_name": "Dev-adv_name",
+  "cmd.get_max_message_length": 140,
+  "scheduler._channel_body_budget": 140
+ },
+ "obj[user_name='Dev-user_name',adv_name='Dev-adv_name'] config_bot_name=None": {
+  "cm.channel_body_budget": 140,
+  "cm.get_max_message_length": 140,
+  "cmd._get_bot_name": "Dev-adv_name",
+  "cmd.get_max_message_length": 140,
+  "scheduler._channel_body_budget": 140
+ },
+ "obj[user_name='Dev-user_name'] config_bot_name=''": {
+  "cm.channel_body_budget": 140,
+  "cm.get_max_message_length": 140,
+  "cmd._get_bot_name": "",
+  "cmd.get_max_message_length": 140,
+  "scheduler._channel_body_budget": 140
+ },
+ "obj[user_name='Dev-user_name'] config_bot_name='CfgBot'": {
+  "cm.channel_body_budget": 140,
+  "cm.get_max_message_length": 140,
+  "cmd._get_bot_name": "CfgBot",
+  "cmd.get_max_message_length": 140,
+  "scheduler._channel_body_budget": 140
+ },
+ "obj[user_name='Dev-user_name'] config_bot_name=None": {
+  "cm.channel_body_budget": 140,
+  "cm.get_max_message_length": 140,
+  "cmd._get_bot_name": "Bot",
+  "cmd.get_max_message_length": 140,
+  "scheduler._channel_body_budget": 140
+ },
+ "self_info=None config_bot_name=''": {
+  "cm.channel_body_budget": 150,
+  "cm.get_max_message_length": 150,
+  "cmd._get_bot_name": "",
+  "cmd.get_max_message_length": 150,
+  "scheduler._channel_body_budget": 150
+ },
+ "self_info=None config_bot_name='CfgBot'": {
+  "cm.channel_body_budget": 147,
+  "cm.get_max_message_length": 147,
+  "cmd._get_bot_name": "CfgBot",
+  "cmd.get_max_message_length": 147,
+  "scheduler._channel_body_budget": 147
+ },
+ "self_info=None config_bot_name=None": {
+  "cm.channel_body_budget": 150,
+  "cm.get_max_message_length": 150,
+  "cmd._get_bot_name": "Bot",
+  "cmd.get_max_message_length": 150,
+  "scheduler._channel_body_budget": 150
+ }
+}

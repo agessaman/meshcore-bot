@@ -19,6 +19,8 @@ class RepeaterCommand(BaseCommand):
 
     # Plugin metadata
     name = "repeater"
+    honors_skip_channel_check = False
+    enabled_attr = "repeater_enabled"
     keywords = ["repeater", "repeaters", "rp"]
     description = "Manage repeater contacts and purging operations (DM only)"
     requires_dm = True
@@ -29,19 +31,6 @@ class RepeaterCommand(BaseCommand):
     def __init__(self, bot):
         super().__init__(bot)
         self.repeater_enabled = self.get_config_value('Repeater_Command', 'enabled', fallback=True, value_type='bool')
-
-    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
-        """Check if this command can be executed with the given message.
-
-        Args:
-            message: The message triggering the command.
-
-        Returns:
-            bool: True if command is enabled and checks pass, False otherwise.
-        """
-        if not self.repeater_enabled:
-            return False
-        return super().can_execute(message)
 
     def _get_deprecation_warning(self, web_viewer_url: str = None) -> str:
         """Get deprecation warning message for commands replaced by web viewer.
@@ -528,51 +517,6 @@ class RepeaterCommand(BaseCommand):
         """
         return self._get_deprecation_warning() + "\nDiscovery happens automatically in the backend."
 
-    async def _handle_contact_stats(self) -> str:
-        """Show statistics about the complete repeater tracking database.
-
-        Returns:
-            str: Formatted statistics summary.
-        """
-        if not hasattr(self.bot, 'repeater_manager'):
-            return "Repeater manager not initialized. Please check bot configuration."
-
-        try:
-            stats = await self.bot.repeater_manager.get_contact_statistics()
-
-            response = "📊 **Contact Tracking Statistics:**\n\n"
-            response += f"• **Total Contacts Ever Heard:** {stats.get('total_heard', 0)}\n"
-            response += f"• **Currently Tracked by Device:** {stats.get('currently_tracked', 0)}\n"
-            response += f"• **Recent Activity (24h):** {stats.get('recent_activity', 0)}\n\n"
-
-            if stats.get('by_role'):
-                response += "**By MeshCore Role:**\n"
-                # Display roles in logical order
-                role_order = ['repeater', 'roomserver', 'companion', 'sensor', 'gateway', 'bot']
-                for role in role_order:
-                    if role in stats['by_role']:
-                        count = stats['by_role'][role]
-                        role_display = role.title()
-                        if role == 'roomserver':
-                            role_display = 'RoomServer'
-                        response += f"• {role_display}: {count}\n"
-
-                # Show any other roles not in the standard list
-                for role, count in stats['by_role'].items():
-                    if role not in role_order:
-                        response += f"• {role.title()}: {count}\n"
-                response += "\n"
-
-            if stats.get('by_type'):
-                response += "**By Device Type:**\n"
-                for device_type, count in stats['by_type'].items():
-                    response += f"• {device_type}: {count}\n"
-
-            return response
-
-        except Exception as e:
-            return f"❌ Error getting repeater statistics: {e}"
-
     async def _handle_auto_purge(self, args: list[str]) -> str:
         """Handle auto-purge commands.
 
@@ -751,42 +695,3 @@ class RepeaterCommand(BaseCommand):
         """
         return self._get_deprecation_warning() + "\nGeocoding happens automatically in the backend."
 
-    async def _get_geocoding_status(self) -> str:
-        """Get geocoding status"""
-        try:
-            # Count contacts needing geocoding
-            needing_geocoding = self.bot.repeater_manager.db_manager.execute_query('''
-                SELECT COUNT(*) as count
-                FROM complete_contact_tracking
-                WHERE latitude IS NOT NULL
-                AND longitude IS NOT NULL
-                AND (city IS NULL OR city = '')
-                AND last_geocoding_attempt IS NULL
-            ''')
-
-            # Count contacts with geocoding data
-            with_geocoding = self.bot.repeater_manager.db_manager.execute_query('''
-                SELECT COUNT(*) as count
-                FROM complete_contact_tracking
-                WHERE city IS NOT NULL AND city != ''
-            ''')
-
-            # Count total contacts with coordinates
-            with_coords = self.bot.repeater_manager.db_manager.execute_query('''
-                SELECT COUNT(*) as count
-                FROM complete_contact_tracking
-                WHERE latitude IS NOT NULL AND longitude IS NOT NULL
-            ''')
-
-            needing = needing_geocoding[0]['count'] if needing_geocoding else 0
-            with_geo = with_geocoding[0]['count'] if with_geocoding else 0
-            total_coords = with_coords[0]['count'] if with_coords else 0
-
-            # Shortened for LoRa (130 char limit)
-            if needing > 0:
-                return f"🌍 Geocoding: {with_geo}/{total_coords} done, {needing} pending"
-            else:
-                return f"🌍 Geocoding: {with_geo}/{total_coords} complete ✅"
-
-        except Exception as e:
-            return f"❌ Geocoding status error: {e}"

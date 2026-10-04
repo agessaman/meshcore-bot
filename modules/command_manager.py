@@ -6,6 +6,7 @@ Handles all bot commands, keyword matching, and response generation
 
 import asyncio
 import contextlib
+import inspect
 import math
 import random
 import re
@@ -26,7 +27,7 @@ from .command_prefix import (
 from .command_prefix import (
     normalize_command_content as normalize_command_content_text,
 )
-from .commands.base_command import BaseCommand
+from .commands.base_command import BaseCommand, help_text_for
 from .config_validation import (
     PUBLIC_CHANNEL_KEY_HEX,  # noqa: F401 — re-exported; used by core.py
     PUBLIC_CHANNEL_OVERRIDE_KEY,
@@ -34,14 +35,19 @@ from .config_validation import (
     strip_optional_quotes,
 )
 from .flood_scope import (
+    channel_scope_entry,
     is_global_marker,
+    normalize_channel_for_scope,
     normalize_scope_name,
+    outgoing_override,
+    section_flood_scope,
 )
 from .models import (
     CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD,
     DM_BODY_LIMIT,
     MeshMessage,
     channel_body_limit,
+    self_info_name,
 )
 
 # Default for [Bot] dm_min_ack_timeout: the shortest per-attempt wait for a DM's
@@ -68,6 +74,18 @@ _LINK_PATTERN = re.compile(
 from .plugin_loader import PluginLoader
 from .security_utils import sanitize_name, validate_safe_path
 from .utils import check_internet_connectivity_async, decode_escape_sequences, format_keyword_response_with_placeholders
+
+
+def _call_with_optional_user_id(method: Any, user_id: str | None) -> Any:
+    """Call a cooldown hook with ``user_id`` when it accepts one.
+
+    Bundled commands take ``user_id``; local plugin commands written against the
+    older zero-argument API (``get_remaining_cooldown()``,
+    ``_record_execution()``) are still supported.
+    """
+    if inspect.signature(method).parameters:
+        return method(user_id)
+    return method()
 
 
 @dataclass
@@ -218,28 +236,16 @@ class CommandManager:
     @staticmethod
     def _normalize_channel_name_for_scope_config(channel: str) -> str:
         """Normalize channel names for [Channels] flood_scope.<channel> lookups."""
-        return channel.strip().removeprefix("#").lower()
+        return normalize_channel_for_scope(channel)
 
     def _outgoing_flood_scope_override(self) -> str:
         """[Channels] outgoing_flood_scope_override when set, else empty string."""
-        if self.bot.config.has_section("Channels") and self.bot.config.has_option(
-            "Channels", "outgoing_flood_scope_override"
-        ):
-            return (self.bot.config.get("Channels", "outgoing_flood_scope_override") or "").strip()
-        return ""
+        return outgoing_override(self.bot.config)
 
     def _channel_flood_scope(self, channel: str | None) -> str | None:
         """Return [Channels] flood_scope.<channel> when configured, including global markers."""
-        if not channel or not self.bot.config.has_section("Channels"):
-            return None
-        channel_key = self._normalize_channel_name_for_scope_config(channel)
-        for key, value in self.bot.config.items("Channels"):
-            if not key.startswith("flood_scope."):
-                continue
-            configured_channel = key[len("flood_scope."):]
-            if self._normalize_channel_name_for_scope_config(configured_channel) == channel_key:
-                return self._normalize_scope_name((value or "").strip())
-        return None
+        entry = channel_scope_entry(self.bot.config, channel)
+        return None if entry is None else self._normalize_scope_name(entry)
 
     def resolve_channel_send_scope(
         self,
@@ -260,10 +266,9 @@ class CommandManager:
             return scope
         if message is not None and message.reply_scope is not None:
             return message.reply_scope
-        if config_section and self.bot.config.has_section(config_section):
-            raw = (self.bot.config.get(config_section, "flood_scope", fallback="") or "").strip()
-            if raw:
-                return self._normalize_scope_name(raw)
+        section_scope = section_flood_scope(self.bot.config, config_section)
+        if section_scope is not None:
+            return section_scope
         channel_scope = self._channel_flood_scope(channel or (message.channel if message else None))
         if channel_scope is not None:
             return channel_scope
@@ -410,10 +415,23 @@ class CommandManager:
         success = await command.execute(message)
 
         # Record in stats
-        if 'stats' in self.commands:
-            stats_command = self.commands['stats']
-            if stats_command:
-                stats_command.record_command(message, command.name, success)
+        self.record_command_stat(message, command.name, success)
+
+    def _viewer_bridge(self) -> Any:
+        """The web viewer's bot-side bridge, or None when the viewer integration is off."""
+        integration = getattr(self.bot, "web_viewer_integration", None)
+        return integration.bot_integration if integration else None
+
+    def record_command_stat(self, message: MeshMessage, command_name: str, response_sent: bool) -> None:
+        """Record one command execution in the stats table, if the stats command is loaded."""
+        stats_command = self.commands.get('stats')
+        if stats_command:
+            stats_command.record_command(message, command_name, response_sent)
+
+    def _chunk_spacing_seconds(self) -> float:
+        """Pause between the parts of a multi-part send: the TX rate limit plus slack, at least 1 s."""
+        rate_limit_seconds = self.bot.config.getfloat('Bot', 'bot_tx_rate_limit_seconds', fallback=1.0)
+        return max(rate_limit_seconds + 0.5, 1.0)
 
     async def _apply_tx_delay(self):
         """Apply transmission delay to prevent message collisions"""
@@ -498,6 +516,38 @@ class CommandManager:
         payload = result.payload if hasattr(result, 'payload') else {}
         return isinstance(payload, dict) and payload.get('reason') == 'no_event_received'
 
+    def _record_transmission(
+        self, content: str, target: str, message_type: str, command_id: str | None, **extra: Any
+    ) -> str | None:
+        """Register an outgoing send for repeat tracking; never lets tracking break the send.
+
+        Returns the command id used, generating ``<type>_<target>_<epoch>`` when none
+        was given and a tracker is present.
+        """
+        try:
+            if hasattr(self.bot, 'transmission_tracker') and self.bot.transmission_tracker:
+                if not command_id:
+                    command_id = f"{message_type}_{target}_{int(time.time())}"
+                self.bot.transmission_tracker.record_transmission(
+                    content=content,
+                    target=target,
+                    message_type=message_type,
+                    command_id=command_id,
+                    **extra,
+                )
+        except Exception as e:
+            self.logger.debug(f"Error recording transmission for repeat tracking: {e}")
+        return command_id
+
+    def _record_successful_send(self, rate_limit_key: str | None) -> None:
+        """Charge a successful send to the global, TX and (when enabled) per-user limiters."""
+        self.bot.rate_limiter.record_send()
+        self.bot.bot_tx_rate_limiter.record_tx()
+        if getattr(self.bot, 'per_user_rate_limit_enabled', False) and rate_limit_key:
+            per_user = getattr(self.bot, 'per_user_rate_limiter', None)
+            if per_user:
+                per_user.record_send(rate_limit_key)
+
     def _handle_send_result(
         self,
         result,
@@ -536,12 +586,7 @@ class CommandManager:
                     self.logger.info(f"✅ {operation_name} sent and ACK received from {target}")
                 else:
                     self.logger.info(f"✅ {operation_name} sent to {target}")
-                self.bot.rate_limiter.record_send()
-                self.bot.bot_tx_rate_limiter.record_tx()
-                if getattr(self.bot, 'per_user_rate_limit_enabled', False) and rate_limit_key:
-                    per_user = getattr(self.bot, 'per_user_rate_limiter', None)
-                    if per_user:
-                        per_user.record_send(rate_limit_key)
+                self._record_successful_send(rate_limit_key)
                 return True
 
             # Handle unexpected event types
@@ -553,12 +598,7 @@ class CommandManager:
                 if isinstance(error_payload, dict) and error_payload.get('reason') == 'no_event_received':
                     # Message likely sent but confirmation timed out - treat as success with warning
                     self.logger.warning(f"Channel message sent to {target} but confirmation event not received (message may have been sent)")
-                    self.bot.rate_limiter.record_send()
-                    self.bot.bot_tx_rate_limiter.record_tx()
-                    if getattr(self.bot, 'per_user_rate_limit_enabled', False) and rate_limit_key:
-                        per_user = getattr(self.bot, 'per_user_rate_limiter', None)
-                        if per_user:
-                            per_user.record_send(rate_limit_key)
+                    self._record_successful_send(rate_limit_key)
                     return True
 
             # Unknown event type - log warning
@@ -567,12 +607,7 @@ class CommandManager:
 
         # Assume success if result exists but has no type attribute
         self.logger.info(f"✅ {operation_name} sent to {target} (result: {result})")
-        self.bot.rate_limiter.record_send()
-        self.bot.bot_tx_rate_limiter.record_tx()
-        if getattr(self.bot, 'per_user_rate_limit_enabled', False) and rate_limit_key:
-            per_user = getattr(self.bot, 'per_user_rate_limiter', None)
-            if per_user:
-                per_user.record_send(rate_limit_key)
+        self._record_successful_send(rate_limit_key)
         return True
 
     def load_keywords(self) -> dict[str, str]:
@@ -719,12 +754,9 @@ class CommandManager:
         username: str | None = None
         try:
             if hasattr(self.bot, 'meshcore') and self.bot.meshcore:
-                self_info = getattr(self.bot.meshcore, 'self_info', None)
-                if self_info:
-                    if isinstance(self_info, dict):
-                        username = self_info.get('name') or self_info.get('user_name')
-                    else:
-                        username = getattr(self_info, 'name', None) or getattr(self_info, 'user_name', None)
+                username = self_info_name(
+                    getattr(self.bot.meshcore, 'self_info', None), ('name', 'user_name')
+                )
         except Exception:
             pass
         if not username:
@@ -733,6 +765,27 @@ class CommandManager:
         if not MeshMessage.is_global_flood_scope(message.effective_outgoing_flood_scope(self.bot)):
             max_length -= CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD
         return max_length
+
+    def _send_scope(
+        self, *, scope: str | None, channel: str | None
+    ) -> tuple[str | None, str, bool]:
+        """``(resolved, scope_to_use, is_global)`` for a channel send.
+
+        ``resolved`` is resolve_channel_send_scope's answer (None: fall back to
+        outgoing_flood_scope_override); ``scope_to_use`` is normalized unless the
+        scope is global, where it is the raw marker.
+        """
+        resolved = self.resolve_channel_send_scope(scope=scope, channel=channel)
+        scope_to_use = (
+            resolved if resolved is not None else self._outgoing_flood_scope_override()
+        ) or ""
+        # is_global_marker, not a bare membership test: a hand-written
+        # "none" normalizes to the global marker everywhere else, so
+        # treating it as the region "#none" here would send scoped.
+        scope_is_global = is_global_marker(scope_to_use)
+        if not scope_is_global:
+            scope_to_use = self._normalize_scope_name(scope_to_use)
+        return resolved, scope_to_use, scope_is_global
 
     def effective_channel_send_scope(
         self, *, channel: str | None = None, scope: str | None = None
@@ -748,16 +801,13 @@ class CommandManager:
             The scope string the send will use, or ``None`` for global flood.
         """
         try:
-            resolved = self.resolve_channel_send_scope(scope=scope, channel=channel)
-            scope_to_use = (
-                resolved if resolved is not None else self._outgoing_flood_scope_override()
-            ) or ""
-            # is_global_marker, exactly as send_channel_message tests it: this
-            # function exists to predict that decision, so any divergence sizes
-            # the body against a scope the send will not use.
-            if is_global_marker(scope_to_use):
+            # The same resolution send_channel_message runs: this function exists
+            # to predict that decision, so any divergence would size the body
+            # against a scope the send will not use.
+            _, scope_to_use, scope_is_global = self._send_scope(scope=scope, channel=channel)
+            if scope_is_global:
                 return None
-            return self._normalize_scope_name(scope_to_use)
+            return scope_to_use
         except Exception:  # noqa: BLE001 - budgeting must never break a send
             # Unknown means assume regional, which only ever makes bodies smaller.
             return "#unknown"
@@ -781,10 +831,7 @@ class CommandManager:
         username = ""
         try:
             self_info = getattr(getattr(self.bot, "meshcore", None), "self_info", None)
-            if isinstance(self_info, dict):
-                username = self_info.get("name") or self_info.get("user_name") or ""
-            elif self_info is not None:
-                username = getattr(self_info, "name", "") or getattr(self_info, "user_name", "")
+            username = self_info_name(self_info, ("name", "user_name")) or ""
         except Exception:  # noqa: BLE001 - budget must never break a send
             username = ""
         if not isinstance(username, str) or not username:
@@ -1129,10 +1176,7 @@ class CommandManager:
             response_sent = True
 
         # Record command execution in stats database
-        if 'stats' in self.commands:
-            stats_command = self.commands['stats']
-            if stats_command:
-                stats_command.record_command(message, 'advert', response_sent)
+        self.record_command_stat(message, 'advert', response_sent)
 
     async def send_dm(
         self,
@@ -1235,21 +1279,10 @@ class CommandManager:
             else:
                 self.logger.info("Sending DM to %s", sanitize_name(contact_name))
 
-            # Record transmission for repeat tracking (don't let this block sending)
-            try:
-                if hasattr(self.bot, 'transmission_tracker') and self.bot.transmission_tracker:
-                    if not command_id:
-                        command_id = f"dm_{contact_name}_{int(time.time())}"
-                    self.bot.transmission_tracker.record_transmission(
-                        content=content,
-                        target=contact_name,
-                        message_type='dm',
-                        command_id=command_id,
-                        recipient_key=contact.get('public_key') if isinstance(contact, dict) else None,
-                    )
-            except Exception as e:
-                self.logger.debug(f"Error recording transmission for repeat tracking: {e}")
-                # Don't fail the send if transmission tracking fails
+            command_id = self._record_transmission(
+                content, contact_name, 'dm', command_id,
+                recipient_key=contact.get('public_key') if isinstance(contact, dict) else None,
+            )
 
             # Central DM length guard: firmware MAX_TEXT_LEN is 160; bot budget is 158.
             dm_max_bytes = DM_BODY_LIMIT
@@ -1263,10 +1296,7 @@ class CommandManager:
                     content_bytes,
                     len(chunks),
                 )
-                rate_limit_seconds = self.bot.config.getfloat(
-                    "Bot", "bot_tx_rate_limit_seconds", fallback=1.0
-                )
-                sleep_time = max(rate_limit_seconds + 0.5, 1.0)
+                sleep_time = self._chunk_spacing_seconds()
                 for i, chunk in enumerate(chunks):
                     if i > 0:
                         await self.bot.bot_tx_rate_limiter.wait_for_tx()
@@ -1334,36 +1364,29 @@ class CommandManager:
     ) -> bool:
         """Send a single DM payload that is already within the RF byte budget."""
         try:
-            # Try to use send_msg_with_retry if available (meshcore-2.1.6+)
             try:
-                # Use the meshcore commands interface for send_msg_with_retry
-                if hasattr(self.bot.meshcore, 'commands') and hasattr(self.bot.meshcore.commands, 'send_msg_with_retry'):
-                    self.logger.debug("Using send_msg_with_retry for improved reliability")
+                self.logger.debug("Using send_msg_with_retry for improved reliability")
 
-                    # Use send_msg_with_retry with configurable retry parameters
-                    max_attempts = self.bot.config.getint('Bot', 'dm_max_retries', fallback=3)
-                    max_flood_attempts = self.bot.config.getint('Bot', 'dm_max_flood_attempts', fallback=2)
-                    flood_after = self.bot.config.getint('Bot', 'dm_flood_after', fallback=2)
-                    timeout = 0  # Use suggested timeout from meshcore
-                    min_timeout = self._dm_min_ack_timeout()
+                # Use send_msg_with_retry with configurable retry parameters
+                max_attempts = self.bot.config.getint('Bot', 'dm_max_retries', fallback=3)
+                max_flood_attempts = self.bot.config.getint('Bot', 'dm_max_flood_attempts', fallback=2)
+                flood_after = self.bot.config.getint('Bot', 'dm_flood_after', fallback=2)
+                timeout = 0  # Use suggested timeout from meshcore
+                min_timeout = self._dm_min_ack_timeout()
 
-                    self.logger.debug(
-                        f"Attempting DM send with {max_attempts} max attempts "
-                        f"(ACK wait at least {min_timeout:g}s per attempt)"
-                    )
-                    result = await self.bot.meshcore.commands.send_msg_with_retry(
-                        contact,
-                        content,
-                        max_attempts=max_attempts,
-                        max_flood_attempts=max_flood_attempts,
-                        flood_after=flood_after,
-                        timeout=timeout,
-                        min_timeout=min_timeout,
-                    )
-                else:
-                    # Fallback to regular send_msg for older meshcore versions
-                    self.logger.debug("send_msg_with_retry not available, using send_msg")
-                    result = await self.bot.meshcore.commands.send_msg(contact, content)
+                self.logger.debug(
+                    f"Attempting DM send with {max_attempts} max attempts "
+                    f"(ACK wait at least {min_timeout:g}s per attempt)"
+                )
+                result = await self.bot.meshcore.commands.send_msg_with_retry(
+                    contact,
+                    content,
+                    max_attempts=max_attempts,
+                    max_flood_attempts=max_flood_attempts,
+                    flood_after=flood_after,
+                    timeout=timeout,
+                    min_timeout=min_timeout,
+                )
 
             except AttributeError:
                 # Fallback to regular send_msg for older meshcore versions
@@ -1483,33 +1506,10 @@ class CommandManager:
 
             self.logger.info(f"Sending channel message to {channel} (channel {channel_num}): {content}")
 
-            # Record transmission for repeat tracking (don't let this block sending)
-            try:
-                if hasattr(self.bot, 'transmission_tracker') and self.bot.transmission_tracker:
-                    if not command_id:
-                        command_id = f"channel_{channel}_{int(time.time())}"
-                    self.bot.transmission_tracker.record_transmission(
-                        content=content,
-                        target=channel,
-                        message_type='channel',
-                        command_id=command_id,
-                        channel_idx=channel_num,
-                    )
-            except Exception as e:
-                self.logger.debug(f"Error recording transmission for repeat tracking: {e}")
-                # Don't fail the send if transmission tracking fails
+            command_id = self._record_transmission(content, channel, 'channel', command_id, channel_idx=channel_num)
 
             # Optional flood scope (region): set before send, restore after
-            resolved = self.resolve_channel_send_scope(scope=scope, channel=channel)
-            scope_to_use = (
-                resolved if resolved is not None else self._outgoing_flood_scope_override()
-            ) or ""
-            # is_global_marker, not a bare membership test: a hand-written
-            # "none" normalizes to the global marker everywhere else, so
-            # treating it as the region "#none" here would send scoped.
-            scope_is_global = is_global_marker(scope_to_use)
-            if not scope_is_global:
-                scope_to_use = self._normalize_scope_name(scope_to_use)
+            resolved, scope_to_use, scope_is_global = self._send_scope(scope=scope, channel=channel)
             override_cfg = self._outgoing_flood_scope_override()
             if scope_is_global:
                 if override_cfg:
@@ -1533,13 +1533,7 @@ class CommandManager:
                     scope_to_use,
                     scope_source,
                 )
-            scoped = not scope_is_global and hasattr(self.bot.meshcore.commands, "set_flood_scope")
-            if not scope_is_global and not scoped:
-                self.logger.warning(
-                    "Regional flood scope %r requested but meshcore.commands.set_flood_scope "
-                    "is unavailable; channel message will use device default (often global flood)",
-                    scope_to_use,
-                )
+            scoped = not scope_is_global
 
             target = f"{channel} (channel {channel_num})"
             # Retry on no_event_received: max 2 extra attempts, 2s apart
@@ -1646,8 +1640,7 @@ class CommandManager:
         """
         if not chunks:
             return True
-        rate_limit_seconds = self.bot.config.getfloat('Bot', 'bot_tx_rate_limit_seconds', fallback=1.0)
-        sleep_time = max(rate_limit_seconds + 0.5, 1.0)
+        sleep_time = self._chunk_spacing_seconds()
         for i, chunk in enumerate(chunks):
             if i > 0:
                 await self.bot.bot_tx_rate_limiter.wait_for_tx()
@@ -1715,10 +1708,7 @@ class CommandManager:
         if not command and requested_name:
             command = self._find_help_command(requested_name.split(maxsplit=1)[0])
         if command:
-            try:
-                help_text = command.get_help_text(message)
-            except TypeError:
-                help_text = command.get_help_text()
+            help_text = help_text_for(command, message)
             if hasattr(self.bot, 'translator'):
                 return self.bot.translator.translate('commands.help.specific', command=command_name, help_text=help_text)
             return f"Help {command_name}: {help_text}"
@@ -1791,60 +1781,6 @@ class CommandManager:
         else:
             list_str = ', '.join(primary_names)
         return f"{self._HELP_PREFIX}{list_str}{self._HELP_SUFFIX}"
-
-    def get_available_commands_list(self) -> str:
-        """Get a formatted list of available commands"""
-        commands_list = ""
-
-        # Group commands by category
-        basic_commands = ['test', 'ping', 'help', 'cmd']
-        custom_syntax = ['t_phrase']  # Use the actual command key
-        special_commands = ['advert']
-        weather_commands = ['wx', 'aqi']
-        solar_commands = ['sun', 'moon', 'solar', 'hfcond', 'satpass']
-        sports_commands = ['sports']
-
-        commands_list += "**Basic Commands:**\n"
-        for cmd in basic_commands:
-            if cmd in self.commands:
-                help_text = self.commands[cmd].get_help_text()
-                commands_list += f"• `{cmd}` - {help_text}\n"
-
-        commands_list += "\n**Custom Syntax:**\n"
-        for cmd in custom_syntax:
-            if cmd in self.commands:
-                help_text = self.commands[cmd].get_help_text()
-                # Add user-friendly aliases
-                if cmd == 't_phrase':
-                    commands_list += f"• `t phrase` - {help_text}\n"
-                else:
-                    commands_list += f"• `{cmd}` - {help_text}\n"
-
-        commands_list += "\n**Special Commands:**\n"
-        for cmd in special_commands:
-            if cmd in self.commands:
-                help_text = self.commands[cmd].get_help_text()
-                commands_list += f"• `{cmd}` - {help_text}\n"
-
-        commands_list += "\n**Weather Commands:**\n"
-        for cmd in weather_commands:
-            if cmd in self.commands:
-                help_text = self.commands[cmd].get_help_text()
-                commands_list += f"• `{cmd}` - {help_text}\n"
-
-        commands_list += "\n**Solar Commands:**\n"
-        for cmd in solar_commands:
-            if cmd in self.commands:
-                help_text = self.commands[cmd].get_help_text()
-                commands_list += f"• `{cmd}` - {help_text}\n"
-
-        commands_list += "\n**Sports Commands:**\n"
-        for cmd in sports_commands:
-            if cmd in self.commands:
-                help_text = self.commands[cmd].get_help_text()
-                commands_list += f"• `{cmd}` - {help_text}\n"
-
-        return commands_list
 
     async def send_response(
         self,
@@ -2093,8 +2029,7 @@ class CommandManager:
 
         rate_limit_key = self.get_rate_limit_key(message)
         if message.is_dm:
-            rate_limit_seconds = self.bot.config.getfloat('Bot', 'bot_tx_rate_limit_seconds', fallback=1.0)
-            sleep_time = max(rate_limit_seconds + 0.5, 1.0)
+            sleep_time = self._chunk_spacing_seconds()
             for i, chunk in enumerate(chunks):
                 if i > 0:
                     await self.bot.bot_tx_rate_limiter.wait_for_tx()
@@ -2283,10 +2218,7 @@ class CommandManager:
                 if should_queue and self._queue_command(command, message, remaining):
                     # Successfully queued - silently return (no message sent)
                     # Still record in stats as attempted
-                    if 'stats' in self.commands:
-                        stats_command = self.commands['stats']
-                        if stats_command:
-                            stats_command.record_command(message, command_name, False)
+                    self.record_command_stat(message, command_name, False)
                     return
                     # Queue failed (user already has queued command) - fall through to normal rejection
 
@@ -2308,14 +2240,9 @@ class CommandManager:
                         await self.send_response(message, error_msg)
                         response_sent = True
                     elif hasattr(command, 'get_remaining_cooldown') and callable(command.get_remaining_cooldown):
-                        # Check if it's the per-user version (takes user_id parameter)
-                        import inspect
-                        sig = inspect.signature(command.get_remaining_cooldown)
-                        if len(sig.parameters) > 0:
-                            remaining = command.get_remaining_cooldown(message.sender_id)
-                        else:
-                            remaining = command.get_remaining_cooldown()
-
+                        remaining = _call_with_optional_user_id(
+                            command.get_remaining_cooldown, message.sender_id
+                        )
                         if remaining > 0:
                             error_msg = command.translate('errors.cooldown', command=command_name, seconds=remaining)
                             await self.send_response(message, error_msg)
@@ -2332,10 +2259,7 @@ class CommandManager:
                         continue
 
                     # Record command execution in stats database (hard rejection with user feedback)
-                    if 'stats' in self.commands:
-                        stats_command = self.commands['stats']
-                        if stats_command:
-                            stats_command.record_command(message, command_name, response_sent)
+                    self.record_command_stat(message, command_name, response_sent)
 
                     return
 
@@ -2354,21 +2278,13 @@ class CommandManager:
                         await self.send_response(message, error_msg)
 
                         # Record command execution in stats database (error response was sent)
-                        if 'stats' in self.commands:
-                            stats_command = self.commands['stats']
-                            if stats_command:
-                                stats_command.record_command(message, command_name, True)
+                        self.record_command_stat(message, command_name, True)
                         return
 
                 try:
                     # Record execution time for cooldown tracking
                     if hasattr(command, '_record_execution') and callable(command._record_execution):
-                        import inspect
-                        sig = inspect.signature(command._record_execution)
-                        if len(sig.parameters) > 0:
-                            command._record_execution(message.sender_id)
-                        else:
-                            command._record_execution()
+                        _call_with_optional_user_id(command._record_execution, message.sender_id)
 
                     # Execute the command
                     success = await command.execute(message)
@@ -2387,15 +2303,10 @@ class CommandManager:
                         response_sent = True
 
                     # Record command execution in stats database
-                    if 'stats' in self.commands:
-                        stats_command = self.commands['stats']
-                        if stats_command:
-                            stats_command.record_command(message, command_name, response_sent)
+                    self.record_command_stat(message, command_name, response_sent)
 
                     # Capture command data for web viewer
-                    if (hasattr(self.bot, 'web_viewer_integration') and
-                        self.bot.web_viewer_integration and
-                        self.bot.web_viewer_integration.bot_integration):
+                    if viewer := self._viewer_bridge():
                         try:
                             # Use the response we found, or default
                             if response is None:
@@ -2435,7 +2346,7 @@ class CommandManager:
                                             self.logger.debug(f"Linked command {command_id} to confirmed transmission: {record.message_type} to {record.target}")
                                             break
 
-                            self.bot.web_viewer_integration.bot_integration.capture_command(
+                            viewer.capture_command(
                                 message, command_name, response, success if success is not None else True, command_id
                             )
                         except Exception as e:
@@ -2450,18 +2361,13 @@ class CommandManager:
                     await self.send_response(message, error_msg)
 
                     # Record command execution in stats database (error response was sent)
-                    if 'stats' in self.commands:
-                        stats_command = self.commands['stats']
-                        if stats_command:
-                            stats_command.record_command(message, command_name, True)  # Error message counts as response
+                    self.record_command_stat(message, command_name, True)  # Error message counts as response
 
                     # Capture failed command for web viewer
-                    if (hasattr(self.bot, 'web_viewer_integration') and
-                        self.bot.web_viewer_integration and
-                        self.bot.web_viewer_integration.bot_integration):
+                    if viewer := self._viewer_bridge():
                         try:
                             command_id = f"{command_name}_{message.sender_id}_{int(time.time())}"
-                            self.bot.web_viewer_integration.bot_integration.capture_command(
+                            viewer.capture_command(
                                 message, command_name, f"Error: {e}", False, command_id
                             )
                         except Exception as capture_error:
@@ -2534,3 +2440,58 @@ class CommandManager:
     def get_plugin_metadata(self, plugin_name: str | None = None) -> dict[str, Any]:
         """Get plugin metadata"""
         return self.plugin_loader.get_plugin_metadata(plugin_name)
+
+    def get_available_commands_list(self) -> str:
+        """Get a formatted list of available commands"""
+        commands_list = ""
+
+        # Group commands by category
+        basic_commands = ['test', 'ping', 'help', 'cmd']
+        custom_syntax = ['t_phrase']  # Use the actual command key
+        special_commands = ['advert']
+        weather_commands = ['wx', 'aqi']
+        solar_commands = ['sun', 'moon', 'solar', 'hfcond', 'satpass']
+        sports_commands = ['sports']
+
+        commands_list += "**Basic Commands:**\n"
+        for cmd in basic_commands:
+            if cmd in self.commands:
+                help_text = self.commands[cmd].get_help_text()
+                commands_list += f"• `{cmd}` - {help_text}\n"
+
+        commands_list += "\n**Custom Syntax:**\n"
+        for cmd in custom_syntax:
+            if cmd in self.commands:
+                help_text = self.commands[cmd].get_help_text()
+                # Add user-friendly aliases
+                if cmd == 't_phrase':
+                    commands_list += f"• `t phrase` - {help_text}\n"
+                else:
+                    commands_list += f"• `{cmd}` - {help_text}\n"
+
+        commands_list += "\n**Special Commands:**\n"
+        for cmd in special_commands:
+            if cmd in self.commands:
+                help_text = self.commands[cmd].get_help_text()
+                commands_list += f"• `{cmd}` - {help_text}\n"
+
+        commands_list += "\n**Weather Commands:**\n"
+        for cmd in weather_commands:
+            if cmd in self.commands:
+                help_text = self.commands[cmd].get_help_text()
+                commands_list += f"• `{cmd}` - {help_text}\n"
+
+        commands_list += "\n**Solar Commands:**\n"
+        for cmd in solar_commands:
+            if cmd in self.commands:
+                help_text = self.commands[cmd].get_help_text()
+                commands_list += f"• `{cmd}` - {help_text}\n"
+
+        commands_list += "\n**Sports Commands:**\n"
+        for cmd in sports_commands:
+            if cmd in self.commands:
+                help_text = self.commands[cmd].get_help_text()
+                commands_list += f"• `{cmd}` - {help_text}\n"
+
+        return commands_list
+

@@ -563,3 +563,4 @@ class PluginLoader:
                     issues.append(f"Keyword '{keyword}' conflicts with plugin '{existing_plugin}'")
 
         return issues
+

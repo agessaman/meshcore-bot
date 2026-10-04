@@ -15,6 +15,8 @@ class MoonCommand(BaseCommand):
     # Read-only informational output; safe for scheduled {cmd:...} rendering.
     render_safe = True
     name = "moon"
+    honors_skip_channel_check = False
+    enabled_attr = "moon_enabled"
     keywords = ['moon']
     description = "Get moon phase, rise/set times and position"
     category = "solar"
@@ -32,19 +34,6 @@ class MoonCommand(BaseCommand):
         """
         super().__init__(bot)
         self.moon_enabled = self.get_config_value('Moon_Command', 'enabled', fallback=True, value_type='bool')
-
-    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
-        """Check if this command can be executed with the given message.
-
-        Args:
-            message: The message triggering the command.
-
-        Returns:
-            bool: True if command is enabled and checks pass, False otherwise.
-        """
-        if not self.moon_enabled:
-            return False
-        return super().can_execute(message)
 
     async def execute(self, message: MeshMessage) -> bool:
         """Execute the moon command.
@@ -177,7 +166,7 @@ class MoonCommand(BaseCommand):
             # Fallback to original format if formatting fails
             return self.translate('commands.moon.fallback', info=moon_info)
 
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         """Get help text for this command.
 
         Returns:

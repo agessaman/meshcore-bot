@@ -40,6 +40,8 @@ class SportsCommand(BaseCommand):
     # Read-only informational output; safe for scheduled {cmd:...} rendering.
     render_safe = True
     name = "sports"
+    honors_skip_channel_check = False
+    enabled_attr = "sports_enabled"
     keywords = ['sports', 'score', 'scores']
     description = "Get sports scores and schedules (usage: sports [team/league])"
     category = "sports"
@@ -139,16 +141,7 @@ class SportsCommand(BaseCommand):
 
         return self._cleaned_content_matches(message, _matches)
 
-    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
-        """Check if this command can execute with the given message"""
-        if not self.sports_enabled:
-            return False
-
-        # Channel access and cooldown are now handled by BaseCommand.can_execute()
-        # Call parent can_execute() which includes channel checking and cooldown
-        return super().can_execute(message)
-
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         return self.translate('commands.sports.help')
 
 

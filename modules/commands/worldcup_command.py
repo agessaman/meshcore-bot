@@ -38,6 +38,8 @@ class WorldCupCommand(BaseCommand):
     # Read-only informational output; safe for scheduled {cmd:...} rendering.
     render_safe = True
     name = "worldcup"
+    honors_skip_channel_check = False
+    enabled_attr = "worldcup_enabled"
     keywords = ["wc", "worldcup"]
     description = "FIFA World Cup scores, standings, and nation results (in-season only)"
     category = "sports"
@@ -79,13 +81,7 @@ class WorldCupCommand(BaseCommand):
 
         return self._cleaned_content_matches(message, _matches)
 
-    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
-        """Gate on the enabled flag; season gating happens in execute() (needs network)."""
-        if not self.worldcup_enabled:
-            return False
-        return super().can_execute(message)
-
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         return self.translate("commands.worldcup.help")
 
     # ------------------------------------------------------------------ helpers

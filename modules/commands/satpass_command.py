@@ -15,6 +15,8 @@ class SatpassCommand(BaseCommand):
     # Read-only informational output; safe for scheduled {cmd:...} rendering.
     render_safe = True
     name = "satpass"
+    honors_skip_channel_check = False
+    enabled_attr = "satpass_enabled"
     keywords = ['satpass']
     description = "Get satellite pass info: satpass <NORAD_number_or_shortcut> [visual]"
     category = "solar"
@@ -47,19 +49,6 @@ class SatpassCommand(BaseCommand):
         """
         super().__init__(bot)
         self.satpass_enabled = self.get_config_value('Satpass_Command', 'enabled', fallback=True, value_type='bool')
-
-    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
-        """Check if this command can be executed with the given message.
-
-        Args:
-            message: The message triggering the command.
-
-        Returns:
-            bool: True if command is enabled and checks pass, False otherwise.
-        """
-        if not self.satpass_enabled:
-            return False
-        return super().can_execute(message)
 
     async def execute(self, message: MeshMessage) -> bool:
         """Execute the satpass command.
@@ -114,7 +103,7 @@ class SatpassCommand(BaseCommand):
             await self.send_response(message, error_msg)
             return False
 
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         """Get help text for this command.
 
         Returns:

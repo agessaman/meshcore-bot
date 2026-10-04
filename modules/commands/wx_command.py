@@ -366,7 +366,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         """Move blocking provider work off-loop without concurrent Session use."""
         return await asyncio.to_thread(self._run_sync_provider, operation, *args, **kwargs)
 
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         """Get help text, delegating to international command if using Open-Meteo"""
         if self.delegate_command:
             return self.delegate_command.get_help_text()
@@ -561,6 +561,18 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                 return f"{location_name}: {current}"
             return current
 
+    async def _fetch_wxsim(
+        self, source: str, forecast_type: str, num_days: int, message: MeshMessage, location: Optional[str]
+    ) -> str:
+        if location is None:
+            return await self._get_wxsim_weather_async(source, forecast_type, num_days, message)
+        return await self._get_wxsim_weather_async(
+            source, forecast_type, num_days, message, location_name=location
+        )
+
+    async def _fallback_place_name(self, lat: float, lon: float) -> Optional[str]:
+        return await self._coordinates_to_location_string_async(lat, lon)
+
     async def _get_wxsim_weather_async(
         self,
         source_url: str,
@@ -646,88 +658,18 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         if len(parts) < 2:
             mqtt_topic = self._get_custom_mqtt_weather_topic(None)
             if mqtt_topic:
-                try:
-                    self.record_execution(message.sender_id)
-                    weather_data = self._mqtt_weather_line(mqtt_topic, option_type, None)
-                    return bool(await self.send_response(message, weather_data))
-                except Exception as e:
-                    self.logger.error(f"Error reading MQTT weather: {e}")
-                    await self.send_response(message, self.translate("commands.wx.error", error=str(e)))
-                    return True
+                return await self._reply_from_mqtt(message, mqtt_topic, option_type, None, split_multiday=False)
 
             wxsim_source = self._get_custom_wxsim_source(None)  # Check for default
             if wxsim_source:
-                # Use custom WXSIM default source
-                try:
-                    self.record_execution(message.sender_id)
-                    weather_data = await self._get_wxsim_weather_async(
-                        wxsim_source, option_type, option_days, message
-                    )
-                    if option_type == "multiday":
-                        return await self._send_multiday_forecast(message, weather_data)
-                    return bool(await self.send_response(message, weather_data))
-                except Exception as e:
-                    self.logger.error(f"Error fetching WXSIM weather: {e}")
-                    await self.send_response(message, self.translate('commands.wx.error', error=str(e)))
-                    return True
+                return await self._reply_from_wxsim(message, wxsim_source, option_type, option_days)
 
-            # No custom source, try companion location
-            companion_location = self._get_companion_location(message)
-            if companion_location:
-                # Use coordinates directly to avoid re-geocoding issues
-                location_str = self._coordinates_query(*companion_location)
-                parts = [parts[0], location_str]
-                using_companion_location = True
-                # Get city name for display
-                display_name = await self._coordinates_to_location_string_async(
-                    companion_location[0], companion_location[1]
-                )
-                if display_name:
-                    self.logger.info(f"Using companion location: {display_name} ({companion_location[0]}, {companion_location[1]})")
-                else:
-                    self.logger.info(f"Using companion coordinates: {location_str}")
-            else:
-                # No companion location: use default city if configured, then bot location fallback
-                if self.default_city:
-                    location_parts = [self.default_city]
-                    if self.default_state:
-                        location_parts.append(self.default_state)
-                    if self.default_country:
-                        location_parts.append(self.default_country)
-                    location_str = ", ".join(location_parts)
-                    parts = [parts[0], location_str]
-                    self.logger.info(f"Using default city (no args): {location_str}")
-                else:
-                    # No default city: optionally use bot's configured coordinates
-                    use_bot = self.get_config_value(
-                        'Wx_Command',
-                        'use_bot_location_when_no_location',
-                        fallback=False,
-                        value_type='bool',
-                    )
-                    bot_loc = self._get_bot_location() if use_bot else None
-                    if bot_loc:
-                        location_str = self._coordinates_query(*bot_loc)
-                        parts = [parts[0], location_str]
-                        display_name = await self._coordinates_to_location_string_async(
-                            bot_loc[0], bot_loc[1]
-                        )
-                        if display_name:
-                            self.logger.info(
-                                f"Using bot location (no args): {display_name} ({bot_loc[0]}, {bot_loc[1]})"
-                            )
-                        else:
-                            self.logger.info(f"Using bot coordinates (no args): {location_str}")
-                    else:
-                        if use_bot:
-                            self.logger.debug(
-                                "use_bot_location_when_no_location enabled but bot_latitude/bot_longitude "
-                                "not set; showing usage"
-                            )
-                        else:
-                            self.logger.debug("No companion/default city location found, showing usage")
-                        await self.send_response(message, self.translate('commands.wx.usage'))
-                        return True
+            # No custom source: the sender's position, default city, then the bot's position
+            location_str, using_companion_location = await self._no_location_fallback(message)
+            if location_str is None:
+                await self.send_response(message, self.translate('commands.wx.usage'))
+                return True
+            parts = [parts[0], location_str]
 
         if option_word:
             parts.append(option_word)
@@ -758,42 +700,14 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         mqtt_topic = self._get_custom_mqtt_weather_topic(location)
         if mqtt_topic:
             self.logger.info(f"Using custom MQTT weather topic for location '{location}': {mqtt_topic}")
-            try:
-                self.record_execution(message.sender_id)
-                weather_data = self._mqtt_weather_line(
-                    mqtt_topic, forecast_type, location
-                )
-                if forecast_type == "multiday":
-                    return await self._send_multiday_forecast(message, weather_data)
-                return bool(await self.send_response(message, weather_data))
-            except Exception as e:
-                self.logger.error(f"Error reading MQTT weather: {e}")
-                await self.send_response(message, self.translate("commands.wx.error", error=str(e)))
-                return True
+            return await self._reply_from_mqtt(message, mqtt_topic, forecast_type, location)
 
         # Check for custom WXSIM source first (before checking location type)
         wxsim_source = self._get_custom_wxsim_source(location)
         if wxsim_source:
             self.logger.info(f"Using custom WXSIM source for location '{location}': {wxsim_source}")
-            # Use custom WXSIM source
-            try:
-                self.record_execution(message.sender_id)
-                weather_data = await self._get_wxsim_weather_async(
-                    wxsim_source,
-                    forecast_type,
-                    num_days,
-                    message,
-                    location_name=location,
-                )
-                if forecast_type == "multiday":
-                    return await self._send_multiday_forecast(message, weather_data)
-                return bool(await self.send_response(message, weather_data))
-            except Exception as e:
-                self.logger.error(f"Error fetching WXSIM weather: {e}")
-                await self.send_response(message, self.translate('commands.wx.error', error=str(e)))
-                return True
-        else:
-            self.logger.debug(f"No custom WXSIM source found for location '{location}', using normal weather API")
+            return await self._reply_from_wxsim(message, wxsim_source, forecast_type, num_days, location)
+        self.logger.debug(f"No custom WXSIM source found for location '{location}', using normal weather API")
 
         # Check if it's coordinates, zipcode, or city name
         if re.match(r'^\s*-?\d+\.?\d*\s*,\s*-?\d+\.?\d*\s*$', location):
@@ -813,67 +727,50 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             # Special handling for "alerts" command
             if show_full_alerts:
                 # Get alerts only (no weather forecast)
-                lat, lon = None, None
-                if location_type == "coordinates":
-                    try:
-                        lat_str, lon_str = location.split(',')
-                        lat = float(lat_str.strip())
-                        lon = float(lon_str.strip())
-                        if not (-90 <= lat <= 90) or not (-180 <= lon <= 180):
-                            await self.send_response(message, self.translate('commands.wx.error', error="Invalid coordinates"))
-                            return True
-                    except ValueError:
-                        await self.send_response(message, self.translate('commands.wx.error', error=f"Invalid coordinates format: {location}"))
-                        return True
-                elif location_type == "zipcode":
-                    lat, lon = await self._zipcode_to_lat_lon_async(location)
-                    if lat is None or lon is None:
-                        await self.send_response(message, self.translate('commands.wx.no_location_zipcode', location=location))
-                        return True
-                else:  # city
-                    result = await self._city_to_lat_lon_async(location)
-                    if len(result) == 3:
-                        lat, lon, address_info = result
-                    else:
-                        lat, lon = result
-                    if lat is None or lon is None:
-                        region = self.default_state or self.default_country
-                        await self.send_response(message, self.translate('commands.wx.no_location_city', location=location, state=region))
-                        return True
-
-                # Get and display full alert list
-                return await self._send_full_alert_list(message, lat, lon)
+                return await self._send_alert_list_for(message, location, location_type)
 
             # Get weather data for the location
             weather_data = await self.get_weather_for_location(location, location_type, forecast_type, num_days, message, using_companion_location=using_companion_location)
 
-            # Check if we need to send multiple messages
-            if isinstance(weather_data, tuple) and weather_data[0] == "multi_message":
-                # Send weather data first; if it was refused (rate limit, send failure),
-                # do not send its second part on its own.
-                if not await self.send_response(message, weather_data[1]):
-                    return False
-
-                # Wait for bot TX rate limiter to allow next message
-                rate_limit = self.bot.config.getfloat('Bot', 'bot_tx_rate_limit_seconds', fallback=1.0)
-                # Use a conservative sleep time to avoid rate limiting
-                sleep_time = max(rate_limit + 1.0, 2.0)  # At least 2 seconds, or rate_limit + 1 second
-                await self._pace_reply(message, sleep_time)
-
-                # Send the special weather statement (already formatted with prioritization)
-                alert_text = weather_data[2]
-                # Second part of the same reply: the reply limiter already let the first through.
-                return bool(await self.send_response(message, alert_text, skip_user_rate_limit=True))
-            if forecast_type == "multiday":
-                # Use message splitting for multi-day forecasts
-                return await self._send_multiday_forecast(message, weather_data)
-            # Send single message as usual
-            return bool(await self.send_response(message, weather_data))
+            return await self._send_weather_reply(message, weather_data, forecast_type)
 
         except Exception as e:
             self.logger.error(f"Error in weather command: {e}")
             await self.send_response(message, self.translate('commands.wx.error', error=str(e)))
             return True
+
+    async def _send_alert_list_for(self, message: MeshMessage, location: str, location_type: str) -> bool:
+        """The "wx alerts" reply: geocode the location, then send its full alert list."""
+        lat, lon = None, None
+        if location_type == "coordinates":
+            try:
+                lat_str, lon_str = location.split(',')
+                lat = float(lat_str.strip())
+                lon = float(lon_str.strip())
+                if not (-90 <= lat <= 90) or not (-180 <= lon <= 180):
+                    await self.send_response(message, self.translate('commands.wx.error', error="Invalid coordinates"))
+                    return True
+            except ValueError:
+                await self.send_response(message, self.translate('commands.wx.error', error=f"Invalid coordinates format: {location}"))
+                return True
+        elif location_type == "zipcode":
+            lat, lon = await self._zipcode_to_lat_lon_async(location)
+            if lat is None or lon is None:
+                await self.send_response(message, self.translate('commands.wx.no_location_zipcode', location=location))
+                return True
+        else:  # city
+            result = await self._city_to_lat_lon_async(location)
+            if len(result) == 3:
+                lat, lon, address_info = result
+            else:
+                lat, lon = result
+            if lat is None or lon is None:
+                region = self.default_state or self.default_country
+                await self.send_response(message, self.translate('commands.wx.no_location_city', location=location, state=region))
+                return True
+
+        # Get and display full alert list
+        return await self._send_full_alert_list(message, lat, lon)
 
     async def get_weather_for_location(self, location: str, location_type: str, forecast_type: str = "default", num_days: int = 7, message: MeshMessage = None, using_companion_location: bool = False) -> str:
         """Run the ordered synchronous geocode/NOAA workflow off the event loop."""
@@ -899,104 +796,18 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             using_companion_location: If True, always include location prefix even if same state
         """
         try:
-            # Convert location to lat/lon based on type
+            # Convert location to lat/lon based on type, with the location prefix the reply carries
             if location_type == "coordinates":
-                # Parse coordinates from "lat,lon" format
-                try:
-                    lat_str, lon_str = location.split(',')
-                    lat = float(lat_str.strip())
-                    lon = float(lon_str.strip())
-
-                    # Validate coordinate ranges
-                    if not (-90 <= lat <= 90):
-                        return self.translate('commands.wx.error', error=f"Invalid latitude: {lat}")
-                    if not (-180 <= lon <= 180):
-                        return self.translate('commands.wx.error', error=f"Invalid longitude: {lon}")
-
-                    # Get address_info for location display via reverse geocoding
-                    location_str = self._coordinates_to_location_string(lat, lon)
-                    if location_str:
-                        # Parse the location string to get city and state for address_info
-                        parts = location_str.split(',')
-                        if len(parts) >= 2:
-                            city = parts[0].strip()
-                            state = parts[1].strip()
-                            address_info = {'city': city, 'state': state}
-                        else:
-                            address_info = {'city': location_str}
-                    else:
-                        address_info = {}
-                except ValueError:
-                    return self.translate('commands.wx.error', error=f"Invalid coordinates format: {location}")
+                reply, lat, lon, location_prefix = self._locate_coordinates(location)
             elif location_type == "zipcode":
-                lat, lon = self.zipcode_to_lat_lon(location)
-                if lat is None or lon is None:
-                    return self.translate('commands.wx.no_location_zipcode', location=location)
-                address_info = None
+                reply, lat, lon, location_prefix = self._locate_zipcode(location, using_companion_location)
             else:  # city
-                result = self.city_to_lat_lon(location)
-                if len(result) == 3:
-                    lat, lon, address_info = result
-                else:
-                    lat, lon = result
-                    address_info = None
-
-                if lat is None or lon is None:
-                    region = self.default_state or self.default_country
-                    return self.translate('commands.wx.no_location_city', location=location, state=region)
-
-                # Check if the found city is in a different state than default
-                actual_city = location
-                actual_state = self.default_state or self.default_country
-                if address_info:
-                    # Try to get the best city name from various address fields
-                    actual_city = (address_info.get('city') or
-                                 address_info.get('town') or
-                                 address_info.get('village') or
-                                 address_info.get('hamlet') or
-                                 address_info.get('municipality') or
-                                 location)
-                    actual_state = address_info.get('state', self.default_state)
-                    # Convert full state name to abbreviation if needed using the us library
-                    if len(actual_state) > 2:
-                        state_abbr, _ = normalize_us_state(actual_state)
-                        if state_abbr:
-                            actual_state = state_abbr
-
-                    # Also check if the default state needs to be converted for comparison
-                    default_state_full = self.default_state
-                    if len(self.default_state) == 2:
-                        # Convert abbreviation to full name for comparison
-                        _, default_state_full = normalize_us_state(self.default_state)
-                        if not default_state_full:
-                            default_state_full = self.default_state
-
-            # Add location info if city is in a different state than default, or if using companion location
-            location_prefix = ""
-            if location_type == "coordinates" and address_info:
-                # For coordinates, always show location if we have address info
-                city = address_info.get('city', '')
-                state = address_info.get('state', '')
-                if city and state:
-                    # Normalize state to abbreviation
-                    state_abbr, _ = normalize_us_state(state)
-                    if state_abbr:
-                        state = state_abbr
-                    location_prefix = f"{city}, {state}: "
-                elif city:
-                    location_prefix = f"{city}: "
-            elif location_type == "city" and address_info:
-                # Compare states (handle both full names and abbreviations)
-                states_different = (actual_state != self.default_state and
-                                  actual_state != default_state_full)
-                # Always show location if using companion location, or if state is different
-                if using_companion_location or states_different or self.always_show_location:
-                    location_prefix = f"{actual_city}, {actual_state}: " if actual_state else f"{actual_city}: "
-            elif location_type == "zipcode" and (using_companion_location or self.always_show_location):
-                # For zipcode with companion location, try to get city name from reverse geocoding
-                location_str = self._coordinates_to_location_string(lat, lon)
-                if location_str:
-                    location_prefix = f"{location_str}: "
+                # An unrecognized type geocodes as a city but never carries the city prefix
+                reply, lat, lon, location_prefix = self._locate_city(
+                    location, using_companion_location, labeled=location_type == "city"
+                )
+            if reply is not None:
+                return reply
 
             # Get max message length dynamically
             max_length = self.get_max_message_length(message) if message else 130
@@ -1011,57 +822,179 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                 max_length - self._count_display_width(location_prefix), self.MIN_BODY_BUDGET
             )
 
-            # Get weather forecast based on type
-            if forecast_type == "tomorrow":
-                forecast_periods, points_data = self.get_noaa_weather(lat, lon, return_periods=True, max_length=body_max_length)
-                if forecast_periods == self.ERROR_FETCHING_DATA:
-                    return self.translate('commands.wx.error_fetching')
-                weather = self.format_tomorrow_forecast(forecast_periods, max_length=body_max_length)
-            elif forecast_type == "multiday":
-                forecast_periods, points_data = self.get_noaa_weather(lat, lon, return_periods=True, max_length=body_max_length)
-                if forecast_periods == self.ERROR_FETCHING_DATA:
-                    return self.translate('commands.wx.error_fetching')
-                weather = self.format_multiday_forecast(forecast_periods, num_days, max_length=body_max_length)
-            elif forecast_type == "hourly":
-                hourly_periods, points_data = self.get_noaa_hourly_weather(lat, lon)
-                if hourly_periods == self.ERROR_FETCHING_DATA:
-                    return self.translate('commands.wx.error_fetching')
-                weather = self.format_hourly_forecast(hourly_periods, max_length=body_max_length)
-            else:  # default
-                weather, points_data = self.get_noaa_weather(lat, lon, max_length=body_max_length)
-                if weather == self.ERROR_FETCHING_DATA:
-                    return self.translate('commands.wx.error_fetching')
-
-                # Note: Current conditions are now integrated directly into the current period
-                # via _add_period_details() using observation station data
+            reply, weather = self._noaa_forecast_body(lat, lon, forecast_type, num_days, body_max_length)
+            if reply is not None:
+                return reply
 
             # Get weather alerts (only for default forecast type to avoid cluttering)
             if forecast_type == "default":
-                alerts_result = self.get_weather_alerts_noaa(lat, lon, return_full_data=False)
-                if alerts_result == self.ERROR_FETCHING_DATA or alerts_result == self.NO_ALERTS:
-                    pass
-                else:
-                    full_alert_text, abbreviated_alert_text, alert_count = alerts_result
-                    if alert_count > 0:
-                        # Get full alert data for prioritized formatting
-                        alerts_full_result = self.get_weather_alerts_noaa(lat, lon, return_full_data=True)
-                        if alerts_full_result not in [self.ERROR_FETCHING_DATA, self.NO_ALERTS]:
-                            alerts_list, _ = alerts_full_result
-                            # Format with prioritization and summary
-                            formatted_alert_text = self._format_alerts_compact_summary(alerts_list, alert_count, max_length=max_length)
-                        else:
-                            # Fallback to old format
-                            formatted_alert_text = full_alert_text
-
-                        # Always send weather first, then alerts in separate message
-                        self.logger.info(f"Found {alert_count} alerts - using two-message mode")
-                        return ("multi_message", f"{location_prefix}{weather}", formatted_alert_text, alert_count)
+                return self._with_noaa_alerts(lat, lon, location_prefix, weather, max_length)
 
             return f"{location_prefix}{weather}"
 
         except Exception as e:
             self.logger.error(f"Error getting weather for {location_type} {location}: {e}")
             return self.translate('commands.wx.error', error=str(e))
+
+    def _locate_coordinates(self, location: str) -> tuple:
+        """(error reply or None, lat, lon, location prefix) for a "lat,lon" location."""
+        # Parse coordinates from "lat,lon" format
+        try:
+            lat_str, lon_str = location.split(',')
+            lat = float(lat_str.strip())
+            lon = float(lon_str.strip())
+
+            # Validate coordinate ranges
+            if not (-90 <= lat <= 90):
+                return self.translate('commands.wx.error', error=f"Invalid latitude: {lat}"), None, None, ""
+            if not (-180 <= lon <= 180):
+                return self.translate('commands.wx.error', error=f"Invalid longitude: {lon}"), None, None, ""
+
+            # Get address_info for location display via reverse geocoding
+            location_str = self._coordinates_to_location_string(lat, lon)
+            if location_str:
+                # Parse the location string to get city and state for address_info
+                parts = location_str.split(',')
+                if len(parts) >= 2:
+                    city = parts[0].strip()
+                    state = parts[1].strip()
+                    address_info = {'city': city, 'state': state}
+                else:
+                    address_info = {'city': location_str}
+            else:
+                address_info = {}
+        except ValueError:
+            return self.translate('commands.wx.error', error=f"Invalid coordinates format: {location}"), None, None, ""
+
+        location_prefix = ""
+        if address_info:
+            # For coordinates, always show location if we have address info
+            city = address_info.get('city', '')
+            state = address_info.get('state', '')
+            if city and state:
+                # Normalize state to abbreviation
+                state_abbr, _ = normalize_us_state(state)
+                if state_abbr:
+                    state = state_abbr
+                location_prefix = f"{city}, {state}: "
+            elif city:
+                location_prefix = f"{city}: "
+        return None, lat, lon, location_prefix
+
+    def _locate_zipcode(self, location: str, using_companion_location: bool) -> tuple:
+        """(error reply or None, lat, lon, location prefix) for a zipcode location."""
+        lat, lon = self.zipcode_to_lat_lon(location)
+        if lat is None or lon is None:
+            return self.translate('commands.wx.no_location_zipcode', location=location), None, None, ""
+
+        location_prefix = ""
+        if using_companion_location or self.always_show_location:
+            # For zipcode with companion location, try to get city name from reverse geocoding
+            location_str = self._coordinates_to_location_string(lat, lon)
+            if location_str:
+                location_prefix = f"{location_str}: "
+        return None, lat, lon, location_prefix
+
+    def _locate_city(self, location: str, using_companion_location: bool, labeled: bool = True) -> tuple:
+        """(error reply or None, lat, lon, location prefix) for a city location."""
+        result = self.city_to_lat_lon(location)
+        if len(result) == 3:
+            lat, lon, address_info = result
+        else:
+            lat, lon = result
+            address_info = None
+
+        if lat is None or lon is None:
+            region = self.default_state or self.default_country
+            return self.translate('commands.wx.no_location_city', location=location, state=region), None, None, ""
+
+        # Check if the found city is in a different state than default
+        actual_city = location
+        actual_state = self.default_state or self.default_country
+        if address_info:
+            # Try to get the best city name from various address fields
+            actual_city = (address_info.get('city') or
+                         address_info.get('town') or
+                         address_info.get('village') or
+                         address_info.get('hamlet') or
+                         address_info.get('municipality') or
+                         location)
+            actual_state = address_info.get('state', self.default_state)
+            # Convert full state name to abbreviation if needed using the us library
+            if len(actual_state) > 2:
+                state_abbr, _ = normalize_us_state(actual_state)
+                if state_abbr:
+                    actual_state = state_abbr
+
+            # Also check if the default state needs to be converted for comparison
+            default_state_full = self.default_state
+            if len(self.default_state) == 2:
+                # Convert abbreviation to full name for comparison
+                _, default_state_full = normalize_us_state(self.default_state)
+                if not default_state_full:
+                    default_state_full = self.default_state
+
+        # Add location info if city is in a different state than default, or if using companion location
+        location_prefix = ""
+        if labeled and address_info:
+            # Compare states (handle both full names and abbreviations)
+            states_different = (actual_state != self.default_state and
+                              actual_state != default_state_full)
+            # Always show location if using companion location, or if state is different
+            if using_companion_location or states_different or self.always_show_location:
+                location_prefix = f"{actual_city}, {actual_state}: " if actual_state else f"{actual_city}: "
+        return None, lat, lon, location_prefix
+
+    def _noaa_forecast_body(self, lat: float, lon: float, forecast_type: str, num_days: int, body_max_length: int) -> tuple:
+        """(error reply or None, formatted forecast) for one forecast type."""
+        # Get weather forecast based on type
+        if forecast_type == "tomorrow":
+            forecast_periods, points_data = self.get_noaa_weather(lat, lon, return_periods=True, max_length=body_max_length)
+            if forecast_periods == self.ERROR_FETCHING_DATA:
+                return self.translate('commands.wx.error_fetching'), None
+            weather = self.format_tomorrow_forecast(forecast_periods, max_length=body_max_length)
+        elif forecast_type == "multiday":
+            forecast_periods, points_data = self.get_noaa_weather(lat, lon, return_periods=True, max_length=body_max_length)
+            if forecast_periods == self.ERROR_FETCHING_DATA:
+                return self.translate('commands.wx.error_fetching'), None
+            weather = self.format_multiday_forecast(forecast_periods, num_days, max_length=body_max_length)
+        elif forecast_type == "hourly":
+            hourly_periods, points_data = self.get_noaa_hourly_weather(lat, lon)
+            if hourly_periods == self.ERROR_FETCHING_DATA:
+                return self.translate('commands.wx.error_fetching'), None
+            weather = self.format_hourly_forecast(hourly_periods, max_length=body_max_length)
+        else:  # default
+            weather, points_data = self.get_noaa_weather(lat, lon, max_length=body_max_length)
+            if weather == self.ERROR_FETCHING_DATA:
+                return self.translate('commands.wx.error_fetching'), None
+
+            # Note: Current conditions are now integrated directly into the current period
+            # via _add_period_details() using observation station data
+        return None, weather
+
+    def _with_noaa_alerts(self, lat: float, lon: float, location_prefix: str, weather: str, max_length: int) -> str | tuple:
+        """The default forecast reply, as a two-message tuple when NOAA has active alerts."""
+        alerts_result = self.get_weather_alerts_noaa(lat, lon, return_full_data=False)
+        if alerts_result == self.ERROR_FETCHING_DATA or alerts_result == self.NO_ALERTS:
+            pass
+        else:
+            full_alert_text, abbreviated_alert_text, alert_count = alerts_result
+            if alert_count > 0:
+                # Get full alert data for prioritized formatting
+                alerts_full_result = self.get_weather_alerts_noaa(lat, lon, return_full_data=True)
+                if alerts_full_result not in [self.ERROR_FETCHING_DATA, self.NO_ALERTS]:
+                    alerts_list, _ = alerts_full_result
+                    # Format with prioritization and summary
+                    formatted_alert_text = self._format_alerts_compact_summary(alerts_list, alert_count, max_length=max_length)
+                else:
+                    # Fallback to old format
+                    formatted_alert_text = full_alert_text
+
+                # Always send weather first, then alerts in separate message
+                self.logger.info(f"Found {alert_count} alerts - using two-message mode")
+                return ("multi_message", f"{location_prefix}{weather}", formatted_alert_text, alert_count)
+
+        return f"{location_prefix}{weather}"
 
     def zipcode_to_lat_lon(self, zipcode: str) -> tuple:
         """Convert zipcode to latitude and longitude"""
@@ -1159,153 +1092,18 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                 return "No forecast data available", weather_json
 
             current = forecast[0]
-            day_name = self._noaa_period_display_name(current)
-            temp = current.get('temperature', 'N/A')
-            temp_unit = current.get('temperatureUnit', 'F')
-            short_forecast = current.get('shortForecast', 'Unknown')
-            wind_speed = current.get('windSpeed', '')
-            wind_direction = current.get('windDirection', '')
-            detailed_forecast = current.get('detailedForecast', '')
-
-            # Extract additional useful info from detailed forecast
-            self.extract_humidity(detailed_forecast)
-            precip_chance = self.extract_precip_chance(detailed_forecast)
-
-            # Create compact but complete weather string with emoji
-            weather_emoji = self.get_weather_emoji(short_forecast)
-            weather = f"{day_name}: {weather_emoji}{short_forecast} {temp}°{temp_unit}"
-
-            # Add wind info if available
-            if wind_speed and wind_direction:
-                wind_match = re.search(r'(\d+)', wind_speed)
-                if wind_match:
-                    wind_num = self._noaa_wind_convert(wind_match.group(1), wind_speed)
-                    wind_dir = self.abbreviate_wind_direction(wind_direction)
-                    if wind_dir:
-                        weather += f" {wind_dir}{wind_num}"
-
-            # PRIORITIZE: Add all available details to current period first
-            # Get observation station data for more accurate current conditions
-            observation_data = self.get_observation_data(weather_json)
-
-            # Use most of the max_length limit (max_length - 10 chars) to ensure current period gets full details
-            # Additional periods will only be added if there's remaining space
-            # Pass observation_data to use real-time station data instead of parsing from text
-            current_period_max = max_length - 10
-            weather = self._add_period_details(weather, detailed_forecast, 0, max_length=current_period_max, observation_data=observation_data)
-
-            # Also add precipitation chance if available (not in helper function)
-            if precip_chance and self._count_display_width(weather) < current_period_max:
-                weather += f" 🌦️{precip_chance}%"
-
-            # Also add UV index if available (not in helper function)
-            uv_index = self.extract_uv_index(detailed_forecast)
-            if uv_index and self._count_display_width(weather) < current_period_max:
-                weather += f" UV{uv_index}"
+            weather = self._noaa_current_summary(current, weather_json, max_length)
 
             # Add next period (Today, Tonight) and Tomorrow if available
-            # First, find Today, Tonight, and Tomorrow periods
-            today_period = None
-            tonight_period = None
-            tomorrow_period = None
-            current_period_name = current.get('name', '').lower()
-            is_current_tonight = 'tonight' in current_period_name
-            is_current_night = any(word in current_period_name for word in ['tonight', 'overnight', 'night'])
-
-            # Check if current period is a night period (Overnight, Tonight, etc.)
-            # If so, we should prioritize showing the upcoming daytime period (Today)
-            for i, period in enumerate(forecast):
-                period_name = period.get('name', '').lower()
-                # Look for "Today" period (daytime forecast)
-                if 'today' in period_name and today_period is None and i > 0:
-                    # Make sure it's not a night period
-                    if 'night' not in period_name and 'tonight' not in period_name:
-                        today_period = (i, period)
-                elif 'tonight' in period_name and tonight_period is None:
-                    tonight_period = (i, period)
-                elif 'tomorrow' in period_name and tomorrow_period is None:
-                    tomorrow_period = (i, period)
-
-            # If current is a night period and we haven't found Today yet, look for next daytime period
-            if is_current_night and not today_period:
-                # Look for the next period that's not a night period
-                for i, period in enumerate(forecast):
-                    if i > 0:  # Skip current period
-                        period_name = period.get('name', '').lower()
-                        # Look for daytime periods (Today, or day names without "night")
-                        if 'today' in period_name and 'night' not in period_name:
-                            today_period = (i, period)
-                            break
-                        # Also check for day names that aren't night periods
-                        day_names = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
-                        if any(day in period_name for day in day_names) and 'night' not in period_name:
-                            today_period = (i, period)
-                            break
-
-            # If current is Tonight and we haven't found Tomorrow yet, look for next day's periods
-            if is_current_tonight and not tomorrow_period:
-                # If today_period is a day name (not "Today"), look for the next period after it
-                if today_period:
-                    period_name_lower = today_period[1].get('name', '').lower()
-                    day_names = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
-                    if any(day in period_name_lower for day in day_names) and 'today' not in period_name_lower:
-                        # today_period is actually tomorrow's daytime period - look for the night period after it
-                        today_period_index = today_period[0]
-                        # Look for the next period after today_period (should be the night period for that day)
-                        for i, period in enumerate(forecast):
-                            if i > today_period_index:  # Look for periods after today_period
-                                period_name = period.get('name', '').lower()
-                                # Look for the night period for the same day, or the next day
-                                if any(word in period_name for word in ['night', 'tomorrow', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']):
-                                    tomorrow_period = (i, period)
-                                    break
-                        # If we didn't find a night period, use today_period as tomorrow_period
-                        if not tomorrow_period:
-                            tomorrow_period = today_period
-                    else:
-                        # Look for periods after Tonight (next day)
-                        for i, period in enumerate(forecast):
-                            if i > 0:  # Skip current period
-                                period_name = period.get('name', '').lower()
-                                # Skip if this period is already set as today_period (avoid duplicates)
-                                if today_period and today_period[0] == i:
-                                    continue
-                                # Look for tomorrow, next day, or day names
-                                if any(word in period_name for word in ['tomorrow', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']):
-                                    tomorrow_period = (i, period)
-                                    break
-                else:
-                    # Look for periods after Tonight (next day)
-                    for i, period in enumerate(forecast):
-                        if i > 0:  # Skip current period
-                            period_name = period.get('name', '').lower()
-                            # Look for tomorrow, next day, or day names
-                            if any(word in period_name for word in ['tomorrow', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']):
-                                tomorrow_period = (i, period)
-                                break
+            today_period, tonight_period, tomorrow_period, is_current_tonight, is_current_night = (
+                self._noaa_followup_periods(forecast, current)
+            )
 
             # If current is a night period, prioritize adding Today (the upcoming daytime)
             # When today_period is a day name (like "Tuesday"), we still add it as tomorrow's daytime period
             if is_current_night and today_period:
-                period = today_period[1]
                 # Always add today_period - it represents tomorrow's daytime when current is Tonight
-                period_detailed = period.get('detailedForecast', '')
-                period_head = self._noaa_period_str(period)
-                if period_head:
-                    period_str = self._noaa_period_wind(weather, period_head, period, max_length - 10, max_length)
-
-                    # Add additional details (humidity, dew point, visibility, etc.)
-                    # But only if current period isn't too long - prioritize current period details
-                    current_weather_len = self._count_display_width(weather)
-                    # Only add details to additional periods if current period is under max_length - 20 chars
-                    # This ensures we prioritize current period details first
-                    if current_weather_len < max_length - 20:
-                        period_str = self._add_period_details(period_str, period_detailed, current_weather_len, max_length=max_length)
-
-                    # Only add if we have space (using display width)
-                    # Be more conservative - only add if current period is reasonable length
-                    if current_weather_len < max_length - 20 and self._count_display_width(weather + period_str) <= max_length:
-                        weather += period_str
+                weather = self._append_noaa_period(weather, today_period[1], max_length)
 
             # Add Tonight if it's the immediate next period (and current is not already Tonight)
             # If we already added Today, we can still add Tonight if it's the next period after Today
@@ -1321,71 +1119,215 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                     should_add_tonight = True
 
                 if should_add_tonight:
-                    period = tonight_period[1]
-                    period_detailed = period.get('detailedForecast', '')
-                    period_head = self._noaa_period_str(period)
-                    if period_head:
-                        period_str = self._noaa_period_wind(weather, period_head, period, max_length - 10, max_length)
-
-                        # Add additional details (humidity, dew point, visibility, etc.)
-                        # But only if current period isn't too long - prioritize current period details
-                        current_weather_len = self._count_display_width(weather)
-                        # Only add details to additional periods if current period is under max_length - 20 chars
-                        # This ensures we prioritize current period details first
-                        if current_weather_len < max_length - 20:
-                            period_str = self._add_period_details(period_str, period_detailed, current_weather_len, max_length=max_length)
-
-                        # Only add if we have space (using display width)
-                        # Be more conservative - only add if current period is reasonable length
-                        if current_weather_len < max_length - 20 and self._count_display_width(weather + period_str) <= max_length:
-                            weather += period_str
+                    weather = self._append_noaa_period(weather, tonight_period[1], max_length)
 
             # Always try to add Tomorrow if available (especially if current is Tonight)
             # Prioritize adding Tomorrow when current is Tonight to use more of the available message length
             if tomorrow_period:
-                period = tomorrow_period[1]
-                period_detailed = period.get('detailedForecast', '')
-                period_short = period.get('shortForecast', '')
-                night = is_current_tonight or is_current_night
-                period_head = None
-                if _has_temp(period.get('temperature', '')) and period_short:
-                    # Shorten long forecast text (especially when current is a night period)
-                    forecast_text = (
-                        self._abbreviate_noaa_forecast(period_short) if night and len(period_short) > 20 else period_short
-                    )
-                    period_head = self._noaa_period_str(period, forecast_text)
-                if period_head:
-                    # Be more aggressive about adding wind when current is a night period
-                    wind_threshold = 115 if night else 120
-                    period_str = self._noaa_period_wind(weather, period_head, period, wind_threshold, max_length)
-
-                    # Add additional details (humidity, dew point, visibility, etc.)
-                    # But only if current period isn't too long - prioritize current period details
-                    current_weather_len = self._count_display_width(weather)
-                    # Only add details to additional periods if current period is under max_length - 20 chars
-                    # This ensures we prioritize current period details first
-                    if current_weather_len < max_length - 20:
-                        max_chars = max_length - 2 if (is_current_tonight or is_current_night) else max_length
-                        period_str = self._add_period_details(period_str, period_detailed, current_weather_len, max_chars)
-
-                    # Only add if we have space (using display width, prioritize current period)
-                    # Be more aggressive about adding tomorrow_period when current is Tonight and we have space
-                    max_chars = max_length - 2 if (is_current_tonight or is_current_night) else max_length
-                    # If current is Tonight and we have plenty of space, be more lenient with the length check
-                    if is_current_tonight or is_current_night:
-                        # Allow adding tomorrow_period if we're under max_length - 10 chars (more lenient)
-                        if current_weather_len < max_length - 10 and self._count_display_width(weather + period_str) <= max_chars:
-                            weather += period_str
-                    else:
-                        # For non-night periods, use the stricter check
-                        if current_weather_len < max_length - 20 and self._count_display_width(weather + period_str) <= max_chars:
-                            weather += period_str
+                weather = self._append_noaa_tomorrow(weather, tomorrow_period[1], is_current_tonight, is_current_night, max_length)
 
             return weather, weather_json
 
         except Exception as e:
             self.logger.error(f"Error fetching NOAA weather: {e}")
             return self.ERROR_FETCHING_DATA, None
+
+    def _noaa_current_summary(self, current: dict, weather_json: dict, max_length: int) -> str:
+        """The current period's line: name, sky, temperature, wind and as many details as fit."""
+        day_name = self._noaa_period_display_name(current)
+        temp = current.get('temperature', 'N/A')
+        temp_unit = current.get('temperatureUnit', 'F')
+        short_forecast = current.get('shortForecast', 'Unknown')
+        wind_speed = current.get('windSpeed', '')
+        wind_direction = current.get('windDirection', '')
+        detailed_forecast = current.get('detailedForecast', '')
+
+        # Extract additional useful info from detailed forecast
+        self.extract_humidity(detailed_forecast)
+        precip_chance = self.extract_precip_chance(detailed_forecast)
+
+        # Create compact but complete weather string with emoji
+        weather_emoji = self.get_weather_emoji(short_forecast)
+        weather = f"{day_name}: {weather_emoji}{short_forecast} {temp}°{temp_unit}"
+
+        # Add wind info if available
+        if wind_speed and wind_direction:
+            wind_match = re.search(r'(\d+)', wind_speed)
+            if wind_match:
+                wind_num = self._noaa_wind_convert(wind_match.group(1), wind_speed)
+                wind_dir = self.abbreviate_wind_direction(wind_direction)
+                if wind_dir:
+                    weather += f" {wind_dir}{wind_num}"
+
+        # PRIORITIZE: Add all available details to current period first
+        # Get observation station data for more accurate current conditions
+        observation_data = self.get_observation_data(weather_json)
+
+        # Use most of the max_length limit (max_length - 10 chars) to ensure current period gets full details
+        # Additional periods will only be added if there's remaining space
+        # Pass observation_data to use real-time station data instead of parsing from text
+        current_period_max = max_length - 10
+        weather = self._add_period_details(weather, detailed_forecast, 0, max_length=current_period_max, observation_data=observation_data)
+
+        # Also add precipitation chance if available (not in helper function)
+        if precip_chance and self._count_display_width(weather) < current_period_max:
+            weather += f" 🌦️{precip_chance}%"
+
+        # Also add UV index if available (not in helper function)
+        uv_index = self.extract_uv_index(detailed_forecast)
+        if uv_index and self._count_display_width(weather) < current_period_max:
+            weather += f" UV{uv_index}"
+
+        return weather
+
+    def _append_noaa_tomorrow(self, weather: str, period: dict, is_current_tonight: bool, is_current_night: bool, max_length: int) -> str:
+        """``weather`` with the Tomorrow period appended when it fits; a night reply shortens its text and is more lenient."""
+        period_detailed = period.get('detailedForecast', '')
+        period_short = period.get('shortForecast', '')
+        night = is_current_tonight or is_current_night
+        period_head = None
+        if _has_temp(period.get('temperature', '')) and period_short:
+            # Shorten long forecast text (especially when current is a night period)
+            forecast_text = (
+                self._abbreviate_noaa_forecast(period_short) if night and len(period_short) > 20 else period_short
+            )
+            period_head = self._noaa_period_str(period, forecast_text)
+        if period_head:
+            # Be more aggressive about adding wind when current is a night period
+            wind_threshold = 115 if night else 120
+            period_str = self._noaa_period_wind(weather, period_head, period, wind_threshold, max_length)
+
+            # Add additional details (humidity, dew point, visibility, etc.)
+            # But only if current period isn't too long - prioritize current period details
+            current_weather_len = self._count_display_width(weather)
+            # Only add details to additional periods if current period is under max_length - 20 chars
+            # This ensures we prioritize current period details first
+            if current_weather_len < max_length - 20:
+                max_chars = max_length - 2 if (is_current_tonight or is_current_night) else max_length
+                period_str = self._add_period_details(period_str, period_detailed, current_weather_len, max_chars)
+
+            # Only add if we have space (using display width, prioritize current period)
+            # Be more aggressive about adding tomorrow_period when current is Tonight and we have space
+            max_chars = max_length - 2 if (is_current_tonight or is_current_night) else max_length
+            # If current is Tonight and we have plenty of space, be more lenient with the length check
+            if is_current_tonight or is_current_night:
+                # Allow adding tomorrow_period if we're under max_length - 10 chars (more lenient)
+                if current_weather_len < max_length - 10 and self._count_display_width(weather + period_str) <= max_chars:
+                    weather += period_str
+            else:
+                # For non-night periods, use the stricter check
+                if current_weather_len < max_length - 20 and self._count_display_width(weather + period_str) <= max_chars:
+                    weather += period_str
+        return weather
+
+    def _append_noaa_period(self, weather: str, period: dict, max_length: int) -> str:
+        """``weather`` with a Today or Tonight period appended when it fits.
+
+        The period gets wind and details only while the reply so far leaves room,
+        so the current period keeps its full details first.
+        """
+        period_detailed = period.get('detailedForecast', '')
+        period_head = self._noaa_period_str(period)
+        if period_head:
+            period_str = self._noaa_period_wind(weather, period_head, period, max_length - 10, max_length)
+
+            # Add additional details (humidity, dew point, visibility, etc.)
+            # But only if current period isn't too long - prioritize current period details
+            current_weather_len = self._count_display_width(weather)
+            # Only add details to additional periods if current period is under max_length - 20 chars
+            # This ensures we prioritize current period details first
+            if current_weather_len < max_length - 20:
+                period_str = self._add_period_details(period_str, period_detailed, current_weather_len, max_length=max_length)
+
+            # Only add if we have space (using display width)
+            # Be more conservative - only add if current period is reasonable length
+            if current_weather_len < max_length - 20 and self._count_display_width(weather + period_str) <= max_length:
+                weather += period_str
+        return weather
+
+    def _noaa_followup_periods(self, forecast: list, current: dict) -> tuple:
+        """The ``(index, period)`` pairs for Today, Tonight and Tomorrow after ``current``, and whether
+        ``current`` is Tonight or any night period: ``(today, tonight, tomorrow, is_tonight, is_night)``."""
+        # First, find Today, Tonight, and Tomorrow periods
+        today_period = None
+        tonight_period = None
+        tomorrow_period = None
+        current_period_name = current.get('name', '').lower()
+        is_current_tonight = 'tonight' in current_period_name
+        is_current_night = any(word in current_period_name for word in ['tonight', 'overnight', 'night'])
+
+        # Check if current period is a night period (Overnight, Tonight, etc.)
+        # If so, we should prioritize showing the upcoming daytime period (Today)
+        for i, period in enumerate(forecast):
+            period_name = period.get('name', '').lower()
+            # Look for "Today" period (daytime forecast)
+            if 'today' in period_name and today_period is None and i > 0:
+                # Make sure it's not a night period
+                if 'night' not in period_name and 'tonight' not in period_name:
+                    today_period = (i, period)
+            elif 'tonight' in period_name and tonight_period is None:
+                tonight_period = (i, period)
+            elif 'tomorrow' in period_name and tomorrow_period is None:
+                tomorrow_period = (i, period)
+
+        # If current is a night period and we haven't found Today yet, look for next daytime period
+        if is_current_night and not today_period:
+            # Look for the next period that's not a night period
+            for i, period in enumerate(forecast):
+                if i > 0:  # Skip current period
+                    period_name = period.get('name', '').lower()
+                    # Look for daytime periods (Today, or day names without "night")
+                    if 'today' in period_name and 'night' not in period_name:
+                        today_period = (i, period)
+                        break
+                    # Also check for day names that aren't night periods
+                    day_names = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+                    if any(day in period_name for day in day_names) and 'night' not in period_name:
+                        today_period = (i, period)
+                        break
+
+        # If current is Tonight and we haven't found Tomorrow yet, look for next day's periods
+        if is_current_tonight and not tomorrow_period:
+            # If today_period is a day name (not "Today"), look for the next period after it
+            if today_period:
+                period_name_lower = today_period[1].get('name', '').lower()
+                day_names = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+                if any(day in period_name_lower for day in day_names) and 'today' not in period_name_lower:
+                    # today_period is actually tomorrow's daytime period - look for the night period after it
+                    today_period_index = today_period[0]
+                    # Look for the next period after today_period (should be the night period for that day)
+                    for i, period in enumerate(forecast):
+                        if i > today_period_index:  # Look for periods after today_period
+                            period_name = period.get('name', '').lower()
+                            # Look for the night period for the same day, or the next day
+                            if any(word in period_name for word in ['night', 'tomorrow', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']):
+                                tomorrow_period = (i, period)
+                                break
+                    # If we didn't find a night period, use today_period as tomorrow_period
+                    if not tomorrow_period:
+                        tomorrow_period = today_period
+                else:
+                    # Look for periods after Tonight (next day)
+                    for i, period in enumerate(forecast):
+                        if i > 0:  # Skip current period
+                            period_name = period.get('name', '').lower()
+                            # Skip if this period is already set as today_period (avoid duplicates)
+                            if today_period and today_period[0] == i:
+                                continue
+                            # Look for tomorrow, next day, or day names
+                            if any(word in period_name for word in ['tomorrow', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']):
+                                tomorrow_period = (i, period)
+                                break
+            else:
+                # Look for periods after Tonight (next day)
+                for i, period in enumerate(forecast):
+                    if i > 0:  # Skip current period
+                        period_name = period.get('name', '').lower()
+                        # Look for tomorrow, next day, or day names
+                        if any(word in period_name for word in ['tomorrow', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']):
+                            tomorrow_period = (i, period)
+                            break
+        return today_period, tonight_period, tomorrow_period, is_current_tonight, is_current_night
 
     def _noaa_period_str(self, period: dict, forecast_text: Optional[str] = None) -> Optional[str]:
         """``" | Name: <emoji><forecast> <high/low or temp°>"`` for a forecast period.

@@ -90,8 +90,7 @@ def _run(coro):
 @pytest.fixture
 def aqi_cmd():
     bot = _make_bot(Aqi_Command={"enabled": "true"})
-    with patch("modules.commands.aqi_command.get_nominatim_geocoder", return_value=Mock()), \
-         patch("modules.commands.aqi_command.requests_cache.CachedSession"), \
+    with patch("modules.commands.aqi_command.requests_cache.CachedSession"), \
          patch("modules.commands.aqi_command.retry", side_effect=lambda s, **kw: s), \
          patch("modules.commands.aqi_command.openmeteo_requests.Client", return_value=Mock()):
         from modules.commands.aqi_command import AqiCommand
@@ -536,9 +535,8 @@ def prefix_cmd():
 @pytest.fixture
 def solar_cmd():
     bot = _make_bot(Solarforecast_Command={"enabled": "true"})
-    with patch("modules.commands.solarforecast_command.get_nominatim_geocoder", return_value=Mock()):
-        from modules.commands.solarforecast_command import SolarforecastCommand
-        return SolarforecastCommand(bot)
+    from modules.commands.solarforecast_command import SolarforecastCommand
+    return SolarforecastCommand(bot)
 
 
 @pytest.mark.unit

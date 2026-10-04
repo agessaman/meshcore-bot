@@ -209,7 +209,7 @@ class MqttWeatherService(BaseServicePlugin):
             if broker["username"]:
                 self._client.username_pw_set(broker["username"], broker["password"])
 
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
 
             def do_connect() -> None:
                 self._client.connect(broker["host"], broker["port"], keepalive=60)

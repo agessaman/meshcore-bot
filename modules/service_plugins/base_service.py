@@ -6,9 +6,15 @@ Base service plugin class for background services
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from abc import ABC, abstractmethod
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any, Optional
+
+# Absolute on purpose: the local-service loader also executes this file as
+# local_services.base_service, where a relative parent import cannot resolve.
+from modules.flood_scope import section_flood_scope
 
 
 @dataclass
@@ -126,15 +132,7 @@ class BaseServicePlugin(ABC):
         Reads ``flood_scope`` from ``config_section``. When omitted, returns ``None``
         so ``send_channel_message`` uses ``[Channels] outgoing_flood_scope_override``.
         """
-        from modules.command_manager import CommandManager
-
-        section = self.config_section or self._derive_config_section()
-        if not self.bot.config.has_section(section):
-            return None
-        raw = (self.bot.config.get(section, "flood_scope", fallback="") or "").strip()
-        if not raw:
-            return None
-        return CommandManager._normalize_scope_name(raw)
+        return section_flood_scope(self.bot.config, self.config_section or self._derive_config_section())
 
     def has_external_notification_targets(self) -> bool:
         """True if Discord URLs are set, or Telegram chats plus a resolved bot token."""
@@ -237,6 +235,43 @@ class BaseServicePlugin(ABC):
         - Close any open resources
         """
         pass
+
+    async def run_periodic(
+        self,
+        work: Callable[[], Awaitable[Any]],
+        interval: Callable[[], float],
+        error_message: str,
+        error_delay: float = 60,
+    ) -> None:
+        """Run ``work`` every ``interval()`` seconds while the service runs.
+
+        An exception is logged as ``"<error_message>: <error>"`` and followed by
+        ``error_delay`` seconds before the next try; cancellation ends the loop.
+        ``interval`` is read before every sleep, so a changed setting applies on
+        the next round.
+        """
+        while self._running:
+            try:
+                await work()
+                await asyncio.sleep(interval())
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                self.logger.error("%s: %s", error_message, e)
+                await asyncio.sleep(error_delay)
+
+    @staticmethod
+    async def _cancel_tasks(*tasks: Optional[asyncio.Task[Any]]) -> None:
+        """Cancel each task (skipping None) and wait for it, in order.
+
+        A task that already finished with an error re-raises it here, as
+        awaiting it directly would.
+        """
+        for task in tasks:
+            if task:
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
 
     def _subscribe(self, meshcore: Any, event_type: Any, handler: Any) -> Any:
         """Subscribe *handler* to a meshcore event and remember it for ``_unsubscribe_all``.

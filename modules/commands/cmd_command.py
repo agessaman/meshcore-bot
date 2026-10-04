@@ -4,7 +4,10 @@ Cmd command for the MeshCore Bot
 Lists available commands in a compact, comma-separated format for LoRa
 """
 
-from typing import Any, Optional
+from typing import (
+    Any,  # noqa: F401  importable from this module on dev
+    Optional,
+)
 
 from ..models import MeshMessage
 from .base_command import BaseCommand
@@ -15,6 +18,8 @@ class CmdCommand(BaseCommand):
 
     # Plugin metadata
     name = "cmd"
+    honors_skip_channel_check = False
+    enabled_attr = "cmd_enabled"
     keywords = ['cmd', 'cmds', 'command', 'commands']
     description = "Lists available commands in compact format"
     category = "basic"
@@ -36,38 +41,13 @@ class CmdCommand(BaseCommand):
             'Cmd_Command', 'cmd_reference_url', fallback='', value_type='str'
         ).strip()
 
-    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
-        """Check if this command can be executed with the given message.
-
-        Args:
-            message: The message triggering the command.
-
-        Returns:
-            bool: True if command is enabled and checks pass, False otherwise.
-        """
-        if not self.cmd_enabled:
-            return False
-        return super().can_execute(message)
-
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         """Get help text for the cmd command.
 
         Returns:
             str: The help text for this command.
         """
         return "Lists commands in compact format."
-
-    def _is_command_valid_for_channel(self, cmd_name: str, cmd_instance: Any, message: Optional[MeshMessage]) -> bool:
-        """Return True if this command is valid in the message's channel context."""
-        if message is None:
-            return True
-        if hasattr(cmd_instance, 'is_channel_allowed') and callable(cmd_instance.is_channel_allowed):
-            if not cmd_instance.is_channel_allowed(message):
-                return False
-        if hasattr(self.bot.command_manager, '_is_channel_trigger_allowed'):
-            if not self.bot.command_manager._is_channel_trigger_allowed(cmd_name, message):
-                return False
-        return True
 
     def _get_commands_list(self, message: Optional[MeshMessage] = None, max_length: Optional[int] = None) -> str:
         """Get a compact list of available commands, prioritizing important ones.
