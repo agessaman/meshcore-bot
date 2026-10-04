@@ -19,6 +19,7 @@ import requests
 
 from .region_capitals import REGION_DEFAULT_NOTE, region_capital_query
 from .utils import (
+    _reverse_cache_key,
     abbreviate_location,
     geocode_city_sync,
     geocode_zipcode_sync,
@@ -469,7 +470,7 @@ def _is_country_token(text: str) -> bool:
 
 def _address_from_result(bot: Any, lat: float, lon: float, timeout: int) -> dict:
     db = getattr(bot, "db_manager", None)
-    reverse_cache_key = f"reverse_{lat}_{lon}"
+    reverse_cache_key = _reverse_cache_key(bot, lat, lon)
     if db is not None:
         cached = db.get_cached_json(reverse_cache_key, "geolocation")
         if cached:
