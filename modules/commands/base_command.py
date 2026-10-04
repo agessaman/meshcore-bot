@@ -52,16 +52,22 @@ _CONFIG_VALUE_TYPES = frozenset({'str', 'list', *_CONFIG_TYPED_GETTERS})
 def _defined_by_bundled_class(command: Any, method: Any) -> bool:
     """Whether ``method`` is a plain bound method from a class defined under ``modules.``.
 
-    Looks the function up in the command class's MRO rather than trusting the
-    function's own ``__module__``, which ``functools.wraps`` copies.
+    Looks for the function itself in the ``__dict__`` of a bundled class in
+    the command's MRO (so a local class that reuses a bundled function still
+    counts), rather than trusting the function's own ``__module__``, which
+    ``functools.wraps`` copies.
     """
     func = getattr(method, "__func__", None)
     if func is None or getattr(method, "__self__", None) is not command:
         return False
     for klass in type(command).__mro__:
-        if klass.__dict__.get("get_help_text") is func:
-            module = klass.__dict__.get("__module__")
-            return isinstance(module, str) and module.startswith("modules.")
+        module = klass.__dict__.get("__module__")
+        if (
+            klass.__dict__.get("get_help_text") is func
+            and isinstance(module, str)
+            and module.startswith("modules.")
+        ):
+            return True
     return False
 
 
@@ -80,7 +86,8 @@ def help_text_for(command: Any, message: Any) -> str:
     try:
         return get_help_text(message)
     except TypeError:
-        return get_help_text()
+        # Read the attribute again, as the old inline retry did.
+        return command.get_help_text()
 
 
 class BaseCommand(ABC):
