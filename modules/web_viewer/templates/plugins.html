@@ -81,6 +81,91 @@
         border: 1px solid var(--border-color);
         vertical-align: middle;
     }
+
+    /* Template reference panel, opened by the { } button on template fields */
+    .template-ref-btn { font-family: var(--bs-font-monospace, monospace); font-weight: 600; }
+    .template-ref {
+        margin-top: 0.4rem;
+        padding: 0.6rem 0.75rem;
+        border: 1px solid var(--border-color);
+        border-radius: 0.375rem;
+        background-color: var(--bg-secondary);
+        font-size: 0.8rem;
+    }
+    .template-ref-intro { color: var(--text-muted); margin-bottom: 0.4rem; }
+    .template-ref-heading {
+        font-weight: 600;
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--text-muted);
+        margin: 0.6rem 0 0.3rem;
+    }
+    .template-ref-list { display: grid; gap: 0.25rem 1rem; grid-template-columns: repeat(auto-fill, minmax(min(100%, 24rem), 1fr)); }
+    .template-ref-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 0.2rem 0.5rem;
+    }
+    .template-ref-desc { color: var(--text-color); flex: 1 1 14rem; min-width: 0; }
+    .template-chip {
+        font-family: var(--bs-font-monospace, monospace);
+        font-size: 0.76rem;
+        padding: 0.05rem 0.4rem;
+        color: var(--text-color);
+        background-color: var(--card-bg);
+        border: 1px solid var(--border-color);
+        white-space: nowrap;
+    }
+    .template-chip:hover, .template-chip:focus-visible {
+        border-color: #0d6efd;
+        color: var(--text-color);
+        background-color: var(--card-bg);
+    }
+    [data-theme="dark"] .template-chip:hover,
+    [data-theme="dark"] .template-chip:focus-visible { border-color: #6ea8fe; }
+    .template-ref-filters {
+        display: grid;
+        grid-template-columns: max-content 1fr;
+        gap: 0.4rem 0.6rem;
+        align-items: start;
+    }
+    .template-chip-example { margin-top: 0.15rem; }
+    .template-chip-example { color: var(--text-muted); white-space: normal; text-align: left; overflow-wrap: anywhere; }
+    .template-ref-notes { color: var(--text-muted); margin: 0.6rem 0 0; padding-left: 1.1rem; }
+    .template-ref-notes li { overflow-wrap: anywhere; }
+    .template-preview { display: grid; gap: 0.3rem; margin-bottom: 0.3rem; }
+    .template-preview-row {
+        display: grid;
+        grid-template-columns: 9.5rem 1fr auto;
+        gap: 0.5rem;
+        align-items: start;
+    }
+    .template-preview-label { color: var(--text-muted); }
+    .template-preview-output {
+        font-family: var(--bs-font-monospace, monospace);
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        background-color: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 0.25rem;
+        padding: 0.15rem 0.4rem;
+        min-width: 0;
+    }
+    .template-preview-output.empty { color: var(--text-muted); font-style: italic; }
+    .template-preview-output.has-error { border-color: #dc3545; }
+    .template-preview-error { grid-column: 2 / -1; color: #b02a37; font-size: 0.76rem; }
+    [data-theme="dark"] .template-preview-output.has-error { border-color: #ea868f; }
+    [data-theme="dark"] .template-preview-error { color: #ea868f; }
+    .template-preview-bytes { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+    @media (max-width: 575.98px) {
+        .template-ref-filters { grid-template-columns: 1fr; gap: 0.15rem; }
+        .template-ref-filters > div:nth-child(2n) { margin-bottom: 0.35rem; }
+        .template-preview-row { grid-template-columns: 1fr auto; }
+        .template-preview-label { grid-column: 1 / -1; }
+        .template-preview-error { grid-column: 1 / -1; }
+    }
 </style>
 {% endblock %}
 
@@ -293,7 +378,7 @@ class PluginsManager {
         const addField = (field, value, targetGrid = grid) => {
             const col = document.createElement('div');
             col.className = fieldColClass(field);
-            const { wrapper, input } = renderField(field, value);
+            const { wrapper, input } = renderField(field, value, plugin);
             col.appendChild(wrapper);
             targetGrid.appendChild(col);
             // Capture the original value so saves only send changed fields
@@ -530,7 +615,8 @@ class PluginsManager {
 
 // --- Field rendering & validation helpers -------------------------------
 
-function renderField(field, overrideValue) {
+// `plugin` ({kind, name}) is only needed by template fields, for their preview.
+function renderField(field, overrideValue, plugin) {
     const wrapper = document.createElement('div');
     wrapper.className = 'mb-1';
     const value = overrideValue !== undefined ? overrideValue : field.value;
@@ -630,6 +716,26 @@ function renderField(field, overrideValue) {
         wrapper.appendChild(group);
         if (field.help) wrapper.appendChild(helpText(field.help));
         return { wrapper, input };
+    } else if (field.template) {
+        const group = document.createElement('div');
+        group.className = 'input-group input-group-sm has-validation';
+        input = document.createElement('input');
+        input.className = 'form-control font-monospace';
+        input.type = 'text';
+        input.spellcheck = false;
+        if (field.pattern) input.pattern = field.pattern;
+        input.value = (value !== undefined && value !== null) ? value : '';
+        const refBtn = document.createElement('button');
+        refBtn.type = 'button';
+        refBtn.className = 'btn btn-outline-secondary template-ref-btn';
+        refBtn.textContent = '{ }';
+        const fb = document.createElement('div');
+        fb.className = 'invalid-feedback';
+        group.append(input, refBtn, fb);
+        wrapper.appendChild(group);
+        if (field.help) wrapper.appendChild(helpText(field.help));
+        wrapper.appendChild(buildTemplateReference(field, input, refBtn, plugin));
+        return { wrapper, input };
     } else {
         input = document.createElement('input');
         input.className = 'form-control form-control-sm';
@@ -648,6 +754,210 @@ function renderField(field, overrideValue) {
     return { wrapper, input };
 }
 
+// --- Template reference panel (placeholders, filters, live preview) -------
+
+let templateRefSeq = 0;
+
+// Insert text at the input's cursor (replacing any selection) and keep focus
+// there, so several chips can be clicked in a row.
+function insertAtCursor(input, text) {
+    const start = input.selectionStart ?? input.value.length;
+    const end = input.selectionEnd ?? input.value.length;
+    input.setRangeText(text, start, end, 'end');
+    input.focus();
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+function refChip(label, title, onClick) {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'btn btn-sm template-chip';
+    chip.textContent = label;
+    chip.title = title;
+    chip.addEventListener('click', onClick);
+    return chip;
+}
+
+function refHeading(text) {
+    const h = document.createElement('div');
+    h.className = 'template-ref-heading';
+    h.textContent = text;
+    return h;
+}
+
+function buildTemplateReference(field, input, refBtn, plugin) {
+    const spec = field.template;
+    const piped = spec.syntax === 'piped';
+    const panelId = 'tref-' + (++templateRefSeq);
+
+    const panel = document.createElement('div');
+    panel.className = 'template-ref d-none';
+    panel.id = panelId;
+    panel.setAttribute('role', 'region');
+    panel.setAttribute('aria-label', field.label + ' placeholders');
+    refBtn.setAttribute('aria-controls', panelId);
+    refBtn.setAttribute('aria-expanded', 'false');
+    refBtn.setAttribute('aria-label', 'Placeholders for ' + field.label);
+    refBtn.title = piped ? 'Placeholders, filters and preview'
+        : (spec.previewable ? 'Placeholders and preview' : 'Placeholders');
+
+    const intro = document.createElement('p');
+    intro.className = 'template-ref-intro';
+    intro.textContent = piped
+        ? 'Click to insert at the cursor. Filters go inside a placeholder, after its name: {field|filter:arg}.'
+        : 'Click to insert at the cursor. This field takes placeholders only; filters and conditionals don\'t work here.';
+    panel.appendChild(intro);
+    // The preview goes first: it's what you watch while typing.
+    const previewSlot = document.createElement('div');
+    panel.appendChild(previewSlot);
+
+    panel.appendChild(refHeading('Placeholders'));
+    const list = document.createElement('div');
+    list.className = 'template-ref-list';
+    (spec.placeholders || []).forEach(p => {
+        const row = document.createElement('div');
+        row.className = 'template-ref-row';
+        const token = '{' + p.name + '}';
+        row.appendChild(refChip(token, 'Insert ' + token, () => insertAtCursor(input, token)));
+        if (p.help) {
+            const desc = document.createElement('span');
+            desc.className = 'template-ref-desc';
+            desc.textContent = p.help;
+            row.appendChild(desc);
+        }
+        list.appendChild(row);
+    });
+    panel.appendChild(list);
+
+    if (piped && spec.filters) {
+        panel.appendChild(refHeading('Filters and conditionals'));
+        const flist = document.createElement('div');
+        flist.className = 'template-ref-filters';
+        spec.filters.forEach(f => {
+            const token = '|' + f.name + (f.arg ? ':' : '');
+            const label = '|' + f.name + (f.arg ? ':' + f.arg : '');
+            const chipCell = document.createElement('div');
+            chipCell.appendChild(refChip(label, 'Insert ' + token, () => insertAtCursor(input, token)));
+            const body = document.createElement('div');
+            const desc = document.createElement('div');
+            desc.textContent = f.help + (f.aliases && f.aliases.length ? ` Also: ${f.aliases.join(', ')}.` : '');
+            body.appendChild(desc);
+            if (f.example) {
+                const ex = refChip(f.example, 'Insert this example', () => insertAtCursor(input, f.example));
+                ex.classList.add('template-chip-example');
+                body.appendChild(ex);
+            }
+            flist.append(chipCell, body);
+        });
+        panel.appendChild(flist);
+    }
+
+    const notes = [...(spec.notes || []), ...(spec.syntax_notes || [])];
+    if (notes.length) {
+        const ul = document.createElement('ul');
+        ul.className = 'template-ref-notes';
+        notes.forEach(n => {
+            const li = document.createElement('li');
+            li.textContent = n;
+            ul.appendChild(li);
+        });
+        panel.appendChild(ul);
+    }
+
+    let refreshPreview = () => {};
+    if (spec.previewable && plugin) {
+        previewSlot.appendChild(refHeading('Preview'));
+        const preview = document.createElement('div');
+        preview.className = 'template-preview';
+        preview.setAttribute('aria-live', 'polite');
+        previewSlot.appendChild(preview);
+        const sampleNote = document.createElement('div');
+        sampleNote.className = 'template-ref-intro mb-0';
+        sampleNote.textContent = (spec.sample_note ? spec.sample_note + ' ' : '')
+            + 'Byte counts are UTF-8; a channel message holds 155 bytes less the bot name and ": ".';
+        previewSlot.appendChild(sampleNote);
+
+        let timer = null;
+        let seq = 0;
+        const render = async () => {
+            const mine = ++seq;
+            try {
+                const resp = await fetch(`/api/plugins/${plugin.kind}/${plugin.name}/template-preview`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    body: JSON.stringify({ key: field.key, template: input.value }),
+                });
+                const data = await resp.json();
+                if (mine !== seq) return;  // a newer keystroke already asked
+                if (!resp.ok) throw new Error(data.error || 'Preview failed');
+                const rows = [];
+                if (!input.value.trim() && spec.blank_default) {
+                    const note = document.createElement('div');
+                    note.className = 'template-ref-intro mb-0';
+                    note.textContent = 'The field is blank, so this is the default reply.';
+                    rows.push(note);
+                }
+                if (!data.scenarios.length) {
+                    const none = document.createElement('div');
+                    none.className = 'template-ref-intro mb-0';
+                    none.textContent = 'Nothing to preview.';
+                    rows.push(none);
+                }
+                preview.replaceChildren(...rows, ...data.scenarios.map(s => {
+                    const row = document.createElement('div');
+                    row.className = 'template-preview-row';
+                    const label = document.createElement('div');
+                    label.className = 'template-preview-label';
+                    label.textContent = s.label;
+                    const out = document.createElement('div');
+                    out.className = 'template-preview-output' + (s.output ? '' : ' empty')
+                        + (s.error ? ' has-error' : '');
+                    out.textContent = s.output || (s.error ? '(nothing sent)' : '(empty)');
+                    const bytes = document.createElement('div');
+                    bytes.className = 'template-preview-bytes';
+                    bytes.textContent = s.bytes + ' B';
+                    row.append(label, out, bytes);
+                    if (s.error) {
+                        const err = document.createElement('div');
+                        err.className = 'template-preview-error';
+                        const icon = document.createElement('i');
+                        icon.className = 'fas fa-exclamation-triangle me-1';
+                        icon.setAttribute('aria-hidden', 'true');
+                        err.append(icon, document.createTextNode(s.error));
+                        row.appendChild(err);
+                    }
+                    return row;
+                }));
+            } catch (err) {
+                if (mine !== seq) return;
+                const msg = document.createElement('div');
+                msg.className = 'text-danger small';
+                msg.textContent = err.message;
+                preview.replaceChildren(msg);
+            }
+        };
+        refreshPreview = () => {
+            clearTimeout(timer);
+            timer = setTimeout(render, 300);
+        };
+        input.addEventListener('input', () => {
+            if (!panel.classList.contains('d-none')) refreshPreview();
+        });
+    }
+
+    const setOpen = (open) => {
+        panel.classList.toggle('d-none', !open);
+        refBtn.setAttribute('aria-expanded', String(open));
+        refBtn.classList.toggle('active', open);
+        if (open) refreshPreview();
+    };
+    refBtn.addEventListener('click', () => setOpen(panel.classList.contains('d-none')));
+    panel.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') { setOpen(false); refBtn.focus(); }
+    });
+    return panel;
+}
+
 function helpText(text) {
     const el = document.createElement('div');
     el.className = 'form-text';
@@ -664,6 +974,7 @@ function fieldColClass(field) {
         case 'md':   return 'col-12 col-sm-6 col-xl-4';
         case 'sm':   return 'col-6 col-md-4 col-xl-3';
     }
+    if (field.template) return 'col-12';  // room for the reference panel
     if (field.type === 'bool') return 'col-12 col-sm-6 col-lg-4';
     if (field.type === 'int' || field.type === 'float' || field.type === 'enum') {
         return 'col-6 col-md-4 col-xl-3';

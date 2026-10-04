@@ -1016,6 +1016,18 @@ enabled = true
 # Precipitation amount (mm per 15-min bucket) at/above which it counts as raining.
 # Lower = more sensitive to light drizzle; raise to ignore trace amounts. (default: 0.1)
 # precip_threshold_mm = 0.1
+# Append an estimated precipitation amount, e.g. "(est 0.2 in)" (default: true)
+# show_amount = true
+# Unit for that amount: in or mm (default: in)
+# amount_unit = in
+# Show the precipitation probability, e.g. "(…, 70%)" (default: true)
+# show_probability = true
+# Show the temperature when it is near freezing (about 30-38°F), where rain,
+# snow or ice is in doubt (default: true)
+# show_temp = true
+# Seconds to reuse a fetched forecast, shared with the weather service's rain
+# nowcast; 0 disables (default: 300)
+# cache_seconds = 300
 # Look up US ZIP -> "City, ST" via Zippopotam.us (free, no key). OpenStreetMap
 # often lacks the city for a ZIP centroid, so this gives nicer labels. Set false
 # to skip the external lookup and reverse-geocode instead. (default: true)

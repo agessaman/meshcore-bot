@@ -564,6 +564,24 @@ class TestPluginsApi:
         )
         assert rows and rows[0]["status"] == "pending"
 
+    def test_cleared_number_field_removes_key(self, viewer, tmp_path):
+        """A blank number must unset the key: `key =` makes getfloat raise."""
+        client = viewer.app.test_client()
+        resp = client.post(
+            "/api/plugins/command/rain",
+            json={"enabled": True, "values": {"default_lat": "47.6"}},
+        )
+        assert resp.status_code == 200, resp.get_json()
+        resp = client.post(
+            "/api/plugins/command/rain",
+            json={"enabled": True, "values": {"default_lat": ""}},
+        )
+        assert resp.status_code == 200, resp.get_json()
+        cfg = configparser.ConfigParser()
+        cfg.read(tmp_path / "config.ini", encoding="utf-8")
+        assert not cfg.has_option("Rain_Command", "default_lat")
+        assert viewer.config.getfloat("Rain_Command", "default_lat", fallback=None) is None
+
     def test_new_local_command_saves_to_local_overlay(self, viewer, tmp_path):
         commands_dir = tmp_path / "local" / "commands"
         commands_dir.mkdir(parents=True)
@@ -643,3 +661,41 @@ class TestPluginsApi:
         resp = client.get("/api/plugins/reload-status")
         assert resp.status_code == 200
         assert resp.get_json()["status"] is None
+
+
+class TestTemplatePreviewApi:
+    def test_previews_a_piped_field(self, viewer):
+        client = viewer.app.test_client()
+        resp = client.post(
+            "/api/plugins/command/test/template-preview",
+            json={"key": "response_format", "template": "{hops_label}"},
+        )
+        assert resp.status_code == 200, resp.get_json()
+        outputs = [s["output"] for s in resp.get_json()["scenarios"]]
+        assert outputs == ["3 hops", "3 hops", "0 hops"]
+
+    def test_previews_a_format_field(self, viewer):
+        client = viewer.app.test_client()
+        resp = client.post(
+            "/api/plugins/command/greeter/template-preview",
+            json={"key": "greeting_message", "template": "Hi {sender}|{nope}"},
+        )
+        assert resp.status_code == 200, resp.get_json()
+        (row,) = resp.get_json()["scenarios"]
+        assert "Unknown placeholder {nope}" in row["error"]
+
+    def test_unknown_field_has_no_preview(self, viewer):
+        client = viewer.app.test_client()
+        resp = client.post(
+            "/api/plugins/command/test/template-preview",
+            json={"key": "nope", "template": "x"},
+        )
+        assert resp.status_code == 404
+
+    def test_rejects_an_oversized_template(self, viewer):
+        client = viewer.app.test_client()
+        resp = client.post(
+            "/api/plugins/command/test/template-preview",
+            json={"key": "response_format", "template": "x" * 2001},
+        )
+        assert resp.status_code == 400

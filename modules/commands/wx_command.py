@@ -231,6 +231,9 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
          "help": "Name the place in every wx/gwx reply a place is found for, not only when it is outside the "
                  "default state or country. Costs message length, and a reverse lookup for ZIP codes. "
                  "Shared weather setting."},
+        {"key": "use_bot_location_when_no_location", "label": "Bot location as last resort", "type": "bool",
+         "section": "Weather", "default": False,
+         "help": "A bare wx/gwx with no custom source, companion location or default city uses [Bot] bot_latitude/bot_longitude instead of showing usage. Shared weather setting."},
     ]
 
     # Error constants

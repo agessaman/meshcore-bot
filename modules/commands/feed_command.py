@@ -27,6 +27,13 @@ class FeedCommand(BaseCommand):
     cooldown_seconds = 2
     requires_internet = True  # Requires internet access for RSS/API feed fetching
 
+    # Web-viewer settings schema (see modules/settings_schema.py).
+    settings_schema = [
+        {"key": "allow_private_urls", "label": "Allow private URLs", "type": "bool", "default": False,
+         "help": "Accept feed URLs on private or internal addresses. Off guards against SSRF. "
+                 "Unset falls back to [Feed_Manager] allow_private_urls."},
+    ]
+
     def __init__(self, bot):
         super().__init__(bot)
         self.db_path = bot.db_manager.db_path

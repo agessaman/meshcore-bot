@@ -14,6 +14,7 @@ from typing import Literal, Optional
 CondensePathsMode = Literal["off", "flat", "nested"]
 
 from ..models import MeshMessage
+from ..template_reference import template_spec
 from ..utils import calculate_packet_hash, parse_path_string
 from .base_command import BaseCommand
 
@@ -477,7 +478,13 @@ class MultitestCommand(BaseCommand):
     settings_schema = [
         {"key": "response_format", "label": "Response format", "type": "str",
          "default": "",
-         "help": "Result template. Fields: {sender}, {path_count}, {paths}, {listening_duration}. Empty = default."},
+         "help": "Result template. Empty = default.",
+         "template": template_spec("format", {
+             "sender": "Sender's name",
+             "path_count": "Number of unique paths heard",
+             "paths": "The paths, laid out per Path layout",
+             "listening_duration": "Seconds the bot listened",
+         }, notes=["\\n starts a new line."], preview="multitest")},
         {"key": "condense_paths", "label": "Path layout", "type": "enum",
          "options": [
              {"value": "true", "label": "Condensed tree (default)"},
@@ -486,6 +493,12 @@ class MultitestCommand(BaseCommand):
          ],
          "default": "true",
          "help": "How collected paths are displayed."},
+        {"key": "require_path_bytes_greater_or_equal_to", "label": "Require path bytes ≥", "type": "int",
+         "min": 0, "max": 3, "default": 0,
+         "help": "Only include paths with at least this many bytes per hop (3 = exactly 3). 0/1 = allow all."},
+        {"key": "require_path_bytes_failure_response", "label": "Path-byte reject reply", "type": "str",
+         "default": "",
+         "help": "Reply when rejected by the path-byte requirement. Empty = silent reject."},
     ]
 
     def __init__(self, bot):

@@ -20,6 +20,9 @@ from ..security_utils import sanitize_input
 
 MQTT_WEATHER_PREFIX = "custom.mqtt_weather."
 
+# json_template when [MqttWeather] doesn't set one.
+DEFAULT_JSON_TEMPLATE = "{time} | {temperature_f}°F ({temperature_c}°C) | RH {humidity}%"
+
 # Placeholders allowed in json_template (str.format_map); keys match typical station JSON fields.
 JSON_TEMPLATE_PLACEHOLDERS = frozenset(
     {
@@ -159,9 +162,7 @@ def load_mqtt_weather_format_config(config: ConfigParser) -> MqttWeatherFormatCo
     if mode not in ("passthrough", "json_template"):
         mode = "passthrough"
 
-    default_template = (
-        "{time} | {temperature_f}°F ({temperature_c}°C) | RH {humidity}%"
-    )
+    default_template = DEFAULT_JSON_TEMPLATE
     template = default_template
     dev_key = ""
     dev_val = ""

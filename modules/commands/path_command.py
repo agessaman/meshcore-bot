@@ -17,6 +17,7 @@ from ..path_inference import (
     select_repeater_by_graph,
 )
 from ..response_template import format_piped_template_async
+from ..template_reference import MESSAGE_PLACEHOLDERS, template_spec
 from ..utils import (
     bytes_per_hop_from_routing_and_nodes,
     calculate_distance,
@@ -89,7 +90,13 @@ class PathCommand(BaseCommand):
          "help": "Allow 'p' as a shortcut for the path command."},
         {"key": "reply_prefix", "label": "Reply prefix", "type": "str",
          "default": "",
-         "help": "Optional text prepended to path replies."},
+         "help": "Optional first line of path replies (only the first part of a split reply).",
+         "template": template_spec(
+             "piped",
+             MESSAGE_PLACEHOLDERS + ("path_distance",),
+             notes=["\\n is not decoded here; the prefix is always one line."],
+             escapes=False,
+         )},
         # Confidence symbols
         {"key": "high_confidence_symbol", "label": "High-confidence symbol", "type": "str",
          "default": "🎯", "help": "Marker for high-confidence path results."},
@@ -178,6 +185,9 @@ class PathCommand(BaseCommand):
         {"key": "graph_startup_load_days", "label": "Graph startup load window", "type": "int",
          "min": 0, "default": 0, "unit": "days",
          "help": "Days of historical edges to load at startup. 0 = load all."},
+        {"key": "geographic_scoring_enabled", "label": "Geographic scoring", "type": "bool",
+         "default": True,
+         "help": "Use repeater locations to pick between prefix collisions. Off disables it even when the bot has a location."},
     ]
 
     def __init__(self, bot):

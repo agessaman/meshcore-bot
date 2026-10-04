@@ -47,6 +47,51 @@ class WorldCupLiveService(BaseServicePlugin):
     description = "Live FIFA World Cup score updates posted to a channel"
     name = "worldcup"
 
+    # Web-viewer settings schema (see modules/settings_schema.py).
+    settings_schema = [
+        {"key": "channel", "label": "Channel", "type": "str", "default": "general",
+         "help": "Channel for live updates."},
+        {"key": "flood_scope", "label": "Flood scope", "type": "str", "default": "",
+         "help": "Optional regional TC_FLOOD scope for mesh posts (e.g. #west)."},
+        {"key": "poll_interval", "label": "Poll interval", "type": "int", "min": 1000, "default": 60000,
+         "unit": "ms", "help": "Cadence during a tournament while no match is live."},
+        {"key": "live_poll_interval", "label": "Live poll interval", "type": "int", "min": 1000,
+         "default": 20000, "unit": "ms",
+         "help": "Cadence while a match is live. ESPN caches ~15-20 s, so faster gains nothing."},
+        {"key": "idle_interval", "label": "Idle interval", "type": "int", "min": 60, "default": 1800,
+         "unit": "s", "help": "Cadence when no tournament is in progress."},
+        {"key": "api_timeout", "label": "API timeout", "type": "int", "min": 1, "default": 10, "unit": "s",
+         "help": "ESPN API request timeout."},
+        {"key": "announce_kickoff", "label": "Kick-off", "type": "bool", "default": True,
+         "help": "Announce kick-offs."},
+        {"key": "announce_goals", "label": "Goals", "type": "bool", "default": True,
+         "help": "Announce goals."},
+        {"key": "announce_disallowed", "label": "Disallowed goals", "type": "bool", "default": True,
+         "help": "Follow up when an announced goal is overturned (needs Goals on)."},
+        {"key": "announce_red_cards", "label": "Red cards", "type": "bool", "default": True,
+         "help": "Announce red cards."},
+        {"key": "announce_yellow_cards", "label": "Yellow cards", "type": "bool", "default": False,
+         "help": "Announce yellow cards. Frequent; can flood a channel."},
+        {"key": "announce_stoppage", "label": "Stoppages", "type": "bool", "default": True,
+         "help": "Announce postponed, suspended, abandoned or cancelled matches."},
+        {"key": "announce_halftime", "label": "Half-time", "type": "bool", "default": True,
+         "help": "Announce half-time scores."},
+        {"key": "announce_fulltime", "label": "Full-time", "type": "bool", "default": True,
+         "help": "Announce full-time results."},
+        {"key": "silence_mesh_output", "label": "External only", "type": "bool", "default": False,
+         "help": "Send updates only to Discord/Telegram and skip mesh channel posts."},
+        {"key": "discord_webhook_urls", "label": "Discord webhook URLs", "type": "password", "default": "",
+         "help": "Comma-separated Discord webhook URLs."},
+        {"key": "telegram_chat_ids", "label": "Telegram chat IDs", "type": "list", "default": "",
+         "help": "Comma-separated chat IDs or @channel usernames."},
+        {"key": "telegram_bot_token", "label": "Telegram bot token", "type": "password", "default": "",
+         "help": "Blank = TELEGRAM_BOT_TOKEN env, then [TelegramBridge] api_token."},
+        {"key": "use_fastcast", "label": "Fastcast push (experimental)", "type": "bool", "default": False,
+         "help": "Use ESPN's undocumented WebSocket push for faster updates; polling continues as fallback."},
+        {"key": "fastcast_topic", "label": "Fastcast topic", "type": "str", "default": "",
+         "help": "Override the fastcast topic. Blank = default."},
+    ]
+
     def __init__(self, bot: Any) -> None:
         super().__init__(bot)
         section = self.config_section

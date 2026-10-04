@@ -17,7 +17,13 @@ try:
 except ImportError:
     pass
 
-from ..clients.mqtt_weather import MqttWeatherCache, iter_mqtt_weather_topics
+from ..clients.mqtt_weather import (
+    DEFAULT_JSON_TEMPLATE,
+    JSON_TEMPLATE_PLACEHOLDERS,
+    MqttWeatherCache,
+    iter_mqtt_weather_topics,
+)
+from ..template_reference import template_spec
 from .base_service import BaseServicePlugin
 
 
@@ -53,8 +59,20 @@ class MqttWeatherService(BaseServicePlugin):
          "options": [{"value": "passthrough", "label": "Passthrough"},
                      {"value": "json_template", "label": "JSON template"}],
          "default": "passthrough", "help": "How payloads are converted for mesh."},
-        {"key": "json_template", "label": "JSON template", "type": "str", "default": "",
-         "help": "Template for json_template mode. Placeholders: {time} {temperature_f} {temperature_c} {humidity} {device}."},
+        {"key": "json_template", "label": "JSON template", "type": "str", "default": DEFAULT_JSON_TEMPLATE,
+         "help": "Template for json_template mode.",
+         "template": template_spec(
+             "format",
+             dict.fromkeys(sorted(JSON_TEMPLATE_PLACEHOLDERS), ""),
+             notes=[
+                 "Names follow the station's JSON fields; the suffix is the unit (_f, _c, _kmh, _in).",
+                 "A format spec such as {temperature_f:.0f} works, but a missing reading then "
+                 "fails the whole template.",
+             ],
+             escapes=False,
+             blank_default=DEFAULT_JSON_TEMPLATE,
+             preview="mqtt_json",
+         )},
         {"key": "json_device_key", "label": "JSON device key", "type": "str", "default": "",
          "help": "Optional filter: JSON key to match."},
         {"key": "json_device_value", "label": "JSON device value", "type": "str", "default": "",

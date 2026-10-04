@@ -12,6 +12,7 @@ from typing import Any, Optional
 from ..location import latest_contact_position_rows
 from ..models import MeshMessage
 from ..response_template import format_piped_template
+from ..template_reference import MESSAGE_PLACEHOLDERS, template_spec
 from ..utils import (
     calculate_distance,
     decode_escape_sequences,
@@ -43,7 +44,19 @@ class TestCommand(BaseCommand):
     # Web-viewer settings schema (see modules/settings_schema.py)
     settings_schema = [
         {"key": "response_format", "label": "Response format", "type": "str", "default": "",
-         "help": "Template for the test reply. Empty uses the default format."},
+         "help": "Template for the test reply. Empty uses the default format.",
+         "template": template_spec(
+             "piped",
+             MESSAGE_PLACEHOLDERS + ("phrase", "phrase_part", "elapsed", "path_distance", "firstlast_distance"),
+             notes=[
+                 "Blank uses [Keywords] test if set, else the default the preview shows.",
+                 "{path_distance} and {firstlast_distance} are N/A on a direct message, which "
+                 "counts as not empty: put hops_min:1 before prefix_if_nonempty to drop them there.",
+                 "\\n starts a new line.",
+             ],
+             samples={"path_distance": {"direct": "N/A"}, "firstlast_distance": {"direct": "N/A"}},
+             blank_default="ack @[{sender}]{phrase_part} | {connection_info} | Received at: {timestamp}",
+         )},
         {"key": "distance_unit", "label": "Distance unit", "type": "enum",
          "options": [
              {"value": "auto", "label": "Auto (follow reply language)"},
@@ -52,6 +65,12 @@ class TestCommand(BaseCommand):
          ],
          "default": "auto",
          "help": "Unit for {path_distance} and {firstlast_distance}."},
+        {"key": "require_path_bytes_greater_or_equal_to", "label": "Require path bytes ≥", "type": "int",
+         "min": 0, "max": 3, "default": 0,
+         "help": "Only respond when the path has at least this many bytes per hop (3 = exactly 3). 0/1 = allow all."},
+        {"key": "require_path_bytes_failure_response", "label": "Path-byte reject reply", "type": "str",
+         "default": "",
+         "help": "Reply when rejected by the path-byte requirement. Empty = silent reject."},
     ]
 
     def __init__(self, bot):

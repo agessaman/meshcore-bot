@@ -230,6 +230,35 @@ settings_schema = [
 **Note:** `enabled` and `channels` do not need to be defined in the
           `settings_schema` as they get automatically included.
 
+#### Template fields
+
+A `str` field that holds a reply template can add `"template"`, built with `template_spec` from `modules.template_reference`. The Plugins page then puts a `{ }` button beside the field that opens a list of its placeholders (click one to insert it at the cursor). Name the syntax the plugin renders the value with:
+
+- `"piped"`: the plugin renders it with `format_piped_template` from `modules.response_template`. The panel also lists the filters and conditionals and previews the template against sample messages (2-byte, 1-byte and direct).
+- `"format"`: the plugin uses Python's `str.format`. The panel lists placeholders only. To preview it, add a renderer to `FORMAT_PREVIEWS` in `modules/template_reference.py` that formats sample values the way the plugin does, including what the plugin sends when the template fails, and name it with `preview=`.
+
+```python
+from modules.template_reference import MESSAGE_PLACEHOLDERS, template_spec
+
+settings_schema = [
+    {
+        "key": "response_format",
+        "label": "Response format",
+        "type": "str",
+        "default": "",
+        "help": "Template for the reply. Empty uses the default.",
+        "template": template_spec(
+            "piped",
+            MESSAGE_PLACEHOLDERS + ("path_distance",),
+            notes=["\\n starts a new line."],
+            blank_default="ack @[{sender}] | {path}",
+        ),
+    },
+]
+```
+
+`MESSAGE_PLACEHOLDERS` are the fields every command gets from `get_standard_placeholder_fields`. For a plugin with its own fields, pass a `{name: description}` mapping instead. Set `escapes=False` if the plugin does not decode `\n`, and `blank_default` to the template it falls back to when the field is blank, so the preview shows what the plugin actually sends.
+
 ---
 
 ## Core Methods

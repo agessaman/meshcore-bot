@@ -93,6 +93,8 @@ class EarthquakeService(BaseServicePlugin):
             "default": True,
             "help": "Append a link to the USGS event page in alerts.",
         },
+        {"key": "flood_scope", "label": "Flood scope", "type": "str", "default": "",
+         "help": "Optional regional TC_FLOOD scope for mesh posts (e.g. #west)."},
     ]
 
     def __init__(self, bot: Any) -> None:

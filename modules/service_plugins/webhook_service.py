@@ -94,6 +94,8 @@ class WebhookService(BaseServicePlugin):
          "help": "Comma-separated channel whitelist. Empty = any channel."},
         {"key": "flood_scope", "label": "Flood scope", "type": "str", "default": "",
          "help": "Optional regional TC_FLOOD scope for posts (e.g. #west)."},
+        {"key": "rate_limit_per_minute", "label": "Rate limit", "type": "int", "min": 0, "default": 30,
+         "unit": "/min", "help": "Requests accepted per minute; more get HTTP 429. 0 disables the limit."},
     ]
 
     # Maximum body size accepted (bytes)

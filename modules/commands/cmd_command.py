@@ -29,6 +29,12 @@ class CmdCommand(BaseCommand):
     usage = "cmd"
     examples = ["cmd"]
 
+    # Web-viewer settings schema (see modules/settings_schema.py).
+    settings_schema = [
+        {"key": "cmd_reference_url", "label": "Command reference URL", "type": "str", "default": "",
+         "help": "When set, cmd replies with this link instead of the command list."},
+    ]
+
     def __init__(self, bot):
         """Initialize the cmd command.
 

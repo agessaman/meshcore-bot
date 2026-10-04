@@ -110,6 +110,30 @@ class WeatherService(BaseServicePlugin):
          "min": 1000, "default": 600000, "unit": "ms", "help": "How often thunder/storm data is aggregated."},
         {"key": "flood_scope", "label": "Flood scope", "type": "str", "default": "",
          "help": "Optional regional TC_FLOOD scope for mesh posts (e.g. #west)."},
+        {"key": "rain_nowcast_threshold_mm", "label": "Rain threshold", "type": "float",
+         "min": 0, "default": 0.1, "unit": "mm",
+         "help": "Precipitation per 15-minute bucket that counts as raining."},
+        {"key": "rain_nowcast_min_probability", "label": "Rain min probability", "type": "int",
+         "min": 0, "max": 100, "default": 50, "unit": "%",
+         "help": "Skip a 'rain incoming' heads-up below this precipitation probability."},
+        {"key": "rain_nowcast_announce_ending", "label": "Announce rain ending", "type": "bool", "default": True,
+         "help": "Also post when rain is about to stop."},
+        {"key": "rain_nowcast_show_amount", "label": "Show rain amount", "type": "bool", "default": True,
+         "help": "Append an estimated precipitation amount."},
+        {"key": "rain_nowcast_amount_unit", "label": "Rain amount unit", "type": "enum",
+         "options": [{"value": "in", "label": "Inches"}, {"value": "mm", "label": "Millimeters"}],
+         "default": "in", "help": "Unit for the estimated amount."},
+        {"key": "rain_nowcast_cache_seconds", "label": "Rain cache time", "type": "int",
+         "min": 0, "default": 300, "unit": "s",
+         "help": "Reuse a fetched forecast this long (shared with the rain command). 0 disables."},
+        {"key": "blitz_area_min_lat", "label": "Lightning area min lat", "type": "float", "min": -90, "max": 90,
+         "default": "", "help": "Lightning (Blitzortung) watch box. Set all four corners to enable it; blank = off."},
+        {"key": "blitz_area_max_lat", "label": "Lightning area max lat", "type": "float", "min": -90, "max": 90,
+         "default": "", "help": "Northern edge of the lightning watch box."},
+        {"key": "blitz_area_min_lon", "label": "Lightning area min lon", "type": "float", "min": -180, "max": 180,
+         "default": "", "help": "Western edge of the lightning watch box."},
+        {"key": "blitz_area_max_lon", "label": "Lightning area max lon", "type": "float", "min": -180, "max": 180,
+         "default": "", "help": "Eastern edge of the lightning watch box."},
     ]
 
     def __init__(self, bot: Any):
@@ -136,15 +160,22 @@ class WeatherService(BaseServicePlugin):
         self.blitz_collection_interval = self.bot.config.getint('Weather_Service', 'blitz_collection_interval', fallback=600000) / 1000.0
         self.poll_weather_alerts_interval = self.bot.config.getint('Weather_Service', 'poll_weather_alerts_interval', fallback=600000) / 1000.0
 
-        # Storm detection area (optional)
+        # Storm detection area (optional). All four corners or none: the web
+        # viewer lets someone fill in one corner at a time.
         self.blitz_area = None
-        if self.bot.config.has_option('Weather_Service', 'blitz_area_min_lat'):
-            self.blitz_area = {
-                'min_lat': self.bot.config.getfloat('Weather_Service', 'blitz_area_min_lat'),
-                'min_lon': self.bot.config.getfloat('Weather_Service', 'blitz_area_min_lon'),
-                'max_lat': self.bot.config.getfloat('Weather_Service', 'blitz_area_max_lat'),
-                'max_lon': self.bot.config.getfloat('Weather_Service', 'blitz_area_max_lon'),
-            }
+        corners = ('min_lat', 'min_lon', 'max_lat', 'max_lon')
+        raw_corners = {
+            c: self.bot.config.get('Weather_Service', f'blitz_area_{c}', fallback='').strip()
+            for c in corners
+        }
+        if any(raw_corners.values()):
+            try:
+                self.blitz_area = {c: float(raw_corners[c]) for c in corners}
+            except ValueError:
+                self.logger.warning(
+                    "Lightning detection off: blitz_area_min_lat, blitz_area_min_lon, "
+                    "blitz_area_max_lat and blitz_area_max_lon must all be numbers"
+                )
 
         # Validate position
         if self.my_position_lat is None or self.my_position_lon is None:

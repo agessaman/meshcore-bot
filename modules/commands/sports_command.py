@@ -75,6 +75,9 @@ class SportsCommand(BaseCommand):
         {"key": "channel_override", "label": "Channel team overrides", "type": "str",
          "default": "",
          "help": "channel=team,channel2=team2 — default team shortcut per channel."},
+        {"key": "api_timeout", "label": "API timeout", "type": "int",
+         "min": 1, "default": 10, "unit": "s",
+         "help": "ESPN API request timeout."},
     ]
 
     def __init__(self, bot: "MeshCoreBot"):

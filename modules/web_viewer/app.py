@@ -83,6 +83,7 @@ from modules.settings_schema import (
     validate_field,
 )
 from modules.settings_store import get_settings_store
+from modules.template_reference import render_preview
 from modules.version_info import resolve_application_version
 from modules.web_viewer.dashboard_stats import (
     SERIES_METRICS,
@@ -1222,7 +1223,12 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
                             errors[key] = err
                         else:
                             tsec = field.get('section') or section
-                            updates.setdefault(tsec, {})[key] = to_config_string(field, coerced)
+                            if field.get('type') in ('int', 'float') and coerced == '':
+                                # A cleared number means unset: `key =` would make
+                                # getint/getfloat raise instead of using their fallback.
+                                deletes.setdefault(tsec, []).append(key)
+                            else:
+                                updates.setdefault(tsec, {})[key] = to_config_string(field, coerced)
                     else:
                         updates[section][str(key)] = '' if val is None else str(val)
 
@@ -1362,6 +1368,43 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
             except Exception:
                 self.logger.exception("Error saving plugin settings")
                 return jsonify({'success': False, 'error': 'Internal error — see server logs'}), 500
+
+        # (kind, name, key) -> template spec. Specs are class attributes, so they
+        # don't change with config and needn't be rediscovered on every keystroke.
+        template_specs: dict[tuple[str, str, str], dict | None] = {}
+
+        @self.app.route('/api/plugins/<kind>/<name>/template-preview', methods=['POST'])
+        def api_plugins_template_preview(kind: str, name: str):
+            """Render a piped template field against sample messages.
+
+            Body: ``{"key": str, "template": str}``. Nothing is saved.
+            """
+            data = request.get_json(silent=True) or {}
+            key = str(data.get('key', ''))
+            template = data.get('template', '')
+            if not isinstance(template, str) or len(template) > 2000:
+                return jsonify({'error': 'Template must be text of at most 2000 characters'}), 400
+            cache_key = (kind, name, key)
+            if cache_key not in template_specs:
+                view = build_plugin_settings_view(
+                    self.config,
+                    logger=self.logger,
+                    local_commands_dir=str(self.local_dir / "commands"),
+                    local_services_dir=str(self.local_dir / "service_plugins"),
+                )
+                for entry in view:
+                    for field in entry['fields']:
+                        if field.get('template'):
+                            template_specs[(entry['kind'], entry['name'], field['key'])] = field['template']
+                template_specs.setdefault(cache_key, None)
+            spec = template_specs[cache_key]
+            if not spec or not spec.get('previewable'):
+                return jsonify({'error': 'This field has no preview'}), 404
+            try:
+                return jsonify({'scenarios': render_preview(spec, template)})
+            except Exception:
+                self.logger.exception("Error rendering template preview")
+                return jsonify({'error': 'Internal error — see server logs'}), 500
 
         @self.app.route('/api/plugins/reload-status')
         def api_plugins_reload_status():

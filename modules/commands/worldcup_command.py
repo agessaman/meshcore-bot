@@ -55,6 +55,16 @@ class WorldCupCommand(BaseCommand):
         {"name": "nation", "description": "A nation's matches (e.g. brazil, usa)"},
     ]
 
+    # Web-viewer settings schema (see modules/settings_schema.py).
+    settings_schema = [
+        {"key": "api_timeout", "label": "API timeout", "type": "int",
+         "min": 1, "default": 10, "unit": "s",
+         "help": "ESPN API request timeout."},
+        {"key": "cache_ttl_minutes", "label": "Lookup cache", "type": "int",
+         "min": 0, "default": 360, "unit": "min",
+         "help": "How long season detection and nation rosters are cached."},
+    ]
+
     def __init__(self, bot: "MeshCoreBot"):
         """Initialize the World Cup command with an ESPN client and data helper."""
         super().__init__(bot)

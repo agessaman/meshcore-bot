@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 from ..models import MeshMessage
+from ..template_reference import template_spec
 from ..utils import decode_escape_sequences
 from .base_command import BaseCommand
 
@@ -38,6 +39,48 @@ def _starts_new_channel_greeting(fragment: str) -> bool:
     return bool(_CHANNEL_KEY_RE.match(head))
 
 
+
+def parse_channel_greetings(raw: str) -> tuple[dict[str, dict[str, str]], list[str]]:
+    """Parse ``channel_greetings`` into ``{channel_lower: {channel, greeting}}``.
+
+    Entries are comma-separated, but greeting text routinely contains commas
+    ("Welcome to the mesh, {sender}!"). A bare split would cut such a greeting in
+    half and silently drop the tail (placeholder and all), so a fragment with no
+    "channel:" of its own is re-attached to the entry before it. Returns the
+    greetings and the leading fragments that had no entry to join.
+    """
+    greetings: dict[str, dict[str, str]] = {}
+    ignored: list[str] = []
+    if not raw:
+        return greetings, ignored
+    entries: list[str] = []
+    for fragment in raw.split(','):
+        if _starts_new_channel_greeting(fragment):
+            entries.append(fragment)
+        elif entries:
+            entries[-1] = f"{entries[-1]},{fragment}"
+        else:
+            ignored.append(fragment)
+    for entry in entries:
+        entry = entry.strip()
+        if ':' in entry:
+            channel_name, greeting = entry.split(':', 1)
+            channel_name = channel_name.strip()
+            # Decode escape sequences (e.g., \n for newlines). Keyed lowercase
+            # for case-insensitive matching; the original name is kept too.
+            greetings[channel_name.lower()] = {
+                'channel': channel_name,
+                'greeting': decode_escape_sequences(greeting.strip()),
+            }
+    return greetings, ignored
+
+
+def split_greeting_parts(template: str) -> list[str]:
+    """Split a greeting into its messages: ``|`` separates them, blanks are dropped."""
+    if '|' in template:
+        return [part.strip() for part in template.split('|') if part.strip()]
+    return [template]
+
 class GreeterCommand(BaseCommand):
     """Handles greeting new users on public channels"""
 
@@ -55,13 +98,21 @@ class GreeterCommand(BaseCommand):
     settings_schema = [
         {"key": "greeting_message", "label": "Greeting message", "type": "str",
          "default": "Welcome to the mesh, @[{sender}]!",
-         "help": "Default greeting. {sender} = user; separate multi-part messages with |."},
+         "help": "Default greeting. Separate multi-part messages with |.",
+         "template": template_spec("format", ("sender",), notes=[
+             "| splits the greeting into separate messages.",
+             "\\n starts a new line.",
+         ], blank_default="Welcome to the mesh, @[{sender}]!", preview="greeting")},
         {"key": "rollout_days", "label": "Rollout period", "type": "int",
          "min": 0, "default": 7, "unit": "days",
          "help": "Days the greeter rollout runs before auto-ending."},
         {"key": "channel_greetings", "label": "Per-channel greetings", "type": "str",
          "default": "",
-         "help": "channel:greeting,channel2:greeting2 — overrides the default per channel."},
+         "help": "channel:greeting,channel2:greeting2 — overrides the default per channel.",
+         "template": template_spec("format", ("sender",), notes=[
+             "Entries are channel:greeting, separated by commas.",
+             "\\n starts a new line.",
+         ], preview="channel_greetings")},
         {"key": "per_channel_greetings", "label": "Greet once per channel", "type": "bool",
          "default": False,
          "help": "On: greet each user once per channel. Off: once globally."},
@@ -70,13 +121,29 @@ class GreeterCommand(BaseCommand):
          "help": "Append mesh statistics to the greeting."},
         {"key": "mesh_info_format", "label": "Mesh info format", "type": "str",
          "default": "",
-         "help": "Template for mesh info. Fields: {total_contacts}, {repeaters}, {companions}, {recent_activity_24h}."},
+         "help": "Template for mesh info, appended to the last greeting part.",
+         "template": template_spec("format", {
+             "total_contacts": "Contacts ever heard",
+             "repeaters": "Repeaters ever heard",
+             "companions": "Companions ever heard",
+             "recent_activity_24h": "Users active in the last 24 hours",
+         }, notes=["\\n starts a new line; start with \\n\\n to set it off from the greeting."],
+            preview="mesh_info")},
         {"key": "auto_backfill", "label": "Auto-backfill greeted users", "type": "bool",
          "default": False,
          "help": "On first run, mark recently-seen users as already greeted so they aren't greeted retroactively."},
         {"key": "backfill_lookback_days", "label": "Backfill lookback", "type": "int",
          "min": 0, "default": 0, "unit": "days",
          "help": "How far back to look when auto-backfilling. 0 = all time."},
+        {"key": "dead_air_delay_seconds", "label": "Dead-air delay", "type": "int",
+         "min": 0, "default": 0, "unit": "s",
+         "help": "Wait this long after a new user's first message before greeting. 0 = greet at once."},
+        {"key": "defer_to_human_greeting", "label": "Defer to human greeting", "type": "bool",
+         "default": False,
+         "help": "Skip the bot greeting when someone already mentioned the new user during the dead-air delay."},
+        {"key": "levenshtein_distance", "label": "Name fuzziness", "type": "int",
+         "min": 0, "max": 3, "default": 0,
+         "help": "Edits allowed when matching sender names (greet-once and human-greeting checks). 0 = exact."},
     ]
 
     def __init__(self, bot: Any):
@@ -227,43 +294,16 @@ class GreeterCommand(BaseCommand):
         # Format: channel_name:greeting_message,channel_name2:greeting_message2
         # Example: Public:Welcome to Public, {sender}!|general:Welcome to general, {sender}!
         channel_greetings_str = self.get_config_value('Greeter_Command', 'channel_greetings', fallback='')
-        self.channel_greetings = {}
-        if channel_greetings_str:
-            # Entries are comma-separated, but greeting text routinely contains
-            # commas ("Welcome to the mesh, {sender}!"). A bare split would cut
-            # such a greeting in half and silently drop the tail (placeholder and
-            # all), so re-attach any fragment that has no "channel:" of its own.
-            entries: list[str] = []
-            for fragment in channel_greetings_str.split(','):
-                if _starts_new_channel_greeting(fragment):
-                    entries.append(fragment)
-                elif entries:
-                    entries[-1] = f"{entries[-1]},{fragment}"
-                else:
-                    self.logger.warning(
-                        "Greeter: ignoring channel_greetings fragment with no 'channel:' prefix: %r",
-                        fragment,
-                    )
-            for entry in entries:
-                entry = entry.strip()
-                if ':' in entry:
-                    channel_name, greeting = entry.split(':', 1)
-                    channel_name = channel_name.strip()
-                    greeting = greeting.strip()
-                    # Decode escape sequences (e.g., \n for newlines)
-                    greeting = decode_escape_sequences(greeting)
-                    # Store both original and lowercase channel name for case-insensitive matching
-                    self.channel_greetings[channel_name.lower()] = {
-                        'channel': channel_name,
-                        'greeting': greeting
-                    }
+        self.channel_greetings, ignored = parse_channel_greetings(channel_greetings_str)
+        for fragment in ignored:
+            self.logger.warning(
+                "Greeter: ignoring channel_greetings fragment with no 'channel:' prefix: %r",
+                fragment,
+            )
 
         # Parse multi-part greetings (pipe-separated)
         # If greeting_message contains '|', split it into multiple parts
-        if '|' in self.greeting_message:
-            self.greeting_parts = [part.strip() for part in self.greeting_message.split('|') if part.strip()]
-        else:
-            self.greeting_parts = [self.greeting_message]
+        self.greeting_parts = split_greeting_parts(self.greeting_message)
 
         # Dead air delay settings
         self.dead_air_delay_seconds = self.get_config_value('Greeter_Command', 'dead_air_delay_seconds',
@@ -1050,10 +1090,7 @@ class GreeterCommand(BaseCommand):
         greeting_template = self._get_greeting_for_channel(channel) if channel else self.greeting_message
 
         # Parse multi-part greetings (pipe-separated)
-        if '|' in greeting_template:
-            greeting_parts = [part.strip() for part in greeting_template.split('|') if part.strip()]
-        else:
-            greeting_parts = [greeting_template]
+        greeting_parts = split_greeting_parts(greeting_template)
 
         # Format each greeting part
         formatted_parts = []

@@ -8,10 +8,7 @@ A web-based interface for viewing and analyzing data from your MeshCore Bot.
 - **Repeater Contacts**: View active repeater contacts with location and status information
 - **Contact Tracking**: Complete history of all heard contacts with signal strength and routing data
 - **Config panel**: Structured settings with categorized topics and database tools
-- **Plugins page**: Toggle every command and service on/off and edit their settings
-  from the browser. Changes are validated, written to `config.ini` with comments
-  preserved and a timestamped backup, and the bot hot-reloads command settings
-  within a few seconds (service on/off still needs a restart)
+- **Plugins page**: Toggle every command and service on/off and edit their settings from the browser. Changes are validated, written to `config.ini` with comments preserved and a timestamped backup, and the bot hot-reloads command settings within a few seconds (service on/off still needs a restart). Template fields (test reply, path reply prefix, greeter messages, multitest result, MQTT weather template) have a `{ }` button that lists the placeholders they take; every one previews the template as you type against sample data, showing what the bot would send (or that it would send nothing) when the template has a mistake; the test reply and path prefix, which take filters, also list them and preview against a 2-byte, a 1-byte and a direct sample message
 - **Purging Log**: Audit trail of contact purging operations
 - **Real-time Updates**: Auto-refreshes every 30 seconds
 - **API Endpoints**: JSON API for programmatic access

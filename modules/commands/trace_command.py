@@ -61,6 +61,15 @@ class TraceCommand(BaseCommand):
         {"key": "update_graph_two_byte", "label": "Update graph (2-byte)", "type": "bool",
          "default": True,
          "help": "Add a 2-byte link identification to the mesh graph when supported."},
+        {"key": "timeout_base_seconds", "label": "Base timeout", "type": "float",
+         "min": 0.1, "default": 2.0, "unit": "s",
+         "help": "Per-attempt timeout before the per-hop allowance is added."},
+        {"key": "trace_retry_count", "label": "Attempts", "type": "int",
+         "min": 1, "default": 2,
+         "help": "Maximum trace attempts. A reply to an earlier attempt counts until the last one times out."},
+        {"key": "trace_retry_delay_seconds", "label": "Retry delay", "type": "float",
+         "min": 0, "default": 1.0, "unit": "s",
+         "help": "Wait before retrying a trace that got no reply."},
     ]
 
     def __init__(self, bot):
