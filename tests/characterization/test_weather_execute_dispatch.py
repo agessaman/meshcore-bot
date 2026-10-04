@@ -96,7 +96,10 @@ def _build(cls_name, env):
     else:
         attach("_mqtt_weather_line", Mock(side_effect=lambda topic, ft, loc: f"MQTT[{topic},{ft},{loc}]"))
     wxsim_effect = RuntimeError("wxsim down") if env.get("wxsim_raises") else (
-        lambda src, ft="default", nd=7, msg=None, loc=None: f"WXSIM[{src},{ft},{nd},{loc}]"
+        # wx passes a named source as location_name=, gwx positionally.
+        lambda src, ft="default", nd=7, msg=None, loc=None, location_name=None: (
+            f"WXSIM[{src},{ft},{nd},{loc},{location_name}]"
+        )
     )
     if cls_name == "wx":
         attach("_get_wxsim_weather_async", AsyncMock(side_effect=wxsim_effect))

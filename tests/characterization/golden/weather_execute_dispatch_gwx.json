@@ -4359,7 +4359,7 @@
    "_get_custom_wxsim_source(None,)",
    "record_execution('u1',)",
    "_get_wxsim_weather('https://w.test/default', 'default', 7, '<msg>')",
-   "send_response('<msg>', 'WXSIM[https://w.test/default,default,7,None]')"
+   "send_response('<msg>', 'WXSIM[https://w.test/default,default,7,None,None]')"
   ],
   "result": true
  },
@@ -4371,7 +4371,7 @@
    "_get_custom_wxsim_source(None,)",
    "record_execution('u1',)",
    "_get_wxsim_weather('https://w.test/default', 'multiday', 3, '<msg>')",
-   "_send_multiday_forecast('<msg>', 'WXSIM[https://w.test/default,multiday,3,None]')"
+   "_send_multiday_forecast('<msg>', 'WXSIM[https://w.test/default,multiday,3,None,None]')"
   ],
   "result": true
  },
@@ -4405,7 +4405,7 @@
    "_get_custom_wxsim_source(None,)",
    "record_execution('u1',)",
    "_get_wxsim_weather('https://w.test/default', 'multiday', 5, '<msg>')",
-   "_send_multiday_forecast('<msg>', 'WXSIM[https://w.test/default,multiday,5,None]')"
+   "_send_multiday_forecast('<msg>', 'WXSIM[https://w.test/default,multiday,5,None,None]')"
   ],
   "result": true
  },
@@ -4447,7 +4447,7 @@
    "_get_custom_wxsim_source(None,)",
    "record_execution('u1',)",
    "_get_wxsim_weather('https://w.test/default', 'hourly', 7, '<msg>')",
-   "send_response('<msg>', 'WXSIM[https://w.test/default,hourly,7,None]')"
+   "send_response('<msg>', 'WXSIM[https://w.test/default,hourly,7,None,None]')"
   ],
   "result": true
  },
@@ -4475,7 +4475,7 @@
    "_get_custom_wxsim_source(None,)",
    "record_execution('u1',)",
    "_get_wxsim_weather('https://w.test/default', 'alerts', 7, '<msg>')",
-   "send_response('<msg>', 'WXSIM[https://w.test/default,alerts,7,None]')"
+   "send_response('<msg>', 'WXSIM[https://w.test/default,alerts,7,None,None]')"
   ],
   "result": true
  },
@@ -4485,7 +4485,7 @@
    "_get_custom_wxsim_source('both',)",
    "record_execution('u1',)",
    "_get_wxsim_weather('https://w.test/both', 'multiday', 5, '<msg>', 'both')",
-   "_send_multiday_forecast('<msg>', 'WXSIM[https://w.test/both,multiday,5,both]')"
+   "_send_multiday_forecast('<msg>', 'WXSIM[https://w.test/both,multiday,5,both,None]')"
   ],
   "result": true
  },
@@ -4499,7 +4499,7 @@
    "_get_custom_wxsim_source('both',)",
    "record_execution('u1',)",
    "_get_wxsim_weather('https://w.test/both', 'default', 7, '<msg>', 'both')",
-   "send_response('<msg>', 'WXSIM[https://w.test/both,default,7,both]')"
+   "send_response('<msg>', 'WXSIM[https://w.test/both,default,7,both,None]')"
   ],
   "result": true
  },
@@ -4509,7 +4509,7 @@
    "_get_custom_wxsim_source('cabin',)",
    "record_execution('u1',)",
    "_get_wxsim_weather('https://w.test/cabin', 'alerts', 7, '<msg>', 'cabin')",
-   "send_response('<msg>', 'WXSIM[https://w.test/cabin,alerts,7,cabin]')"
+   "send_response('<msg>', 'WXSIM[https://w.test/cabin,alerts,7,cabin,None]')"
   ],
   "result": true
  },
@@ -4519,7 +4519,7 @@
    "_get_custom_wxsim_source('cabin',)",
    "record_execution('u1',)",
    "_get_wxsim_weather('https://w.test/cabin', 'tomorrow', 7, '<msg>', 'cabin')",
-   "send_response('<msg>', 'WXSIM[https://w.test/cabin,tomorrow,7,cabin]')"
+   "send_response('<msg>', 'WXSIM[https://w.test/cabin,tomorrow,7,cabin,None]')"
   ],
   "result": true
  },
@@ -4533,7 +4533,7 @@
    "_get_custom_wxsim_source('cabin',)",
    "record_execution('u1',)",
    "_get_wxsim_weather('https://w.test/cabin', 'default', 7, '<msg>', 'cabin')",
-   "send_response('<msg>', 'WXSIM[https://w.test/cabin,default,7,cabin]')"
+   "send_response('<msg>', 'WXSIM[https://w.test/cabin,default,7,cabin,None]')"
   ],
   "result": true
  },
@@ -4587,7 +4587,7 @@
    "_get_custom_wxsim_source(None,)",
    "record_execution('u1',)",
    "_get_wxsim_weather('https://w.test/default', 'hourly', 7, '<msg>')",
-   "send_response('<msg>', 'WXSIM[https://w.test/default,hourly,7,None]')"
+   "send_response('<msg>', 'WXSIM[https://w.test/default,hourly,7,None,None]')"
   ],
   "result": true
  },
@@ -4649,7 +4649,7 @@
    "_get_custom_wxsim_source(None,)",
    "record_execution('u1',)",
    "_get_wxsim_weather('https://w.test/default', 'tomorrow', 7, '<msg>')",
-   "send_response('<msg>', 'WXSIM[https://w.test/default,tomorrow,7,None]')"
+   "send_response('<msg>', 'WXSIM[https://w.test/default,tomorrow,7,None,None]')"
   ],
   "result": true
  },

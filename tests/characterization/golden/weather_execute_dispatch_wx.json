@@ -4903,7 +4903,7 @@
    "_get_custom_wxsim_source(None,)",
    "record_execution('u1',)",
    "_get_wxsim_weather_async('https://w.test/default', 'default', 7, '<msg>')",
-   "send_response('<msg>', 'WXSIM[https://w.test/default,default,7,None]')"
+   "send_response('<msg>', 'WXSIM[https://w.test/default,default,7,None,None]')"
   ],
   "result": true
  },
@@ -4915,7 +4915,7 @@
    "_get_custom_wxsim_source(None,)",
    "record_execution('u1',)",
    "_get_wxsim_weather_async('https://w.test/default', 'multiday', 3, '<msg>')",
-   "_send_multiday_forecast('<msg>', 'WXSIM[https://w.test/default,multiday,3,None]')"
+   "_send_multiday_forecast('<msg>', 'WXSIM[https://w.test/default,multiday,3,None,None]')"
   ],
   "result": true
  },
@@ -4952,7 +4952,7 @@
    "_get_custom_wxsim_source(None,)",
    "record_execution('u1',)",
    "_get_wxsim_weather_async('https://w.test/default', 'multiday', 5, '<msg>')",
-   "_send_multiday_forecast('<msg>', 'WXSIM[https://w.test/default,multiday,5,None]')"
+   "_send_multiday_forecast('<msg>', 'WXSIM[https://w.test/default,multiday,5,None,None]')"
   ],
   "result": true
  },
@@ -5000,7 +5000,7 @@
    "_get_custom_wxsim_source(None,)",
    "record_execution('u1',)",
    "_get_wxsim_weather_async('https://w.test/default', 'hourly', 7, '<msg>')",
-   "send_response('<msg>', 'WXSIM[https://w.test/default,hourly,7,None]')"
+   "send_response('<msg>', 'WXSIM[https://w.test/default,hourly,7,None,None]')"
   ],
   "result": true
  },
@@ -5034,7 +5034,7 @@
    "_get_custom_wxsim_source(None,)",
    "record_execution('u1',)",
    "_get_wxsim_weather_async('https://w.test/default', 'alerts', 7, '<msg>')",
-   "send_response('<msg>', 'WXSIM[https://w.test/default,alerts,7,None]')"
+   "send_response('<msg>', 'WXSIM[https://w.test/default,alerts,7,None,None]')"
   ],
   "result": true
  },
@@ -5045,8 +5045,7 @@
    "logger.info(\"Using custom WXSIM source for location 'both': https://w.test/both\",)",
    "record_execution('u1',)",
    "_get_wxsim_weather_async('https://w.test/both', 'multiday', 5, '<msg>'){'location_name': 'both'}",
-   "logger.error(\"Error fetching WXSIM weather: _build.<locals>.<lambda>() got an unexpected keyword argument 'location_name'\",)",
-   "send_response('<msg>', '<commands.wx.error[(\\'error\\', \"_build.<locals>.<lambda>() got an unexpected keyword argument \\'location_name\\'\")]>')"
+   "_send_multiday_forecast('<msg>', 'WXSIM[https://w.test/both,multiday,5,None,both]')"
   ],
   "result": true
  },
@@ -5061,8 +5060,7 @@
    "logger.info(\"Using custom WXSIM source for location 'both': https://w.test/both\",)",
    "record_execution('u1',)",
    "_get_wxsim_weather_async('https://w.test/both', 'default', 7, '<msg>'){'location_name': 'both'}",
-   "logger.error(\"Error fetching WXSIM weather: _build.<locals>.<lambda>() got an unexpected keyword argument 'location_name'\",)",
-   "send_response('<msg>', '<commands.wx.error[(\\'error\\', \"_build.<locals>.<lambda>() got an unexpected keyword argument \\'location_name\\'\")]>')"
+   "send_response('<msg>', 'WXSIM[https://w.test/both,default,7,None,both]')"
   ],
   "result": true
  },
@@ -5073,8 +5071,7 @@
    "logger.info(\"Using custom WXSIM source for location 'cabin': https://w.test/cabin\",)",
    "record_execution('u1',)",
    "_get_wxsim_weather_async('https://w.test/cabin', 'alerts', 7, '<msg>'){'location_name': 'cabin'}",
-   "logger.error(\"Error fetching WXSIM weather: _build.<locals>.<lambda>() got an unexpected keyword argument 'location_name'\",)",
-   "send_response('<msg>', '<commands.wx.error[(\\'error\\', \"_build.<locals>.<lambda>() got an unexpected keyword argument \\'location_name\\'\")]>')"
+   "send_response('<msg>', 'WXSIM[https://w.test/cabin,alerts,7,None,cabin]')"
   ],
   "result": true
  },
@@ -5085,8 +5082,7 @@
    "logger.info(\"Using custom WXSIM source for location 'cabin': https://w.test/cabin\",)",
    "record_execution('u1',)",
    "_get_wxsim_weather_async('https://w.test/cabin', 'tomorrow', 7, '<msg>'){'location_name': 'cabin'}",
-   "logger.error(\"Error fetching WXSIM weather: _build.<locals>.<lambda>() got an unexpected keyword argument 'location_name'\",)",
-   "send_response('<msg>', '<commands.wx.error[(\\'error\\', \"_build.<locals>.<lambda>() got an unexpected keyword argument \\'location_name\\'\")]>')"
+   "send_response('<msg>', 'WXSIM[https://w.test/cabin,tomorrow,7,None,cabin]')"
   ],
   "result": true
  },
@@ -5101,8 +5097,7 @@
    "logger.info(\"Using custom WXSIM source for location 'cabin': https://w.test/cabin\",)",
    "record_execution('u1',)",
    "_get_wxsim_weather_async('https://w.test/cabin', 'default', 7, '<msg>'){'location_name': 'cabin'}",
-   "logger.error(\"Error fetching WXSIM weather: _build.<locals>.<lambda>() got an unexpected keyword argument 'location_name'\",)",
-   "send_response('<msg>', '<commands.wx.error[(\\'error\\', \"_build.<locals>.<lambda>() got an unexpected keyword argument \\'location_name\\'\")]>')"
+   "send_response('<msg>', 'WXSIM[https://w.test/cabin,default,7,None,cabin]')"
   ],
   "result": true
  },
@@ -5162,7 +5157,7 @@
    "_get_custom_wxsim_source(None,)",
    "record_execution('u1',)",
    "_get_wxsim_weather_async('https://w.test/default', 'hourly', 7, '<msg>')",
-   "send_response('<msg>', 'WXSIM[https://w.test/default,hourly,7,None]')"
+   "send_response('<msg>', 'WXSIM[https://w.test/default,hourly,7,None,None]')"
   ],
   "result": true
  },
@@ -5229,7 +5224,7 @@
    "_get_custom_wxsim_source(None,)",
    "record_execution('u1',)",
    "_get_wxsim_weather_async('https://w.test/default', 'tomorrow', 7, '<msg>')",
-   "send_response('<msg>', 'WXSIM[https://w.test/default,tomorrow,7,None]')"
+   "send_response('<msg>', 'WXSIM[https://w.test/default,tomorrow,7,None,None]')"
   ],
   "result": true
  },
