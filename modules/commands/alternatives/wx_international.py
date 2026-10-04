@@ -967,17 +967,7 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
         pressure = current.get('surface_pressure')
         weather_code = current.get('weather_code')
 
-        # Convert visibility to miles based on actual unit from API
-        # API returns visibility in feet when using imperial units
-        if visibility is not None:
-            if visibility_unit == 'ft' or 'ft' in str(visibility_unit).lower():
-                # Convert from feet to miles (1 mile = 5280 feet)
-                visibility_mi = visibility / 5280.0
-            else:
-                # Assume meters, convert to miles (1 mile = 1609.34 meters)
-                visibility_mi = visibility / 1609.34
-        else:
-            visibility_mi = None
+        visibility_mi = self._visibility_miles(visibility, visibility_unit)
 
         # Pressure validation - account for high elevation locations
         # Normal sea level pressure is 1013 hPa, range is typically 950-1050 hPa
@@ -1017,6 +1007,32 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
             weather += f" {humidity_str}"
 
         # Add additional conditions if space allows
+        conditions = self._open_meteo_extra_conditions(dewpoint, visibility_mi, pressure, temp_symbol)
+
+        # Add conditions to weather string if space allows
+        # Reserve space for forecast data (high/low and tomorrow)
+        conditions_max_length = max_length - 80  # Reserve ~80 chars for forecast data
+        if conditions and self._count_display_width(weather) < conditions_max_length:
+            weather += " " + " ".join(conditions)
+        return weather
+
+    def _visibility_miles(self, visibility, visibility_unit) -> Optional[float]:
+        """Open-Meteo's visibility in miles, from feet or meters as current_units says."""
+        # Convert visibility to miles based on actual unit from API
+        # API returns visibility in feet when using imperial units
+        if visibility is not None:
+            if visibility_unit == 'ft' or 'ft' in str(visibility_unit).lower():
+                # Convert from feet to miles (1 mile = 5280 feet)
+                visibility_mi = visibility / 5280.0
+            else:
+                # Assume meters, convert to miles (1 mile = 1609.34 meters)
+                visibility_mi = visibility / 1609.34
+        else:
+            visibility_mi = None
+        return visibility_mi
+
+    def _open_meteo_extra_conditions(self, dewpoint, visibility_mi, pressure, temp_symbol: str) -> list:
+        """Dew point, visibility and pressure strings, each only when its value is present."""
         conditions = []
 
         # Add dew point
@@ -1049,13 +1065,7 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
             else:
                 press_str = self.translate('commands.gwx.pressure', value=pressure_hpa)
             conditions.append(press_str)
-
-        # Add conditions to weather string if space allows
-        # Reserve space for forecast data (high/low and tomorrow)
-        conditions_max_length = max_length - 80  # Reserve ~80 chars for forecast data
-        if conditions and self._count_display_width(weather) < conditions_max_length:
-            weather += " " + " ".join(conditions)
-        return weather
+        return conditions
 
     def _open_meteo_daily_tail(self, weather: str, daily: dict, max_length: int, temp_symbol: str) -> str:
         """Append today's high/low, then tomorrow and its precipitation while they fit."""
