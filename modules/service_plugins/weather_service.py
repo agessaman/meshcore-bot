@@ -41,7 +41,7 @@ from ..nws_alerts import SERVICE_SPECIAL_RULES, entry_nws_headline, entry_summar
 from ..nws_coverage import NWSNoCoverageCache
 from ..url_shortener import shorten_url_sync
 from ..utils import format_temperature_high_low, get_config_timezone
-from ..weather_common import load_open_meteo_model
+from ..weather_common import load_open_meteo_model, load_open_meteo_units
 from .base_service import BaseServicePlugin
 
 # Try to import MQTT client (use paho-mqtt like packet capture service)
@@ -162,18 +162,9 @@ class WeatherService(BaseServicePlugin):
         # Get temperature/wind units from config (for Open-Meteo). Normalized and
         # validated the same way GlobalWxCommand does, so the unit also works as
         # a translation key for its display label.
-        self.temperature_unit = self.bot.config.get('Weather', 'temperature_unit', fallback='fahrenheit').lower()
-        self.wind_speed_unit = self.bot.config.get('Weather', 'wind_speed_unit', fallback='mph').lower()
-        self.precipitation_unit = self.bot.config.get('Weather', 'precipitation_unit', fallback='inch').lower()
-        if self.temperature_unit not in ('fahrenheit', 'celsius'):
-            self.logger.warning(f"Invalid temperature_unit '{self.temperature_unit}', using 'fahrenheit'")
-            self.temperature_unit = 'fahrenheit'
-        if self.wind_speed_unit not in ('mph', 'kmh', 'ms', 'kn'):
-            self.logger.warning(f"Invalid wind_speed_unit '{self.wind_speed_unit}', using 'mph'")
-            self.wind_speed_unit = 'mph'
-        if self.precipitation_unit not in ('inch', 'mm'):
-            self.logger.warning(f"Invalid precipitation_unit '{self.precipitation_unit}', using 'inch'")
-            self.precipitation_unit = 'inch'
+        self.temperature_unit, self.wind_speed_unit, self.precipitation_unit = load_open_meteo_units(
+            self.bot.config, self.logger
+        )
 
         # Proactive rain nowcast ("rain incoming" push). Reuses the rain command's
         # Open-Meteo 15-minutely logic for the bot's own position.

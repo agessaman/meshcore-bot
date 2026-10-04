@@ -43,6 +43,28 @@ def load_open_meteo_model(config: Any, logger: Any) -> Optional[str]:
     return model
 
 
+def load_open_meteo_units(config: Any, logger: Any) -> tuple[str, str, str]:
+    """[Weather] temperature_unit, wind_speed_unit and precipitation_unit for Open-Meteo.
+
+    Lowercased; a value Open-Meteo does not accept falls back to fahrenheit,
+    mph or inch with a warning. The result doubles as a translation key for the
+    unit's display label.
+    """
+    temperature_unit = config.get('Weather', 'temperature_unit', fallback='fahrenheit').lower()
+    wind_speed_unit = config.get('Weather', 'wind_speed_unit', fallback='mph').lower()
+    precipitation_unit = config.get('Weather', 'precipitation_unit', fallback='inch').lower()
+    if temperature_unit not in ('fahrenheit', 'celsius'):
+        logger.warning(f"Invalid temperature_unit '{temperature_unit}', using 'fahrenheit'")
+        temperature_unit = 'fahrenheit'
+    if wind_speed_unit not in ('mph', 'kmh', 'ms', 'kn'):
+        logger.warning(f"Invalid wind_speed_unit '{wind_speed_unit}', using 'mph'")
+        wind_speed_unit = 'mph'
+    if precipitation_unit not in ('inch', 'mm'):
+        logger.warning(f"Invalid precipitation_unit '{precipitation_unit}', using 'inch'")
+        precipitation_unit = 'inch'
+    return temperature_unit, wind_speed_unit, precipitation_unit
+
+
 # 16-point compass labels, clockwise from north, and the arrow for each 45° sector.
 _COMPASS_16 = (
     "N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",

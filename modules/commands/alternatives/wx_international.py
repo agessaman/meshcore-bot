@@ -28,7 +28,13 @@ from ...utils import (  # noqa: F401  format_temperature_high_low and get_nomina
     normalize_us_state,
     rate_limited_nominatim_reverse_sync,
 )
-from ...weather_common import _ARROWS_8, _COMPASS_16, WeatherCommandMixin, load_open_meteo_model
+from ...weather_common import (
+    _ARROWS_8,
+    _COMPASS_16,
+    WeatherCommandMixin,
+    load_open_meteo_model,
+    load_open_meteo_units,
+)
 from ..base_command import BaseCommand
 
 # Kept for code that checked them; these imports used to be optional.
@@ -100,21 +106,10 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
         self.default_country = self.bot.config.get('Weather', 'default_country', fallback='US')
         self.always_show_location = self.bot.config.getboolean('Weather', 'always_show_location', fallback=False)
 
-        # Get unit preferences from config
-        self.temperature_unit = self.bot.config.get('Weather', 'temperature_unit', fallback='fahrenheit').lower()
-        self.wind_speed_unit = self.bot.config.get('Weather', 'wind_speed_unit', fallback='mph').lower()
-        self.precipitation_unit = self.bot.config.get('Weather', 'precipitation_unit', fallback='inch').lower()
-
-        # Validate units
-        if self.temperature_unit not in ['fahrenheit', 'celsius']:
-            self.logger.warning(f"Invalid temperature_unit '{self.temperature_unit}', using 'fahrenheit'")
-            self.temperature_unit = 'fahrenheit'
-        if self.wind_speed_unit not in ['mph', 'kmh', 'ms', 'kn']:
-            self.logger.warning(f"Invalid wind_speed_unit '{self.wind_speed_unit}', using 'mph'")
-            self.wind_speed_unit = 'mph'
-        if self.precipitation_unit not in ['inch', 'mm']:
-            self.logger.warning(f"Invalid precipitation_unit '{self.precipitation_unit}', using 'inch'")
-            self.precipitation_unit = 'inch'
+        # Get unit preferences from config (validated)
+        self.temperature_unit, self.wind_speed_unit, self.precipitation_unit = load_open_meteo_units(
+            self.bot.config, self.logger
+        )
 
         # Initialize geocoder (will use rate-limited helpers for actual calls)
         self.geolocator = get_nominatim_geocoder()
