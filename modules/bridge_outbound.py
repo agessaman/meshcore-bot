@@ -109,7 +109,7 @@ async def post_discord_webhook(
             return False
 
     if REQUESTS_AVAILABLE:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         def _sync_post() -> bool:
             try:
@@ -177,7 +177,7 @@ async def post_telegram_message(
             return False
 
     if REQUESTS_AVAILABLE:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         def _sync_post() -> bool:
             try:

@@ -400,7 +400,7 @@ class SolarforecastCommand(BaseCommand):
 
         try:
             import asyncio
-            asyncio.get_event_loop()
+            asyncio.get_running_loop()
 
             # For coordinates, always do reverse geocoding
             if location_type == "coordinates":
@@ -592,7 +592,7 @@ class SolarforecastCommand(BaseCommand):
 
         try:
             # Run HTTP request in executor to avoid blocking
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             response = await loop.run_in_executor(
                 None,
                 lambda: requests.get(url, timeout=self.url_timeout)

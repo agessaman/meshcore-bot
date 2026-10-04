@@ -1946,7 +1946,7 @@ class PacketCaptureService(BaseServicePlugin):
                         )
                         # For WebSockets, connect without path parameter (path set via ws_set_options)
                         # Run connect in executor to avoid blocking the event loop
-                        loop = asyncio.get_event_loop()
+                        loop = asyncio.get_running_loop()
                         try:
                             await loop.run_in_executor(None, client.connect, host, port, keepalive)
                         except Exception as connect_error:
@@ -1957,7 +1957,7 @@ class PacketCaptureService(BaseServicePlugin):
                             f"Connecting to MQTT broker {host}:{port} via TCP (TLS: {broker_config.get('use_tls', False)})"
                         )
                         # Run connect in executor to avoid blocking the event loop
-                        loop = asyncio.get_event_loop()
+                        loop = asyncio.get_running_loop()
                         try:
                             await loop.run_in_executor(None, client.connect, host, port, keepalive)
                         except Exception as connect_error:
@@ -3133,7 +3133,7 @@ class PacketCaptureService(BaseServicePlugin):
         """
         client = mqtt_client_info["client"]
         broker_host = mqtt_client_info["config"].get("host", "unknown")
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         async with mqtt_client_info["cycle_lock"]:
             self.logger.info(f"Cycling MQTT connection to {broker_host} ({reason})")

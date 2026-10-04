@@ -1192,7 +1192,7 @@ class WeatherService(BaseServicePlugin):
         # City + state/country (same labeling as the !rain command), reverse-
         # geocoded once and cached. Kept separate from the daily-forecast cache.
         if self._cached_rain_location is None:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             city, suffix = await loop.run_in_executor(
                 None,
                 lambda: reverse_geocode_region(
@@ -1276,7 +1276,7 @@ class WeatherService(BaseServicePlugin):
                 client.on_message = on_message
 
                 # Connect and subscribe (non-blocking to avoid blocking event loop)
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 try:
                     await loop.run_in_executor(None, client.connect, broker_host, broker_port, 60)
                 except Exception as connect_error:

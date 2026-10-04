@@ -1100,7 +1100,7 @@ class RainCommand(BaseCommand):
 
         try:
             self.record_execution(message.sender_id)
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             series = await loop.run_in_executor(None, lambda: self._fetch_series(lat, lon))
         except Exception as e:
             self.logger.error(f"Error fetching rain nowcast: {e}")

@@ -2580,7 +2580,7 @@ class RepeaterManager:
 
             # Process repeaters with delays to avoid overwhelming LoRa network
             self.logger.info(f"Starting batch purge of {len(old_repeaters)} old repeaters...")
-            start_time = asyncio.get_event_loop().time()
+            start_time = asyncio.get_running_loop().time()
 
             for i, repeater in enumerate(old_repeaters):
                 public_key = repeater['public_key']
@@ -2603,7 +2603,7 @@ class RepeaterManager:
                     self.logger.debug("Waiting 2 seconds before next removal...")
                     await asyncio.sleep(2)  # 2 second delay between removals
 
-            end_time = asyncio.get_event_loop().time()
+            end_time = asyncio.get_running_loop().time()
             total_duration = end_time - start_time
             self.logger.info(f"Batch purge completed in {total_duration:.2f} seconds")
 

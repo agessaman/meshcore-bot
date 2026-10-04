@@ -513,7 +513,7 @@ class DiscordBridgeService(ChannelBridgeBase):
         """
         try:
             # Run in thread pool to avoid blocking event loop
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             response = await loop.run_in_executor(
                 None,
                 lambda: requests.post(webhook_url, json=payload, timeout=10)

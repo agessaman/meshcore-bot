@@ -320,7 +320,7 @@ async def shorten_url(
     """Async wrapper: runs shorten_url_sync in the default executor."""
     if not url:
         return ""
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     try:
         return await loop.run_in_executor(
             None,

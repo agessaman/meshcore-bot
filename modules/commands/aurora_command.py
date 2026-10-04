@@ -216,7 +216,7 @@ class AuroraCommand(BaseCommand):
 
         try:
             self.record_execution(message.sender_id)
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             client = NOAAAuroraClient(latitude=lat, longitude=lon)
             data = await loop.run_in_executor(None, lambda: client.get_aurora_data())
         except Exception as e:

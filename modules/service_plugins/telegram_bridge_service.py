@@ -354,7 +354,7 @@ class TelegramBridgeService(ChannelBridgeBase):
         queued_msg: Optional[QueuedMessage] = None,
     ) -> bool:
         try:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             response = await loop.run_in_executor(
                 None,
                 lambda: requests.post(url, json=payload, timeout=10),

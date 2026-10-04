@@ -194,7 +194,7 @@ class EarthquakeService(BaseServicePlugin):
             "orderby": "magnitude",
         }
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         try:
             response = await loop.run_in_executor(
                 None,

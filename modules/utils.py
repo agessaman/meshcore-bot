@@ -1415,7 +1415,7 @@ async def check_internet_connectivity_async(host: str = "8.8.8.8", port: int = 5
 
     # Fallback: HTTP request check (works even if DNS port is blocked)
     # Run urllib in executor to avoid blocking
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     try:
         # Use a reliable HTTP endpoint that's likely to be accessible
         # Using IP address to avoid DNS resolution issues
