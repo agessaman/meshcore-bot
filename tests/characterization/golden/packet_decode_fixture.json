@@ -1,0 +1,2026 @@
+{
+ "00-full": {
+  "2": {
+   "bytes_per_hop": 1,
+   "has_transport_codes": false,
+   "header": "0x15",
+   "path": [
+    "E0",
+    "7E",
+    "D0",
+    "C3",
+    "17",
+    "7A",
+    "9D",
+    "29"
+   ],
+   "path_byte_length": 8,
+   "path_hex": "e07ed0c3177a9d29",
+   "path_info": {
+    "description": "Flooded through E0,7E,D0,C3,17,7A,9D,29 (8 hops)",
+    "meaning": "bytes_added_as_packet_floods",
+    "path": [
+     "E0",
+     "7E",
+     "D0",
+     "C3",
+     "17",
+     "7A",
+     "9D",
+     "29"
+    ],
+    "type": "historical_route"
+   },
+   "path_len": 8,
+   "path_len_byte": 8,
+   "payload_bytes": 35,
+   "payload_hex": "ca98965980706fee08331e6bcb75d0860d605a36e7f27a6ad4fcd500d6376d3e182e09",
+   "payload_type": 5,
+   "payload_type_enum": "<PayloadType.GRP_TXT: 5>",
+   "payload_type_name": "GRP_TXT",
+   "payload_version": 0,
+   "payload_version_enum": "<PayloadVersion.VER_1: 0>",
+   "route_type": 1,
+   "route_type_enum": "<RouteType.FLOOD: 1>",
+   "route_type_name": "FLOOD",
+   "transport_codes": null,
+   "transport_size": 0
+  },
+  "4": {
+   "bytes_per_hop": 1,
+   "has_transport_codes": false,
+   "header": "0x15",
+   "path": [
+    "E0",
+    "7E",
+    "D0",
+    "C3",
+    "17",
+    "7A",
+    "9D",
+    "29"
+   ],
+   "path_byte_length": 8,
+   "path_hex": "e07ed0c3177a9d29",
+   "path_info": {
+    "description": "Flooded through E07E,D0C3,177A,9D29 (4 hops)",
+    "meaning": "bytes_added_as_packet_floods",
+    "path": [
+     "E07E",
+     "D0C3",
+     "177A",
+     "9D29"
+    ],
+    "type": "historical_route"
+   },
+   "path_len": 8,
+   "path_len_byte": 8,
+   "payload_bytes": 35,
+   "payload_hex": "ca98965980706fee08331e6bcb75d0860d605a36e7f27a6ad4fcd500d6376d3e182e09",
+   "payload_type": 5,
+   "payload_type_enum": "<PayloadType.GRP_TXT: 5>",
+   "payload_type_name": "GRP_TXT",
+   "payload_version": 0,
+   "payload_version_enum": "<PayloadVersion.VER_1: 0>",
+   "route_type": 1,
+   "route_type_enum": "<RouteType.FLOOD: 1>",
+   "route_type_name": "FLOOD",
+   "transport_codes": null,
+   "transport_size": 0
+  },
+  "6": {
+   "bytes_per_hop": 1,
+   "has_transport_codes": false,
+   "header": "0x15",
+   "path": [
+    "E0",
+    "7E",
+    "D0",
+    "C3",
+    "17",
+    "7A",
+    "9D",
+    "29"
+   ],
+   "path_byte_length": 8,
+   "path_hex": "e07ed0c3177a9d29",
+   "path_info": {
+    "description": "Flooded through E0,7E,D0,C3,17,7A,9D,29 (8 hops)",
+    "meaning": "bytes_added_as_packet_floods",
+    "path": [
+     "E0",
+     "7E",
+     "D0",
+     "C3",
+     "17",
+     "7A",
+     "9D",
+     "29"
+    ],
+    "type": "historical_route"
+   },
+   "path_len": 8,
+   "path_len_byte": 8,
+   "payload_bytes": 35,
+   "payload_hex": "ca98965980706fee08331e6bcb75d0860d605a36e7f27a6ad4fcd500d6376d3e182e09",
+   "payload_type": 5,
+   "payload_type_enum": "<PayloadType.GRP_TXT: 5>",
+   "payload_type_name": "GRP_TXT",
+   "payload_version": 0,
+   "payload_version_enum": "<PayloadVersion.VER_1: 0>",
+   "route_type": 1,
+   "route_type_enum": "<RouteType.FLOOD: 1>",
+   "route_type_name": "FLOOD",
+   "transport_codes": null,
+   "transport_size": 0
+  },
+  "hash": "EF35B95AA61A6AE8"
+ },
+ "00-half": {
+  "2": null,
+  "4": null,
+  "6": null,
+  "hash": "0000000000000000"
+ },
+ "00-header_only": {
+  "2": null,
+  "4": null,
+  "6": null,
+  "hash": "0000000000000000"
+ },
+ "00-odd_length": {
+  "2": null,
+  "4": null,
+  "6": null,
+  "hash": "0000000000000000"
+ },
+ "01-full": {
+  "2": {
+   "bytes_per_hop": 1,
+   "has_transport_codes": false,
+   "header": "0x12",
+   "path": [],
+   "path_byte_length": 0,
+   "path_hex": "",
+   "path_info": {
+    "description": "Direct route via  (0 hops)",
+    "meaning": "bytes_stripped_at_each_hop",
+    "path": [],
+    "type": "routing_instructions"
+   },
+   "path_len": 0,
+   "path_len_byte": 0,
+   "payload_bytes": 118,
+   "payload_hex": "dc6db1e831c560b0a6d45615017b189335dca3f477e7dd32c0fabe86ca98fdf5f1934466c157dc948499d1b74f3a228391b1074452191b6aa82fa78ad497967f5c31327d1e692c7918cd6766f0ac18d2d17284fc140acdc02885c6e65fa9531bcd9e9d0692fedfcf020da1b6f84b473751494e205231",
+   "payload_type": 4,
+   "payload_type_enum": "<PayloadType.ADVERT: 4>",
+   "payload_type_name": "ADVERT",
+   "payload_version": 0,
+   "payload_version_enum": "<PayloadVersion.VER_1: 0>",
+   "route_type": 2,
+   "route_type_enum": "<RouteType.DIRECT: 2>",
+   "route_type_name": "DIRECT",
+   "transport_codes": null,
+   "transport_size": 0
+  },
+  "4": {
+   "bytes_per_hop": 1,
+   "has_transport_codes": false,
+   "header": "0x12",
+   "path": [],
+   "path_byte_length": 0,
+   "path_hex": "",
+   "path_info": {
+    "description": "Direct route via  (0 hops)",
+    "meaning": "bytes_stripped_at_each_hop",
+    "path": [],
+    "type": "routing_instructions"
+   },
+   "path_len": 0,
+   "path_len_byte": 0,
+   "payload_bytes": 118,
+   "payload_hex": "dc6db1e831c560b0a6d45615017b189335dca3f477e7dd32c0fabe86ca98fdf5f1934466c157dc948499d1b74f3a228391b1074452191b6aa82fa78ad497967f5c31327d1e692c7918cd6766f0ac18d2d17284fc140acdc02885c6e65fa9531bcd9e9d0692fedfcf020da1b6f84b473751494e205231",
+   "payload_type": 4,
+   "payload_type_enum": "<PayloadType.ADVERT: 4>",
+   "payload_type_name": "ADVERT",
+   "payload_version": 0,
+   "payload_version_enum": "<PayloadVersion.VER_1: 0>",
+   "route_type": 2,
+   "route_type_enum": "<RouteType.DIRECT: 2>",
+   "route_type_name": "DIRECT",
+   "transport_codes": null,
+   "transport_size": 0
+  },
+  "6": {
+   "bytes_per_hop": 1,
+   "has_transport_codes": false,
+   "header": "0x12",
+   "path": [],
+   "path_byte_length": 0,
+   "path_hex": "",
+   "path_info": {
+    "description": "Direct route via  (0 hops)",
+    "meaning": "bytes_stripped_at_each_hop",
+    "path": [],
+    "type": "routing_instructions"
+   },
+   "path_len": 0,
+   "path_len_byte": 0,
+   "payload_bytes": 118,
+   "payload_hex": "dc6db1e831c560b0a6d45615017b189335dca3f477e7dd32c0fabe86ca98fdf5f1934466c157dc948499d1b74f3a228391b1074452191b6aa82fa78ad497967f5c31327d1e692c7918cd6766f0ac18d2d17284fc140acdc02885c6e65fa9531bcd9e9d0692fedfcf020da1b6f84b473751494e205231",
+   "payload_type": 4,
+   "payload_type_enum": "<PayloadType.ADVERT: 4>",
+   "payload_type_name": "ADVERT",
+   "payload_version": 0,
+   "payload_version_enum": "<PayloadVersion.VER_1: 0>",
+   "route_type": 2,
+   "route_type_enum": "<RouteType.DIRECT: 2>",
+   "route_type_name": "DIRECT",
+   "transport_codes": null,
+   "transport_size": 0
+  },
+  "hash": "C16BDED00FAA94FD"
+ },
+ "01-half": {
+  "2": {
+   "bytes_per_hop": 1,
+   "has_transport_codes": false,
+   "header": "0x12",
+   "path": [],
+   "path_byte_length": 0,
+   "path_hex": "",
+   "path_info": {
+    "description": "Direct route via  (0 hops)",
+    "meaning": "bytes_stripped_at_each_hop",
+    "path": [],
+    "type": "routing_instructions"
+   },
+   "path_len": 0,
+   "path_len_byte": 0,
+   "payload_bytes": 58,
+   "payload_hex": "dc6db1e831c560b0a6d45615017b189335dca3f477e7dd32c0fabe86ca98fdf5f1934466c157dc948499d1b74f3a228391b1074452191b6aa82f",
+   "payload_type": 4,
+   "payload_type_enum": "<PayloadType.ADVERT: 4>",
+   "payload_type_name": "ADVERT",
+   "payload_version": 0,
+   "payload_version_enum": "<PayloadVersion.VER_1: 0>",
+   "route_type": 2,
+   "route_type_enum": "<RouteType.DIRECT: 2>",
+   "route_type_name": "DIRECT",
+   "transport_codes": null,
+   "transport_size": 0
+  },
+  "4": {
+   "bytes_per_hop": 1,
+   "has_transport_codes": false,
+   "header": "0x12",
+   "path": [],
+   "path_byte_length": 0,
+   "path_hex": "",
+   "path_info": {
+    "description": "Direct route via  (0 hops)",
+    "meaning": "bytes_stripped_at_each_hop",
+    "path": [],
+    "type": "routing_instructions"
+   },
+   "path_len": 0,
+   "path_len_byte": 0,
+   "payload_bytes": 58,
+   "payload_hex": "dc6db1e831c560b0a6d45615017b189335dca3f477e7dd32c0fabe86ca98fdf5f1934466c157dc948499d1b74f3a228391b1074452191b6aa82f",
+   "payload_type": 4,
+   "payload_type_enum": "<PayloadType.ADVERT: 4>",
+   "payload_type_name": "ADVERT",
+   "payload_version": 0,
+   "payload_version_enum": "<PayloadVersion.VER_1: 0>",
+   "route_type": 2,
+   "route_type_enum": "<RouteType.DIRECT: 2>",
+   "route_type_name": "DIRECT",
+   "transport_codes": null,
+   "transport_size": 0
+  },
+  "6": {
+   "bytes_per_hop": 1,
+   "has_transport_codes": false,
+   "header": "0x12",
+   "path": [],
+   "path_byte_length": 0,
+   "path_hex": "",
+   "path_info": {
+    "description": "Direct route via  (0 hops)",
+    "meaning": "bytes_stripped_at_each_hop",
+    "path": [],
+    "type": "routing_instructions"
+   },
+   "path_len": 0,
+   "path_len_byte": 0,
+   "payload_bytes": 58,
+   "payload_hex": "dc6db1e831c560b0a6d45615017b189335dca3f477e7dd32c0fabe86ca98fdf5f1934466c157dc948499d1b74f3a228391b1074452191b6aa82f",
+   "payload_type": 4,
+   "payload_type_enum": "<PayloadType.ADVERT: 4>",
+   "payload_type_name": "ADVERT",
+   "payload_version": 0,
+   "payload_version_enum": "<PayloadVersion.VER_1: 0>",
+   "route_type": 2,
+   "route_type_enum": "<RouteType.DIRECT: 2>",
+   "route_type_name": "DIRECT",
+   "transport_codes": null,
+   "transport_size": 0
+  },
+  "hash": "37B522B3A780C634"
+ },
+ "01-header_only": {
+  "2": {
+   "bytes_per_hop": 1,
+   "has_transport_codes": false,
+   "header": "0x12",
+   "path": [],
+   "path_byte_length": 0,
+   "path_hex": "",
+   "path_info": {
+    "description": "Direct route via  (0 hops)",
+    "meaning": "bytes_stripped_at_each_hop",
+    "path": [],
+    "type": "routing_instructions"
+   },
+   "path_len": 0,
+   "path_len_byte": 0,
+   "payload_bytes": 0,
+   "payload_hex": "",
+   "payload_type": 4,
+   "payload_type_enum": "<PayloadType.ADVERT: 4>",
+   "payload_type_name": "ADVERT",
+   "payload_version": 0,
+   "payload_version_enum": "<PayloadVersion.VER_1: 0>",
+   "route_type": 2,
+   "route_type_enum": "<RouteType.DIRECT: 2>",
+   "route_type_name": "DIRECT",
+   "transport_codes": null,
+   "transport_size": 0
+  },
+  "4": {
+   "bytes_per_hop": 1,
+   "has_transport_codes": false,
+   "header": "0x12",
+   "path": [],
+   "path_byte_length": 0,
+   "path_hex": "",
+   "path_info": {
+    "description": "Direct route via  (0 hops)",
+    "meaning": "bytes_stripped_at_each_hop",
+    "path": [],
+    "type": "routing_instructions"
+   },
+   "path_len": 0,
+   "path_len_byte": 0,
+   "payload_bytes": 0,
+   "payload_hex": "",
+   "payload_type": 4,
+   "payload_type_enum": "<PayloadType.ADVERT: 4>",
+   "payload_type_name": "ADVERT",
+   "payload_version": 0,
+   "payload_version_enum": "<PayloadVersion.VER_1: 0>",
+   "route_type": 2,
+   "route_type_enum": "<RouteType.DIRECT: 2>",
+   "route_type_name": "DIRECT",
+   "transport_codes": null,
+   "transport_size": 0
+  },
+  "6": {
+   "bytes_per_hop": 1,
+   "has_transport_codes": false,
+   "header": "0x12",
+   "path": [],
+   "path_byte_length": 0,
+   "path_hex": "",
+   "path_info": {
+    "description": "Direct route via  (0 hops)",
+    "meaning": "bytes_stripped_at_each_hop",
+    "path": [],
+    "type": "routing_instructions"
+   },
+   "path_len": 0,
+   "path_len_byte": 0,
+   "payload_bytes": 0,
+   "payload_hex": "",
+   "payload_type": 4,
+   "payload_type_enum": "<PayloadType.ADVERT: 4>",
+   "payload_type_name": "ADVERT",
+   "payload_version": 0,
+   "payload_version_enum": "<PayloadVersion.VER_1: 0>",
+   "route_type": 2,
+   "route_type_enum": "<RouteType.DIRECT: 2>",
+   "route_type_name": "DIRECT",
+   "transport_codes": null,
+   "transport_size": 0
+  },
+  "hash": "0000000000000000"
+ },
+ "01-odd_length": {
+  "2": null,
+  "4": null,
+  "6": null,
+  "hash": "0000000000000000"
+ },
+ "02-full": {
+  "2": {
+   "bytes_per_hop": 1,
+   "has_transport_codes": false,
+   "header": "0x12",
+   "path": [],
+   "path_byte_length": 0,
+   "path_hex": "",
+   "path_info": {
+    "description": "Direct route via  (0 hops)",
+    "meaning": "bytes_stripped_at_each_hop",
+    "path": [],
+    "type": "routing_instructions"
+   },
+   "path_len": 0,
+   "path_len_byte": 0,
+   "payload_bytes": 118,
+   "payload_hex": "dc6db1e831c560b0a6d45615017b189335dca3f477e7dd32c0fabe86ca98fdf5f1934466c157dc948499d1b74f3a228391b1074452191b6aa82fa78ad497967f5c31327d1e692c7918cd6766f0ac18d2d17284fc140acdc02885c6e65fa9531bcd9e9d0692fedfcf020da1b6f84b473751494e205231",
+   "payload_type": 4,
+   "payload_type_enum": "<PayloadType.ADVERT: 4>",
+   "payload_type_name": "ADVERT",
+   "payload_version": 0,
+   "payload_version_enum": "<PayloadVersion.VER_1: 0>",
+   "route_type": 2,
+   "route_type_enum": "<RouteType.DIRECT: 2>",
+   "route_type_name": "DIRECT",
+   "transport_codes": null,
+   "transport_size": 0
+  },
+  "4": {
+   "bytes_per_hop": 1,
+   "has_transport_codes": false,
+   "header": "0x12",
+   "path": [],
+   "path_byte_length": 0,
+   "path_hex": "",
+   "path_info": {
+    "description": "Direct route via  (0 hops)",
+    "meaning": "bytes_stripped_at_each_hop",
+    "path": [],
+    "type": "routing_instructions"
+   },
+   "path_len": 0,
+   "path_len_byte": 0,
+   "payload_bytes": 118,
+   "payload_hex": "dc6db1e831c560b0a6d45615017b189335dca3f477e7dd32c0fabe86ca98fdf5f1934466c157dc948499d1b74f3a228391b1074452191b6aa82fa78ad497967f5c31327d1e692c7918cd6766f0ac18d2d17284fc140acdc02885c6e65fa9531bcd9e9d0692fedfcf020da1b6f84b473751494e205231",
+   "payload_type": 4,
+   "payload_type_enum": "<PayloadType.ADVERT: 4>",
+   "payload_type_name": "ADVERT",
+   "payload_version": 0,
+   "payload_version_enum": "<PayloadVersion.VER_1: 0>",
+   "route_type": 2,
+   "route_type_enum": "<RouteType.DIRECT: 2>",
+   "route_type_name": "DIRECT",
+   "transport_codes": null,
+   "transport_size": 0
+  },
+  "6": {
+   "bytes_per_hop": 1,
+   "has_transport_codes": false,
+   "header": "0x12",
+   "path": [],
+   "path_byte_length": 0,
+   "path_hex": "",
+   "path_info": {
+    "description": "Direct route via  (0 hops)",
+    "meaning": "bytes_stripped_at_each_hop",
+    "path": [],
+    "type": "routing_instructions"
+   },
+   "path_len": 0,
+   "path_len_byte": 0,
+   "payload_bytes": 118,
+   "payload_hex": "dc6db1e831c560b0a6d45615017b189335dca3f477e7dd32c0fabe86ca98fdf5f1934466c157dc948499d1b74f3a228391b1074452191b6aa82fa78ad497967f5c31327d1e692c7918cd6766f0ac18d2d17284fc140acdc02885c6e65fa9531bcd9e9d0692fedfcf020da1b6f84b473751494e205231",
+   "payload_type": 4,
+   "payload_type_enum": "<PayloadType.ADVERT: 4>",
+   "payload_type_name": "ADVERT",
+   "payload_version": 0,
+   "payload_version_enum": "<PayloadVersion.VER_1: 0>",
+   "route_type": 2,
+   "route_type_enum": "<RouteType.DIRECT: 2>",
+   "route_type_name": "DIRECT",
+   "transport_codes": null,
+   "transport_size": 0
+  },
+  "hash": "C16BDED00FAA94FD"
+ },
+ "02-half": {
+  "2": {
+   "bytes_per_hop": 1,
+   "has_transport_codes": false,
+   "header": "0x12",
+   "path": [],
+   "path_byte_length": 0,
+   "path_hex": "",
+   "path_info": {
+    "description": "Direct route via  (0 hops)",
+    "meaning": "bytes_stripped_at_each_hop",
+    "path": [],
+    "type": "routing_instructions"
+   },
+   "path_len": 0,
+   "path_len_byte": 0,
+   "payload_bytes": 58,
+   "payload_hex": "dc6db1e831c560b0a6d45615017b189335dca3f477e7dd32c0fabe86ca98fdf5f1934466c157dc948499d1b74f3a228391b1074452191b6aa82f",
+   "payload_type": 4,
+   "payload_type_enum": "<PayloadType.ADVERT: 4>",
+   "payload_type_name": "ADVERT",
+   "payload_version": 0,
+   "payload_version_enum": "<PayloadVersion.VER_1: 0>",
+   "route_type": 2,
+   "route_type_enum": "<RouteType.DIRECT: 2>",
+   "route_type_name": "DIRECT",
+   "transport_codes": null,
+   "transport_size": 0
+  },
+  "4": {
+   "bytes_per_hop": 1,
+   "has_transport_codes": false,
+   "header": "0x12",
+   "path": [],
+   "path_byte_length": 0,
+   "path_hex": "",
+   "path_info": {
+    "description": "Direct route via  (0 hops)",
+    "meaning": "bytes_stripped_at_each_hop",
+    "path": [],
+    "type": "routing_instructions"
+   },
+   "path_len": 0,
+   "path_len_byte": 0,
+   "payload_bytes": 58,
+   "payload_hex": "dc6db1e831c560b0a6d45615017b189335dca3f477e7dd32c0fabe86ca98fdf5f1934466c157dc948499d1b74f3a228391b1074452191b6aa82f",
+   "payload_type": 4,
+   "payload_type_enum": "<PayloadType.ADVERT: 4>",
+   "payload_type_name": "ADVERT",
+   "payload_version": 0,
+   "payload_version_enum": "<PayloadVersion.VER_1: 0>",
+   "route_type": 2,
+   "route_type_enum": "<RouteType.DIRECT: 2>",
+   "route_type_name": "DIRECT",
+   "transport_codes": null,
+   "transport_size": 0
+  },
+  "6": {
+   "bytes_per_hop": 1,
+   "has_transport_codes": false,
+   "header": "0x12",
+   "path": [],
+   "path_byte_length": 0,
+   "path_hex": "",
+   "path_info": {
+    "description": "Direct route via  (0 hops)",
+    "meaning": "bytes_stripped_at_each_hop",
+    "path": [],
+    "type": "routing_instructions"
+   },
+   "path_len": 0,
+   "path_len_byte": 0,
+   "payload_bytes": 58,
+   "payload_hex": "dc6db1e831c560b0a6d45615017b189335dca3f477e7dd32c0fabe86ca98fdf5f1934466c157dc948499d1b74f3a228391b1074452191b6aa82f",
+   "payload_type": 4,
+   "payload_type_enum": "<PayloadType.ADVERT: 4>",
+   "payload_type_name": "ADVERT",
+   "payload_version": 0,
+   "payload_version_enum": "<PayloadVersion.VER_1: 0>",
+   "route_type": 2,
+   "route_type_enum": "<RouteType.DIRECT: 2>",
+   "route_type_name": "DIRECT",
+   "transport_codes": null,
+   "transport_size": 0
+  },
+  "hash": "37B522B3A780C634"
+ },
+ "02-header_only": {
+  "2": {
+   "bytes_per_hop": 1,
+   "has_transport_codes": false,
+   "header": "0x12",
+   "path": [],
+   "path_byte_length": 0,
+   "path_hex": "",
+   "path_info": {
+    "description": "Direct route via  (0 hops)",
+    "meaning": "bytes_stripped_at_each_hop",
+    "path": [],
+    "type": "routing_instructions"
+   },
+   "path_len": 0,
+   "path_len_byte": 0,
+   "payload_bytes": 0,
+   "payload_hex": "",
+   "payload_type": 4,
+   "payload_type_enum": "<PayloadType.ADVERT: 4>",
+   "payload_type_name": "ADVERT",
+   "payload_version": 0,
+   "payload_version_enum": "<PayloadVersion.VER_1: 0>",
+   "route_type": 2,
+   "route_type_enum": "<RouteType.DIRECT: 2>",
+   "route_type_name": "DIRECT",
+   "transport_codes": null,
+   "transport_size": 0
+  },
+  "4": {
+   "bytes_per_hop": 1,
+   "has_transport_codes": false,
+   "header": "0x12",
+   "path": [],
+   "path_byte_length": 0,
+   "path_hex": "",
+   "path_info": {
+    "description": "Direct route via  (0 hops)",
+    "meaning": "bytes_stripped_at_each_hop",
+    "path": [],
+    "type": "routing_instructions"
+   },
+   "path_len": 0,
+   "path_len_byte": 0,
+   "payload_bytes": 0,
+   "payload_hex": "",
+   "payload_type": 4,
+   "payload_type_enum": "<PayloadType.ADVERT: 4>",
+   "payload_type_name": "ADVERT",
+   "payload_version": 0,
+   "payload_version_enum": "<PayloadVersion.VER_1: 0>",
+   "route_type": 2,
+   "route_type_enum": "<RouteType.DIRECT: 2>",
+   "route_type_name": "DIRECT",
+   "transport_codes": null,
+   "transport_size": 0
+  },
+  "6": {
+   "bytes_per_hop": 1,
+   "has_transport_codes": false,
+   "header": "0x12",
+   "path": [],
+   "path_byte_length": 0,
+   "path_hex": "",
+   "path_info": {
+    "description": "Direct route via  (0 hops)",
+    "meaning": "bytes_stripped_at_each_hop",
+    "path": [],
+    "type": "routing_instructions"
+   },
+   "path_len": 0,
+   "path_len_byte": 0,
+   "payload_bytes": 0,
+   "payload_hex": "",
+   "payload_type": 4,
+   "payload_type_enum": "<PayloadType.ADVERT: 4>",
+   "payload_type_name": "ADVERT",
+   "payload_version": 0,
+   "payload_version_enum": "<PayloadVersion.VER_1: 0>",
+   "route_type": 2,
+   "route_type_enum": "<RouteType.DIRECT: 2>",
+   "route_type_name": "DIRECT",
+   "transport_codes": null,
+   "transport_size": 0
+  },
+  "hash": "0000000000000000"
+ },
+ "02-odd_length": {
+  "2": null,
+  "4": null,
+  "6": null,
+  "hash": "0000000000000000"
+ },
+ "03-full": {
+  "2": {
+   "bytes_per_hop": 1,
+   "has_transport_codes": false,
+   "header": "0x09",
+   "path": [
+    "6C",
+    "CE",
+    "9D",
+    "8B",
+    "DC"
+   ],
+   "path_byte_length": 5,
+   "path_hex": "6cce9d8bdc",
+   "path_info": {
+    "description": "Flooded through 6C,CE,9D,8B,DC (5 hops)",
+    "meaning": "bytes_added_as_packet_floods",
+    "path": [
+     "6C",
+     "CE",
+     "9D",
+     "8B",
+     "DC"
+    ],
+    "type": "historical_route"
+   },
+   "path_len": 5,
+   "path_len_byte": 5,
+   "payload_bytes": 20,
+   "payload_hex": "1a86b0c3480c75f0a61b0405e31f2c2b0592b79f",
+   "payload_type": 2,
+   "payload_type_enum": "<PayloadType.TXT_MSG: 2>",
+   "payload_type_name": "TXT_MSG",
+   "payload_version": 0,
+   "payload_version_enum": "<PayloadVersion.VER_1: 0>",
+   "route_type": 1,
+   "route_type_enum": "<RouteType.FLOOD: 1>",
+   "route_type_name": "FLOOD",
+   "transport_codes": null,
+   "transport_size": 0
+  },
+  "4": {
+   "bytes_per_hop": 1,
+   "has_transport_codes": false,
+   "header": "0x09",
+   "path": [
+    "6C",
+    "CE",
+    "9D",
+    "8B",
+    "DC"
+   ],
+   "path_byte_length": 5,
+   "path_hex": "6cce9d8bdc",
+   "path_info": {
+    "description": "Flooded through 6C,CE,9D,8B,DC (5 hops)",
+    "meaning": "bytes_added_as_packet_floods",
+    "path": [
+     "6C",
+     "CE",
+     "9D",
+     "8B",
+     "DC"
+    ],
+    "type": "historical_route"
+   },
+   "path_len": 5,
+   "path_len_byte": 5,
+   "payload_bytes": 20,
+   "payload_hex": "1a86b0c3480c75f0a61b0405e31f2c2b0592b79f",
+   "payload_type": 2,
+   "payload_type_enum": "<PayloadType.TXT_MSG: 2>",
+   "payload_type_name": "TXT_MSG",
+   "payload_version": 0,
+   "payload_version_enum": "<PayloadVersion.VER_1: 0>",
+   "route_type": 1,
+   "route_type_enum": "<RouteType.FLOOD: 1>",
+   "route_type_name": "FLOOD",
+   "transport_codes": null,
+   "transport_size": 0
+  },
+  "6": {
+   "bytes_per_hop": 1,
+   "has_transport_codes": false,
+   "header": "0x09",
+   "path": [
+    "6C",
+    "CE",
+    "9D",
+    "8B",
+    "DC"
+   ],
+   "path_byte_length": 5,
+   "path_hex": "6cce9d8bdc",
+   "path_info": {
+    "description": "Flooded through 6C,CE,9D,8B,DC (5 hops)",
+    "meaning": "bytes_added_as_packet_floods",
+    "path": [
+     "6C",
+     "CE",
+     "9D",
+     "8B",
+     "DC"
+    ],
+    "type": "historical_route"
+   },
+   "path_len": 5,
+   "path_len_byte": 5,
+   "payload_bytes": 20,
+   "payload_hex": "1a86b0c3480c75f0a61b0405e31f2c2b0592b79f",
+   "payload_type": 2,
+   "payload_type_enum": "<PayloadType.TXT_MSG: 2>",
+   "payload_type_name": "TXT_MSG",
+   "payload_version": 0,
+   "payload_version_enum": "<PayloadVersion.VER_1: 0>",
+   "route_type": 1,
+   "route_type_enum": "<RouteType.FLOOD: 1>",
+   "route_type_name": "FLOOD",
+   "transport_codes": null,
+   "transport_size": 0
+  },
+  "hash": "A47A6DD60283F5ED"
+ },
+ "03-half": {
+  "2": null,
+  "4": null,
+  "6": null,
+  "hash": "0000000000000000"
+ },
+ "03-header_only": {
+  "2": null,
+  "4": null,
+  "6": null,
+  "hash": "0000000000000000"
+ },
+ "03-odd_length": {
+  "2": null,
+  "4": null,
+  "6": null,
+  "hash": "0000000000000000"
+ },
+ "04-full": {
+  "2": {
+   "bytes_per_hop": 1,
+   "has_transport_codes": false,
+   "header": "0x09",
+   "path": [
+    "6C",
+    "CE",
+    "9D",
+    "8B",
+    "DC"
+   ],
+   "path_byte_length": 5,
+   "path_hex": "6cce9d8bdc",
+   "path_info": {
+    "description": "Flooded through 6C,CE,9D,8B,DC (5 hops)",
+    "meaning": "bytes_added_as_packet_floods",
+    "path": [
+     "6C",
+     "CE",
+     "9D",
+     "8B",
+     "DC"
+    ],
+    "type": "historical_route"
+   },
+   "path_len": 5,
+   "path_len_byte": 5,
+   "payload_bytes": 20,
+   "payload_hex": "1a86b0c3480c75f0a61b0405e31f2c2b0592b79f",
+   "payload_type": 2,
+   "payload_type_enum": "<PayloadType.TXT_MSG: 2>",
+   "payload_type_name": "TXT_MSG",
+   "payload_version": 0,
+   "payload_version_enum": "<PayloadVersion.VER_1: 0>",
+   "route_type": 1,
+   "route_type_enum": "<RouteType.FLOOD: 1>",
+   "route_type_name": "FLOOD",
+   "transport_codes": null,
+   "transport_size": 0
+  },
+  "4": {
+   "bytes_per_hop": 1,
+   "has_transport_codes": false,
+   "header": "0x09",
+   "path": [
+    "6C",
+    "CE",
+    "9D",
+    "8B",
+    "DC"
+   ],
+   "path_byte_length": 5,
+   "path_hex": "6cce9d8bdc",
+   "path_info": {
+    "description": "Flooded through 6C,CE,9D,8B,DC (5 hops)",
+    "meaning": "bytes_added_as_packet_floods",
+    "path": [
+     "6C",
+     "CE",
+     "9D",
+     "8B",
+     "DC"
+    ],
+    "type": "historical_route"
+   },
+   "path_len": 5,
+   "path_len_byte": 5,
+   "payload_bytes": 20,
+   "payload_hex": "1a86b0c3480c75f0a61b0405e31f2c2b0592b79f",
+   "payload_type": 2,
+   "payload_type_enum": "<PayloadType.TXT_MSG: 2>",
+   "payload_type_name": "TXT_MSG",
+   "payload_version": 0,
+   "payload_version_enum": "<PayloadVersion.VER_1: 0>",
+   "route_type": 1,
+   "route_type_enum": "<RouteType.FLOOD: 1>",
+   "route_type_name": "FLOOD",
+   "transport_codes": null,
+   "transport_size": 0
+  },
+  "6": {
+   "bytes_per_hop": 1,
+   "has_transport_codes": false,
+   "header": "0x09",
+   "path": [
+    "6C",
+    "CE",
+    "9D",
+    "8B",
+    "DC"
+   ],
+   "path_byte_length": 5,
+   "path_hex": "6cce9d8bdc",
+   "path_info": {
+    "description": "Flooded through 6C,CE,9D,8B,DC (5 hops)",
+    "meaning": "bytes_added_as_packet_floods",
+    "path": [
+     "6C",
+     "CE",
+     "9D",
+     "8B",
+     "DC"
+    ],
+    "type": "historical_route"
+   },
+   "path_len": 5,
+   "path_len_byte": 5,
+   "payload_bytes": 20,
+   "payload_hex": "1a86b0c3480c75f0a61b0405e31f2c2b0592b79f",
+   "payload_type": 2,
+   "payload_type_enum": "<PayloadType.TXT_MSG: 2>",
+   "payload_type_name": "TXT_MSG",
+   "payload_version": 0,
+   "payload_version_enum": "<PayloadVersion.VER_1: 0>",
+   "route_type": 1,
+   "route_type_enum": "<RouteType.FLOOD: 1>",
+   "route_type_name": "FLOOD",
+   "transport_codes": null,
+   "transport_size": 0
+  },
+  "hash": "A47A6DD60283F5ED"
+ },
+ "04-half": {
+  "2": null,
+  "4": null,
+  "6": null,
+  "hash": "0000000000000000"
+ },
+ "04-header_only": {
+  "2": null,
+  "4": null,
+  "6": null,
+  "hash": "0000000000000000"
+ },
+ "04-odd_length": {
+  "2": null,
+  "4": null,
+  "6": null,
+  "hash": "0000000000000000"
+ },
+ "05-full": {
+  "2": {
+   "bytes_per_hop": 1,
+   "has_transport_codes": false,
+   "header": "0x09",
+   "path": [
+    "6C",
+    "CE",
+    "9D",
+    "8B",
+    "DC"
+   ],
+   "path_byte_length": 5,
+   "path_hex": "6cce9d8bdc",
+   "path_info": {
+    "description": "Flooded through 6C,CE,9D,8B,DC (5 hops)",
+    "meaning": "bytes_added_as_packet_floods",
+    "path": [
+     "6C",
+     "CE",
+     "9D",
+     "8B",
+     "DC"
+    ],
+    "type": "historical_route"
+   },
+   "path_len": 5,
+   "path_len_byte": 5,
+   "payload_bytes": 20,
+   "payload_hex": "1a86b0c3480c75f0a61b0405e31f2c2b0592b79f",
+   "payload_type": 2,
+   "payload_type_enum": "<PayloadType.TXT_MSG: 2>",
+   "payload_type_name": "TXT_MSG",
+   "payload_version": 0,
+   "payload_version_enum": "<PayloadVersion.VER_1: 0>",
+   "route_type": 1,
+   "route_type_enum": "<RouteType.FLOOD: 1>",
+   "route_type_name": "FLOOD",
+   "transport_codes": null,
+   "transport_size": 0
+  },
+  "4": {
+   "bytes_per_hop": 1,
+   "has_transport_codes": false,
+   "header": "0x09",
+   "path": [
+    "6C",
+    "CE",
+    "9D",
+    "8B",
+    "DC"
+   ],
+   "path_byte_length": 5,
+   "path_hex": "6cce9d8bdc",
+   "path_info": {
+    "description": "Flooded through 6C,CE,9D,8B,DC (5 hops)",
+    "meaning": "bytes_added_as_packet_floods",
+    "path": [
+     "6C",
+     "CE",
+     "9D",
+     "8B",
+     "DC"
+    ],
+    "type": "historical_route"
+   },
+   "path_len": 5,
+   "path_len_byte": 5,
+   "payload_bytes": 20,
+   "payload_hex": "1a86b0c3480c75f0a61b0405e31f2c2b0592b79f",
+   "payload_type": 2,
+   "payload_type_enum": "<PayloadType.TXT_MSG: 2>",
+   "payload_type_name": "TXT_MSG",
+   "payload_version": 0,
+   "payload_version_enum": "<PayloadVersion.VER_1: 0>",
+   "route_type": 1,
+   "route_type_enum": "<RouteType.FLOOD: 1>",
+   "route_type_name": "FLOOD",
+   "transport_codes": null,
+   "transport_size": 0
+  },
+  "6": {
+   "bytes_per_hop": 1,
+   "has_transport_codes": false,
+   "header": "0x09",
+   "path": [
+    "6C",
+    "CE",
+    "9D",
+    "8B",
+    "DC"
+   ],
+   "path_byte_length": 5,
+   "path_hex": "6cce9d8bdc",
+   "path_info": {
+    "description": "Flooded through 6C,CE,9D,8B,DC (5 hops)",
+    "meaning": "bytes_added_as_packet_floods",
+    "path": [
+     "6C",
+     "CE",
+     "9D",
+     "8B",
+     "DC"
+    ],
+    "type": "historical_route"
+   },
+   "path_len": 5,
+   "path_len_byte": 5,
+   "payload_bytes": 20,
+   "payload_hex": "1a86b0c3480c75f0a61b0405e31f2c2b0592b79f",
+   "payload_type": 2,
+   "payload_type_enum": "<PayloadType.TXT_MSG: 2>",
+   "payload_type_name": "TXT_MSG",
+   "payload_version": 0,
+   "payload_version_enum": "<PayloadVersion.VER_1: 0>",
+   "route_type": 1,
+   "route_type_enum": "<RouteType.FLOOD: 1>",
+   "route_type_name": "FLOOD",
+   "transport_codes": null,
+   "transport_size": 0
+  },
+  "hash": "A47A6DD60283F5ED"
+ },
+ "05-half": {
+  "2": null,
+  "4": null,
+  "6": null,
+  "hash": "0000000000000000"
+ },
+ "05-header_only": {
+  "2": null,
+  "4": null,
+  "6": null,
+  "hash": "0000000000000000"
+ },
+ "05-odd_length": {
+  "2": null,
+  "4": null,
+  "6": null,
+  "hash": "0000000000000000"
+ },
+ "06-full": {
+  "2": {
+   "bytes_per_hop": 1,
+   "has_transport_codes": false,
+   "header": "0x09",
+   "path": [
+    "6C",
+    "CE",
+    "9D",
+    "8B",
+    "DC",
+    "A3"
+   ],
+   "path_byte_length": 6,
+   "path_hex": "6cce9d8bdca3",
+   "path_info": {
+    "description": "Flooded through 6C,CE,9D,8B,DC,A3 (6 hops)",
+    "meaning": "bytes_added_as_packet_floods",
+    "path": [
+     "6C",
+     "CE",
+     "9D",
+     "8B",
+     "DC",
+     "A3"
+    ],
+    "type": "historical_route"
+   },
+   "path_len": 6,
+   "path_len_byte": 6,
+   "payload_bytes": 20,
+   "payload_hex": "1a86b0c3480c75f0a61b0405e31f2c2b0592b79f",
+   "payload_type": 2,
+   "payload_type_enum": "<PayloadType.TXT_MSG: 2>",
+   "payload_type_name": "TXT_MSG",
+   "payload_version": 0,
+   "payload_version_enum": "<PayloadVersion.VER_1: 0>",
+   "route_type": 1,
+   "route_type_enum": "<RouteType.FLOOD: 1>",
+   "route_type_name": "FLOOD",
+   "transport_codes": null,
+   "transport_size": 0
+  },
+  "4": {
+   "bytes_per_hop": 1,
+   "has_transport_codes": false,
+   "header": "0x09",
+   "path": [
+    "6C",
+    "CE",
+    "9D",
+    "8B",
+    "DC",
+    "A3"
+   ],
+   "path_byte_length": 6,
+   "path_hex": "6cce9d8bdca3",
+   "path_info": {
+    "description": "Flooded through 6CCE,9D8B,DCA3 (3 hops)",
+    "meaning": "bytes_added_as_packet_floods",
+    "path": [
+     "6CCE",
+     "9D8B",
+     "DCA3"
+    ],
+    "type": "historical_route"
+   },
+   "path_len": 6,
+   "path_len_byte": 6,
+   "payload_bytes": 20,
+   "payload_hex": "1a86b0c3480c75f0a61b0405e31f2c2b0592b79f",
+   "payload_type": 2,
+   "payload_type_enum": "<PayloadType.TXT_MSG: 2>",
+   "payload_type_name": "TXT_MSG",
+   "payload_version": 0,
+   "payload_version_enum": "<PayloadVersion.VER_1: 0>",
+   "route_type": 1,
+   "route_type_enum": "<RouteType.FLOOD: 1>",
+   "route_type_name": "FLOOD",
+   "transport_codes": null,
+   "transport_size": 0
+  },
+  "6": {
+   "bytes_per_hop": 1,
+   "has_transport_codes": false,
+   "header": "0x09",
+   "path": [
+    "6C",
+    "CE",
+    "9D",
+    "8B",
+    "DC",
+    "A3"
+   ],
+   "path_byte_length": 6,
+   "path_hex": "6cce9d8bdca3",
+   "path_info": {
+    "description": "Flooded through 6CCE9D,8BDCA3 (2 hops)",
+    "meaning": "bytes_added_as_packet_floods",
+    "path": [
+     "6CCE9D",
+     "8BDCA3"
+    ],
+    "type": "historical_route"
+   },
+   "path_len": 6,
+   "path_len_byte": 6,
+   "payload_bytes": 20,
+   "payload_hex": "1a86b0c3480c75f0a61b0405e31f2c2b0592b79f",
+   "payload_type": 2,
+   "payload_type_enum": "<PayloadType.TXT_MSG: 2>",
+   "payload_type_name": "TXT_MSG",
+   "payload_version": 0,
+   "payload_version_enum": "<PayloadVersion.VER_1: 0>",
+   "route_type": 1,
+   "route_type_enum": "<RouteType.FLOOD: 1>",
+   "route_type_name": "FLOOD",
+   "transport_codes": null,
+   "transport_size": 0
+  },
+  "hash": "A47A6DD60283F5ED"
+ },
+ "06-half": {
+  "2": {
+   "bytes_per_hop": 1,
+   "has_transport_codes": false,
+   "header": "0x09",
+   "path": [
+    "6C",
+    "CE",
+    "9D",
+    "8B",
+    "DC",
+    "A3"
+   ],
+   "path_byte_length": 6,
+   "path_hex": "6cce9d8bdca3",
+   "path_info": {
+    "description": "Flooded through 6C,CE,9D,8B,DC,A3 (6 hops)",
+    "meaning": "bytes_added_as_packet_floods",
+    "path": [
+     "6C",
+     "CE",
+     "9D",
+     "8B",
+     "DC",
+     "A3"
+    ],
+    "type": "historical_route"
+   },
+   "path_len": 6,
+   "path_len_byte": 6,
+   "payload_bytes": 6,
+   "payload_hex": "1a86b0c3480c",
+   "payload_type": 2,
+   "payload_type_enum": "<PayloadType.TXT_MSG: 2>",
+   "payload_type_name": "TXT_MSG",
+   "payload_version": 0,
+   "payload_version_enum": "<PayloadVersion.VER_1: 0>",
+   "route_type": 1,
+   "route_type_enum": "<RouteType.FLOOD: 1>",
+   "route_type_name": "FLOOD",
+   "transport_codes": null,
+   "transport_size": 0
+  },
+  "4": {
+   "bytes_per_hop": 1,
+   "has_transport_codes": false,
+   "header": "0x09",
+   "path": [
+    "6C",
+    "CE",
+    "9D",
+    "8B",
+    "DC",
+    "A3"
+   ],
+   "path_byte_length": 6,
+   "path_hex": "6cce9d8bdca3",
+   "path_info": {
+    "description": "Flooded through 6CCE,9D8B,DCA3 (3 hops)",
+    "meaning": "bytes_added_as_packet_floods",
+    "path": [
+     "6CCE",
+     "9D8B",
+     "DCA3"
+    ],
+    "type": "historical_route"
+   },
+   "path_len": 6,
+   "path_len_byte": 6,
+   "payload_bytes": 6,
+   "payload_hex": "1a86b0c3480c",
+   "payload_type": 2,
+   "payload_type_enum": "<PayloadType.TXT_MSG: 2>",
+   "payload_type_name": "TXT_MSG",
+   "payload_version": 0,
+   "payload_version_enum": "<PayloadVersion.VER_1: 0>",
+   "route_type": 1,
+   "route_type_enum": "<RouteType.FLOOD: 1>",
+   "route_type_name": "FLOOD",
+   "transport_codes": null,
+   "transport_size": 0
+  },
+  "6": {
+   "bytes_per_hop": 1,
+   "has_transport_codes": false,
+   "header": "0x09",
+   "path": [
+    "6C",
+    "CE",
+    "9D",
+    "8B",
+    "DC",
+    "A3"
+   ],
+   "path_byte_length": 6,
+   "path_hex": "6cce9d8bdca3",
+   "path_info": {
+    "description": "Flooded through 6CCE9D,8BDCA3 (2 hops)",
+    "meaning": "bytes_added_as_packet_floods",
+    "path": [
+     "6CCE9D",
+     "8BDCA3"
+    ],
+    "type": "historical_route"
+   },
+   "path_len": 6,
+   "path_len_byte": 6,
+   "payload_bytes": 6,
+   "payload_hex": "1a86b0c3480c",
+   "payload_type": 2,
+   "payload_type_enum": "<PayloadType.TXT_MSG: 2>",
+   "payload_type_name": "TXT_MSG",
+   "payload_version": 0,
+   "payload_version_enum": "<PayloadVersion.VER_1: 0>",
+   "route_type": 1,
+   "route_type_enum": "<RouteType.FLOOD: 1>",
+   "route_type_name": "FLOOD",
+   "transport_codes": null,
+   "transport_size": 0
+  },
+  "hash": "288BB044C4538429"
+ },
+ "06-header_only": {
+  "2": null,
+  "4": null,
+  "6": null,
+  "hash": "0000000000000000"
+ },
+ "06-odd_length": {
+  "2": null,
+  "4": null,
+  "6": null,
+  "hash": "0000000000000000"
+ },
+ "07-full": {
+  "2": {
+   "bytes_per_hop": 1,
+   "has_transport_codes": false,
+   "header": "0x15",
+   "path": [
+    "C3",
+    "B1",
+    "C7",
+    "CE",
+    "42"
+   ],
+   "path_byte_length": 5,
+   "path_hex": "c3b1c7ce42",
+   "path_info": {
+    "description": "Flooded through C3,B1,C7,CE,42 (5 hops)",
+    "meaning": "bytes_added_as_packet_floods",
+    "path": [
+     "C3",
+     "B1",
+     "C7",
+     "CE",
+     "42"
+    ],
+    "type": "historical_route"
+   },
+   "path_len": 5,
+   "path_len_byte": 5,
+   "payload_bytes": 19,
+   "payload_hex": "cabfcb1b4967062bad7f9dcb3f8f9bfa5e8f00",
+   "payload_type": 5,
+   "payload_type_enum": "<PayloadType.GRP_TXT: 5>",
+   "payload_type_name": "GRP_TXT",
+   "payload_version": 0,
+   "payload_version_enum": "<PayloadVersion.VER_1: 0>",
+   "route_type": 1,
+   "route_type_enum": "<RouteType.FLOOD: 1>",
+   "route_type_name": "FLOOD",
+   "transport_codes": null,
+   "transport_size": 0
+  },
+  "4": {
+   "bytes_per_hop": 1,
+   "has_transport_codes": false,
+   "header": "0x15",
+   "path": [
+    "C3",
+    "B1",
+    "C7",
+    "CE",
+    "42"
+   ],
+   "path_byte_length": 5,
+   "path_hex": "c3b1c7ce42",
+   "path_info": {
+    "description": "Flooded through C3,B1,C7,CE,42 (5 hops)",
+    "meaning": "bytes_added_as_packet_floods",
+    "path": [
+     "C3",
+     "B1",
+     "C7",
+     "CE",
+     "42"
+    ],
+    "type": "historical_route"
+   },
+   "path_len": 5,
+   "path_len_byte": 5,
+   "payload_bytes": 19,
+   "payload_hex": "cabfcb1b4967062bad7f9dcb3f8f9bfa5e8f00",
+   "payload_type": 5,
+   "payload_type_enum": "<PayloadType.GRP_TXT: 5>",
+   "payload_type_name": "GRP_TXT",
+   "payload_version": 0,
+   "payload_version_enum": "<PayloadVersion.VER_1: 0>",
+   "route_type": 1,
+   "route_type_enum": "<RouteType.FLOOD: 1>",
+   "route_type_name": "FLOOD",
+   "transport_codes": null,
+   "transport_size": 0
+  },
+  "6": {
+   "bytes_per_hop": 1,
+   "has_transport_codes": false,
+   "header": "0x15",
+   "path": [
+    "C3",
+    "B1",
+    "C7",
+    "CE",
+    "42"
+   ],
+   "path_byte_length": 5,
+   "path_hex": "c3b1c7ce42",
+   "path_info": {
+    "description": "Flooded through C3,B1,C7,CE,42 (5 hops)",
+    "meaning": "bytes_added_as_packet_floods",
+    "path": [
+     "C3",
+     "B1",
+     "C7",
+     "CE",
+     "42"
+    ],
+    "type": "historical_route"
+   },
+   "path_len": 5,
+   "path_len_byte": 5,
+   "payload_bytes": 19,
+   "payload_hex": "cabfcb1b4967062bad7f9dcb3f8f9bfa5e8f00",
+   "payload_type": 5,
+   "payload_type_enum": "<PayloadType.GRP_TXT: 5>",
+   "payload_type_name": "GRP_TXT",
+   "payload_version": 0,
+   "payload_version_enum": "<PayloadVersion.VER_1: 0>",
+   "route_type": 1,
+   "route_type_enum": "<RouteType.FLOOD: 1>",
+   "route_type_name": "FLOOD",
+   "transport_codes": null,
+   "transport_size": 0
+  },
+  "hash": "4561B3A99C8CD778"
+ },
+ "07-half": {
+  "2": {
+   "bytes_per_hop": 1,
+   "has_transport_codes": false,
+   "header": "0x15",
+   "path": [
+    "C3",
+    "B1",
+    "C7",
+    "CE",
+    "42"
+   ],
+   "path_byte_length": 5,
+   "path_hex": "c3b1c7ce42",
+   "path_info": {
+    "description": "Flooded through C3,B1,C7,CE,42 (5 hops)",
+    "meaning": "bytes_added_as_packet_floods",
+    "path": [
+     "C3",
+     "B1",
+     "C7",
+     "CE",
+     "42"
+    ],
+    "type": "historical_route"
+   },
+   "path_len": 5,
+   "path_len_byte": 5,
+   "payload_bytes": 6,
+   "payload_hex": "cabfcb1b4967",
+   "payload_type": 5,
+   "payload_type_enum": "<PayloadType.GRP_TXT: 5>",
+   "payload_type_name": "GRP_TXT",
+   "payload_version": 0,
+   "payload_version_enum": "<PayloadVersion.VER_1: 0>",
+   "route_type": 1,
+   "route_type_enum": "<RouteType.FLOOD: 1>",
+   "route_type_name": "FLOOD",
+   "transport_codes": null,
+   "transport_size": 0
+  },
+  "4": {
+   "bytes_per_hop": 1,
+   "has_transport_codes": false,
+   "header": "0x15",
+   "path": [
+    "C3",
+    "B1",
+    "C7",
+    "CE",
+    "42"
+   ],
+   "path_byte_length": 5,
+   "path_hex": "c3b1c7ce42",
+   "path_info": {
+    "description": "Flooded through C3,B1,C7,CE,42 (5 hops)",
+    "meaning": "bytes_added_as_packet_floods",
+    "path": [
+     "C3",
+     "B1",
+     "C7",
+     "CE",
+     "42"
+    ],
+    "type": "historical_route"
+   },
+   "path_len": 5,
+   "path_len_byte": 5,
+   "payload_bytes": 6,
+   "payload_hex": "cabfcb1b4967",
+   "payload_type": 5,
+   "payload_type_enum": "<PayloadType.GRP_TXT: 5>",
+   "payload_type_name": "GRP_TXT",
+   "payload_version": 0,
+   "payload_version_enum": "<PayloadVersion.VER_1: 0>",
+   "route_type": 1,
+   "route_type_enum": "<RouteType.FLOOD: 1>",
+   "route_type_name": "FLOOD",
+   "transport_codes": null,
+   "transport_size": 0
+  },
+  "6": {
+   "bytes_per_hop": 1,
+   "has_transport_codes": false,
+   "header": "0x15",
+   "path": [
+    "C3",
+    "B1",
+    "C7",
+    "CE",
+    "42"
+   ],
+   "path_byte_length": 5,
+   "path_hex": "c3b1c7ce42",
+   "path_info": {
+    "description": "Flooded through C3,B1,C7,CE,42 (5 hops)",
+    "meaning": "bytes_added_as_packet_floods",
+    "path": [
+     "C3",
+     "B1",
+     "C7",
+     "CE",
+     "42"
+    ],
+    "type": "historical_route"
+   },
+   "path_len": 5,
+   "path_len_byte": 5,
+   "payload_bytes": 6,
+   "payload_hex": "cabfcb1b4967",
+   "payload_type": 5,
+   "payload_type_enum": "<PayloadType.GRP_TXT: 5>",
+   "payload_type_name": "GRP_TXT",
+   "payload_version": 0,
+   "payload_version_enum": "<PayloadVersion.VER_1: 0>",
+   "route_type": 1,
+   "route_type_enum": "<RouteType.FLOOD: 1>",
+   "route_type_name": "FLOOD",
+   "transport_codes": null,
+   "transport_size": 0
+  },
+  "hash": "1AFD88D98B4398DB"
+ },
+ "07-header_only": {
+  "2": null,
+  "4": null,
+  "6": null,
+  "hash": "0000000000000000"
+ },
+ "07-odd_length": {
+  "2": null,
+  "4": null,
+  "6": null,
+  "hash": "0000000000000000"
+ },
+ "08-full": {
+  "2": {
+   "bytes_per_hop": 1,
+   "has_transport_codes": false,
+   "header": "0x15",
+   "path": [
+    "C3",
+    "B1",
+    "C7",
+    "CE",
+    "42"
+   ],
+   "path_byte_length": 5,
+   "path_hex": "c3b1c7ce42",
+   "path_info": {
+    "description": "Flooded through C3,B1,C7,CE,42 (5 hops)",
+    "meaning": "bytes_added_as_packet_floods",
+    "path": [
+     "C3",
+     "B1",
+     "C7",
+     "CE",
+     "42"
+    ],
+    "type": "historical_route"
+   },
+   "path_len": 5,
+   "path_len_byte": 5,
+   "payload_bytes": 19,
+   "payload_hex": "cabfcb1b4967062bad7f9dcb3f8f9bfa5e8f00",
+   "payload_type": 5,
+   "payload_type_enum": "<PayloadType.GRP_TXT: 5>",
+   "payload_type_name": "GRP_TXT",
+   "payload_version": 0,
+   "payload_version_enum": "<PayloadVersion.VER_1: 0>",
+   "route_type": 1,
+   "route_type_enum": "<RouteType.FLOOD: 1>",
+   "route_type_name": "FLOOD",
+   "transport_codes": null,
+   "transport_size": 0
+  },
+  "4": {
+   "bytes_per_hop": 1,
+   "has_transport_codes": false,
+   "header": "0x15",
+   "path": [
+    "C3",
+    "B1",
+    "C7",
+    "CE",
+    "42"
+   ],
+   "path_byte_length": 5,
+   "path_hex": "c3b1c7ce42",
+   "path_info": {
+    "description": "Flooded through C3,B1,C7,CE,42 (5 hops)",
+    "meaning": "bytes_added_as_packet_floods",
+    "path": [
+     "C3",
+     "B1",
+     "C7",
+     "CE",
+     "42"
+    ],
+    "type": "historical_route"
+   },
+   "path_len": 5,
+   "path_len_byte": 5,
+   "payload_bytes": 19,
+   "payload_hex": "cabfcb1b4967062bad7f9dcb3f8f9bfa5e8f00",
+   "payload_type": 5,
+   "payload_type_enum": "<PayloadType.GRP_TXT: 5>",
+   "payload_type_name": "GRP_TXT",
+   "payload_version": 0,
+   "payload_version_enum": "<PayloadVersion.VER_1: 0>",
+   "route_type": 1,
+   "route_type_enum": "<RouteType.FLOOD: 1>",
+   "route_type_name": "FLOOD",
+   "transport_codes": null,
+   "transport_size": 0
+  },
+  "6": {
+   "bytes_per_hop": 1,
+   "has_transport_codes": false,
+   "header": "0x15",
+   "path": [
+    "C3",
+    "B1",
+    "C7",
+    "CE",
+    "42"
+   ],
+   "path_byte_length": 5,
+   "path_hex": "c3b1c7ce42",
+   "path_info": {
+    "description": "Flooded through C3,B1,C7,CE,42 (5 hops)",
+    "meaning": "bytes_added_as_packet_floods",
+    "path": [
+     "C3",
+     "B1",
+     "C7",
+     "CE",
+     "42"
+    ],
+    "type": "historical_route"
+   },
+   "path_len": 5,
+   "path_len_byte": 5,
+   "payload_bytes": 19,
+   "payload_hex": "cabfcb1b4967062bad7f9dcb3f8f9bfa5e8f00",
+   "payload_type": 5,
+   "payload_type_enum": "<PayloadType.GRP_TXT: 5>",
+   "payload_type_name": "GRP_TXT",
+   "payload_version": 0,
+   "payload_version_enum": "<PayloadVersion.VER_1: 0>",
+   "route_type": 1,
+   "route_type_enum": "<RouteType.FLOOD: 1>",
+   "route_type_name": "FLOOD",
+   "transport_codes": null,
+   "transport_size": 0
+  },
+  "hash": "4561B3A99C8CD778"
+ },
+ "08-half": {
+  "2": {
+   "bytes_per_hop": 1,
+   "has_transport_codes": false,
+   "header": "0x15",
+   "path": [
+    "C3",
+    "B1",
+    "C7",
+    "CE",
+    "42"
+   ],
+   "path_byte_length": 5,
+   "path_hex": "c3b1c7ce42",
+   "path_info": {
+    "description": "Flooded through C3,B1,C7,CE,42 (5 hops)",
+    "meaning": "bytes_added_as_packet_floods",
+    "path": [
+     "C3",
+     "B1",
+     "C7",
+     "CE",
+     "42"
+    ],
+    "type": "historical_route"
+   },
+   "path_len": 5,
+   "path_len_byte": 5,
+   "payload_bytes": 6,
+   "payload_hex": "cabfcb1b4967",
+   "payload_type": 5,
+   "payload_type_enum": "<PayloadType.GRP_TXT: 5>",
+   "payload_type_name": "GRP_TXT",
+   "payload_version": 0,
+   "payload_version_enum": "<PayloadVersion.VER_1: 0>",
+   "route_type": 1,
+   "route_type_enum": "<RouteType.FLOOD: 1>",
+   "route_type_name": "FLOOD",
+   "transport_codes": null,
+   "transport_size": 0
+  },
+  "4": {
+   "bytes_per_hop": 1,
+   "has_transport_codes": false,
+   "header": "0x15",
+   "path": [
+    "C3",
+    "B1",
+    "C7",
+    "CE",
+    "42"
+   ],
+   "path_byte_length": 5,
+   "path_hex": "c3b1c7ce42",
+   "path_info": {
+    "description": "Flooded through C3,B1,C7,CE,42 (5 hops)",
+    "meaning": "bytes_added_as_packet_floods",
+    "path": [
+     "C3",
+     "B1",
+     "C7",
+     "CE",
+     "42"
+    ],
+    "type": "historical_route"
+   },
+   "path_len": 5,
+   "path_len_byte": 5,
+   "payload_bytes": 6,
+   "payload_hex": "cabfcb1b4967",
+   "payload_type": 5,
+   "payload_type_enum": "<PayloadType.GRP_TXT: 5>",
+   "payload_type_name": "GRP_TXT",
+   "payload_version": 0,
+   "payload_version_enum": "<PayloadVersion.VER_1: 0>",
+   "route_type": 1,
+   "route_type_enum": "<RouteType.FLOOD: 1>",
+   "route_type_name": "FLOOD",
+   "transport_codes": null,
+   "transport_size": 0
+  },
+  "6": {
+   "bytes_per_hop": 1,
+   "has_transport_codes": false,
+   "header": "0x15",
+   "path": [
+    "C3",
+    "B1",
+    "C7",
+    "CE",
+    "42"
+   ],
+   "path_byte_length": 5,
+   "path_hex": "c3b1c7ce42",
+   "path_info": {
+    "description": "Flooded through C3,B1,C7,CE,42 (5 hops)",
+    "meaning": "bytes_added_as_packet_floods",
+    "path": [
+     "C3",
+     "B1",
+     "C7",
+     "CE",
+     "42"
+    ],
+    "type": "historical_route"
+   },
+   "path_len": 5,
+   "path_len_byte": 5,
+   "payload_bytes": 6,
+   "payload_hex": "cabfcb1b4967",
+   "payload_type": 5,
+   "payload_type_enum": "<PayloadType.GRP_TXT: 5>",
+   "payload_type_name": "GRP_TXT",
+   "payload_version": 0,
+   "payload_version_enum": "<PayloadVersion.VER_1: 0>",
+   "route_type": 1,
+   "route_type_enum": "<RouteType.FLOOD: 1>",
+   "route_type_name": "FLOOD",
+   "transport_codes": null,
+   "transport_size": 0
+  },
+  "hash": "1AFD88D98B4398DB"
+ },
+ "08-header_only": {
+  "2": null,
+  "4": null,
+  "6": null,
+  "hash": "0000000000000000"
+ },
+ "08-odd_length": {
+  "2": null,
+  "4": null,
+  "6": null,
+  "hash": "0000000000000000"
+ },
+ "09-full": {
+  "2": {
+   "bytes_per_hop": 1,
+   "has_transport_codes": false,
+   "header": "0x15",
+   "path": [
+    "C3",
+    "B1",
+    "C7",
+    "CE",
+    "42",
+    "DC"
+   ],
+   "path_byte_length": 6,
+   "path_hex": "c3b1c7ce42dc",
+   "path_info": {
+    "description": "Flooded through C3,B1,C7,CE,42,DC (6 hops)",
+    "meaning": "bytes_added_as_packet_floods",
+    "path": [
+     "C3",
+     "B1",
+     "C7",
+     "CE",
+     "42",
+     "DC"
+    ],
+    "type": "historical_route"
+   },
+   "path_len": 6,
+   "path_len_byte": 6,
+   "payload_bytes": 19,
+   "payload_hex": "cabfcb1b4967062bad7f9dcb3f8f9bfa5e8f00",
+   "payload_type": 5,
+   "payload_type_enum": "<PayloadType.GRP_TXT: 5>",
+   "payload_type_name": "GRP_TXT",
+   "payload_version": 0,
+   "payload_version_enum": "<PayloadVersion.VER_1: 0>",
+   "route_type": 1,
+   "route_type_enum": "<RouteType.FLOOD: 1>",
+   "route_type_name": "FLOOD",
+   "transport_codes": null,
+   "transport_size": 0
+  },
+  "4": {
+   "bytes_per_hop": 1,
+   "has_transport_codes": false,
+   "header": "0x15",
+   "path": [
+    "C3",
+    "B1",
+    "C7",
+    "CE",
+    "42",
+    "DC"
+   ],
+   "path_byte_length": 6,
+   "path_hex": "c3b1c7ce42dc",
+   "path_info": {
+    "description": "Flooded through C3B1,C7CE,42DC (3 hops)",
+    "meaning": "bytes_added_as_packet_floods",
+    "path": [
+     "C3B1",
+     "C7CE",
+     "42DC"
+    ],
+    "type": "historical_route"
+   },
+   "path_len": 6,
+   "path_len_byte": 6,
+   "payload_bytes": 19,
+   "payload_hex": "cabfcb1b4967062bad7f9dcb3f8f9bfa5e8f00",
+   "payload_type": 5,
+   "payload_type_enum": "<PayloadType.GRP_TXT: 5>",
+   "payload_type_name": "GRP_TXT",
+   "payload_version": 0,
+   "payload_version_enum": "<PayloadVersion.VER_1: 0>",
+   "route_type": 1,
+   "route_type_enum": "<RouteType.FLOOD: 1>",
+   "route_type_name": "FLOOD",
+   "transport_codes": null,
+   "transport_size": 0
+  },
+  "6": {
+   "bytes_per_hop": 1,
+   "has_transport_codes": false,
+   "header": "0x15",
+   "path": [
+    "C3",
+    "B1",
+    "C7",
+    "CE",
+    "42",
+    "DC"
+   ],
+   "path_byte_length": 6,
+   "path_hex": "c3b1c7ce42dc",
+   "path_info": {
+    "description": "Flooded through C3B1C7,CE42DC (2 hops)",
+    "meaning": "bytes_added_as_packet_floods",
+    "path": [
+     "C3B1C7",
+     "CE42DC"
+    ],
+    "type": "historical_route"
+   },
+   "path_len": 6,
+   "path_len_byte": 6,
+   "payload_bytes": 19,
+   "payload_hex": "cabfcb1b4967062bad7f9dcb3f8f9bfa5e8f00",
+   "payload_type": 5,
+   "payload_type_enum": "<PayloadType.GRP_TXT: 5>",
+   "payload_type_name": "GRP_TXT",
+   "payload_version": 0,
+   "payload_version_enum": "<PayloadVersion.VER_1: 0>",
+   "route_type": 1,
+   "route_type_enum": "<RouteType.FLOOD: 1>",
+   "route_type_name": "FLOOD",
+   "transport_codes": null,
+   "transport_size": 0
+  },
+  "hash": "4561B3A99C8CD778"
+ },
+ "09-half": {
+  "2": null,
+  "4": null,
+  "6": null,
+  "hash": "0000000000000000"
+ },
+ "09-header_only": {
+  "2": null,
+  "4": null,
+  "6": null,
+  "hash": "0000000000000000"
+ },
+ "09-odd_length": {
+  "2": null,
+  "4": null,
+  "6": null,
+  "hash": "0000000000000000"
+ }
+}
