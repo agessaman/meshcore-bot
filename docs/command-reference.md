@@ -195,6 +195,8 @@ wx
 
 **The place is named** in the reply only when it adds information: for a position (the sender's, the bot's or typed coordinates) when a place is found for it, and for a city in another state than `[Weather] default_state` (or any city, when `default_state` is not set). ZIP codes are not named. With `[Weather] always_show_location = true`, every city, ZIP code and position a place is found for is named; the name takes message length from the forecast, and a ZIP code costs one extra reverse lookup.
 
+**Outside the US:** NOAA only covers the US, so by default `wx Tokyo` replies with an error. With `[Weather] openmeteo_fallback = true` (and `weather_provider = noaa`), a place NWS reports as outside its coverage is answered from Open-Meteo instead, in the same format as `gwx`, named as `gwx` names it (`Tokyo, JP: …`), and in `wx`'s units. Current conditions, `tomorrow`, `Nd` and `hourly` all fall back; `alerts` replies that alerts are not available there, since NWS is the only alert source. NWS timeouts and server errors still reply with an error rather than switching source. A point found outside coverage is remembered for 24 hours, so later requests for it skip NWS.
+
 ---
 
 ### `gwx [location] [option]`
