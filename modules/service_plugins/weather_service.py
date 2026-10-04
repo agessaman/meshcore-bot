@@ -756,37 +756,7 @@ class WeatherService(BaseServicePlugin):
             temp_symbol = "°F" if self.temperature_unit == 'fahrenheit' else "°C"
 
             # Get location name (cached to avoid repeated API calls)
-            if self._cached_location_name is None:
-                try:
-                    from ..utils import format_location_for_display, rate_limited_nominatim_reverse
-                    coordinates_str = f"{self.my_position_lat}, {self.my_position_lon}"
-                    location = await rate_limited_nominatim_reverse(self.bot, coordinates_str, timeout=5)
-
-                    if location and hasattr(location, 'raw'):
-                        address = location.raw.get('address', {})
-                        city = (address.get('city') or
-                               address.get('town') or
-                               address.get('village') or
-                               address.get('municipality') or
-                               address.get('suburb') or
-                               None)
-                        state = (address.get('state') or
-                                address.get('province') or
-                                address.get('region') or
-                                None)
-                        country = address.get('country')
-                        location_name = format_location_for_display(city, state, country)
-                        if not location_name:
-                            location_name = f"{self.my_position_lat:.2f},{self.my_position_lon:.2f}"
-                    else:
-                        location_name = f"{self.my_position_lat:.2f},{self.my_position_lon:.2f}"
-                    self._cached_location_name = location_name
-                except Exception as e:
-                    self.logger.debug(f"Error reverse geocoding location: {e}")
-                    location_name = f"{self.my_position_lat:.2f},{self.my_position_lon:.2f}"
-                    self._cached_location_name = location_name
-            else:
-                location_name = self._cached_location_name
+            location_name = await self._forecast_location_name()
 
             # Format current forecast
             forecast_text = f"{location_name}: {weather_emoji}{weather_desc} {temp}{temp_symbol}"
@@ -809,40 +779,7 @@ class WeatherService(BaseServicePlugin):
             )
 
             # Add tomorrow's forecast
-            daily_times = daily.get('time', [])
-            daily_codes = daily.get('weather_code', [])
-            daily_max = daily.get('temperature_2m_max', [])
-            daily_min = daily.get('temperature_2m_min', [])
-
-            if len(daily_times) > 1 and len(daily_codes) > 1:
-                tomorrow_code = daily_codes[1]
-                tomorrow_max = int(daily_max[1]) if len(daily_max) > 1 else None
-                tomorrow_min = int(daily_min[1]) if len(daily_min) > 1 else None
-                tomorrow_desc = self._get_weather_description(tomorrow_code)
-                tomorrow_emoji = self._get_weather_emoji(tomorrow_code)
-
-                if tomorrow_max is not None:
-                    tomorrow_label = self._translate('services.weather_service.tomorrow')
-                    if tomorrow_min is not None and tomorrow_min != tomorrow_max:
-                        hl = format_temperature_high_low(
-                            self.bot.config,
-                            tomorrow_max,
-                            tomorrow_min,
-                            temp_symbol,
-                            self.logger,
-                            translator=getattr(self.bot, 'translator', None),
-                        )
-                        forecast_text += f" | {tomorrow_label}: {tomorrow_emoji}{tomorrow_desc} {hl}"
-                    else:
-                        hl = format_temperature_high_low(
-                            self.bot.config,
-                            tomorrow_max,
-                            None,
-                            temp_symbol,
-                            self.logger,
-                            translator=getattr(self.bot, 'translator', None),
-                        )
-                        forecast_text += f" | {tomorrow_label}: {tomorrow_emoji}{tomorrow_desc} {hl}"
+            forecast_text = self._append_tomorrow_forecast(forecast_text, daily, temp_symbol)
 
             return ForecastFetchResult(forecast_text)
 
@@ -851,6 +788,79 @@ class WeatherService(BaseServicePlugin):
             import traceback
             self.logger.debug(traceback.format_exc())
             return ForecastFetchResult(self._translate('services.weather_service.error_fetching'))
+
+    async def _forecast_location_name(self) -> str:
+        """The bot position's place name, reverse geocoded once and cached; coordinates as a fallback."""
+        if self._cached_location_name is None:
+            try:
+                from ..utils import format_location_for_display, rate_limited_nominatim_reverse
+                coordinates_str = f"{self.my_position_lat}, {self.my_position_lon}"
+                location = await rate_limited_nominatim_reverse(self.bot, coordinates_str, timeout=5)
+
+                if location and hasattr(location, 'raw'):
+                    address = location.raw.get('address', {})
+                    city = (address.get('city') or
+                           address.get('town') or
+                           address.get('village') or
+                           address.get('municipality') or
+                           address.get('suburb') or
+                           None)
+                    state = (address.get('state') or
+                            address.get('province') or
+                            address.get('region') or
+                            None)
+                    country = address.get('country')
+                    location_name = format_location_for_display(city, state, country)
+                    if not location_name:
+                        location_name = f"{self.my_position_lat:.2f},{self.my_position_lon:.2f}"
+                else:
+                    location_name = f"{self.my_position_lat:.2f},{self.my_position_lon:.2f}"
+                self._cached_location_name = location_name
+            except Exception as e:
+                self.logger.debug(f"Error reverse geocoding location: {e}")
+                location_name = f"{self.my_position_lat:.2f},{self.my_position_lon:.2f}"
+                self._cached_location_name = location_name
+        else:
+            location_name = self._cached_location_name
+        return location_name
+
+    def _append_tomorrow_forecast(self, forecast_text: str, daily: dict, temp_symbol: str) -> str:
+        """``forecast_text`` with tomorrow's sky and high/low appended when the daily arrays reach day 2."""
+        daily_times = daily.get('time', [])
+        daily_codes = daily.get('weather_code', [])
+        daily_max = daily.get('temperature_2m_max', [])
+        daily_min = daily.get('temperature_2m_min', [])
+
+        if len(daily_times) > 1 and len(daily_codes) > 1:
+            tomorrow_code = daily_codes[1]
+            tomorrow_max = int(daily_max[1]) if len(daily_max) > 1 else None
+            tomorrow_min = int(daily_min[1]) if len(daily_min) > 1 else None
+            tomorrow_desc = self._get_weather_description(tomorrow_code)
+            tomorrow_emoji = self._get_weather_emoji(tomorrow_code)
+
+            if tomorrow_max is not None:
+                tomorrow_label = self._translate('services.weather_service.tomorrow')
+                if tomorrow_min is not None and tomorrow_min != tomorrow_max:
+                    hl = format_temperature_high_low(
+                        self.bot.config,
+                        tomorrow_max,
+                        tomorrow_min,
+                        temp_symbol,
+                        self.logger,
+                        translator=getattr(self.bot, 'translator', None),
+                    )
+                    forecast_text += f" | {tomorrow_label}: {tomorrow_emoji}{tomorrow_desc} {hl}"
+                else:
+                    hl = format_temperature_high_low(
+                        self.bot.config,
+                        tomorrow_max,
+                        None,
+                        temp_symbol,
+                        self.logger,
+                        translator=getattr(self.bot, 'translator', None),
+                    )
+                    forecast_text += f" | {tomorrow_label}: {tomorrow_emoji}{tomorrow_desc} {hl}"
+        return forecast_text
 
     def _degrees_to_direction(self, degrees: float) -> str:
         """Convert wind direction in degrees to compass direction.
