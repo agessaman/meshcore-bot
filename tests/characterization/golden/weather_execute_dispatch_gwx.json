@@ -1,0 +1,4982 @@
+{
+ "bot_location | ''": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "_get_bot_location()",
+   "logger.info('Using bot coordinates (no args): 48.75000,-122.48000',)",
+   "_get_custom_mqtt_weather_topic('48.75000,-122.48000',)",
+   "_get_custom_wxsim_source('48.75000,-122.48000',)",
+   "_get_custom_mqtt_weather_topic('48.75000,-122.48000',)",
+   "_get_custom_wxsim_source('48.75000,-122.48000',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('48.75000,-122.48000', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "bot_location | '3'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('3',)",
+   "_get_custom_wxsim_source('3',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "_get_bot_location()",
+   "logger.info('Using bot coordinates (no args): 48.75000,-122.48000',)",
+   "_get_custom_mqtt_weather_topic('48.75000,-122.48000',)",
+   "_get_custom_wxsim_source('48.75000,-122.48000',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('48.75000,-122.48000', 'multiday', 3, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "bot_location | '47.6,-122.3 alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "bot_location | '47.6,-122.3'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('47.6,-122.3', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "bot_location | '5d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('5d',)",
+   "_get_custom_wxsim_source('5d',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "_get_bot_location()",
+   "logger.info('Using bot coordinates (no args): 48.75000,-122.48000',)",
+   "_get_custom_mqtt_weather_topic('48.75000,-122.48000',)",
+   "_get_custom_wxsim_source('48.75000,-122.48000',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('48.75000,-122.48000', 'multiday', 5, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "bot_location | '95.0,10.0 alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('95.0,10.0',)",
+   "_get_custom_wxsim_source('95.0,10.0',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "bot_location | '98101 alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "bot_location | '98101'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('98101', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "bot_location | 'HOURLY'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('HOURLY',)",
+   "_get_custom_wxsim_source('HOURLY',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "_get_bot_location()",
+   "logger.info('Using bot coordinates (no args): 48.75000,-122.48000',)",
+   "_get_custom_mqtt_weather_topic('48.75000,-122.48000',)",
+   "_get_custom_wxsim_source('48.75000,-122.48000',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('48.75000,-122.48000', 'hourly', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "bot_location | 'a b alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('a b',)",
+   "_get_custom_wxsim_source('a b',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "bot_location | 'alerts alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('alerts',)",
+   "_get_custom_wxsim_source('alerts',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "bot_location | 'alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('alerts',)",
+   "_get_custom_wxsim_source('alerts',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "_get_bot_location()",
+   "logger.info('Using bot coordinates (no args): 48.75000,-122.48000',)",
+   "_get_custom_mqtt_weather_topic('48.75000,-122.48000',)",
+   "_get_custom_wxsim_source('48.75000,-122.48000',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "bot_location | 'both 5d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('both',)",
+   "_get_custom_wxsim_source('both',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('both', 'multiday', 5, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "bot_location | 'both'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('both',)",
+   "_get_custom_wxsim_source('both',)",
+   "_get_custom_mqtt_weather_topic('both',)",
+   "_get_custom_wxsim_source('both',)",
+   "_get_custom_mqtt_weather_topic('both',)",
+   "_get_custom_wxsim_source('both',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('both', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "bot_location | 'cabin alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "bot_location | 'cabin tomorrow'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('cabin', 'tomorrow', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "bot_location | 'cabin'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('cabin', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "bot_location | 'home 3'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('home', 'multiday', 3, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "bot_location | 'home alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "bot_location | 'home hourly'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('home', 'hourly', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "bot_location | 'home'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('home', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "bot_location | 'hourly'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('hourly',)",
+   "_get_custom_wxsim_source('hourly',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "_get_bot_location()",
+   "logger.info('Using bot coordinates (no args): 48.75000,-122.48000',)",
+   "_get_custom_mqtt_weather_topic('48.75000,-122.48000',)",
+   "_get_custom_wxsim_source('48.75000,-122.48000',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('48.75000,-122.48000', 'hourly', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "bot_location | 'paris 1'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('paris 1',)",
+   "_get_custom_wxsim_source('paris 1',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('paris 1', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "bot_location | 'paris 30d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('paris 30d',)",
+   "_get_custom_wxsim_source('paris 30d',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('paris 30d', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "bot_location | 'paris 7d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('paris',)",
+   "_get_custom_wxsim_source('paris',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('paris', 'multiday', 7, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "bot_location | 'seattle  wa 3'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('seattle wa',)",
+   "_get_custom_wxsim_source('seattle wa',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('seattle wa', 'multiday', 3, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "bot_location | 'seattle, wa'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('seattle, wa',)",
+   "_get_custom_wxsim_source('seattle, wa',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('seattle, wa', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "bot_location | 'tomorrow'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('tomorrow',)",
+   "_get_custom_wxsim_source('tomorrow',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "_get_bot_location()",
+   "logger.info('Using bot coordinates (no args): 48.75000,-122.48000',)",
+   "_get_custom_mqtt_weather_topic('48.75000,-122.48000',)",
+   "_get_custom_wxsim_source('48.75000,-122.48000',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('48.75000,-122.48000', 'tomorrow', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "bot_location | 'x alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('x',)",
+   "_get_custom_wxsim_source('x',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "bot_location_missing | ''": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "_get_bot_location()",
+   "logger.debug('use_bot_location_when_no_location enabled but bot_latitude/bot_longitude not set; showing usage',)",
+   "send_response('<msg>', '<commands.gwx.usage>')"
+  ],
+  "result": true
+ },
+ "bot_location_missing | '3'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('3',)",
+   "_get_custom_wxsim_source('3',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "_get_bot_location()",
+   "logger.debug('use_bot_location_when_no_location enabled but bot_latitude/bot_longitude not set; showing usage',)",
+   "send_response('<msg>', '<commands.gwx.usage>')"
+  ],
+  "result": true
+ },
+ "bot_location_missing | '47.6,-122.3 alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "bot_location_missing | '47.6,-122.3'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('47.6,-122.3', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "bot_location_missing | '5d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('5d',)",
+   "_get_custom_wxsim_source('5d',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "_get_bot_location()",
+   "logger.debug('use_bot_location_when_no_location enabled but bot_latitude/bot_longitude not set; showing usage',)",
+   "send_response('<msg>', '<commands.gwx.usage>')"
+  ],
+  "result": true
+ },
+ "bot_location_missing | '95.0,10.0 alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('95.0,10.0',)",
+   "_get_custom_wxsim_source('95.0,10.0',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "bot_location_missing | '98101 alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "bot_location_missing | '98101'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('98101', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "bot_location_missing | 'HOURLY'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('HOURLY',)",
+   "_get_custom_wxsim_source('HOURLY',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "_get_bot_location()",
+   "logger.debug('use_bot_location_when_no_location enabled but bot_latitude/bot_longitude not set; showing usage',)",
+   "send_response('<msg>', '<commands.gwx.usage>')"
+  ],
+  "result": true
+ },
+ "bot_location_missing | 'a b alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('a b',)",
+   "_get_custom_wxsim_source('a b',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "bot_location_missing | 'alerts alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('alerts',)",
+   "_get_custom_wxsim_source('alerts',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "bot_location_missing | 'alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('alerts',)",
+   "_get_custom_wxsim_source('alerts',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "_get_bot_location()",
+   "logger.debug('use_bot_location_when_no_location enabled but bot_latitude/bot_longitude not set; showing usage',)",
+   "send_response('<msg>', '<commands.gwx.usage>')"
+  ],
+  "result": true
+ },
+ "bot_location_missing | 'both 5d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('both',)",
+   "_get_custom_wxsim_source('both',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('both', 'multiday', 5, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "bot_location_missing | 'both'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('both',)",
+   "_get_custom_wxsim_source('both',)",
+   "_get_custom_mqtt_weather_topic('both',)",
+   "_get_custom_wxsim_source('both',)",
+   "_get_custom_mqtt_weather_topic('both',)",
+   "_get_custom_wxsim_source('both',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('both', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "bot_location_missing | 'cabin alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "bot_location_missing | 'cabin tomorrow'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('cabin', 'tomorrow', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "bot_location_missing | 'cabin'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('cabin', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "bot_location_missing | 'home 3'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('home', 'multiday', 3, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "bot_location_missing | 'home alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "bot_location_missing | 'home hourly'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('home', 'hourly', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "bot_location_missing | 'home'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('home', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "bot_location_missing | 'hourly'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('hourly',)",
+   "_get_custom_wxsim_source('hourly',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "_get_bot_location()",
+   "logger.debug('use_bot_location_when_no_location enabled but bot_latitude/bot_longitude not set; showing usage',)",
+   "send_response('<msg>', '<commands.gwx.usage>')"
+  ],
+  "result": true
+ },
+ "bot_location_missing | 'paris 1'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('paris 1',)",
+   "_get_custom_wxsim_source('paris 1',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('paris 1', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "bot_location_missing | 'paris 30d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('paris 30d',)",
+   "_get_custom_wxsim_source('paris 30d',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('paris 30d', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "bot_location_missing | 'paris 7d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('paris',)",
+   "_get_custom_wxsim_source('paris',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('paris', 'multiday', 7, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "bot_location_missing | 'seattle  wa 3'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('seattle wa',)",
+   "_get_custom_wxsim_source('seattle wa',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('seattle wa', 'multiday', 3, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "bot_location_missing | 'seattle, wa'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('seattle, wa',)",
+   "_get_custom_wxsim_source('seattle, wa',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('seattle, wa', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "bot_location_missing | 'tomorrow'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('tomorrow',)",
+   "_get_custom_wxsim_source('tomorrow',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "_get_bot_location()",
+   "logger.debug('use_bot_location_when_no_location enabled but bot_latitude/bot_longitude not set; showing usage',)",
+   "send_response('<msg>', '<commands.gwx.usage>')"
+  ],
+  "result": true
+ },
+ "bot_location_missing | 'x alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('x',)",
+   "_get_custom_wxsim_source('x',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "bot_location_unnamed | ''": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "_get_bot_location()",
+   "logger.info('Using bot coordinates (no args): 48.75000,-122.48000',)",
+   "_get_custom_mqtt_weather_topic('48.75000,-122.48000',)",
+   "_get_custom_wxsim_source('48.75000,-122.48000',)",
+   "_get_custom_mqtt_weather_topic('48.75000,-122.48000',)",
+   "_get_custom_wxsim_source('48.75000,-122.48000',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('48.75000,-122.48000', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "bot_location_unnamed | '3'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('3',)",
+   "_get_custom_wxsim_source('3',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "_get_bot_location()",
+   "logger.info('Using bot coordinates (no args): 48.75000,-122.48000',)",
+   "_get_custom_mqtt_weather_topic('48.75000,-122.48000',)",
+   "_get_custom_wxsim_source('48.75000,-122.48000',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('48.75000,-122.48000', 'multiday', 3, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "bot_location_unnamed | '47.6,-122.3 alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "bot_location_unnamed | '47.6,-122.3'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('47.6,-122.3', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "bot_location_unnamed | '5d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('5d',)",
+   "_get_custom_wxsim_source('5d',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "_get_bot_location()",
+   "logger.info('Using bot coordinates (no args): 48.75000,-122.48000',)",
+   "_get_custom_mqtt_weather_topic('48.75000,-122.48000',)",
+   "_get_custom_wxsim_source('48.75000,-122.48000',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('48.75000,-122.48000', 'multiday', 5, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "bot_location_unnamed | '95.0,10.0 alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('95.0,10.0',)",
+   "_get_custom_wxsim_source('95.0,10.0',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "bot_location_unnamed | '98101 alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "bot_location_unnamed | '98101'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('98101', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "bot_location_unnamed | 'HOURLY'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('HOURLY',)",
+   "_get_custom_wxsim_source('HOURLY',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "_get_bot_location()",
+   "logger.info('Using bot coordinates (no args): 48.75000,-122.48000',)",
+   "_get_custom_mqtt_weather_topic('48.75000,-122.48000',)",
+   "_get_custom_wxsim_source('48.75000,-122.48000',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('48.75000,-122.48000', 'hourly', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "bot_location_unnamed | 'a b alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('a b',)",
+   "_get_custom_wxsim_source('a b',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "bot_location_unnamed | 'alerts alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('alerts',)",
+   "_get_custom_wxsim_source('alerts',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "bot_location_unnamed | 'alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('alerts',)",
+   "_get_custom_wxsim_source('alerts',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "_get_bot_location()",
+   "logger.info('Using bot coordinates (no args): 48.75000,-122.48000',)",
+   "_get_custom_mqtt_weather_topic('48.75000,-122.48000',)",
+   "_get_custom_wxsim_source('48.75000,-122.48000',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "bot_location_unnamed | 'both 5d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('both',)",
+   "_get_custom_wxsim_source('both',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('both', 'multiday', 5, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "bot_location_unnamed | 'both'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('both',)",
+   "_get_custom_wxsim_source('both',)",
+   "_get_custom_mqtt_weather_topic('both',)",
+   "_get_custom_wxsim_source('both',)",
+   "_get_custom_mqtt_weather_topic('both',)",
+   "_get_custom_wxsim_source('both',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('both', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "bot_location_unnamed | 'cabin alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "bot_location_unnamed | 'cabin tomorrow'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('cabin', 'tomorrow', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "bot_location_unnamed | 'cabin'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('cabin', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "bot_location_unnamed | 'home 3'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('home', 'multiday', 3, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "bot_location_unnamed | 'home alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "bot_location_unnamed | 'home hourly'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('home', 'hourly', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "bot_location_unnamed | 'home'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('home', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "bot_location_unnamed | 'hourly'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('hourly',)",
+   "_get_custom_wxsim_source('hourly',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "_get_bot_location()",
+   "logger.info('Using bot coordinates (no args): 48.75000,-122.48000',)",
+   "_get_custom_mqtt_weather_topic('48.75000,-122.48000',)",
+   "_get_custom_wxsim_source('48.75000,-122.48000',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('48.75000,-122.48000', 'hourly', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "bot_location_unnamed | 'paris 1'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('paris 1',)",
+   "_get_custom_wxsim_source('paris 1',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('paris 1', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "bot_location_unnamed | 'paris 30d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('paris 30d',)",
+   "_get_custom_wxsim_source('paris 30d',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('paris 30d', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "bot_location_unnamed | 'paris 7d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('paris',)",
+   "_get_custom_wxsim_source('paris',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('paris', 'multiday', 7, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "bot_location_unnamed | 'seattle  wa 3'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('seattle wa',)",
+   "_get_custom_wxsim_source('seattle wa',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('seattle wa', 'multiday', 3, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "bot_location_unnamed | 'seattle, wa'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('seattle, wa',)",
+   "_get_custom_wxsim_source('seattle, wa',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('seattle, wa', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "bot_location_unnamed | 'tomorrow'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('tomorrow',)",
+   "_get_custom_wxsim_source('tomorrow',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "_get_bot_location()",
+   "logger.info('Using bot coordinates (no args): 48.75000,-122.48000',)",
+   "_get_custom_mqtt_weather_topic('48.75000,-122.48000',)",
+   "_get_custom_wxsim_source('48.75000,-122.48000',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('48.75000,-122.48000', 'tomorrow', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "bot_location_unnamed | 'x alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('x',)",
+   "_get_custom_wxsim_source('x',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "both_sources | ''": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.debug('No companion/default city location found, showing usage',)",
+   "send_response('<msg>', '<commands.gwx.usage>')"
+  ],
+  "result": true
+ },
+ "both_sources | '3'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('3',)",
+   "_get_custom_wxsim_source('3',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.debug('No companion/default city location found, showing usage',)",
+   "send_response('<msg>', '<commands.gwx.usage>')"
+  ],
+  "result": true
+ },
+ "both_sources | '47.6,-122.3 alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "both_sources | '47.6,-122.3'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('47.6,-122.3', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "both_sources | '5d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('5d',)",
+   "_get_custom_wxsim_source('5d',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.debug('No companion/default city location found, showing usage',)",
+   "send_response('<msg>', '<commands.gwx.usage>')"
+  ],
+  "result": true
+ },
+ "both_sources | '95.0,10.0 alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('95.0,10.0',)",
+   "_get_custom_wxsim_source('95.0,10.0',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "both_sources | '98101 alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "both_sources | '98101'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('98101', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "both_sources | 'HOURLY'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('HOURLY',)",
+   "_get_custom_wxsim_source('HOURLY',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.debug('No companion/default city location found, showing usage',)",
+   "send_response('<msg>', '<commands.gwx.usage>')"
+  ],
+  "result": true
+ },
+ "both_sources | 'a b alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('a b',)",
+   "_get_custom_wxsim_source('a b',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "both_sources | 'alerts alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('alerts',)",
+   "_get_custom_wxsim_source('alerts',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "both_sources | 'alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('alerts',)",
+   "_get_custom_wxsim_source('alerts',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.debug('No companion/default city location found, showing usage',)",
+   "send_response('<msg>', '<commands.gwx.usage>')"
+  ],
+  "result": true
+ },
+ "both_sources | 'both 5d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('both',)",
+   "logger.info(\"Using custom MQTT weather topic for location 'both': wx/both\",)",
+   "record_execution('u1',)",
+   "_mqtt_weather_line('wx/both', 'multiday', 'both')",
+   "_send_multiday_forecast('<msg>', 'MQTT[wx/both,multiday,both]')"
+  ],
+  "result": true
+ },
+ "both_sources | 'both'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('both',)",
+   "_get_custom_mqtt_weather_topic('both',)",
+   "_get_custom_mqtt_weather_topic('both',)",
+   "logger.info(\"Using custom MQTT weather topic for location 'both': wx/both\",)",
+   "record_execution('u1',)",
+   "_mqtt_weather_line('wx/both', 'default', 'both')",
+   "send_response('<msg>', 'MQTT[wx/both,default,both]')"
+  ],
+  "result": true
+ },
+ "both_sources | 'cabin alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "both_sources | 'cabin tomorrow'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('cabin', 'tomorrow', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "both_sources | 'cabin'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('cabin', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "both_sources | 'home 3'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('home', 'multiday', 3, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "both_sources | 'home alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "both_sources | 'home hourly'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('home', 'hourly', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "both_sources | 'home'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('home', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "both_sources | 'hourly'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('hourly',)",
+   "_get_custom_wxsim_source('hourly',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.debug('No companion/default city location found, showing usage',)",
+   "send_response('<msg>', '<commands.gwx.usage>')"
+  ],
+  "result": true
+ },
+ "both_sources | 'paris 1'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('paris 1',)",
+   "_get_custom_wxsim_source('paris 1',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('paris 1', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "both_sources | 'paris 30d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('paris 30d',)",
+   "_get_custom_wxsim_source('paris 30d',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('paris 30d', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "both_sources | 'paris 7d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('paris',)",
+   "_get_custom_wxsim_source('paris',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('paris', 'multiday', 7, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "both_sources | 'seattle  wa 3'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('seattle wa',)",
+   "_get_custom_wxsim_source('seattle wa',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('seattle wa', 'multiday', 3, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "both_sources | 'seattle, wa'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('seattle, wa',)",
+   "_get_custom_wxsim_source('seattle, wa',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('seattle, wa', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "both_sources | 'tomorrow'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('tomorrow',)",
+   "_get_custom_wxsim_source('tomorrow',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.debug('No companion/default city location found, showing usage',)",
+   "send_response('<msg>', '<commands.gwx.usage>')"
+  ],
+  "result": true
+ },
+ "both_sources | 'x alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('x',)",
+   "_get_custom_wxsim_source('x',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "city_pair | ''": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.debug('No companion/default city location found, showing usage',)",
+   "send_response('<msg>', '<commands.gwx.usage>')"
+  ],
+  "result": true
+ },
+ "city_pair | '47.6,-122.3 alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "city_pair | '5d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('5d',)",
+   "_get_custom_wxsim_source('5d',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.debug('No companion/default city location found, showing usage',)",
+   "send_response('<msg>', '<commands.gwx.usage>')"
+  ],
+  "result": true
+ },
+ "city_pair | '98101 alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "city_pair | '98101'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('98101', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "city_pair | 'alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('alerts',)",
+   "_get_custom_wxsim_source('alerts',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.debug('No companion/default city location found, showing usage',)",
+   "send_response('<msg>', '<commands.gwx.usage>')"
+  ],
+  "result": true
+ },
+ "city_pair | 'hourly'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('hourly',)",
+   "_get_custom_wxsim_source('hourly',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.debug('No companion/default city location found, showing usage',)",
+   "send_response('<msg>', '<commands.gwx.usage>')"
+  ],
+  "result": true
+ },
+ "city_pair | 'seattle, wa'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('seattle, wa',)",
+   "_get_custom_wxsim_source('seattle, wa',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('seattle, wa', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "city_pair | 'x alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('x',)",
+   "_get_custom_wxsim_source('x',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "companion_named | ''": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.info('Using companion coordinates: 47.60620,-122.33210',)",
+   "_get_custom_mqtt_weather_topic('47.60620,-122.33210',)",
+   "_get_custom_wxsim_source('47.60620,-122.33210',)",
+   "_get_custom_mqtt_weather_topic('47.60620,-122.33210',)",
+   "_get_custom_wxsim_source('47.60620,-122.33210',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('47.60620,-122.33210', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "companion_named | '3'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('3',)",
+   "_get_custom_wxsim_source('3',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.info('Using companion coordinates: 47.60620,-122.33210',)",
+   "_get_custom_mqtt_weather_topic('47.60620,-122.33210',)",
+   "_get_custom_wxsim_source('47.60620,-122.33210',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('47.60620,-122.33210', 'multiday', 3, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "companion_named | '47.6,-122.3 alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "companion_named | '47.6,-122.3'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('47.6,-122.3', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "companion_named | '5d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('5d',)",
+   "_get_custom_wxsim_source('5d',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.info('Using companion coordinates: 47.60620,-122.33210',)",
+   "_get_custom_mqtt_weather_topic('47.60620,-122.33210',)",
+   "_get_custom_wxsim_source('47.60620,-122.33210',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('47.60620,-122.33210', 'multiday', 5, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "companion_named | '95.0,10.0 alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('95.0,10.0',)",
+   "_get_custom_wxsim_source('95.0,10.0',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "companion_named | '98101 alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "companion_named | '98101'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('98101', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "companion_named | 'HOURLY'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('HOURLY',)",
+   "_get_custom_wxsim_source('HOURLY',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.info('Using companion coordinates: 47.60620,-122.33210',)",
+   "_get_custom_mqtt_weather_topic('47.60620,-122.33210',)",
+   "_get_custom_wxsim_source('47.60620,-122.33210',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('47.60620,-122.33210', 'hourly', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "companion_named | 'a b alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('a b',)",
+   "_get_custom_wxsim_source('a b',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "companion_named | 'alerts alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('alerts',)",
+   "_get_custom_wxsim_source('alerts',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "companion_named | 'alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('alerts',)",
+   "_get_custom_wxsim_source('alerts',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.info('Using companion coordinates: 47.60620,-122.33210',)",
+   "_get_custom_mqtt_weather_topic('47.60620,-122.33210',)",
+   "_get_custom_wxsim_source('47.60620,-122.33210',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "companion_named | 'both 5d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('both',)",
+   "_get_custom_wxsim_source('both',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('both', 'multiday', 5, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "companion_named | 'both'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('both',)",
+   "_get_custom_wxsim_source('both',)",
+   "_get_custom_mqtt_weather_topic('both',)",
+   "_get_custom_wxsim_source('both',)",
+   "_get_custom_mqtt_weather_topic('both',)",
+   "_get_custom_wxsim_source('both',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('both', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "companion_named | 'cabin alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "companion_named | 'cabin tomorrow'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('cabin', 'tomorrow', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "companion_named | 'cabin'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('cabin', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "companion_named | 'home 3'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('home', 'multiday', 3, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "companion_named | 'home alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "companion_named | 'home hourly'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('home', 'hourly', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "companion_named | 'home'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('home', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "companion_named | 'hourly'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('hourly',)",
+   "_get_custom_wxsim_source('hourly',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.info('Using companion coordinates: 47.60620,-122.33210',)",
+   "_get_custom_mqtt_weather_topic('47.60620,-122.33210',)",
+   "_get_custom_wxsim_source('47.60620,-122.33210',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('47.60620,-122.33210', 'hourly', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "companion_named | 'paris 1'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('paris 1',)",
+   "_get_custom_wxsim_source('paris 1',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('paris 1', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "companion_named | 'paris 30d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('paris 30d',)",
+   "_get_custom_wxsim_source('paris 30d',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('paris 30d', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "companion_named | 'paris 7d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('paris',)",
+   "_get_custom_wxsim_source('paris',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('paris', 'multiday', 7, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "companion_named | 'seattle  wa 3'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('seattle wa',)",
+   "_get_custom_wxsim_source('seattle wa',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('seattle wa', 'multiday', 3, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "companion_named | 'seattle, wa'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('seattle, wa',)",
+   "_get_custom_wxsim_source('seattle, wa',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('seattle, wa', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "companion_named | 'tomorrow'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('tomorrow',)",
+   "_get_custom_wxsim_source('tomorrow',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.info('Using companion coordinates: 47.60620,-122.33210',)",
+   "_get_custom_mqtt_weather_topic('47.60620,-122.33210',)",
+   "_get_custom_wxsim_source('47.60620,-122.33210',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('47.60620,-122.33210', 'tomorrow', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "companion_named | 'x alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('x',)",
+   "_get_custom_wxsim_source('x',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "companion_unnamed | ''": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.info('Using companion coordinates: 47.60620,-122.33210',)",
+   "_get_custom_mqtt_weather_topic('47.60620,-122.33210',)",
+   "_get_custom_wxsim_source('47.60620,-122.33210',)",
+   "_get_custom_mqtt_weather_topic('47.60620,-122.33210',)",
+   "_get_custom_wxsim_source('47.60620,-122.33210',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('47.60620,-122.33210', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "companion_unnamed | '3'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('3',)",
+   "_get_custom_wxsim_source('3',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.info('Using companion coordinates: 47.60620,-122.33210',)",
+   "_get_custom_mqtt_weather_topic('47.60620,-122.33210',)",
+   "_get_custom_wxsim_source('47.60620,-122.33210',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('47.60620,-122.33210', 'multiday', 3, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "companion_unnamed | '47.6,-122.3 alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "companion_unnamed | '47.6,-122.3'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('47.6,-122.3', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "companion_unnamed | '5d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('5d',)",
+   "_get_custom_wxsim_source('5d',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.info('Using companion coordinates: 47.60620,-122.33210',)",
+   "_get_custom_mqtt_weather_topic('47.60620,-122.33210',)",
+   "_get_custom_wxsim_source('47.60620,-122.33210',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('47.60620,-122.33210', 'multiday', 5, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "companion_unnamed | '95.0,10.0 alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('95.0,10.0',)",
+   "_get_custom_wxsim_source('95.0,10.0',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "companion_unnamed | '98101 alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "companion_unnamed | '98101'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('98101', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "companion_unnamed | 'HOURLY'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('HOURLY',)",
+   "_get_custom_wxsim_source('HOURLY',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.info('Using companion coordinates: 47.60620,-122.33210',)",
+   "_get_custom_mqtt_weather_topic('47.60620,-122.33210',)",
+   "_get_custom_wxsim_source('47.60620,-122.33210',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('47.60620,-122.33210', 'hourly', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "companion_unnamed | 'a b alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('a b',)",
+   "_get_custom_wxsim_source('a b',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "companion_unnamed | 'alerts alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('alerts',)",
+   "_get_custom_wxsim_source('alerts',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "companion_unnamed | 'alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('alerts',)",
+   "_get_custom_wxsim_source('alerts',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.info('Using companion coordinates: 47.60620,-122.33210',)",
+   "_get_custom_mqtt_weather_topic('47.60620,-122.33210',)",
+   "_get_custom_wxsim_source('47.60620,-122.33210',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "companion_unnamed | 'both 5d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('both',)",
+   "_get_custom_wxsim_source('both',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('both', 'multiday', 5, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "companion_unnamed | 'both'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('both',)",
+   "_get_custom_wxsim_source('both',)",
+   "_get_custom_mqtt_weather_topic('both',)",
+   "_get_custom_wxsim_source('both',)",
+   "_get_custom_mqtt_weather_topic('both',)",
+   "_get_custom_wxsim_source('both',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('both', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "companion_unnamed | 'cabin alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "companion_unnamed | 'cabin tomorrow'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('cabin', 'tomorrow', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "companion_unnamed | 'cabin'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('cabin', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "companion_unnamed | 'home 3'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('home', 'multiday', 3, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "companion_unnamed | 'home alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "companion_unnamed | 'home hourly'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('home', 'hourly', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "companion_unnamed | 'home'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('home', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "companion_unnamed | 'hourly'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('hourly',)",
+   "_get_custom_wxsim_source('hourly',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.info('Using companion coordinates: 47.60620,-122.33210',)",
+   "_get_custom_mqtt_weather_topic('47.60620,-122.33210',)",
+   "_get_custom_wxsim_source('47.60620,-122.33210',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('47.60620,-122.33210', 'hourly', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "companion_unnamed | 'paris 1'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('paris 1',)",
+   "_get_custom_wxsim_source('paris 1',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('paris 1', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "companion_unnamed | 'paris 30d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('paris 30d',)",
+   "_get_custom_wxsim_source('paris 30d',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('paris 30d', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "companion_unnamed | 'paris 7d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('paris',)",
+   "_get_custom_wxsim_source('paris',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('paris', 'multiday', 7, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "companion_unnamed | 'seattle  wa 3'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('seattle wa',)",
+   "_get_custom_wxsim_source('seattle wa',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('seattle wa', 'multiday', 3, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "companion_unnamed | 'seattle, wa'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('seattle, wa',)",
+   "_get_custom_wxsim_source('seattle, wa',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('seattle, wa', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "companion_unnamed | 'tomorrow'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('tomorrow',)",
+   "_get_custom_wxsim_source('tomorrow',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.info('Using companion coordinates: 47.60620,-122.33210',)",
+   "_get_custom_mqtt_weather_topic('47.60620,-122.33210',)",
+   "_get_custom_wxsim_source('47.60620,-122.33210',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('47.60620,-122.33210', 'tomorrow', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "companion_unnamed | 'x alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('x',)",
+   "_get_custom_wxsim_source('x',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "default_city | ''": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.info('Using default city (no args): Seattle, WA, US',)",
+   "_get_custom_mqtt_weather_topic('Seattle, WA, US',)",
+   "_get_custom_wxsim_source('Seattle, WA, US',)",
+   "_get_custom_mqtt_weather_topic('Seattle, WA, US',)",
+   "_get_custom_wxsim_source('Seattle, WA, US',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('Seattle, WA, US', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "default_city | '3'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('3',)",
+   "_get_custom_wxsim_source('3',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.info('Using default city (no args): Seattle, WA, US',)",
+   "_get_custom_mqtt_weather_topic('Seattle, WA, US',)",
+   "_get_custom_wxsim_source('Seattle, WA, US',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('Seattle, WA, US', 'multiday', 3, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "default_city | '47.6,-122.3 alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "default_city | '47.6,-122.3'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('47.6,-122.3', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "default_city | '5d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('5d',)",
+   "_get_custom_wxsim_source('5d',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.info('Using default city (no args): Seattle, WA, US',)",
+   "_get_custom_mqtt_weather_topic('Seattle, WA, US',)",
+   "_get_custom_wxsim_source('Seattle, WA, US',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('Seattle, WA, US', 'multiday', 5, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "default_city | '95.0,10.0 alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('95.0,10.0',)",
+   "_get_custom_wxsim_source('95.0,10.0',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "default_city | '98101 alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "default_city | '98101'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('98101', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "default_city | 'HOURLY'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('HOURLY',)",
+   "_get_custom_wxsim_source('HOURLY',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.info('Using default city (no args): Seattle, WA, US',)",
+   "_get_custom_mqtt_weather_topic('Seattle, WA, US',)",
+   "_get_custom_wxsim_source('Seattle, WA, US',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('Seattle, WA, US', 'hourly', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "default_city | 'a b alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('a b',)",
+   "_get_custom_wxsim_source('a b',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "default_city | 'alerts alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('alerts',)",
+   "_get_custom_wxsim_source('alerts',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "default_city | 'alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('alerts',)",
+   "_get_custom_wxsim_source('alerts',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.info('Using default city (no args): Seattle, WA, US',)",
+   "_get_custom_mqtt_weather_topic('Seattle, WA, US',)",
+   "_get_custom_wxsim_source('Seattle, WA, US',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "default_city | 'both 5d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('both',)",
+   "_get_custom_wxsim_source('both',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('both', 'multiday', 5, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "default_city | 'both'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('both',)",
+   "_get_custom_wxsim_source('both',)",
+   "_get_custom_mqtt_weather_topic('both',)",
+   "_get_custom_wxsim_source('both',)",
+   "_get_custom_mqtt_weather_topic('both',)",
+   "_get_custom_wxsim_source('both',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('both', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "default_city | 'cabin alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "default_city | 'cabin tomorrow'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('cabin', 'tomorrow', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "default_city | 'cabin'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('cabin', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "default_city | 'home 3'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('home', 'multiday', 3, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "default_city | 'home alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "default_city | 'home hourly'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('home', 'hourly', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "default_city | 'home'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('home', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "default_city | 'hourly'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('hourly',)",
+   "_get_custom_wxsim_source('hourly',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.info('Using default city (no args): Seattle, WA, US',)",
+   "_get_custom_mqtt_weather_topic('Seattle, WA, US',)",
+   "_get_custom_wxsim_source('Seattle, WA, US',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('Seattle, WA, US', 'hourly', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "default_city | 'paris 1'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('paris 1',)",
+   "_get_custom_wxsim_source('paris 1',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('paris 1', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "default_city | 'paris 30d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('paris 30d',)",
+   "_get_custom_wxsim_source('paris 30d',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('paris 30d', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "default_city | 'paris 7d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('paris',)",
+   "_get_custom_wxsim_source('paris',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('paris', 'multiday', 7, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "default_city | 'seattle  wa 3'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('seattle wa',)",
+   "_get_custom_wxsim_source('seattle wa',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('seattle wa', 'multiday', 3, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "default_city | 'seattle, wa'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('seattle, wa',)",
+   "_get_custom_wxsim_source('seattle, wa',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('seattle, wa', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "default_city | 'tomorrow'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('tomorrow',)",
+   "_get_custom_wxsim_source('tomorrow',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.info('Using default city (no args): Seattle, WA, US',)",
+   "_get_custom_mqtt_weather_topic('Seattle, WA, US',)",
+   "_get_custom_wxsim_source('Seattle, WA, US',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('Seattle, WA, US', 'tomorrow', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "default_city | 'x alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('x',)",
+   "_get_custom_wxsim_source('x',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "default_city_only | ''": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.info('Using default city (no args): Tacoma',)",
+   "_get_custom_mqtt_weather_topic('Tacoma',)",
+   "_get_custom_wxsim_source('Tacoma',)",
+   "_get_custom_mqtt_weather_topic('Tacoma',)",
+   "_get_custom_wxsim_source('Tacoma',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('Tacoma', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "default_city_only | '3'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('3',)",
+   "_get_custom_wxsim_source('3',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.info('Using default city (no args): Tacoma',)",
+   "_get_custom_mqtt_weather_topic('Tacoma',)",
+   "_get_custom_wxsim_source('Tacoma',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('Tacoma', 'multiday', 3, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "default_city_only | '47.6,-122.3 alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "default_city_only | '47.6,-122.3'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('47.6,-122.3', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "default_city_only | '5d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('5d',)",
+   "_get_custom_wxsim_source('5d',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.info('Using default city (no args): Tacoma',)",
+   "_get_custom_mqtt_weather_topic('Tacoma',)",
+   "_get_custom_wxsim_source('Tacoma',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('Tacoma', 'multiday', 5, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "default_city_only | '95.0,10.0 alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('95.0,10.0',)",
+   "_get_custom_wxsim_source('95.0,10.0',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "default_city_only | '98101 alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "default_city_only | '98101'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('98101', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "default_city_only | 'HOURLY'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('HOURLY',)",
+   "_get_custom_wxsim_source('HOURLY',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.info('Using default city (no args): Tacoma',)",
+   "_get_custom_mqtt_weather_topic('Tacoma',)",
+   "_get_custom_wxsim_source('Tacoma',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('Tacoma', 'hourly', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "default_city_only | 'a b alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('a b',)",
+   "_get_custom_wxsim_source('a b',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "default_city_only | 'alerts alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('alerts',)",
+   "_get_custom_wxsim_source('alerts',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "default_city_only | 'alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('alerts',)",
+   "_get_custom_wxsim_source('alerts',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.info('Using default city (no args): Tacoma',)",
+   "_get_custom_mqtt_weather_topic('Tacoma',)",
+   "_get_custom_wxsim_source('Tacoma',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "default_city_only | 'both 5d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('both',)",
+   "_get_custom_wxsim_source('both',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('both', 'multiday', 5, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "default_city_only | 'both'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('both',)",
+   "_get_custom_wxsim_source('both',)",
+   "_get_custom_mqtt_weather_topic('both',)",
+   "_get_custom_wxsim_source('both',)",
+   "_get_custom_mqtt_weather_topic('both',)",
+   "_get_custom_wxsim_source('both',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('both', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "default_city_only | 'cabin alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "default_city_only | 'cabin tomorrow'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('cabin', 'tomorrow', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "default_city_only | 'cabin'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('cabin', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "default_city_only | 'home 3'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('home', 'multiday', 3, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "default_city_only | 'home alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "default_city_only | 'home hourly'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('home', 'hourly', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "default_city_only | 'home'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('home', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "default_city_only | 'hourly'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('hourly',)",
+   "_get_custom_wxsim_source('hourly',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.info('Using default city (no args): Tacoma',)",
+   "_get_custom_mqtt_weather_topic('Tacoma',)",
+   "_get_custom_wxsim_source('Tacoma',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('Tacoma', 'hourly', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "default_city_only | 'paris 1'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('paris 1',)",
+   "_get_custom_wxsim_source('paris 1',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('paris 1', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "default_city_only | 'paris 30d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('paris 30d',)",
+   "_get_custom_wxsim_source('paris 30d',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('paris 30d', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "default_city_only | 'paris 7d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('paris',)",
+   "_get_custom_wxsim_source('paris',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('paris', 'multiday', 7, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "default_city_only | 'seattle  wa 3'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('seattle wa',)",
+   "_get_custom_wxsim_source('seattle wa',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('seattle wa', 'multiday', 3, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "default_city_only | 'seattle, wa'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('seattle, wa',)",
+   "_get_custom_wxsim_source('seattle, wa',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('seattle, wa', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "default_city_only | 'tomorrow'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('tomorrow',)",
+   "_get_custom_wxsim_source('tomorrow',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.info('Using default city (no args): Tacoma',)",
+   "_get_custom_mqtt_weather_topic('Tacoma',)",
+   "_get_custom_wxsim_source('Tacoma',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('Tacoma', 'tomorrow', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "default_city_only | 'x alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('x',)",
+   "_get_custom_wxsim_source('x',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "geocode_fails | ''": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.debug('No companion/default city location found, showing usage',)",
+   "send_response('<msg>', '<commands.gwx.usage>')"
+  ],
+  "result": true
+ },
+ "geocode_fails | '47.6,-122.3 alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "geocode_fails | '5d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('5d',)",
+   "_get_custom_wxsim_source('5d',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.debug('No companion/default city location found, showing usage',)",
+   "send_response('<msg>', '<commands.gwx.usage>')"
+  ],
+  "result": true
+ },
+ "geocode_fails | '98101 alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "geocode_fails | '98101'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('98101', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "geocode_fails | 'alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('alerts',)",
+   "_get_custom_wxsim_source('alerts',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.debug('No companion/default city location found, showing usage',)",
+   "send_response('<msg>', '<commands.gwx.usage>')"
+  ],
+  "result": true
+ },
+ "geocode_fails | 'hourly'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('hourly',)",
+   "_get_custom_wxsim_source('hourly',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.debug('No companion/default city location found, showing usage',)",
+   "send_response('<msg>', '<commands.gwx.usage>')"
+  ],
+  "result": true
+ },
+ "geocode_fails | 'seattle, wa'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('seattle, wa',)",
+   "_get_custom_wxsim_source('seattle, wa',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('seattle, wa', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "geocode_fails | 'x alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('x',)",
+   "_get_custom_wxsim_source('x',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "mqtt | ''": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic(None,)",
+   "record_execution('u1',)",
+   "_mqtt_weather_line('wx/default', 'default', None)",
+   "send_response('<msg>', 'MQTT[wx/default,default,None]')"
+  ],
+  "result": true
+ },
+ "mqtt | '3'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('3',)",
+   "_get_custom_wxsim_source('3',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "record_execution('u1',)",
+   "_mqtt_weather_line('wx/default', 'multiday', None)",
+   "send_response('<msg>', 'MQTT[wx/default,multiday,None]')"
+  ],
+  "result": true
+ },
+ "mqtt | '47.6,-122.3 alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "mqtt | '47.6,-122.3'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('47.6,-122.3', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "mqtt | '5d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('5d',)",
+   "_get_custom_wxsim_source('5d',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "record_execution('u1',)",
+   "_mqtt_weather_line('wx/default', 'multiday', None)",
+   "send_response('<msg>', 'MQTT[wx/default,multiday,None]')"
+  ],
+  "result": true
+ },
+ "mqtt | '95.0,10.0 alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('95.0,10.0',)",
+   "_get_custom_wxsim_source('95.0,10.0',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "mqtt | '98101 alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "mqtt | '98101'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('98101', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "mqtt | 'HOURLY'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('HOURLY',)",
+   "_get_custom_wxsim_source('HOURLY',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "record_execution('u1',)",
+   "_mqtt_weather_line('wx/default', 'hourly', None)",
+   "send_response('<msg>', 'MQTT[wx/default,hourly,None]')"
+  ],
+  "result": true
+ },
+ "mqtt | 'a b alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('a b',)",
+   "_get_custom_wxsim_source('a b',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "mqtt | 'alerts alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('alerts',)",
+   "_get_custom_wxsim_source('alerts',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "mqtt | 'alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('alerts',)",
+   "_get_custom_wxsim_source('alerts',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "record_execution('u1',)",
+   "_mqtt_weather_line('wx/default', 'alerts', None)",
+   "send_response('<msg>', 'MQTT[wx/default,alerts,None]')"
+  ],
+  "result": true
+ },
+ "mqtt | 'both 5d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('both',)",
+   "logger.info(\"Using custom MQTT weather topic for location 'both': wx/both\",)",
+   "record_execution('u1',)",
+   "_mqtt_weather_line('wx/both', 'multiday', 'both')",
+   "_send_multiday_forecast('<msg>', 'MQTT[wx/both,multiday,both]')"
+  ],
+  "result": true
+ },
+ "mqtt | 'both'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('both',)",
+   "_get_custom_mqtt_weather_topic('both',)",
+   "_get_custom_mqtt_weather_topic('both',)",
+   "logger.info(\"Using custom MQTT weather topic for location 'both': wx/both\",)",
+   "record_execution('u1',)",
+   "_mqtt_weather_line('wx/both', 'default', 'both')",
+   "send_response('<msg>', 'MQTT[wx/both,default,both]')"
+  ],
+  "result": true
+ },
+ "mqtt | 'cabin alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "mqtt | 'cabin tomorrow'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('cabin', 'tomorrow', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "mqtt | 'cabin'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('cabin', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "mqtt | 'home 3'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('home',)",
+   "logger.info(\"Using custom MQTT weather topic for location 'home': wx/home\",)",
+   "record_execution('u1',)",
+   "_mqtt_weather_line('wx/home', 'multiday', 'home')",
+   "_send_multiday_forecast('<msg>', 'MQTT[wx/home,multiday,home]')"
+  ],
+  "result": true
+ },
+ "mqtt | 'home alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('home',)",
+   "logger.info(\"Using custom MQTT weather topic for location 'home': wx/home\",)",
+   "record_execution('u1',)",
+   "_mqtt_weather_line('wx/home', 'alerts', 'home')",
+   "send_response('<msg>', 'MQTT[wx/home,alerts,home]')"
+  ],
+  "result": true
+ },
+ "mqtt | 'home hourly'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('home',)",
+   "logger.info(\"Using custom MQTT weather topic for location 'home': wx/home\",)",
+   "record_execution('u1',)",
+   "_mqtt_weather_line('wx/home', 'hourly', 'home')",
+   "send_response('<msg>', 'MQTT[wx/home,hourly,home]')"
+  ],
+  "result": true
+ },
+ "mqtt | 'home'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_mqtt_weather_topic('home',)",
+   "logger.info(\"Using custom MQTT weather topic for location 'home': wx/home\",)",
+   "record_execution('u1',)",
+   "_mqtt_weather_line('wx/home', 'default', 'home')",
+   "send_response('<msg>', 'MQTT[wx/home,default,home]')"
+  ],
+  "result": true
+ },
+ "mqtt | 'hourly'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('hourly',)",
+   "_get_custom_wxsim_source('hourly',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "record_execution('u1',)",
+   "_mqtt_weather_line('wx/default', 'hourly', None)",
+   "send_response('<msg>', 'MQTT[wx/default,hourly,None]')"
+  ],
+  "result": true
+ },
+ "mqtt | 'paris 1'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('paris 1',)",
+   "_get_custom_wxsim_source('paris 1',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('paris 1', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "mqtt | 'paris 30d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('paris 30d',)",
+   "_get_custom_wxsim_source('paris 30d',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('paris 30d', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "mqtt | 'paris 7d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('paris',)",
+   "_get_custom_wxsim_source('paris',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('paris', 'multiday', 7, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "mqtt | 'seattle  wa 3'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('seattle wa',)",
+   "_get_custom_wxsim_source('seattle wa',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('seattle wa', 'multiday', 3, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "mqtt | 'seattle, wa'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('seattle, wa',)",
+   "_get_custom_wxsim_source('seattle, wa',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('seattle, wa', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "mqtt | 'tomorrow'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('tomorrow',)",
+   "_get_custom_wxsim_source('tomorrow',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "record_execution('u1',)",
+   "_mqtt_weather_line('wx/default', 'tomorrow', None)",
+   "send_response('<msg>', 'MQTT[wx/default,tomorrow,None]')"
+  ],
+  "result": true
+ },
+ "mqtt | 'x alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('x',)",
+   "_get_custom_wxsim_source('x',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "mqtt_raises | ''": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic(None,)",
+   "record_execution('u1',)",
+   "_mqtt_weather_line('wx/default', 'default', None)",
+   "logger.error('Error reading MQTT weather: mqtt down',)",
+   "send_response('<msg>', \"<commands.gwx.error[('error', 'mqtt down')]>\")"
+  ],
+  "result": true
+ },
+ "mqtt_raises | '3'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('3',)",
+   "_get_custom_wxsim_source('3',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "record_execution('u1',)",
+   "_mqtt_weather_line('wx/default', 'multiday', None)",
+   "logger.error('Error reading MQTT weather: mqtt down',)",
+   "send_response('<msg>', \"<commands.gwx.error[('error', 'mqtt down')]>\")"
+  ],
+  "result": true
+ },
+ "mqtt_raises | '47.6,-122.3 alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "mqtt_raises | '47.6,-122.3'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('47.6,-122.3', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "mqtt_raises | '5d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('5d',)",
+   "_get_custom_wxsim_source('5d',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "record_execution('u1',)",
+   "_mqtt_weather_line('wx/default', 'multiday', None)",
+   "logger.error('Error reading MQTT weather: mqtt down',)",
+   "send_response('<msg>', \"<commands.gwx.error[('error', 'mqtt down')]>\")"
+  ],
+  "result": true
+ },
+ "mqtt_raises | '95.0,10.0 alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('95.0,10.0',)",
+   "_get_custom_wxsim_source('95.0,10.0',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "mqtt_raises | '98101 alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "mqtt_raises | '98101'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('98101', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "mqtt_raises | 'HOURLY'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('HOURLY',)",
+   "_get_custom_wxsim_source('HOURLY',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "record_execution('u1',)",
+   "_mqtt_weather_line('wx/default', 'hourly', None)",
+   "logger.error('Error reading MQTT weather: mqtt down',)",
+   "send_response('<msg>', \"<commands.gwx.error[('error', 'mqtt down')]>\")"
+  ],
+  "result": true
+ },
+ "mqtt_raises | 'a b alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('a b',)",
+   "_get_custom_wxsim_source('a b',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "mqtt_raises | 'alerts alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('alerts',)",
+   "_get_custom_wxsim_source('alerts',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "mqtt_raises | 'alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('alerts',)",
+   "_get_custom_wxsim_source('alerts',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "record_execution('u1',)",
+   "_mqtt_weather_line('wx/default', 'alerts', None)",
+   "logger.error('Error reading MQTT weather: mqtt down',)",
+   "send_response('<msg>', \"<commands.gwx.error[('error', 'mqtt down')]>\")"
+  ],
+  "result": true
+ },
+ "mqtt_raises | 'both 5d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('both',)",
+   "_get_custom_wxsim_source('both',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('both', 'multiday', 5, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "mqtt_raises | 'both'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('both',)",
+   "_get_custom_wxsim_source('both',)",
+   "_get_custom_mqtt_weather_topic('both',)",
+   "_get_custom_wxsim_source('both',)",
+   "_get_custom_mqtt_weather_topic('both',)",
+   "_get_custom_wxsim_source('both',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('both', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "mqtt_raises | 'cabin alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "mqtt_raises | 'cabin tomorrow'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('cabin', 'tomorrow', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "mqtt_raises | 'cabin'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('cabin', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "mqtt_raises | 'home 3'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('home',)",
+   "logger.info(\"Using custom MQTT weather topic for location 'home': wx/home\",)",
+   "record_execution('u1',)",
+   "_mqtt_weather_line('wx/home', 'multiday', 'home')",
+   "logger.error('Error reading MQTT weather: mqtt down',)",
+   "send_response('<msg>', \"<commands.gwx.error[('error', 'mqtt down')]>\")"
+  ],
+  "result": true
+ },
+ "mqtt_raises | 'home alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('home',)",
+   "logger.info(\"Using custom MQTT weather topic for location 'home': wx/home\",)",
+   "record_execution('u1',)",
+   "_mqtt_weather_line('wx/home', 'alerts', 'home')",
+   "logger.error('Error reading MQTT weather: mqtt down',)",
+   "send_response('<msg>', \"<commands.gwx.error[('error', 'mqtt down')]>\")"
+  ],
+  "result": true
+ },
+ "mqtt_raises | 'home hourly'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('home',)",
+   "logger.info(\"Using custom MQTT weather topic for location 'home': wx/home\",)",
+   "record_execution('u1',)",
+   "_mqtt_weather_line('wx/home', 'hourly', 'home')",
+   "logger.error('Error reading MQTT weather: mqtt down',)",
+   "send_response('<msg>', \"<commands.gwx.error[('error', 'mqtt down')]>\")"
+  ],
+  "result": true
+ },
+ "mqtt_raises | 'home'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_mqtt_weather_topic('home',)",
+   "logger.info(\"Using custom MQTT weather topic for location 'home': wx/home\",)",
+   "record_execution('u1',)",
+   "_mqtt_weather_line('wx/home', 'default', 'home')",
+   "logger.error('Error reading MQTT weather: mqtt down',)",
+   "send_response('<msg>', \"<commands.gwx.error[('error', 'mqtt down')]>\")"
+  ],
+  "result": true
+ },
+ "mqtt_raises | 'hourly'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('hourly',)",
+   "_get_custom_wxsim_source('hourly',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "record_execution('u1',)",
+   "_mqtt_weather_line('wx/default', 'hourly', None)",
+   "logger.error('Error reading MQTT weather: mqtt down',)",
+   "send_response('<msg>', \"<commands.gwx.error[('error', 'mqtt down')]>\")"
+  ],
+  "result": true
+ },
+ "mqtt_raises | 'paris 1'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('paris 1',)",
+   "_get_custom_wxsim_source('paris 1',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('paris 1', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "mqtt_raises | 'paris 30d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('paris 30d',)",
+   "_get_custom_wxsim_source('paris 30d',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('paris 30d', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "mqtt_raises | 'paris 7d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('paris',)",
+   "_get_custom_wxsim_source('paris',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('paris', 'multiday', 7, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "mqtt_raises | 'seattle  wa 3'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('seattle wa',)",
+   "_get_custom_wxsim_source('seattle wa',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('seattle wa', 'multiday', 3, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "mqtt_raises | 'seattle, wa'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('seattle, wa',)",
+   "_get_custom_wxsim_source('seattle, wa',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('seattle, wa', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "mqtt_raises | 'tomorrow'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('tomorrow',)",
+   "_get_custom_wxsim_source('tomorrow',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "record_execution('u1',)",
+   "_mqtt_weather_line('wx/default', 'tomorrow', None)",
+   "logger.error('Error reading MQTT weather: mqtt down',)",
+   "send_response('<msg>', \"<commands.gwx.error[('error', 'mqtt down')]>\")"
+  ],
+  "result": true
+ },
+ "mqtt_raises | 'x alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('x',)",
+   "_get_custom_wxsim_source('x',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "multi | ''": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.debug('No companion/default city location found, showing usage',)",
+   "send_response('<msg>', '<commands.gwx.usage>')"
+  ],
+  "result": true
+ },
+ "multi | '3'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('3',)",
+   "_get_custom_wxsim_source('3',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.debug('No companion/default city location found, showing usage',)",
+   "send_response('<msg>', '<commands.gwx.usage>')"
+  ],
+  "result": true
+ },
+ "multi | '47.6,-122.3 alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "multi | '47.6,-122.3'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('47.6,-122.3', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')",
+   "_pace_reply('<msg>', 2.5)",
+   "send_response('<msg>', 'ALERTS'){'skip_user_rate_limit': True}"
+  ],
+  "result": true
+ },
+ "multi | '5d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('5d',)",
+   "_get_custom_wxsim_source('5d',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.debug('No companion/default city location found, showing usage',)",
+   "send_response('<msg>', '<commands.gwx.usage>')"
+  ],
+  "result": true
+ },
+ "multi | '95.0,10.0 alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('95.0,10.0',)",
+   "_get_custom_wxsim_source('95.0,10.0',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "multi | '98101 alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "multi | '98101'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('98101', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')",
+   "_pace_reply('<msg>', 2.5)",
+   "send_response('<msg>', 'ALERTS'){'skip_user_rate_limit': True}"
+  ],
+  "result": true
+ },
+ "multi | 'HOURLY'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('HOURLY',)",
+   "_get_custom_wxsim_source('HOURLY',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.debug('No companion/default city location found, showing usage',)",
+   "send_response('<msg>', '<commands.gwx.usage>')"
+  ],
+  "result": true
+ },
+ "multi | 'a b alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('a b',)",
+   "_get_custom_wxsim_source('a b',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "multi | 'alerts alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('alerts',)",
+   "_get_custom_wxsim_source('alerts',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "multi | 'alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('alerts',)",
+   "_get_custom_wxsim_source('alerts',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.debug('No companion/default city location found, showing usage',)",
+   "send_response('<msg>', '<commands.gwx.usage>')"
+  ],
+  "result": true
+ },
+ "multi | 'both 5d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('both',)",
+   "_get_custom_wxsim_source('both',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('both', 'multiday', 5, '<msg>')",
+   "send_response('<msg>', 'WEATHER')",
+   "_pace_reply('<msg>', 2.5)",
+   "send_response('<msg>', 'ALERTS'){'skip_user_rate_limit': True}"
+  ],
+  "result": true
+ },
+ "multi | 'both'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('both',)",
+   "_get_custom_wxsim_source('both',)",
+   "_get_custom_mqtt_weather_topic('both',)",
+   "_get_custom_wxsim_source('both',)",
+   "_get_custom_mqtt_weather_topic('both',)",
+   "_get_custom_wxsim_source('both',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('both', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')",
+   "_pace_reply('<msg>', 2.5)",
+   "send_response('<msg>', 'ALERTS'){'skip_user_rate_limit': True}"
+  ],
+  "result": true
+ },
+ "multi | 'cabin alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "multi | 'cabin tomorrow'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('cabin', 'tomorrow', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')",
+   "_pace_reply('<msg>', 2.5)",
+   "send_response('<msg>', 'ALERTS'){'skip_user_rate_limit': True}"
+  ],
+  "result": true
+ },
+ "multi | 'cabin'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('cabin', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')",
+   "_pace_reply('<msg>', 2.5)",
+   "send_response('<msg>', 'ALERTS'){'skip_user_rate_limit': True}"
+  ],
+  "result": true
+ },
+ "multi | 'home 3'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('home', 'multiday', 3, '<msg>')",
+   "send_response('<msg>', 'WEATHER')",
+   "_pace_reply('<msg>', 2.5)",
+   "send_response('<msg>', 'ALERTS'){'skip_user_rate_limit': True}"
+  ],
+  "result": true
+ },
+ "multi | 'home alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "multi | 'home hourly'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('home', 'hourly', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')",
+   "_pace_reply('<msg>', 2.5)",
+   "send_response('<msg>', 'ALERTS'){'skip_user_rate_limit': True}"
+  ],
+  "result": true
+ },
+ "multi | 'home'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('home', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')",
+   "_pace_reply('<msg>', 2.5)",
+   "send_response('<msg>', 'ALERTS'){'skip_user_rate_limit': True}"
+  ],
+  "result": true
+ },
+ "multi | 'hourly'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('hourly',)",
+   "_get_custom_wxsim_source('hourly',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.debug('No companion/default city location found, showing usage',)",
+   "send_response('<msg>', '<commands.gwx.usage>')"
+  ],
+  "result": true
+ },
+ "multi | 'paris 1'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('paris 1',)",
+   "_get_custom_wxsim_source('paris 1',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('paris 1', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')",
+   "_pace_reply('<msg>', 2.5)",
+   "send_response('<msg>', 'ALERTS'){'skip_user_rate_limit': True}"
+  ],
+  "result": true
+ },
+ "multi | 'paris 30d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('paris 30d',)",
+   "_get_custom_wxsim_source('paris 30d',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('paris 30d', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')",
+   "_pace_reply('<msg>', 2.5)",
+   "send_response('<msg>', 'ALERTS'){'skip_user_rate_limit': True}"
+  ],
+  "result": true
+ },
+ "multi | 'paris 7d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('paris',)",
+   "_get_custom_wxsim_source('paris',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('paris', 'multiday', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')",
+   "_pace_reply('<msg>', 2.5)",
+   "send_response('<msg>', 'ALERTS'){'skip_user_rate_limit': True}"
+  ],
+  "result": true
+ },
+ "multi | 'seattle  wa 3'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('seattle wa',)",
+   "_get_custom_wxsim_source('seattle wa',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('seattle wa', 'multiday', 3, '<msg>')",
+   "send_response('<msg>', 'WEATHER')",
+   "_pace_reply('<msg>', 2.5)",
+   "send_response('<msg>', 'ALERTS'){'skip_user_rate_limit': True}"
+  ],
+  "result": true
+ },
+ "multi | 'seattle, wa'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('seattle, wa',)",
+   "_get_custom_wxsim_source('seattle, wa',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('seattle, wa', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')",
+   "_pace_reply('<msg>', 2.5)",
+   "send_response('<msg>', 'ALERTS'){'skip_user_rate_limit': True}"
+  ],
+  "result": true
+ },
+ "multi | 'tomorrow'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('tomorrow',)",
+   "_get_custom_wxsim_source('tomorrow',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.debug('No companion/default city location found, showing usage',)",
+   "send_response('<msg>', '<commands.gwx.usage>')"
+  ],
+  "result": true
+ },
+ "multi | 'x alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('x',)",
+   "_get_custom_wxsim_source('x',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "multi_first_refused | ''": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.debug('No companion/default city location found, showing usage',)",
+   "send_response('<msg>', '<commands.gwx.usage>')"
+  ],
+  "result": true
+ },
+ "multi_first_refused | '47.6,-122.3 alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "multi_first_refused | '5d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('5d',)",
+   "_get_custom_wxsim_source('5d',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.debug('No companion/default city location found, showing usage',)",
+   "send_response('<msg>', '<commands.gwx.usage>')"
+  ],
+  "result": true
+ },
+ "multi_first_refused | '98101 alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "multi_first_refused | '98101'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('98101', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": false
+ },
+ "multi_first_refused | 'alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('alerts',)",
+   "_get_custom_wxsim_source('alerts',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.debug('No companion/default city location found, showing usage',)",
+   "send_response('<msg>', '<commands.gwx.usage>')"
+  ],
+  "result": true
+ },
+ "multi_first_refused | 'hourly'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('hourly',)",
+   "_get_custom_wxsim_source('hourly',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.debug('No companion/default city location found, showing usage',)",
+   "send_response('<msg>', '<commands.gwx.usage>')"
+  ],
+  "result": true
+ },
+ "multi_first_refused | 'seattle, wa'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('seattle, wa',)",
+   "_get_custom_wxsim_source('seattle, wa',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('seattle, wa', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": false
+ },
+ "multi_first_refused | 'x alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('x',)",
+   "_get_custom_wxsim_source('x',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "plain | ''": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.debug('No companion/default city location found, showing usage',)",
+   "send_response('<msg>', '<commands.gwx.usage>')"
+  ],
+  "result": true
+ },
+ "plain | '3'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('3',)",
+   "_get_custom_wxsim_source('3',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.debug('No companion/default city location found, showing usage',)",
+   "send_response('<msg>', '<commands.gwx.usage>')"
+  ],
+  "result": true
+ },
+ "plain | '47.6,-122.3 alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "plain | '47.6,-122.3'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('47.6,-122.3', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "plain | '5d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('5d',)",
+   "_get_custom_wxsim_source('5d',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.debug('No companion/default city location found, showing usage',)",
+   "send_response('<msg>', '<commands.gwx.usage>')"
+  ],
+  "result": true
+ },
+ "plain | '95.0,10.0 alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('95.0,10.0',)",
+   "_get_custom_wxsim_source('95.0,10.0',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "plain | '98101 alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "plain | '98101'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('98101', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "plain | 'HOURLY'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('HOURLY',)",
+   "_get_custom_wxsim_source('HOURLY',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.debug('No companion/default city location found, showing usage',)",
+   "send_response('<msg>', '<commands.gwx.usage>')"
+  ],
+  "result": true
+ },
+ "plain | 'a b alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('a b',)",
+   "_get_custom_wxsim_source('a b',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "plain | 'alerts alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('alerts',)",
+   "_get_custom_wxsim_source('alerts',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "plain | 'alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('alerts',)",
+   "_get_custom_wxsim_source('alerts',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.debug('No companion/default city location found, showing usage',)",
+   "send_response('<msg>', '<commands.gwx.usage>')"
+  ],
+  "result": true
+ },
+ "plain | 'both 5d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('both',)",
+   "_get_custom_wxsim_source('both',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('both', 'multiday', 5, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "plain | 'both'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('both',)",
+   "_get_custom_wxsim_source('both',)",
+   "_get_custom_mqtt_weather_topic('both',)",
+   "_get_custom_wxsim_source('both',)",
+   "_get_custom_mqtt_weather_topic('both',)",
+   "_get_custom_wxsim_source('both',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('both', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "plain | 'cabin alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "plain | 'cabin tomorrow'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('cabin', 'tomorrow', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "plain | 'cabin'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('cabin', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "plain | 'home 3'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('home', 'multiday', 3, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "plain | 'home alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "plain | 'home hourly'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('home', 'hourly', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "plain | 'home'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('home', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "plain | 'hourly'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('hourly',)",
+   "_get_custom_wxsim_source('hourly',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.debug('No companion/default city location found, showing usage',)",
+   "send_response('<msg>', '<commands.gwx.usage>')"
+  ],
+  "result": true
+ },
+ "plain | 'paris 1'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('paris 1',)",
+   "_get_custom_wxsim_source('paris 1',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('paris 1', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "plain | 'paris 30d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('paris 30d',)",
+   "_get_custom_wxsim_source('paris 30d',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('paris 30d', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "plain | 'paris 7d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('paris',)",
+   "_get_custom_wxsim_source('paris',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('paris', 'multiday', 7, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "plain | 'seattle  wa 3'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('seattle wa',)",
+   "_get_custom_wxsim_source('seattle wa',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('seattle wa', 'multiday', 3, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "plain | 'seattle, wa'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('seattle, wa',)",
+   "_get_custom_wxsim_source('seattle, wa',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('seattle, wa', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "plain | 'tomorrow'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('tomorrow',)",
+   "_get_custom_wxsim_source('tomorrow',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.debug('No companion/default city location found, showing usage',)",
+   "send_response('<msg>', '<commands.gwx.usage>')"
+  ],
+  "result": true
+ },
+ "plain | 'x alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('x',)",
+   "_get_custom_wxsim_source('x',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "send_refused | ''": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.debug('No companion/default city location found, showing usage',)",
+   "send_response('<msg>', '<commands.gwx.usage>')"
+  ],
+  "result": true
+ },
+ "send_refused | '47.6,-122.3 alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "send_refused | '5d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('5d',)",
+   "_get_custom_wxsim_source('5d',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.debug('No companion/default city location found, showing usage',)",
+   "send_response('<msg>', '<commands.gwx.usage>')"
+  ],
+  "result": true
+ },
+ "send_refused | '98101 alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "send_refused | '98101'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('98101', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": false
+ },
+ "send_refused | 'alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('alerts',)",
+   "_get_custom_wxsim_source('alerts',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.debug('No companion/default city location found, showing usage',)",
+   "send_response('<msg>', '<commands.gwx.usage>')"
+  ],
+  "result": true
+ },
+ "send_refused | 'hourly'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('hourly',)",
+   "_get_custom_wxsim_source('hourly',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.debug('No companion/default city location found, showing usage',)",
+   "send_response('<msg>', '<commands.gwx.usage>')"
+  ],
+  "result": true
+ },
+ "send_refused | 'seattle, wa'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('seattle, wa',)",
+   "_get_custom_wxsim_source('seattle, wa',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('seattle, wa', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": false
+ },
+ "send_refused | 'x alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('x',)",
+   "_get_custom_wxsim_source('x',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "weather_raises | ''": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.debug('No companion/default city location found, showing usage',)",
+   "send_response('<msg>', '<commands.gwx.usage>')"
+  ],
+  "result": true
+ },
+ "weather_raises | '47.6,-122.3 alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "weather_raises | '5d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('5d',)",
+   "_get_custom_wxsim_source('5d',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.debug('No companion/default city location found, showing usage',)",
+   "send_response('<msg>', '<commands.gwx.usage>')"
+  ],
+  "result": true
+ },
+ "weather_raises | '98101 alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "weather_raises | '98101'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('98101', 'default', 7, '<msg>')",
+   "logger.error('Error in global weather command: api down',)",
+   "send_response('<msg>', \"<commands.gwx.error[('error', 'api down')]>\")"
+  ],
+  "result": true
+ },
+ "weather_raises | 'alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('alerts',)",
+   "_get_custom_wxsim_source('alerts',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.debug('No companion/default city location found, showing usage',)",
+   "send_response('<msg>', '<commands.gwx.usage>')"
+  ],
+  "result": true
+ },
+ "weather_raises | 'hourly'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('hourly',)",
+   "_get_custom_wxsim_source('hourly',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "_get_companion_location('<msg>',)",
+   "logger.debug('No companion/default city location found, showing usage',)",
+   "send_response('<msg>', '<commands.gwx.usage>')"
+  ],
+  "result": true
+ },
+ "weather_raises | 'seattle, wa'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('seattle, wa',)",
+   "_get_custom_wxsim_source('seattle, wa',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('seattle, wa', 'default', 7, '<msg>')",
+   "logger.error('Error in global weather command: api down',)",
+   "send_response('<msg>', \"<commands.gwx.error[('error', 'api down')]>\")"
+  ],
+  "result": true
+ },
+ "weather_raises | 'x alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('x',)",
+   "_get_custom_wxsim_source('x',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "wxsim | ''": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "record_execution('u1',)",
+   "_get_wxsim_weather('https://w.test/default', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WXSIM[https://w.test/default,default,7,None]')"
+  ],
+  "result": true
+ },
+ "wxsim | '3'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('3',)",
+   "_get_custom_wxsim_source('3',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "record_execution('u1',)",
+   "_get_wxsim_weather('https://w.test/default', 'multiday', 3, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WXSIM[https://w.test/default,multiday,3,None]')"
+  ],
+  "result": true
+ },
+ "wxsim | '47.6,-122.3 alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "wxsim | '47.6,-122.3'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('47.6,-122.3', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "wxsim | '5d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('5d',)",
+   "_get_custom_wxsim_source('5d',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "record_execution('u1',)",
+   "_get_wxsim_weather('https://w.test/default', 'multiday', 5, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WXSIM[https://w.test/default,multiday,5,None]')"
+  ],
+  "result": true
+ },
+ "wxsim | '95.0,10.0 alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('95.0,10.0',)",
+   "_get_custom_wxsim_source('95.0,10.0',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "wxsim | '98101 alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "wxsim | '98101'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('98101', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "wxsim | 'HOURLY'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('HOURLY',)",
+   "_get_custom_wxsim_source('HOURLY',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "record_execution('u1',)",
+   "_get_wxsim_weather('https://w.test/default', 'hourly', 7, '<msg>')",
+   "send_response('<msg>', 'WXSIM[https://w.test/default,hourly,7,None]')"
+  ],
+  "result": true
+ },
+ "wxsim | 'a b alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('a b',)",
+   "_get_custom_wxsim_source('a b',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "wxsim | 'alerts alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('alerts',)",
+   "_get_custom_wxsim_source('alerts',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "wxsim | 'alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('alerts',)",
+   "_get_custom_wxsim_source('alerts',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "record_execution('u1',)",
+   "_get_wxsim_weather('https://w.test/default', 'alerts', 7, '<msg>')",
+   "send_response('<msg>', 'WXSIM[https://w.test/default,alerts,7,None]')"
+  ],
+  "result": true
+ },
+ "wxsim | 'both 5d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('both',)",
+   "_get_custom_wxsim_source('both',)",
+   "record_execution('u1',)",
+   "_get_wxsim_weather('https://w.test/both', 'multiday', 5, '<msg>', 'both')",
+   "_send_multiday_forecast('<msg>', 'WXSIM[https://w.test/both,multiday,5,both]')"
+  ],
+  "result": true
+ },
+ "wxsim | 'both'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('both',)",
+   "_get_custom_wxsim_source('both',)",
+   "_get_custom_mqtt_weather_topic('both',)",
+   "_get_custom_wxsim_source('both',)",
+   "_get_custom_mqtt_weather_topic('both',)",
+   "_get_custom_wxsim_source('both',)",
+   "record_execution('u1',)",
+   "_get_wxsim_weather('https://w.test/both', 'default', 7, '<msg>', 'both')",
+   "send_response('<msg>', 'WXSIM[https://w.test/both,default,7,both]')"
+  ],
+  "result": true
+ },
+ "wxsim | 'cabin alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "record_execution('u1',)",
+   "_get_wxsim_weather('https://w.test/cabin', 'alerts', 7, '<msg>', 'cabin')",
+   "send_response('<msg>', 'WXSIM[https://w.test/cabin,alerts,7,cabin]')"
+  ],
+  "result": true
+ },
+ "wxsim | 'cabin tomorrow'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "record_execution('u1',)",
+   "_get_wxsim_weather('https://w.test/cabin', 'tomorrow', 7, '<msg>', 'cabin')",
+   "send_response('<msg>', 'WXSIM[https://w.test/cabin,tomorrow,7,cabin]')"
+  ],
+  "result": true
+ },
+ "wxsim | 'cabin'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "record_execution('u1',)",
+   "_get_wxsim_weather('https://w.test/cabin', 'default', 7, '<msg>', 'cabin')",
+   "send_response('<msg>', 'WXSIM[https://w.test/cabin,default,7,cabin]')"
+  ],
+  "result": true
+ },
+ "wxsim | 'home 3'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('home', 'multiday', 3, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "wxsim | 'home alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "wxsim | 'home hourly'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('home', 'hourly', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "wxsim | 'home'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('home', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "wxsim | 'hourly'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('hourly',)",
+   "_get_custom_wxsim_source('hourly',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "record_execution('u1',)",
+   "_get_wxsim_weather('https://w.test/default', 'hourly', 7, '<msg>')",
+   "send_response('<msg>', 'WXSIM[https://w.test/default,hourly,7,None]')"
+  ],
+  "result": true
+ },
+ "wxsim | 'paris 1'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('paris 1',)",
+   "_get_custom_wxsim_source('paris 1',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('paris 1', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "wxsim | 'paris 30d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('paris 30d',)",
+   "_get_custom_wxsim_source('paris 30d',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('paris 30d', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "wxsim | 'paris 7d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('paris',)",
+   "_get_custom_wxsim_source('paris',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('paris', 'multiday', 7, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "wxsim | 'seattle  wa 3'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('seattle wa',)",
+   "_get_custom_wxsim_source('seattle wa',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('seattle wa', 'multiday', 3, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "wxsim | 'seattle, wa'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('seattle, wa',)",
+   "_get_custom_wxsim_source('seattle, wa',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('seattle, wa', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "wxsim | 'tomorrow'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('tomorrow',)",
+   "_get_custom_wxsim_source('tomorrow',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "record_execution('u1',)",
+   "_get_wxsim_weather('https://w.test/default', 'tomorrow', 7, '<msg>')",
+   "send_response('<msg>', 'WXSIM[https://w.test/default,tomorrow,7,None]')"
+  ],
+  "result": true
+ },
+ "wxsim | 'x alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('x',)",
+   "_get_custom_wxsim_source('x',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "wxsim_raises | ''": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "record_execution('u1',)",
+   "_get_wxsim_weather('https://w.test/default', 'default', 7, '<msg>')",
+   "logger.error('Error fetching WXSIM weather: wxsim down',)",
+   "send_response('<msg>', \"<commands.gwx.error[('error', 'wxsim down')]>\")"
+  ],
+  "result": true
+ },
+ "wxsim_raises | '3'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('3',)",
+   "_get_custom_wxsim_source('3',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "record_execution('u1',)",
+   "_get_wxsim_weather('https://w.test/default', 'multiday', 3, '<msg>')",
+   "logger.error('Error fetching WXSIM weather: wxsim down',)",
+   "send_response('<msg>', \"<commands.gwx.error[('error', 'wxsim down')]>\")"
+  ],
+  "result": true
+ },
+ "wxsim_raises | '47.6,-122.3 alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "wxsim_raises | '47.6,-122.3'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "_get_custom_mqtt_weather_topic('47.6,-122.3',)",
+   "_get_custom_wxsim_source('47.6,-122.3',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('47.6,-122.3', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "wxsim_raises | '5d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('5d',)",
+   "_get_custom_wxsim_source('5d',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "record_execution('u1',)",
+   "_get_wxsim_weather('https://w.test/default', 'multiday', 5, '<msg>')",
+   "logger.error('Error fetching WXSIM weather: wxsim down',)",
+   "send_response('<msg>', \"<commands.gwx.error[('error', 'wxsim down')]>\")"
+  ],
+  "result": true
+ },
+ "wxsim_raises | '95.0,10.0 alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('95.0,10.0',)",
+   "_get_custom_wxsim_source('95.0,10.0',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "wxsim_raises | '98101 alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "wxsim_raises | '98101'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "_get_custom_mqtt_weather_topic('98101',)",
+   "_get_custom_wxsim_source('98101',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('98101', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "wxsim_raises | 'HOURLY'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('HOURLY',)",
+   "_get_custom_wxsim_source('HOURLY',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "record_execution('u1',)",
+   "_get_wxsim_weather('https://w.test/default', 'hourly', 7, '<msg>')",
+   "logger.error('Error fetching WXSIM weather: wxsim down',)",
+   "send_response('<msg>', \"<commands.gwx.error[('error', 'wxsim down')]>\")"
+  ],
+  "result": true
+ },
+ "wxsim_raises | 'a b alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('a b',)",
+   "_get_custom_wxsim_source('a b',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "wxsim_raises | 'alerts alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('alerts',)",
+   "_get_custom_wxsim_source('alerts',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "wxsim_raises | 'alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('alerts',)",
+   "_get_custom_wxsim_source('alerts',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "record_execution('u1',)",
+   "_get_wxsim_weather('https://w.test/default', 'alerts', 7, '<msg>')",
+   "logger.error('Error fetching WXSIM weather: wxsim down',)",
+   "send_response('<msg>', \"<commands.gwx.error[('error', 'wxsim down')]>\")"
+  ],
+  "result": true
+ },
+ "wxsim_raises | 'both 5d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('both',)",
+   "_get_custom_wxsim_source('both',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('both', 'multiday', 5, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "wxsim_raises | 'both'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('both',)",
+   "_get_custom_wxsim_source('both',)",
+   "_get_custom_mqtt_weather_topic('both',)",
+   "_get_custom_wxsim_source('both',)",
+   "_get_custom_mqtt_weather_topic('both',)",
+   "_get_custom_wxsim_source('both',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('both', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "wxsim_raises | 'cabin alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "record_execution('u1',)",
+   "_get_wxsim_weather('https://w.test/cabin', 'alerts', 7, '<msg>', 'cabin')",
+   "logger.error('Error fetching WXSIM weather: wxsim down',)",
+   "send_response('<msg>', \"<commands.gwx.error[('error', 'wxsim down')]>\")"
+  ],
+  "result": true
+ },
+ "wxsim_raises | 'cabin tomorrow'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "record_execution('u1',)",
+   "_get_wxsim_weather('https://w.test/cabin', 'tomorrow', 7, '<msg>', 'cabin')",
+   "logger.error('Error fetching WXSIM weather: wxsim down',)",
+   "send_response('<msg>', \"<commands.gwx.error[('error', 'wxsim down')]>\")"
+  ],
+  "result": true
+ },
+ "wxsim_raises | 'cabin'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "_get_custom_mqtt_weather_topic('cabin',)",
+   "_get_custom_wxsim_source('cabin',)",
+   "record_execution('u1',)",
+   "_get_wxsim_weather('https://w.test/cabin', 'default', 7, '<msg>', 'cabin')",
+   "logger.error('Error fetching WXSIM weather: wxsim down',)",
+   "send_response('<msg>', \"<commands.gwx.error[('error', 'wxsim down')]>\")"
+  ],
+  "result": true
+ },
+ "wxsim_raises | 'home 3'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('home', 'multiday', 3, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "wxsim_raises | 'home alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ },
+ "wxsim_raises | 'home hourly'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('home', 'hourly', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "wxsim_raises | 'home'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "_get_custom_mqtt_weather_topic('home',)",
+   "_get_custom_wxsim_source('home',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('home', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "wxsim_raises | 'hourly'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('hourly',)",
+   "_get_custom_wxsim_source('hourly',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "record_execution('u1',)",
+   "_get_wxsim_weather('https://w.test/default', 'hourly', 7, '<msg>')",
+   "logger.error('Error fetching WXSIM weather: wxsim down',)",
+   "send_response('<msg>', \"<commands.gwx.error[('error', 'wxsim down')]>\")"
+  ],
+  "result": true
+ },
+ "wxsim_raises | 'paris 1'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('paris 1',)",
+   "_get_custom_wxsim_source('paris 1',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('paris 1', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "wxsim_raises | 'paris 30d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('paris 30d',)",
+   "_get_custom_wxsim_source('paris 30d',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('paris 30d', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "wxsim_raises | 'paris 7d'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('paris',)",
+   "_get_custom_wxsim_source('paris',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('paris', 'multiday', 7, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "wxsim_raises | 'seattle  wa 3'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('seattle wa',)",
+   "_get_custom_wxsim_source('seattle wa',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('seattle wa', 'multiday', 3, '<msg>')",
+   "_send_multiday_forecast('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "wxsim_raises | 'seattle, wa'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('seattle, wa',)",
+   "_get_custom_wxsim_source('seattle, wa',)",
+   "record_execution('u1',)",
+   "get_weather_for_location('seattle, wa', 'default', 7, '<msg>')",
+   "send_response('<msg>', 'WEATHER')"
+  ],
+  "result": true
+ },
+ "wxsim_raises | 'tomorrow'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('tomorrow',)",
+   "_get_custom_wxsim_source('tomorrow',)",
+   "_get_custom_mqtt_weather_topic(None,)",
+   "_get_custom_wxsim_source(None,)",
+   "record_execution('u1',)",
+   "_get_wxsim_weather('https://w.test/default', 'tomorrow', 7, '<msg>')",
+   "logger.error('Error fetching WXSIM weather: wxsim down',)",
+   "send_response('<msg>', \"<commands.gwx.error[('error', 'wxsim down')]>\")"
+  ],
+  "result": true
+ },
+ "wxsim_raises | 'x alerts'": {
+  "calls": [
+   "_get_custom_mqtt_weather_topic('x',)",
+   "_get_custom_wxsim_source('x',)",
+   "send_response('<msg>', '<commands.gwx.source_option_not_available>')"
+  ],
+  "result": true
+ }
+}
