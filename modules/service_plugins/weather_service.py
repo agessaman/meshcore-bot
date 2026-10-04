@@ -997,75 +997,13 @@ class WeatherService(BaseServicePlugin):
 
             for entry in alertxml.getElementsByTagName("entry"):
                 try:
-                    # Get alert ID
-                    alert_id_elem = entry.getElementsByTagName("id")
-                    if not alert_id_elem or not alert_id_elem[0].childNodes:
-                        continue
-                    alert_id_value = alert_id_elem[0].childNodes[0].nodeValue
-                    if not alert_id_value:
-                        continue
-                    alert_id: str = alert_id_value
-
-                    # Skip if we've already seen this alert
-                    if alert_id in self.seen_alert_ids:
-                        continue
-
-                    # Get entry updated timestamp (most reliable - when alert was last updated/issued)
-                    entry_updated_time = None
-                    updated_elem = entry.getElementsByTagName("updated")
-                    if updated_elem and updated_elem[0].childNodes:
-                        updated_str = updated_elem[0].childNodes[0].nodeValue
-                        if updated_str is not None:
-                            entry_updated_time = self._parse_iso_time(updated_str)
-
-                    # Extract full alert metadata (same logic as wx_command)
-                    alert_dict = self._parse_alert_entry(entry, alert_id)
-                    if not alert_dict:
-                        continue
-
-                    # Determine alert issued time (prefer entry updated time, then effective time)
-                    alert_issued_time = entry_updated_time
-                    if alert_issued_time is None:
-                        alert_issued_time = self._parse_alert_time(alert_dict.get('effective', ''))
-
-                    if alert_issued_time is None:
-                        # If we can't parse any time, use current time as fallback
-                        # This means we'll send it, but it's better than missing new alerts
-                        alert_issued_time = current_check_time
-                        self.logger.debug(f"Could not parse time for alert {alert_id}, using current time")
-
-                    # Only include alerts issued since last check
-                    if alert_issued_time >= time_window_start:
-                        alerts.append(alert_dict)
-                        self.seen_alert_ids.add(alert_id)
-                        self.logger.debug(f"New alert {alert_id} issued at {datetime.fromtimestamp(alert_issued_time)}")
-                    else:
-                        # Alert is older than our window, mark as seen but don't send
-                        self.seen_alert_ids.add(alert_id)
-                        self.logger.debug(f"Skipping old alert {alert_id} (issued {datetime.fromtimestamp(alert_issued_time)} before time window start {datetime.fromtimestamp(time_window_start)})")
-
+                    self._collect_alert_entry(entry, alerts, time_window_start, current_check_time)
                 except Exception as e:
                     self.logger.debug(f"Error parsing alert entry: {e}")
                     continue
 
             # Send new alerts with compact formatting
-            for alert in alerts:
-                try:
-                    # Format alert using compact formatter (same as wx_command)
-                    alert_text = await self._format_alert_compact(alert, include_details=True)
-
-                    await self.bot.command_manager.send_channel_message(
-                        self.alerts_channel,
-                        alert_text,
-                        scope=self.get_mesh_flood_scope(),
-                    )
-                    self.logger.info(f"Weather alert sent: {alert.get('title', 'Unknown')}")
-
-                    # Small delay between alerts
-                    await asyncio.sleep(2)
-
-                except Exception as e:
-                    self.logger.error(f"Error sending weather alert: {e}")
+            await self._send_new_alerts(alerts)
 
             # Update last check time
             self.last_alert_check_time = current_check_time
@@ -1076,6 +1014,75 @@ class WeatherService(BaseServicePlugin):
 
         except Exception as e:
             self.logger.error(f"Error checking weather alerts: {e}")
+
+    def _collect_alert_entry(self, entry: Any, alerts: list, time_window_start: float, current_check_time: float) -> None:
+        """Parse one ATOM alert entry and append it to ``alerts`` when it is unseen and issued inside the window."""
+        # Get alert ID
+        alert_id_elem = entry.getElementsByTagName("id")
+        if not alert_id_elem or not alert_id_elem[0].childNodes:
+            return
+        alert_id_value = alert_id_elem[0].childNodes[0].nodeValue
+        if not alert_id_value:
+            return
+        alert_id: str = alert_id_value
+
+        # Skip if we've already seen this alert
+        if alert_id in self.seen_alert_ids:
+            return
+
+        # Get entry updated timestamp (most reliable - when alert was last updated/issued)
+        entry_updated_time = None
+        updated_elem = entry.getElementsByTagName("updated")
+        if updated_elem and updated_elem[0].childNodes:
+            updated_str = updated_elem[0].childNodes[0].nodeValue
+            if updated_str is not None:
+                entry_updated_time = self._parse_iso_time(updated_str)
+
+        # Extract full alert metadata (same logic as wx_command)
+        alert_dict = self._parse_alert_entry(entry, alert_id)
+        if not alert_dict:
+            return
+
+        # Determine alert issued time (prefer entry updated time, then effective time)
+        alert_issued_time = entry_updated_time
+        if alert_issued_time is None:
+            alert_issued_time = self._parse_alert_time(alert_dict.get('effective', ''))
+
+        if alert_issued_time is None:
+            # If we can't parse any time, use current time as fallback
+            # This means we'll send it, but it's better than missing new alerts
+            alert_issued_time = current_check_time
+            self.logger.debug(f"Could not parse time for alert {alert_id}, using current time")
+
+        # Only include alerts issued since last check
+        if alert_issued_time >= time_window_start:
+            alerts.append(alert_dict)
+            self.seen_alert_ids.add(alert_id)
+            self.logger.debug(f"New alert {alert_id} issued at {datetime.fromtimestamp(alert_issued_time)}")
+        else:
+            # Alert is older than our window, mark as seen but don't send
+            self.seen_alert_ids.add(alert_id)
+            self.logger.debug(f"Skipping old alert {alert_id} (issued {datetime.fromtimestamp(alert_issued_time)} before time window start {datetime.fromtimestamp(time_window_start)})")
+
+    async def _send_new_alerts(self, alerts: list) -> None:
+        """Send each new alert to the alerts channel, two seconds apart."""
+        for alert in alerts:
+            try:
+                # Format alert using compact formatter (same as wx_command)
+                alert_text = await self._format_alert_compact(alert, include_details=True)
+
+                await self.bot.command_manager.send_channel_message(
+                    self.alerts_channel,
+                    alert_text,
+                    scope=self.get_mesh_flood_scope(),
+                )
+                self.logger.info(f"Weather alert sent: {alert.get('title', 'Unknown')}")
+
+                # Small delay between alerts
+                await asyncio.sleep(2)
+
+            except Exception as e:
+                self.logger.error(f"Error sending weather alert: {e}")
 
     async def _poll_rain_nowcast_loop(self) -> None:
         """Background task: poll for incoming rain and push a heads-up once per episode."""
