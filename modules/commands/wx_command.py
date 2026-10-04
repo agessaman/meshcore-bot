@@ -1088,49 +1088,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                 return "No forecast data available", weather_json
 
             current = forecast[0]
-            day_name = self._noaa_period_display_name(current)
-            temp = current.get('temperature', 'N/A')
-            temp_unit = current.get('temperatureUnit', 'F')
-            short_forecast = current.get('shortForecast', 'Unknown')
-            wind_speed = current.get('windSpeed', '')
-            wind_direction = current.get('windDirection', '')
-            detailed_forecast = current.get('detailedForecast', '')
-
-            # Extract additional useful info from detailed forecast
-            self.extract_humidity(detailed_forecast)
-            precip_chance = self.extract_precip_chance(detailed_forecast)
-
-            # Create compact but complete weather string with emoji
-            weather_emoji = self.get_weather_emoji(short_forecast)
-            weather = f"{day_name}: {weather_emoji}{short_forecast} {temp}°{temp_unit}"
-
-            # Add wind info if available
-            if wind_speed and wind_direction:
-                wind_match = re.search(r'(\d+)', wind_speed)
-                if wind_match:
-                    wind_num = self._noaa_wind_convert(wind_match.group(1), wind_speed)
-                    wind_dir = self.abbreviate_wind_direction(wind_direction)
-                    if wind_dir:
-                        weather += f" {wind_dir}{wind_num}"
-
-            # PRIORITIZE: Add all available details to current period first
-            # Get observation station data for more accurate current conditions
-            observation_data = self.get_observation_data(weather_json)
-
-            # Use most of the max_length limit (max_length - 10 chars) to ensure current period gets full details
-            # Additional periods will only be added if there's remaining space
-            # Pass observation_data to use real-time station data instead of parsing from text
-            current_period_max = max_length - 10
-            weather = self._add_period_details(weather, detailed_forecast, 0, max_length=current_period_max, observation_data=observation_data)
-
-            # Also add precipitation chance if available (not in helper function)
-            if precip_chance and self._count_display_width(weather) < current_period_max:
-                weather += f" 🌦️{precip_chance}%"
-
-            # Also add UV index if available (not in helper function)
-            uv_index = self.extract_uv_index(detailed_forecast)
-            if uv_index and self._count_display_width(weather) < current_period_max:
-                weather += f" UV{uv_index}"
+            weather = self._noaa_current_summary(current, weather_json, max_length)
 
             # Add next period (Today, Tonight) and Tomorrow if available
             today_period, tonight_period, tomorrow_period, is_current_tonight, is_current_night = (
@@ -1162,49 +1120,101 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             # Always try to add Tomorrow if available (especially if current is Tonight)
             # Prioritize adding Tomorrow when current is Tonight to use more of the available message length
             if tomorrow_period:
-                period = tomorrow_period[1]
-                period_detailed = period.get('detailedForecast', '')
-                period_short = period.get('shortForecast', '')
-                night = is_current_tonight or is_current_night
-                period_head = None
-                if _has_temp(period.get('temperature', '')) and period_short:
-                    # Shorten long forecast text (especially when current is a night period)
-                    forecast_text = (
-                        self._abbreviate_noaa_forecast(period_short) if night and len(period_short) > 20 else period_short
-                    )
-                    period_head = self._noaa_period_str(period, forecast_text)
-                if period_head:
-                    # Be more aggressive about adding wind when current is a night period
-                    wind_threshold = 115 if night else 120
-                    period_str = self._noaa_period_wind(weather, period_head, period, wind_threshold, max_length)
-
-                    # Add additional details (humidity, dew point, visibility, etc.)
-                    # But only if current period isn't too long - prioritize current period details
-                    current_weather_len = self._count_display_width(weather)
-                    # Only add details to additional periods if current period is under max_length - 20 chars
-                    # This ensures we prioritize current period details first
-                    if current_weather_len < max_length - 20:
-                        max_chars = max_length - 2 if (is_current_tonight or is_current_night) else max_length
-                        period_str = self._add_period_details(period_str, period_detailed, current_weather_len, max_chars)
-
-                    # Only add if we have space (using display width, prioritize current period)
-                    # Be more aggressive about adding tomorrow_period when current is Tonight and we have space
-                    max_chars = max_length - 2 if (is_current_tonight or is_current_night) else max_length
-                    # If current is Tonight and we have plenty of space, be more lenient with the length check
-                    if is_current_tonight or is_current_night:
-                        # Allow adding tomorrow_period if we're under max_length - 10 chars (more lenient)
-                        if current_weather_len < max_length - 10 and self._count_display_width(weather + period_str) <= max_chars:
-                            weather += period_str
-                    else:
-                        # For non-night periods, use the stricter check
-                        if current_weather_len < max_length - 20 and self._count_display_width(weather + period_str) <= max_chars:
-                            weather += period_str
+                weather = self._append_noaa_tomorrow(weather, tomorrow_period[1], is_current_tonight, is_current_night, max_length)
 
             return weather, weather_json
 
         except Exception as e:
             self.logger.error(f"Error fetching NOAA weather: {e}")
             return self.ERROR_FETCHING_DATA, None
+
+    def _noaa_current_summary(self, current: dict, weather_json: dict, max_length: int) -> str:
+        """The current period's line: name, sky, temperature, wind and as many details as fit."""
+        day_name = self._noaa_period_display_name(current)
+        temp = current.get('temperature', 'N/A')
+        temp_unit = current.get('temperatureUnit', 'F')
+        short_forecast = current.get('shortForecast', 'Unknown')
+        wind_speed = current.get('windSpeed', '')
+        wind_direction = current.get('windDirection', '')
+        detailed_forecast = current.get('detailedForecast', '')
+
+        # Extract additional useful info from detailed forecast
+        self.extract_humidity(detailed_forecast)
+        precip_chance = self.extract_precip_chance(detailed_forecast)
+
+        # Create compact but complete weather string with emoji
+        weather_emoji = self.get_weather_emoji(short_forecast)
+        weather = f"{day_name}: {weather_emoji}{short_forecast} {temp}°{temp_unit}"
+
+        # Add wind info if available
+        if wind_speed and wind_direction:
+            wind_match = re.search(r'(\d+)', wind_speed)
+            if wind_match:
+                wind_num = self._noaa_wind_convert(wind_match.group(1), wind_speed)
+                wind_dir = self.abbreviate_wind_direction(wind_direction)
+                if wind_dir:
+                    weather += f" {wind_dir}{wind_num}"
+
+        # PRIORITIZE: Add all available details to current period first
+        # Get observation station data for more accurate current conditions
+        observation_data = self.get_observation_data(weather_json)
+
+        # Use most of the max_length limit (max_length - 10 chars) to ensure current period gets full details
+        # Additional periods will only be added if there's remaining space
+        # Pass observation_data to use real-time station data instead of parsing from text
+        current_period_max = max_length - 10
+        weather = self._add_period_details(weather, detailed_forecast, 0, max_length=current_period_max, observation_data=observation_data)
+
+        # Also add precipitation chance if available (not in helper function)
+        if precip_chance and self._count_display_width(weather) < current_period_max:
+            weather += f" 🌦️{precip_chance}%"
+
+        # Also add UV index if available (not in helper function)
+        uv_index = self.extract_uv_index(detailed_forecast)
+        if uv_index and self._count_display_width(weather) < current_period_max:
+            weather += f" UV{uv_index}"
+
+        return weather
+
+    def _append_noaa_tomorrow(self, weather: str, period: dict, is_current_tonight: bool, is_current_night: bool, max_length: int) -> str:
+        """``weather`` with the Tomorrow period appended when it fits; a night reply shortens its text and is more lenient."""
+        period_detailed = period.get('detailedForecast', '')
+        period_short = period.get('shortForecast', '')
+        night = is_current_tonight or is_current_night
+        period_head = None
+        if _has_temp(period.get('temperature', '')) and period_short:
+            # Shorten long forecast text (especially when current is a night period)
+            forecast_text = (
+                self._abbreviate_noaa_forecast(period_short) if night and len(period_short) > 20 else period_short
+            )
+            period_head = self._noaa_period_str(period, forecast_text)
+        if period_head:
+            # Be more aggressive about adding wind when current is a night period
+            wind_threshold = 115 if night else 120
+            period_str = self._noaa_period_wind(weather, period_head, period, wind_threshold, max_length)
+
+            # Add additional details (humidity, dew point, visibility, etc.)
+            # But only if current period isn't too long - prioritize current period details
+            current_weather_len = self._count_display_width(weather)
+            # Only add details to additional periods if current period is under max_length - 20 chars
+            # This ensures we prioritize current period details first
+            if current_weather_len < max_length - 20:
+                max_chars = max_length - 2 if (is_current_tonight or is_current_night) else max_length
+                period_str = self._add_period_details(period_str, period_detailed, current_weather_len, max_chars)
+
+            # Only add if we have space (using display width, prioritize current period)
+            # Be more aggressive about adding tomorrow_period when current is Tonight and we have space
+            max_chars = max_length - 2 if (is_current_tonight or is_current_night) else max_length
+            # If current is Tonight and we have plenty of space, be more lenient with the length check
+            if is_current_tonight or is_current_night:
+                # Allow adding tomorrow_period if we're under max_length - 10 chars (more lenient)
+                if current_weather_len < max_length - 10 and self._count_display_width(weather + period_str) <= max_chars:
+                    weather += period_str
+            else:
+                # For non-night periods, use the stricter check
+                if current_weather_len < max_length - 20 and self._count_display_width(weather + period_str) <= max_chars:
+                    weather += period_str
+        return weather
 
     def _append_noaa_period(self, weather: str, period: dict, max_length: int) -> str:
         """``weather`` with a Today or Tonight period appended when it fits.
