@@ -5,7 +5,10 @@ Provides help information for commands and general usage
 """
 
 from collections import defaultdict
-from typing import Optional
+from typing import (
+    Any,  # noqa: F401  importable from this module on dev
+    Optional,
+)
 
 from ..models import MeshMessage
 from .base_command import BaseCommand

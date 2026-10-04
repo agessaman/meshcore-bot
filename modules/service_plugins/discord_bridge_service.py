@@ -5,12 +5,16 @@ Posts MeshCore channel messages to Discord via webhooks (one-way, read-only)
 """
 
 import asyncio
+import contextlib  # noqa: F401  importable from this module on dev
+import copy  # noqa: F401  importable from this module on dev
 import time
 from collections import deque
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Optional
+
+from meshcore import EventType  # noqa: F401  importable from this module on dev
 
 # Try to import aiohttp for async HTTP (preferred)
 try:

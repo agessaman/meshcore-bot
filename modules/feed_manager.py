@@ -5,6 +5,7 @@ Handles polling feeds and sending updates to channels
 """
 
 import asyncio
+import contextlib  # noqa: F401  importable from this module on dev
 import hashlib
 import json
 import os

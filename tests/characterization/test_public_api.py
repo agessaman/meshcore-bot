@@ -5,9 +5,11 @@ class or method, so a refactor must not remove one. New names are fine; the
 golden file only fails on removals (regenerate with UPDATE_GOLDEN=1 when a
 removal is intentional).
 
-Public names a module imports from another project module count too: code
-(and test patches) can reach them as ``modules.<module>.<name>``. Those are
-recorded separately in public_imports.json.
+Every other public name a module binds at top level counts too, whether it
+imports it (from a project module, the standard library or a third-party
+package) or assigns it: code and test patches can reach it as
+``modules.<module>.<name>``. Those are recorded separately in
+public_imports.json, generated from dev's tree.
 """
 
 import ast
@@ -40,20 +42,27 @@ def _public_names() -> dict[str, list[str]]:
 
 
 def _public_imports(root: Path = MODULES) -> dict[str, list[str]]:
-    """Public names each module binds by importing them from a project module."""
+    """Public names each module binds at top level by import or assignment.
+
+    Only unconditional top-level statements count, so names imported under
+    ``if TYPE_CHECKING:`` (never bound at runtime) are left out.
+    """
     names: dict[str, list[str]] = {}
     for path in sorted(root.rglob("*.py")):
         rel = path.relative_to(root.parent).as_posix()
         found = set()
         for node in ast.parse(path.read_text(encoding="utf-8")).body:
-            if not isinstance(node, ast.ImportFrom):
-                continue
-            if node.level == 0 and not (node.module or "").startswith("modules"):
-                continue
-            for alias in node.names:
-                bound = alias.asname or alias.name
-                if bound != "*" and not bound.startswith("_"):
-                    found.add(bound)
+            if isinstance(node, (ast.Import, ast.ImportFrom)):
+                for alias in node.names:
+                    bound = (alias.asname or alias.name).split(".")[0]
+                    if bound != "*" and not bound.startswith("_"):
+                        found.add(bound)
+            elif isinstance(node, (ast.Assign, ast.AnnAssign)):
+                targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                for target in targets:
+                    for leaf in ast.walk(target):
+                        if isinstance(leaf, ast.Name) and not leaf.id.startswith("_"):
+                            found.add(leaf.id)
         if found:
             names[rel] = sorted(found)
     return names

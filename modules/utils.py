@@ -5,6 +5,8 @@ Shared helper functions used across multiple modules
 """
 
 import asyncio
+import hashlib  # noqa: F401  importable from this module on dev
+import re  # noqa: F401  importable from this module on dev
 import socket
 import urllib.error
 import urllib.request

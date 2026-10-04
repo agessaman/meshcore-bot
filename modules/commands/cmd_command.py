@@ -4,7 +4,10 @@ Cmd command for the MeshCore Bot
 Lists available commands in a compact, comma-separated format for LoRa
 """
 
-from typing import Optional
+from typing import (
+    Any,  # noqa: F401  importable from this module on dev
+    Optional,
+)
 
 from ..models import MeshMessage
 from .base_command import BaseCommand

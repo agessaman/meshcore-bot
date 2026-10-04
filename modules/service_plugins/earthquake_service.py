@@ -5,6 +5,7 @@ Polls USGS Earthquake API and notifies a channel when earthquakes occur in a con
 """
 
 import asyncio
+import contextlib  # noqa: F401  importable from this module on dev
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 

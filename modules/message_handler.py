@@ -6,9 +6,14 @@ Processes incoming messages and routes them to appropriate command handlers
 
 import asyncio
 import copy
+import hmac as hmac_mod  # noqa: F401  importable from this module on dev
 import time
 from collections import OrderedDict
-from collections.abc import Callable
+from collections.abc import (
+    Callable,
+    Iterable,  # noqa: F401  importable from this module on dev
+)
+from hashlib import sha256  # noqa: F401  importable from this module on dev
 from typing import Any
 
 from . import packet_decode, scope_gate

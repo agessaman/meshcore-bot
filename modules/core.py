@@ -7,6 +7,9 @@ Contains the main bot class and message processing logic
 import asyncio
 import atexit
 import configparser
+import contextlib  # noqa: F401  importable from this module on dev
+import contextvars  # noqa: F401  importable from this module on dev
+import functools  # noqa: F401  importable from this module on dev
 import json
 import logging
 import signal
@@ -15,8 +18,11 @@ import struct
 import threading
 import time
 from collections.abc import Callable
+from logging.handlers import RotatingFileHandler  # noqa: F401  importable from this module on dev
 from pathlib import Path
 from typing import Any
+
+import colorlog  # noqa: F401  importable from this module on dev
 
 # Import the official meshcore package
 import meshcore  # noqa: F401  (tests patch modules.core.meshcore.MeshCore)

@@ -5,6 +5,8 @@ Posts MeshCore channel messages to Telegram via the Bot API (one-way, read-only)
 """
 
 import asyncio
+import contextlib  # noqa: F401  importable from this module on dev
+import copy  # noqa: F401  importable from this module on dev
 import html
 import os
 import re
@@ -12,6 +14,8 @@ import time
 from collections import deque
 from dataclasses import dataclass
 from typing import Any, Optional
+
+from meshcore import EventType  # noqa: F401  importable from this module on dev
 
 try:
     import aiohttp

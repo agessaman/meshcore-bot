@@ -5,6 +5,7 @@ Provides scheduled weather forecasts and alert monitoring
 """
 
 import asyncio
+import contextlib  # noqa: F401  importable from this module on dev
 import json
 import math
 import re
