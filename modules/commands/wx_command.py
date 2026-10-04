@@ -798,10 +798,10 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             elif location_type == "zipcode":
                 reply, lat, lon, location_prefix = self._locate_zipcode(location, using_companion_location)
             else:  # city
-                reply, lat, lon, location_prefix = self._locate_city(location, using_companion_location)
-                if location_type != "city":
-                    # An unrecognized type geocodes as a city but never carries the city prefix
-                    location_prefix = ""
+                # An unrecognized type geocodes as a city but never carries the city prefix
+                reply, lat, lon, location_prefix = self._locate_city(
+                    location, using_companion_location, labeled=location_type == "city"
+                )
             if reply is not None:
                 return reply
 
@@ -891,7 +891,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                 location_prefix = f"{location_str}: "
         return None, lat, lon, location_prefix
 
-    def _locate_city(self, location: str, using_companion_location: bool) -> tuple:
+    def _locate_city(self, location: str, using_companion_location: bool, labeled: bool = True) -> tuple:
         """(error reply or None, lat, lon, location prefix) for a city location."""
         result = self.city_to_lat_lon(location)
         if len(result) == 3:
@@ -932,7 +932,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
 
         # Add location info if city is in a different state than default, or if using companion location
         location_prefix = ""
-        if address_info:
+        if labeled and address_info:
             # Compare states (handle both full names and abbreviations)
             states_different = (actual_state != self.default_state and
                               actual_state != default_state_full)
