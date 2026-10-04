@@ -49,18 +49,33 @@ _CONFIG_TYPED_GETTERS = {'bool': 'getboolean', 'int': 'getint', 'float': 'getflo
 _CONFIG_VALUE_TYPES = frozenset({'str', 'list', *_CONFIG_TYPED_GETTERS})
 
 
+def _defined_by_bundled_class(command: Any, method: Any) -> bool:
+    """Whether ``method`` is a plain bound method from a class defined under ``modules.``.
+
+    Looks the function up in the command class's MRO rather than trusting the
+    function's own ``__module__``, which ``functools.wraps`` copies.
+    """
+    func = getattr(method, "__func__", None)
+    if func is None or getattr(method, "__self__", None) is not command:
+        return False
+    for klass in type(command).__mro__:
+        if klass.__dict__.get("get_help_text") is func:
+            module = klass.__dict__.get("__module__")
+            return isinstance(module, str) and module.startswith("modules.")
+    return False
+
+
 def help_text_for(command: Any, message: Any) -> str:
     """``command.get_help_text(message)``, retrying without the message for local plugins.
 
-    Every bundled command's get_help_text takes the message, so it is called
-    once and an error from its body propagates. Anything defined outside
-    ``modules`` (a local plugin, which may implement ``get_help_text(self)``)
-    keeps the old contract: a TypeError from the message call is retried
-    without the message.
+    Every bundled command's get_help_text takes the message, so when the
+    method comes from a bundled class it is called once and an error from its
+    body propagates. Anything else (a local plugin or subclass override, which
+    may implement ``get_help_text(self)``, or any other callable) keeps the old
+    contract: a TypeError from the message call is retried without the message.
     """
     get_help_text = command.get_help_text
-    defined_in = getattr(get_help_text, "__module__", None) or ""
-    if defined_in.startswith("modules."):
+    if _defined_by_bundled_class(command, get_help_text):
         return get_help_text(message)
     try:
         return get_help_text(message)

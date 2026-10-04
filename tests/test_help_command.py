@@ -236,6 +236,22 @@ class TestGetSpecificHelp:
             cmd.get_specific_help("ping", None)
         assert len(calls) == 1
 
+    def test_wrapped_local_override_of_a_bundled_command_keeps_the_retry(self):
+        """functools.wraps copies the bundled __module__; the override is still local."""
+        import functools
+
+        from modules.commands.ping_command import PingCommand
+
+        class LocalPing(PingCommand):
+            @functools.wraps(PingCommand.get_help_text)
+            def get_help_text(self):
+                return "local help"
+
+        bot = _make_bot()
+        bot.command_manager.commands = {"ping": object.__new__(LocalPing)}
+        cmd = HelpCommand(bot)
+        cmd.get_specific_help("ping", Mock())  # must not raise
+
     def test_local_plugin_help_keeps_the_typeerror_retry(self):
         """A local get_help_text(message=None) that raises TypeError is retried without it."""
         bot = _make_bot()
