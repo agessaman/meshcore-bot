@@ -168,6 +168,49 @@ def test_payload_too_large() -> None:
     assert err == "payload_too_large"
 
 
+def _json_template_fmt(template: str) -> MqttWeatherFormatConfig:
+    return MqttWeatherFormatConfig(
+        output_mode="json_template",
+        json_template=template,
+        json_device_key="",
+        json_device_value="",
+        max_payload_bytes=1024,
+        passthrough_max_length=500,
+        stale_after_seconds=60.0,
+    )
+
+
+def _default_json_template_fmt() -> MqttWeatherFormatConfig:
+    cfg = ConfigParser()
+    cfg.add_section("MqttWeather")
+    cfg.set("MqttWeather", "output_mode", "json_template")
+    return load_mqtt_weather_format_config(cfg)
+
+
+def test_default_template_rounds_celsius() -> None:
+    fmt = _default_json_template_fmt()
+    raw = json.dumps({"time": "12:00", "temperature_F": 61.3, "humidity": 70}).encode()
+    text, err = format_mqtt_weather_payload(raw, fmt)
+    assert err is None
+    assert text == "12:00 | 61.3°F (16.3°C) | RH 70.0%"
+
+
+def test_default_template_without_temperature() -> None:
+    fmt = _default_json_template_fmt()
+    raw = json.dumps({"time": "12:00", "humidity": 70}).encode()
+    text, err = format_mqtt_weather_payload(raw, fmt)
+    assert err is None
+    assert text == "12:00 | °F (°C) | RH 70.0%"
+
+
+def test_celsius_explicit_format_spec() -> None:
+    fmt = _json_template_fmt("{temperature_c:.2f}C {temperature_c:.0f}C")
+    raw = json.dumps({"temperature_F": 61.3}).encode()
+    text, err = format_mqtt_weather_payload(raw, fmt)
+    assert err is None
+    assert text == "16.30C 16C"
+
+
 def test_invalid_template_placeholder() -> None:
     fmt = MqttWeatherFormatConfig(
         output_mode="json_template",
