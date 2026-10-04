@@ -559,50 +559,68 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
                 return self.translate('commands.gwx.no_location', location=location)
 
             lat, lon, address_info, geocode_result = result
-
-            # Format location name for display, when it tells the user something
-            location_display = ""
-            if self._location_label_adds_information(location, address_info):
-                location_display = self._format_location_display(address_info, geocode_result, location)
-            self.logger.debug(f"Formatted location_display: '{location_display}' from location: '{location}'")
-            prefix = f"{location_display}: " if location_display else ""
-
-            # Calculate the length of the location prefix (location_display + ": ").
-            # In UTF-8 bytes, not characters: the budget it is subtracted from is a
-            # byte budget, and a non-ASCII city name ("München, DE: ") costs more
-            # bytes than it has characters.
-            location_prefix_len = self._count_display_width(prefix)
-
-            # Get weather forecast from Open-Meteo based on type
-            # Pass location_prefix_len so weather formatting can account for it
-            current = {}
-            if forecast_type == "tomorrow":
-                weather_text = self.get_open_meteo_weather(lat, lon, forecast_type="tomorrow", message=message, location_prefix_len=location_prefix_len)
-            elif forecast_type == "multiday":
-                weather_text = self.get_open_meteo_weather(lat, lon, forecast_type="multiday", num_days=num_days, message=message, location_prefix_len=location_prefix_len)
-            elif forecast_type == "hourly":
-                weather_text = self.get_open_meteo_weather(lat, lon, forecast_type="hourly", message=message, location_prefix_len=location_prefix_len)
-            else:
-                weather_text, current = self._get_open_meteo_weather_with_conditions(lat, lon, message=message, location_prefix_len=location_prefix_len)
-
-            # Check if it's an error (translated error message)
-            error_fetching = self.translate('commands.gwx.error_fetching')
-            if weather_text == error_fetching or weather_text == self.ERROR_FETCHING_DATA:
-                return self.translate('commands.gwx.error_fetching_api')
-
-            # Check for severe weather warnings (only for default forecast type)
-            if forecast_type == "default":
-                alert_text = self._check_extreme_conditions(current)
-
-                if alert_text:
-                    # Return multi-message format
-                    return ("multi_message", f"{prefix}{weather_text}", alert_text)
-
-            return f"{prefix}{weather_text}"
+            return self._weather_for_point(
+                location, lat, lon, address_info, geocode_result, forecast_type, num_days, message
+            )
 
         except Exception as e:
             self.logger.error(f"Error getting weather for {location}: {e}")
             return self.translate('commands.gwx.error', error=str(e))
+
+    def _weather_for_point(
+        self,
+        location: str,
+        lat: float,
+        lon: float,
+        address_info: Optional[dict],
+        geocode_result: Any,
+        forecast_type: str = "default",
+        num_days: int = 7,
+        message: MeshMessage = None,
+    ) -> Union[str, tuple[str, str, str]]:
+        """The Open-Meteo reply for a place already geocoded, labeled when the label adds information.
+
+        Also wx's answer for a place outside NWS coverage ([Weather] openmeteo_fallback).
+        """
+        # Format location name for display, when it tells the user something
+        location_display = ""
+        if self._location_label_adds_information(location, address_info):
+            location_display = self._format_location_display(address_info, geocode_result, location)
+        self.logger.debug(f"Formatted location_display: '{location_display}' from location: '{location}'")
+        prefix = f"{location_display}: " if location_display else ""
+
+        # Calculate the length of the location prefix (location_display + ": ").
+        # In UTF-8 bytes, not characters: the budget it is subtracted from is a
+        # byte budget, and a non-ASCII city name ("München, DE: ") costs more
+        # bytes than it has characters.
+        location_prefix_len = self._count_display_width(prefix)
+
+        # Get weather forecast from Open-Meteo based on type
+        # Pass location_prefix_len so weather formatting can account for it
+        current = {}
+        if forecast_type == "tomorrow":
+            weather_text = self.get_open_meteo_weather(lat, lon, forecast_type="tomorrow", message=message, location_prefix_len=location_prefix_len)
+        elif forecast_type == "multiday":
+            weather_text = self.get_open_meteo_weather(lat, lon, forecast_type="multiday", num_days=num_days, message=message, location_prefix_len=location_prefix_len)
+        elif forecast_type == "hourly":
+            weather_text = self.get_open_meteo_weather(lat, lon, forecast_type="hourly", message=message, location_prefix_len=location_prefix_len)
+        else:
+            weather_text, current = self._get_open_meteo_weather_with_conditions(lat, lon, message=message, location_prefix_len=location_prefix_len)
+
+        # Check if it's an error (translated error message)
+        error_fetching = self.translate('commands.gwx.error_fetching')
+        if weather_text == error_fetching or weather_text == self.ERROR_FETCHING_DATA:
+            return self.translate('commands.gwx.error_fetching_api')
+
+        # Check for severe weather warnings (only for default forecast type)
+        if forecast_type == "default":
+            alert_text = self._check_extreme_conditions(current)
+
+            if alert_text:
+                # Return multi-message format
+                return ("multi_message", f"{prefix}{weather_text}", alert_text)
+
+        return f"{prefix}{weather_text}"
 
     def geocode_location(self, location: str) -> tuple:
         """Convert location string to lat/lon with address details.

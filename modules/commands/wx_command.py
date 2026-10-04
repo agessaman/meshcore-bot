@@ -216,6 +216,10 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
              {"value": "openmeteo", "label": "Open-Meteo (global)"},
          ],
          "default": "noaa", "help": "API used for forecasts. Shared weather setting."},
+        {"key": "openmeteo_fallback", "label": "Open-Meteo outside NWS coverage", "type": "bool", "section": "Weather",
+         "default": False,
+         "help": "Only with the NOAA provider: answer wx from Open-Meteo for places NWS does not cover "
+                 "(outside the US) instead of replying with an error. Shared weather setting."},
         {"key": "default_city", "label": "Default city", "type": "str", "section": "Weather",
          "default": "", "help": "City used for a bare 'wx' when no location is given. Shared weather setting."},
         {"key": "default_state", "label": "Default state", "type": "str", "section": "Weather",
@@ -257,6 +261,12 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             self.logger.info("Weather provider set to 'openmeteo', delegating wx command to wx_international")
         else:
             self.delegate_command = None
+
+        # With NOAA, places outside NWS coverage can be answered from Open-Meteo instead.
+        self._openmeteo = None
+        if self.delegate_command is None and bot.config.getboolean('Weather', 'openmeteo_fallback', fallback=False):
+            self._openmeteo = GlobalWxCommand(bot)
+            self.logger.info("openmeteo_fallback enabled: wx answers places outside NWS coverage from Open-Meteo")
 
         # Only initialize NOAA-specific attributes if not delegating
         if self.delegate_command is None:
@@ -971,6 +981,15 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                         if not default_state_full:
                             default_state_full = self.default_state
 
+            def noaa_failed():
+                # NWS had no data: a point outside its coverage goes to Open-Meteo when enabled.
+                if self._outside_nws_coverage(lat, lon):
+                    return self._openmeteo_weather(location, location_type, lat, lon, address_info, forecast_type, num_days, message)
+                return self.translate('commands.wx.error_fetching')
+
+            if self._outside_nws_coverage(lat, lon):
+                return self._openmeteo_weather(location, location_type, lat, lon, address_info, forecast_type, num_days, message)
+
             # Add location info if city is in a different state than default, or if using companion location
             location_prefix = ""
             if location_type == "coordinates" and address_info:
@@ -1015,22 +1034,22 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             if forecast_type == "tomorrow":
                 forecast_periods, points_data = self.get_noaa_weather(lat, lon, return_periods=True, max_length=body_max_length)
                 if forecast_periods == self.ERROR_FETCHING_DATA:
-                    return self.translate('commands.wx.error_fetching')
+                    return noaa_failed()
                 weather = self.format_tomorrow_forecast(forecast_periods, max_length=body_max_length)
             elif forecast_type == "multiday":
                 forecast_periods, points_data = self.get_noaa_weather(lat, lon, return_periods=True, max_length=body_max_length)
                 if forecast_periods == self.ERROR_FETCHING_DATA:
-                    return self.translate('commands.wx.error_fetching')
+                    return noaa_failed()
                 weather = self.format_multiday_forecast(forecast_periods, num_days, max_length=body_max_length)
             elif forecast_type == "hourly":
                 hourly_periods, points_data = self.get_noaa_hourly_weather(lat, lon)
                 if hourly_periods == self.ERROR_FETCHING_DATA:
-                    return self.translate('commands.wx.error_fetching')
+                    return noaa_failed()
                 weather = self.format_hourly_forecast(hourly_periods, max_length=body_max_length)
             else:  # default
                 weather, points_data = self.get_noaa_weather(lat, lon, max_length=body_max_length)
                 if weather == self.ERROR_FETCHING_DATA:
-                    return self.translate('commands.wx.error_fetching')
+                    return noaa_failed()
 
                 # Note: Current conditions are now integrated directly into the current period
                 # via _add_period_details() using observation station data
@@ -1062,6 +1081,31 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         except Exception as e:
             self.logger.error(f"Error getting weather for {location_type} {location}: {e}")
             return self.translate('commands.wx.error', error=str(e))
+
+    def _outside_nws_coverage(self, lat: float, lon: float) -> bool:
+        """Whether the Open-Meteo fallback is on and NWS is known not to cover this point."""
+        return self._openmeteo is not None and self._nws_no_coverage.is_unavailable(lat, lon)
+
+    def _openmeteo_weather(self, location: str, location_type: str, lat: float, lon: float,
+                           address_info: Optional[dict], forecast_type: str, num_days: int,
+                           message: Optional[MeshMessage]):
+        """The Open-Meteo (gwx) reply for a point outside NWS coverage, in wx's units."""
+        openmeteo = self._openmeteo
+        # wx's units, [Wx_Command] overrides included, so one command never mixes unit systems.
+        openmeteo.temperature_unit, openmeteo.wind_speed_unit = self._noaa_units()
+        precipitation = self._unit_setting('precipitation_unit', openmeteo.precipitation_unit)
+        if precipitation in ('inch', 'mm'):
+            openmeteo.precipitation_unit = precipitation
+        geocode_result = None
+        if location_type != "city":
+            # wx's own lookup for a position keeps only city and state; the label needs the country.
+            _, _, address_info, geocode_result = openmeteo.geocode_location(location)
+        self.logger.info(
+            "%s,%s is outside NWS coverage; answering wx from Open-Meteo", round(lat, 2), round(lon, 2)
+        )
+        return openmeteo._weather_for_point(
+            location, lat, lon, address_info or {}, geocode_result, forecast_type, num_days, message
+        )
 
     def zipcode_to_lat_lon(self, zipcode: str) -> tuple:
         """Convert zipcode to latitude and longitude"""
@@ -1098,15 +1142,28 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
     async def _city_to_lat_lon_async(self, city: str) -> tuple:
         return await self._run_sync_provider_async(self.city_to_lat_lon, city)
 
-    def _noaa_fetch(self, url: str, what: str):
+    def _noaa_fetch(self, url: str, what: str, point: Optional[tuple[float, float]] = None):
         """GET *url* through the NOAA session; None, after a warning naming *what*,
         on an HTTP error status, a timeout or a connection error.
+
+        With the Open-Meteo fallback on, a *point* request also records whether
+        NWS covers that point.
         """
         try:
             response = self.noaa_session.get(url, timeout=self.url_timeout)
+            track = point is not None and self._openmeteo is not None
             if not response.ok:
+                if track and nws_http_means_no_coverage(response.status_code):
+                    self._nws_no_coverage.mark_unavailable(*point)
+                    self.logger.debug(
+                        "NWS has no coverage for %s,%s (HTTP %s)",
+                        round(point[0], 2), round(point[1], 2), response.status_code,
+                    )
+                    return None
                 self.logger.warning(f"Error fetching {what} from NOAA: HTTP {response.status_code}")
                 return None
+            if track:
+                self._nws_no_coverage.mark_available(*point)
         except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
             self.logger.warning(f"Timeout/connection error fetching {what} from NOAA: {e}")
             return None
@@ -1133,7 +1190,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             weather_api = f"https://api.weather.gov/points/{lat_rounded},{lon_rounded}"
 
             # Get the forecast URL (with retry logic)
-            weather_data = self._noaa_fetch(weather_api, "weather data")
+            weather_data = self._noaa_fetch(weather_api, "weather data", point=(lat, lon))
             if weather_data is None:
                 return self.ERROR_FETCHING_DATA, None
 
@@ -1484,7 +1541,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             weather_api = f"https://api.weather.gov/points/{lat_rounded},{lon_rounded}"
 
             # Get the forecast URL (with retry logic)
-            weather_data = self._noaa_fetch(weather_api, "weather data")
+            weather_data = self._noaa_fetch(weather_api, "weather data", point=(lat, lon))
             if weather_data is None:
                 return self.ERROR_FETCHING_DATA, None
 
@@ -2419,6 +2476,9 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             lat, lon, return_full_data=True
         )
         if alerts_result == self.ERROR_FETCHING_DATA:
+            if self._outside_nws_coverage(lat, lon):
+                # NWS alerts are the only alert source; Open-Meteo has none to offer.
+                return bool(await self.send_response(message, self.translate('commands.wx.source_option_not_available')))
             return bool(await self.send_response(message, self.translate('commands.wx.error_fetching')))
         elif alerts_result == self.NO_ALERTS:
             return bool(await self.send_response(message, "No weather alerts"))
