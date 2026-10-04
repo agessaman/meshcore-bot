@@ -419,6 +419,14 @@ banned_users =
 # If translation file is missing or key not found, falls back to English
 language = en
 
+# Language for place names from geocoding (wx, gwx and other location replies)
+#   (empty) - follow language above, falling back to English where OpenStreetMap
+#             has no name in it ("Chiyoda, JP")
+#   local   - each place's own name ("千代田区, JP"), as before this setting existed
+#   en, de, ... - that language, whatever language replies are in
+# Default: empty
+place_name_language =
+
 # Path to translation files directory (relative to bot root)
 # Default: translations/
 translation_path = translations/

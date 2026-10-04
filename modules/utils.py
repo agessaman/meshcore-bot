@@ -754,6 +754,53 @@ def get_nominatim_geocoder(user_agent: str = "meshcore-bot", timeout: int = 10) 
     return Nominatim(user_agent=user_agent, timeout=timeout)
 
 
+_LANGUAGE_RE = re.compile(r"[A-Za-z]{2,3}(?:[-_][A-Za-z0-9]{2,8})*")
+
+
+def _language_tag(value: Any) -> Optional[str]:
+    """*value* as a language tag ("de", "pt-BR"), or None when it is not one."""
+    if isinstance(value, str) and _LANGUAGE_RE.fullmatch(value.strip()):
+        return value.strip()
+    return None
+
+
+def _nominatim_language(bot: Any) -> Union[str, bool]:
+    """The languages Nominatim names places in, as its ``language`` argument.
+
+    [Localization] place_name_language picks them: empty follows
+    [Localization] language, ``local`` asks for each place's own name (False:
+    Nominatim's default), and a language tag names that language. A language
+    other than English gets English as its fallback, since Nominatim has no
+    name in most languages for most places and would otherwise fall back to
+    the local one ("千代田区" for Tokyo).
+    """
+    config = getattr(bot, "config", None)
+    try:
+        choice = config.get("Localization", "place_name_language", fallback="") if config is not None else ""
+        if isinstance(choice, str) and choice.strip().lower() == "local":
+            return False
+        language = _language_tag(choice)
+        if language is None:
+            fallback = config.get("Localization", "language", fallback="en") if config is not None else "en"
+            language = _language_tag(fallback) or "en"
+    except Exception:
+        return "en"
+    if language.lower().split("-")[0].split("_")[0] == "en":
+        return language
+    return f"{language},en"
+
+
+def _reverse_cache_key(bot: Any, lat: Any, lon: Any) -> str:
+    """Cache key for a reverse lookup's address; the names in it depend on the language.
+
+    Local names keep the key used before languages were passed, whose entries are local names.
+    """
+    language = _nominatim_language(bot)
+    if language is False:
+        return f"reverse_{lat}_{lon}"
+    return f"reverse_{language}_{lat}_{lon}"
+
+
 async def rate_limited_nominatim_geocode(
     bot: Any, query: Union[str, Mapping[str, str]], timeout: int = 10
 ) -> Optional[Any]:
@@ -770,13 +817,13 @@ async def rate_limited_nominatim_geocode(
     if not hasattr(bot, 'nominatim_rate_limiter'):
         # Fallback if rate limiter not initialized
         geolocator = get_nominatim_geocoder(timeout=timeout)
-        return await asyncio.to_thread(geolocator.geocode, query, timeout=timeout)
+        return await asyncio.to_thread(geolocator.geocode, query, timeout=timeout, language=_nominatim_language(bot))
 
     # Atomically reserve a slot shared with synchronous worker-thread callers.
     await bot.nominatim_rate_limiter.wait_and_request()
 
     geolocator = get_nominatim_geocoder(timeout=timeout)
-    return await asyncio.to_thread(geolocator.geocode, query, timeout=timeout)
+    return await asyncio.to_thread(geolocator.geocode, query, timeout=timeout, language=_nominatim_language(bot))
 
 
 async def rate_limited_nominatim_reverse(bot: Any, coordinates: str, timeout: int = 10) -> Optional[Any]:
@@ -793,13 +840,13 @@ async def rate_limited_nominatim_reverse(bot: Any, coordinates: str, timeout: in
     if not hasattr(bot, 'nominatim_rate_limiter'):
         # Fallback if rate limiter not initialized
         geolocator = get_nominatim_geocoder(timeout=timeout)
-        return await asyncio.to_thread(geolocator.reverse, coordinates, timeout=timeout)
+        return await asyncio.to_thread(geolocator.reverse, coordinates, timeout=timeout, language=_nominatim_language(bot))
 
     # Atomically reserve a slot shared with synchronous worker-thread callers.
     await bot.nominatim_rate_limiter.wait_and_request()
 
     geolocator = get_nominatim_geocoder(timeout=timeout)
-    return await asyncio.to_thread(geolocator.reverse, coordinates, timeout=timeout)
+    return await asyncio.to_thread(geolocator.reverse, coordinates, timeout=timeout, language=_nominatim_language(bot))
 
 
 def rate_limited_nominatim_geocode_sync(
@@ -818,13 +865,13 @@ def rate_limited_nominatim_geocode_sync(
     if not hasattr(bot, 'nominatim_rate_limiter'):
         # Fallback if rate limiter not initialized
         geolocator = get_nominatim_geocoder(timeout=timeout)
-        return geolocator.geocode(query, timeout=timeout)
+        return geolocator.geocode(query, timeout=timeout, language=_nominatim_language(bot))
 
     # Reserve the slot before the request, not after: this runs on worker threads.
     bot.nominatim_rate_limiter.wait_and_request_sync()
 
     geolocator = get_nominatim_geocoder(timeout=timeout)
-    return geolocator.geocode(query, timeout=timeout)
+    return geolocator.geocode(query, timeout=timeout, language=_nominatim_language(bot))
 
 
 def rate_limited_nominatim_reverse_sync(bot: Any, coordinates: str, timeout: int = 10) -> Optional[Any]:
@@ -841,13 +888,13 @@ def rate_limited_nominatim_reverse_sync(bot: Any, coordinates: str, timeout: int
     if not hasattr(bot, 'nominatim_rate_limiter'):
         # Fallback if rate limiter not initialized
         geolocator = get_nominatim_geocoder(timeout=timeout)
-        return geolocator.reverse(coordinates, timeout=timeout)
+        return geolocator.reverse(coordinates, timeout=timeout, language=_nominatim_language(bot))
 
     # Reserve the slot before the request, not after: this runs on worker threads.
     bot.nominatim_rate_limiter.wait_and_request_sync()
 
     geolocator = get_nominatim_geocoder(timeout=timeout)
-    return geolocator.reverse(coordinates, timeout=timeout)
+    return geolocator.reverse(coordinates, timeout=timeout, language=_nominatim_language(bot))
 
 
 _GeocodeSteps = Generator[tuple[str, Any], Any, Any]
@@ -1032,7 +1079,7 @@ def _geocode_city_steps(bot: Any, city: str, default_state: Optional[str],
                 address_info = None
                 if include_address_info:
                     # Check cache for reverse geocoding result
-                    reverse_cache_key = f"reverse_{lat}_{lon}"
+                    reverse_cache_key = _reverse_cache_key(bot, lat, lon)
                     cached_address = bot.db_manager.get_cached_json(reverse_cache_key, "geolocation")
                     if cached_address:
                         address_info = cached_address
@@ -1067,7 +1114,7 @@ def _geocode_city_steps(bot: Any, city: str, default_state: Optional[str],
                 address_info = None
                 if include_address_info:
                     # Check cache for reverse geocoding result
-                    reverse_cache_key = f"reverse_{lat}_{lon}"
+                    reverse_cache_key = _reverse_cache_key(bot, lat, lon)
                     cached_address = bot.db_manager.get_cached_json(reverse_cache_key, "geolocation")
                     if cached_address:
                         address_info = cached_address
@@ -1100,7 +1147,7 @@ def _geocode_city_steps(bot: Any, city: str, default_state: Optional[str],
                 address_info = None
                 if include_address_info:
                     # Check cache for reverse geocoding result
-                    reverse_cache_key = f"reverse_{lat}_{lon}"
+                    reverse_cache_key = _reverse_cache_key(bot, lat, lon)
                     cached_address = bot.db_manager.get_cached_json(reverse_cache_key, "geolocation")
                     if cached_address:
                         address_info = cached_address
@@ -1176,7 +1223,7 @@ def _geocode_city_steps(bot: Any, city: str, default_state: Optional[str],
                     address_info = None
                     if include_address_info:
                         # Check cache for reverse geocoding result
-                        reverse_cache_key = f"reverse_{lat}_{lon}"
+                        reverse_cache_key = _reverse_cache_key(bot, lat, lon)
                         cached_address = bot.db_manager.get_cached_json(reverse_cache_key, "geolocation")
                         if cached_address:
                             address_info = cached_address
@@ -1211,7 +1258,7 @@ def _geocode_city_steps(bot: Any, city: str, default_state: Optional[str],
                 address_info = None
                 if include_address_info:
                     # Check cache for reverse geocoding result
-                    reverse_cache_key = f"reverse_{lat}_{lon}"
+                    reverse_cache_key = _reverse_cache_key(bot, lat, lon)
                     cached_address = bot.db_manager.get_cached_json(reverse_cache_key, "geolocation")
                     if cached_address:
                         address_info = cached_address
@@ -1235,7 +1282,7 @@ def _geocode_city_steps(bot: Any, city: str, default_state: Optional[str],
             address_info = None
             if include_address_info:
                 # Check cache for reverse geocoding result
-                reverse_cache_key = f"reverse_{lat}_{lon}"
+                reverse_cache_key = _reverse_cache_key(bot, lat, lon)
                 cached_address = bot.db_manager.get_cached_json(reverse_cache_key, "geolocation")
                 if cached_address:
                     address_info = cached_address
