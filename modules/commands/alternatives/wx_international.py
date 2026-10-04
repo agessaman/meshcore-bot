@@ -536,81 +536,37 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
             # Check if location is coordinates (decimal numbers separated by comma, with optional spaces)
             # Handle formats like: "47.6,-122.3", "47.6, -122.3", "47.980525, -122.150649", " -47.6 , 122.3 "
             if self._COORDINATES_RE.match(location):
-                # Parse lat,lon coordinates
-                try:
-                    lat_str, lon_str = location.split(',')
-                    lat = float(lat_str.strip())
-                    lon = float(lon_str.strip())
-
-                    # Validate coordinate ranges
-                    if not (-90 <= lat <= 90):
-                        self.logger.warning(f"Invalid latitude: {lat}. Must be between -90 and 90.")
-                        return None, None, None, None
-                    if not (-180 <= lon <= 180):
-                        self.logger.warning(f"Invalid longitude: {lon}. Must be between -180 and 180.")
-                        return None, None, None, None
-
-                    # Get address info via reverse geocoding
-                    address_info = None
-                    geocode_result = None
-                    try:
-                        reverse_location = rate_limited_nominatim_reverse_sync(
-                            self.bot, f"{lat}, {lon}", timeout=10
-                        )
-                        if reverse_location:
-                            geocode_result = reverse_location
-                            address_info = reverse_location.raw.get('address', {})
-                    except Exception as e:
-                        self.logger.debug(f"Reverse geocoding failed for coordinates: {e}")
-                        address_info = {}
-
-                    return lat, lon, address_info or {}, geocode_result
-                except ValueError:
-                    self.logger.warning(f"Invalid coordinates format: {location}")
-                    return None, None, None, None
+                return self._geocode_coordinates(location)
 
             # US ZIP code (5 digits): use geocode_zipcode_sync so the query is "zip, US"
             # and we don't get non‑US matches (e.g. "98104" -> Lithuania) from Nominatim.
             if self._ZIP_RE.match(location.strip()):
-                lat, lon = geocode_zipcode_sync(
-                    self.bot, location,
-                    default_country=self.default_country,
-                    timeout=10
-                )
-                if lat is not None and lon is not None:
-                    # A ZIP code is not named in the reply (as in wx), so no reverse lookup,
-                    # unless [Weather] always_show_location asks for every place to be named.
-                    if not self.always_show_location:
-                        return lat, lon, {}, None
-                    try:
-                        reverse_location = rate_limited_nominatim_reverse_sync(
-                            self.bot, f"{lat}, {lon}", timeout=10
-                        )
-                    except Exception as e:
-                        self.logger.debug(f"Reverse geocoding failed for ZIP code {location}: {e}")
-                        reverse_location = None
-                    if reverse_location:
-                        return lat, lon, reverse_location.raw.get('address', {}) or {}, reverse_location
-                    return lat, lon, {}, None
-                # Invalid or unknown US ZIP; do not fall through to city (avoids foreign matches)
+                return self._geocode_zipcode(location)
+
+            return self._geocode_city(location)
+
+        except Exception as e:
+            self.logger.error(f"Error geocoding location {location}: {e}")
+            return None, None, None, None
+
+    def _geocode_coordinates(self, location: str) -> tuple:
+        """geocode_location for a "lat,lon" string: validate, then reverse geocode for a label."""
+        # Parse lat,lon coordinates
+        try:
+            lat_str, lon_str = location.split(',')
+            lat = float(lat_str.strip())
+            lon = float(lon_str.strip())
+
+            # Validate coordinate ranges
+            if not (-90 <= lat <= 90):
+                self.logger.warning(f"Invalid latitude: {lat}. Must be between -90 and 90.")
+                return None, None, None, None
+            if not (-180 <= lon <= 180):
+                self.logger.warning(f"Invalid longitude: {lon}. Must be between -180 and 180.")
                 return None, None, None, None
 
-            # Use the shared geocode_city_sync function which properly handles
-            # default state and country for city disambiguation
-            # This ensures "olympia" matches Olympia, WA (not Greece) when default_state=WA
-            lat, lon, address_info = geocode_city_sync(
-                self.bot, location,
-                default_state=self.default_state,
-                default_country=self.default_country,
-                include_address_info=True,
-                timeout=10
-            )
-
-            if lat is None or lon is None:
-                return None, None, None, None
-
-            # Get full geocode result for display name formatting
-            # Try reverse geocoding to get the full result object
+            # Get address info via reverse geocoding
+            address_info = None
             geocode_result = None
             try:
                 reverse_location = rate_limited_nominatim_reverse_sync(
@@ -618,15 +574,71 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
                 )
                 if reverse_location:
                     geocode_result = reverse_location
-            except Exception:
-                # If reverse geocoding fails, we still have lat/lon and address_info
-                pass
+                    address_info = reverse_location.raw.get('address', {})
+            except Exception as e:
+                self.logger.debug(f"Reverse geocoding failed for coordinates: {e}")
+                address_info = {}
 
             return lat, lon, address_info or {}, geocode_result
-
-        except Exception as e:
-            self.logger.error(f"Error geocoding location {location}: {e}")
+        except ValueError:
+            self.logger.warning(f"Invalid coordinates format: {location}")
             return None, None, None, None
+
+    def _geocode_zipcode(self, location: str) -> tuple:
+        """geocode_location for a US ZIP code (never falls through to a city lookup)."""
+        lat, lon = geocode_zipcode_sync(
+            self.bot, location,
+            default_country=self.default_country,
+            timeout=10
+        )
+        if lat is not None and lon is not None:
+            # A ZIP code is not named in the reply (as in wx), so no reverse lookup,
+            # unless [Weather] always_show_location asks for every place to be named.
+            if not self.always_show_location:
+                return lat, lon, {}, None
+            try:
+                reverse_location = rate_limited_nominatim_reverse_sync(
+                    self.bot, f"{lat}, {lon}", timeout=10
+                )
+            except Exception as e:
+                self.logger.debug(f"Reverse geocoding failed for ZIP code {location}: {e}")
+                reverse_location = None
+            if reverse_location:
+                return lat, lon, reverse_location.raw.get('address', {}) or {}, reverse_location
+            return lat, lon, {}, None
+        # Invalid or unknown US ZIP; do not fall through to city (avoids foreign matches)
+        return None, None, None, None
+
+    def _geocode_city(self, location: str) -> tuple:
+        """geocode_location for a place name, preferring the default state and country."""
+        # Use the shared geocode_city_sync function which properly handles
+        # default state and country for city disambiguation
+        # This ensures "olympia" matches Olympia, WA (not Greece) when default_state=WA
+        lat, lon, address_info = geocode_city_sync(
+            self.bot, location,
+            default_state=self.default_state,
+            default_country=self.default_country,
+            include_address_info=True,
+            timeout=10
+        )
+
+        if lat is None or lon is None:
+            return None, None, None, None
+
+        # Get full geocode result for display name formatting
+        # Try reverse geocoding to get the full result object
+        geocode_result = None
+        try:
+            reverse_location = rate_limited_nominatim_reverse_sync(
+                self.bot, f"{lat}, {lon}", timeout=10
+            )
+            if reverse_location:
+                geocode_result = reverse_location
+        except Exception:
+            # If reverse geocoding fails, we still have lat/lon and address_info
+            pass
+
+        return lat, lon, address_info or {}, geocode_result
 
     def _location_label_adds_information(self, location: str, address_info: Optional[dict]) -> bool:
         """Whether the reply should name the place, as wx decides: only when it adds information.
@@ -680,6 +692,37 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
         if address_info:
             country_code = address_info.get('country_code', '').upper()
 
+        city = self._display_city(address_info, geocode_result)
+
+        # For US locations, include state abbreviation
+        if country_code == 'US':
+            state = None
+            if address_info:
+                state = address_info.get('state')
+            if city and state:
+                state_abbrev = self._get_state_abbreviation(state)
+                return f"{city}, {state_abbrev}"
+            elif city:
+                return f"{city}, US"
+
+        # For international locations, always use country code if available
+        if city:
+            if country_code:
+                return f"{city}, {country_code}"
+            elif address_info and address_info.get('country'):
+                # Fallback to country name if no code available
+                country = address_info.get('country')
+                # Shorten very long country names
+                if len(country) > 15:
+                    return f"{city}, {country[:15]}"
+                return f"{city}, {country}"
+            else:
+                return city
+
+        return self._fallback_location_label(fallback, country_code)
+
+    def _display_city(self, address_info: dict, geocode_result: Any) -> Optional[str]:
+        """The city part of _format_location_display: address fields, then display_name."""
         # Try to get city name from address_info (this is more reliable than display_name)
         city = None
         if address_info:
@@ -719,31 +762,10 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
                             first_part = first_part.replace(suffix, '').strip()
                     city = first_part
 
-        # For US locations, include state abbreviation
-        if country_code == 'US':
-            state = None
-            if address_info:
-                state = address_info.get('state')
-            if city and state:
-                state_abbrev = self._get_state_abbreviation(state)
-                return f"{city}, {state_abbrev}"
-            elif city:
-                return f"{city}, US"
+        return city
 
-        # For international locations, always use country code if available
-        if city:
-            if country_code:
-                return f"{city}, {country_code}"
-            elif address_info and address_info.get('country'):
-                # Fallback to country name if no code available
-                country = address_info.get('country')
-                # Shorten very long country names
-                if len(country) > 15:
-                    return f"{city}, {country[:15]}"
-                return f"{city}, {country}"
-            else:
-                return city
-
+    def _fallback_location_label(self, fallback: str, country_code: str) -> str:
+        """_format_location_display's label when no city was found: built from the input."""
         # Final fallback: try to extract from input and capitalize
         if fallback:
             # Try to extract city name from input (before first comma if present)
