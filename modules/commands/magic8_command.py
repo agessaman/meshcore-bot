@@ -46,7 +46,7 @@ class Magic8Command(BaseCommand):
         super().__init__(bot)
         self.magic8_enabled = self.get_config_value('Magic8_Command', 'enabled', fallback=True, value_type='bool')
 
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         """Get help text for the magic8 command.
 
         Returns:

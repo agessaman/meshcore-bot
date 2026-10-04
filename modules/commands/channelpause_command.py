@@ -23,7 +23,7 @@ class ChannelPauseCommand(BaseCommand):
     def __init__(self, bot):
         super().__init__(bot)
 
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         return (
             "Controls whether the bot responds to public channel messages.\n"
             "DMs always work (including this command).\n"

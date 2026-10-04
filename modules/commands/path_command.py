@@ -1097,6 +1097,6 @@ class PathCommand(BaseCommand):
         """Get help text for the path command"""
         return self.translate('commands.path.help')
 
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         """Get help text for the path command (used by help system)"""
         return self.get_help()

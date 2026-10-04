@@ -66,7 +66,7 @@ class DadJokeCommand(BaseCommand):
             self.dadjoke_enabled = self.get_config_value('DadJoke_Command', 'dadjoke_enabled', fallback=True, value_type='bool')
         self.long_jokes = self.get_config_value('DadJoke_Command', 'long_jokes', fallback=False, value_type='bool')
 
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         """Get help text for the dadjoke command.
 
         Returns:

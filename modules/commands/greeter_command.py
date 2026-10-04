@@ -1514,7 +1514,7 @@ class GreeterCommand(BaseCommand):
             # Mark as greeted so we don't greet them later
             self.mark_as_greeted(key[0], key[1])
 
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         """Get help text for the greeter command.
 
         Returns:

@@ -376,7 +376,7 @@ class BaseCommand(ABC):
                 return False
         return True
 
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         """Get help text for this command.
 
         Returns:

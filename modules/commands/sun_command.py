@@ -62,7 +62,7 @@ class SunCommand(BaseCommand):
             error_msg = self.translate('commands.sun.error', error=str(e))
             return await self.send_response(message, error_msg)
 
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         """Get help text for this command.
 
         Returns:

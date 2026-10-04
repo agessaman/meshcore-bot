@@ -103,7 +103,7 @@ class AirplanesCommand(BaseCommand):
         self.max_results = self.get_config_value('Airplanes_Command', 'max_results', fallback=3, value_type='int')
         self.url_timeout = self.get_config_value('Airplanes_Command', 'url_timeout', fallback=10, value_type='int')
 
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         """Get help text for this command.
 
         Returns:

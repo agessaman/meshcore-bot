@@ -366,7 +366,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         """Move blocking provider work off-loop without concurrent Session use."""
         return await asyncio.to_thread(self._run_sync_provider, operation, *args, **kwargs)
 
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         """Get help text, delegating to international command if using Open-Meteo"""
         if self.delegate_command:
             return self.delegate_command.get_help_text()

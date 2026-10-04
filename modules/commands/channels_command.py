@@ -63,7 +63,7 @@ class ChannelsCommand(BaseCommand):
         super().__init__(bot)
         self.channels_enabled = self.get_config_value('Channels_Command', 'enabled', fallback=True, value_type='bool')
 
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         return self.translate('commands.channels.help')
 
     def matches_keyword(self, message: MeshMessage) -> bool:

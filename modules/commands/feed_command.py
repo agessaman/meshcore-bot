@@ -83,7 +83,7 @@ class FeedCommand(BaseCommand):
         else:
             return await self.send_response(message, self.get_help_text())
 
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         """Get help text for feed command"""
         return """Feed Command Usage:
 feed subscribe <rss|api> <url> <channel> [name]

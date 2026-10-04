@@ -82,7 +82,7 @@ class TraceCommand(BaseCommand):
         output_fmt = (self.bot.config.get("Trace_Command", "output_format", fallback="inline") or "inline").strip().lower()
         self.output_format = output_fmt if output_fmt in ("inline", "vertical") else "inline"
 
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         return (
             "trace [path] — run trace along path (return may not be heard). No path = round-trip like tracer. "
             "tracer [path] — round-trip so bot hears return. Path: comma-separated hex nodes "

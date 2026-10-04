@@ -285,7 +285,7 @@ class HelloCommand(BaseCommand):
         """
         return self.translated_or('commands.hello.emoji_responses', self.emoji_responses_fallback, dict)
 
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         """Get help text for the hello command.
 
         Returns:

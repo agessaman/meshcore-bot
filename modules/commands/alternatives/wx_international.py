@@ -141,7 +141,7 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
         """
         return load_open_meteo_model(self.bot.config, self.logger)
 
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         """Get help text for the command.
 
         Returns:

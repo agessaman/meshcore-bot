@@ -37,7 +37,7 @@ class VersionCommand(BaseCommand):
             value_type="bool",
         )
 
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         return self.description
 
     async def execute(self, message: MeshMessage) -> bool:

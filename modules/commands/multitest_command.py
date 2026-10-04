@@ -530,7 +530,7 @@ class MultitestCommand(BaseCommand):
         """True when any condensed layout is enabled (flat or nested)."""
         return self.condense_paths_mode != "off"
 
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         return self.translate('commands.multitest.help', fallback="Listens for 6 seconds and collects all unique paths from incoming messages")
 
     def extract_path_from_rf_data(self, rf_data: dict) -> Optional[str]:

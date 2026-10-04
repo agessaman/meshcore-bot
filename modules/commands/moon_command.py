@@ -166,7 +166,7 @@ class MoonCommand(BaseCommand):
             # Fallback to original format if formatting fails
             return self.translate('commands.moon.fallback', info=moon_info)
 
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         """Get help text for this command.
 
         Returns:

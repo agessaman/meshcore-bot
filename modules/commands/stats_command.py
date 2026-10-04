@@ -342,7 +342,7 @@ class StatsCommand(BaseCommand):
         # If it's already a single node ID or short path, return as-is
         return path
 
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         """Get help text for the stats command.
 
         Returns:

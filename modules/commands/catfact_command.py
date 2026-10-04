@@ -117,7 +117,7 @@ class CatfactCommand(BaseCommand):
         """
         return self.translated_or('commands.catfact.facts', self.cat_facts_fallback)
 
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         """Get help text for the catfact command.
 
         Returns:

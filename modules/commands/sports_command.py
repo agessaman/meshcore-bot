@@ -141,7 +141,7 @@ class SportsCommand(BaseCommand):
 
         return self._cleaned_content_matches(message, _matches)
 
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         return self.translate('commands.sports.help')
 
 

@@ -157,7 +157,7 @@ class PrefixCommand(BaseCommand):
             self.prefix_best_location_radius_km = 50.0
             self.prefix_best_do_not_suggest = []
 
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         """Get help text for the prefix command.
 
         Returns:

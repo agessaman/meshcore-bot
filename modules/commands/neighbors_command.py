@@ -60,7 +60,7 @@ class NeighborsCommand(BaseCommand):
         # where the scheduler's own trigger is also visible.
         self._cycle_task: Optional[asyncio.Task] = None
 
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         """Get help text for the neighbors command.
 
         Returns:

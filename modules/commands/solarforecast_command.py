@@ -106,7 +106,7 @@ class SolarforecastCommand(BaseCommand):
         # Get database manager for geocoding cache
         self.db_manager = bot.db_manager
 
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         return self.translate('commands.solarforecast.usage')
 
     def _translate_day_abbreviation(self, day_abbr: str) -> str:

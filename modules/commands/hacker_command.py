@@ -429,7 +429,7 @@ class HackerCommand(BaseCommand):
         if self.enabled is None:
             self.enabled = self.get_config_value('Hacker_Command', 'hacker_enabled', fallback=False, value_type='bool')
 
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         """Get help text for the hacker command.
 
         Returns:

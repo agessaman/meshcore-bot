@@ -103,7 +103,7 @@ class SatpassCommand(BaseCommand):
             await self.send_response(message, error_msg)
             return False
 
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         """Get help text for this command.
 
         Returns:

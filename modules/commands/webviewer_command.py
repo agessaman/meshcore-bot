@@ -30,7 +30,7 @@ class WebViewerCommand(BaseCommand):
         super().__init__(bot)
         self.webviewer_enabled = self.get_config_value('WebViewer_Command', 'enabled', fallback=True, value_type='bool')
 
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         """Get help text for the webviewer command.
 
         Returns:

@@ -47,7 +47,7 @@ class HelpCommand(BaseCommand):
         super().__init__(bot)
         self.help_enabled = self.get_config_value('Help_Command', 'enabled', fallback=True, value_type='bool')
 
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         """Get help text for the help command.
 
         Returns:

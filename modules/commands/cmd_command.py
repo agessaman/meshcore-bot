@@ -41,7 +41,7 @@ class CmdCommand(BaseCommand):
             'Cmd_Command', 'cmd_reference_url', fallback='', value_type='str'
         ).strip()
 
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         """Get help text for the cmd command.
 
         Returns:

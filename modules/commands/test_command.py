@@ -86,7 +86,7 @@ class TestCommand(BaseCommand):
         except Exception as e:
             self.logger.warning(f"Error reading bot location from config: {e}")
 
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         """Get help text for the command.
 
         Returns:

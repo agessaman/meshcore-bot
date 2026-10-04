@@ -29,7 +29,7 @@ class ReloadCommand(BaseCommand):
         """
         super().__init__(bot)
 
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         """Get help text for the reload command.
 
         Returns:

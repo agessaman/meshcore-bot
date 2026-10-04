@@ -135,7 +135,7 @@ class AqiCommand(BaseCommand):
             'comet': "Comets have thin atmospheres of water vapor and dust. AQI: Variable, but you'd freeze in space anyway. ☄️"
         }
 
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         region = self.default_state or self.default_country
         return f"Usage: aqi <city|neighborhood|city country|lat,lon|help> - Get AQI for city/neighborhood in {region}, intl cities, coordinates, or help"
 
