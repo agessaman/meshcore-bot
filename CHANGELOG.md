@@ -8,6 +8,7 @@ semantic versioning.
 
 ### Added
 
+- `[Weather] openmeteo_fallback` (default `false`, only with `weather_provider = noaa`): `wx` answers a place outside NWS coverage from Open-Meteo, in `gwx`'s format and `wx`'s units, instead of replying with an error. Current conditions, `tomorrow`, `Nd` and `hourly` fall back; `wx <place> alerts` there replies that alerts are not available. Only NWS's no-coverage answer triggers it, not timeouts or server errors, and the point is remembered for 24 hours so later requests skip NWS. It's also in the web viewer's `wx` settings.
 - `[Weather] always_show_location` (default `false`): when `true`, `wx` and `gwx` name the place in every reply a place is found for (`Lake Stevens, WA: …`), including ZIP codes and cities in the bot's own state or country, instead of only when the name adds information. The name takes message length from the forecast, and a ZIP code costs one extra reverse lookup. It's also in the web viewer's `wx` settings.
 - `gwx <place> hourly`: the next hours from Open-Meteo, packed into one reply like `wx`'s NOAA hourly forecast (time, condition, chance of precipitation, temperature, wind), in the configured units and translated. `gwx` listed `hourly` in its help but read it as part of the place name. `wx` with `weather_provider = openmeteo` gets it too.
 - Web viewer admin role when `web_viewer_password` is set: Dashboard, Contacts,
