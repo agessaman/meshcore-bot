@@ -20,11 +20,13 @@ GOLDEN_DIR = Path(__file__).parent / "golden"
 def assert_golden(name: str, data: Any) -> None:
     path = GOLDEN_DIR / f"{name}.json"
     rendered = json.dumps(data, indent=1, sort_keys=True, ensure_ascii=False, default=repr) + "\n"
-    if os.environ.get("UPDATE_GOLDEN") == "1" or not path.exists():
-        if not path.exists() and os.environ.get("CI"):
-            raise AssertionError(f"golden file {path} missing; generate it with UPDATE_GOLDEN=1")
+    if os.environ.get("UPDATE_GOLDEN") == "1":
         path.write_text(rendered, encoding="utf-8")
         return
+    if not path.exists():
+        # Never write one implicitly: a deleted or misnamed golden would silently
+        # re-record whatever the code does now, and the test would pass.
+        raise AssertionError(f"golden file {path} missing; generate it with UPDATE_GOLDEN=1")
     expected = path.read_text(encoding="utf-8")
     if rendered != expected:
         exp = json.loads(expected)
