@@ -9,6 +9,7 @@ import re
 import time  # noqa: F401  importable from this module on dev
 from typing import Any, Callable, Optional
 
+from ..location import latest_contact_position_rows
 from ..models import MeshMessage
 from ..path_inference import (
     PathInferenceConfig,
@@ -859,17 +860,7 @@ class PathCommand(BaseCommand):
                 return None
 
             # Look up sender location from database (any role, not just repeaters)
-            query = '''
-                SELECT latitude, longitude
-                FROM complete_contact_tracking
-                WHERE public_key = ?
-                AND latitude IS NOT NULL AND longitude IS NOT NULL
-                AND latitude != 0 AND longitude != 0
-                ORDER BY COALESCE(last_advert_timestamp, last_heard) DESC
-                LIMIT 1
-            '''
-
-            results = self.bot.db_manager.execute_query(query, (sender_pubkey,))
+            results = latest_contact_position_rows(self.bot, sender_pubkey, zero_rule="either")
 
             if results:
                 row = results[0]

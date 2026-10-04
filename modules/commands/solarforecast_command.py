@@ -12,6 +12,7 @@ from typing import Any, Optional
 
 import requests
 
+from ..location import repeater_by_name_rows
 from ..models import MeshMessage
 from ..security_utils import sanitize_name
 from ..utils import (
@@ -306,33 +307,8 @@ class SolarforecastCommand(BaseCommand):
             # Query complete_contact_tracking table for matching name
             # Use case-insensitive matching and allow partial matches
             # Filter for repeaters and roomservers only
-            query = '''
-                SELECT latitude, longitude, name
-                FROM complete_contact_tracking
-                WHERE role IN ('repeater', 'roomserver')
-                AND latitude IS NOT NULL
-                AND longitude IS NOT NULL
-                AND latitude != 0
-                AND longitude != 0
-                AND LOWER(name) LIKE LOWER(?)
-                ORDER BY
-                    CASE
-                        WHEN LOWER(name) = LOWER(?) THEN 1
-                        WHEN LOWER(name) LIKE LOWER(?) THEN 2
-                        ELSE 3
-                    END,
-                    COALESCE(last_advert_timestamp, last_heard) DESC
-                LIMIT 1
-            '''
-
-            # Try exact match first, then partial match
-            exact_pattern = repeater_name.strip()
-            partial_pattern = f"%{exact_pattern}%"
-
-            results = self.bot.db_manager.execute_query(
-                query,
-                (partial_pattern, exact_pattern, f"{exact_pattern}%")
-            )
+            # Exact match first, then prefix, then substring (see repeater_by_name_rows)
+            results = repeater_by_name_rows(self.bot, repeater_name, zero_rule="either")
 
             self.logger.debug(f"Repeater lookup query returned {len(results) if results else 0} results for '{repeater_name}'")
 

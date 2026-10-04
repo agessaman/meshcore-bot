@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 
 import requests
 
+from ..location import get_bot_lat_lon, latest_contact_position_rows
 from ..models import MeshMessage
 from ..security_utils import sanitize_name
 from ..utils import calculate_distance
@@ -181,17 +182,7 @@ class AirplanesCommand(BaseCommand):
             if not sender_pubkey:
                 return None
 
-            query = '''
-                SELECT latitude, longitude
-                FROM complete_contact_tracking
-                WHERE public_key = ?
-                AND latitude IS NOT NULL AND longitude IS NOT NULL
-                AND latitude != 0 AND longitude != 0
-                ORDER BY COALESCE(last_advert_timestamp, last_heard) DESC
-                LIMIT 1
-            '''
-
-            results = self.bot.db_manager.execute_query(query, (sender_pubkey,))
+            results = latest_contact_position_rows(self.bot, sender_pubkey, zero_rule="either")
 
             if results:
                 row = results[0]
@@ -207,18 +198,7 @@ class AirplanesCommand(BaseCommand):
         Returns:
             Optional[Tuple[float, float]]: Tuple of (latitude, longitude) or None.
         """
-        try:
-            lat = self.bot.config.getfloat('Bot', 'bot_latitude', fallback=None)
-            lon = self.bot.config.getfloat('Bot', 'bot_longitude', fallback=None)
-
-            if lat is not None and lon is not None:
-                # Validate coordinates
-                if -90 <= lat <= 90 and -180 <= lon <= 180:
-                    return (lat, lon)
-            return None
-        except Exception as e:
-            self.logger.debug(f"Error getting bot location: {e}")
-            return None
+        return get_bot_lat_lon(self.bot, self.logger)
 
     def _parse_coordinates(self, args: str) -> Optional[tuple[float, float]]:
         """Parse latitude and longitude from command arguments.
