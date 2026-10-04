@@ -5,7 +5,7 @@ Polls USGS Earthquake API and notifies a channel when earthquakes occur in a con
 """
 
 import asyncio
-import contextlib
+import contextlib  # noqa: F401  importable from this module on dev
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
@@ -152,11 +152,8 @@ class EarthquakeService(BaseServicePlugin):
     async def stop(self) -> None:
         self._running = False
         self.logger.info("Stopping earthquake service")
-        if self._poll_task:
-            self._poll_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._poll_task
-            self._poll_task = None
+        await self._cancel_tasks(self._poll_task)
+        self._poll_task = None
         self._session.close()
         self.logger.info("Earthquake service stopped")
 
@@ -178,15 +175,9 @@ class EarthquakeService(BaseServicePlugin):
             self.poll_interval_seconds,
             self.time_window_minutes,
         )
-        while self._running:
-            try:
-                await self._check_earthquakes()
-                await asyncio.sleep(self.poll_interval_seconds)
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                self.logger.error("Error in earthquake poll loop: %s", e)
-                await asyncio.sleep(60)
+        await self.run_periodic(
+            self._check_earthquakes, lambda: self.poll_interval_seconds, "Error in earthquake poll loop"
+        )
 
     async def _check_earthquakes(self) -> None:
         end_time = datetime.now(timezone.utc)
@@ -203,7 +194,7 @@ class EarthquakeService(BaseServicePlugin):
             "orderby": "magnitude",
         }
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         try:
             response = await loop.run_in_executor(
                 None,

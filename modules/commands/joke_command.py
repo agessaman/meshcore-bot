@@ -9,6 +9,7 @@ from typing import Any, Optional
 
 import aiohttp
 
+from ..joke_text import fetch_fitting_joke, send_joke, split_joke_text
 from ..models import MeshMessage
 from .base_command import BaseCommand
 
@@ -50,6 +51,9 @@ class JokeCommand(BaseCommand):
     JOKE_API_BASE = "https://v2.jokeapi.dev/joke"
     BLACKLIST_FLAGS = "nsfw,religious,political,racist,sexist,explicit"
     TIMEOUT = 10  # seconds
+
+    # Where a long joke may be split into two messages, in order of preference
+    SPLIT_POINTS = ('.\n\n', '.\n', '. ', '? ', '! ', ', ')
 
     # Web-viewer settings schema (see modules/settings_schema.py)
     settings_schema = [
@@ -269,31 +273,10 @@ class JokeCommand(BaseCommand):
 
     async def get_joke_with_length_handling(self, category: str = None) -> Optional[dict[str, Any]]:
         """Get a joke from API with length handling based on configuration"""
-        max_attempts = 5  # Prevent infinite loops
-
-        for _attempt in range(max_attempts):
-            joke_data = await self.get_joke_from_api(category)
-
-            if joke_data is None:
-                return None
-
-            # Check joke length
-            joke_text = self.format_joke(joke_data)
-
-            if len(joke_text) <= 130:
-                # Joke is short enough, return it
-                return joke_data
-            elif self.long_jokes:
-                # Long jokes are enabled, return it for splitting
-                return joke_data
-            else:
-                # Long jokes are disabled, try again
-                self.logger.debug(f"Joke too long ({len(joke_text)} chars), fetching another...")
-                continue
-
-        # If we've tried max_attempts times and still getting long jokes, return the last one
-        self.logger.warning(f"Could not get short joke after {max_attempts} attempts")
-        return joke_data
+        return await fetch_fitting_joke(
+            lambda: self.get_joke_from_api(category), self.format_joke,
+            allow_long=self.long_jokes, logger=self.logger, label="joke",
+        )
 
     async def send_joke_with_length_handling(self, message: MeshMessage, joke_data: dict[str, Any]) -> None:
         """Send joke with length handling - split if necessary.
@@ -302,24 +285,8 @@ class JokeCommand(BaseCommand):
             message: The original message to respond to.
             joke_data: The joke data from the API.
         """
-        joke_text = self.format_joke(joke_data)
-
-        if len(joke_text) <= 130:
-            # Joke is short enough, send as single message
-            await self.send_response(message, joke_text)
-        else:
-            # Joke is too long, split it
-            parts = self.split_joke(joke_text)
-
-            if len(parts) == 2 and len(parts[0]) <= 130 and len(parts[1]) <= 130:
-                # Can be split into two messages (per-user rate limit applies only to first)
-                await self.send_response(message, parts[0])
-                # Use conservative delay to avoid rate limiting (same as weather command)
-                await asyncio.sleep(2.0)
-                await self.send_response(message, parts[1], skip_user_rate_limit=True)
-            else:
-                # Cannot be split properly, send as single message (user will see truncation)
-                await self.send_response(message, joke_text)
+        # A conservative pause between the two parts, as the weather command uses.
+        await send_joke(self.send_response, message, self.format_joke(joke_data), self.split_joke, pause_seconds=2.0)
 
     def split_joke(self, joke_text: str) -> list[str]:
         """Split a long joke at a logical point.
@@ -330,38 +297,7 @@ class JokeCommand(BaseCommand):
         Returns:
             List[str]: A list of joke parts.
         """
-        # Remove emoji for splitting
-        clean_joke = joke_text[2:] if joke_text.startswith('🎭 ') else joke_text
-
-        # Try to split at common logical points
-        split_points = [
-            '.\n\n',  # Two-part jokes with double newline
-            '.\n',    # Single newline
-            '. ',     # Period followed by space
-            '? ',     # Question mark followed by space
-            '! ',     # Exclamation mark followed by space
-            ', ',     # Comma followed by space
-        ]
-
-        for split_point in split_points:
-            if split_point in clean_joke:
-                parts = clean_joke.split(split_point, 1)
-                if len(parts) == 2:
-                    # Add emoji back to both parts
-                    return [f"🎭 {parts[0]}{split_point}", f"🎭 {parts[1]}"]
-
-        # If no good split point found, split at middle
-        mid_point = len(clean_joke) // 2
-        # Find nearest space to avoid splitting words
-        for i in range(mid_point, len(clean_joke)):
-            if clean_joke[i] == ' ':
-                mid_point = i
-                break
-
-        part1 = clean_joke[:mid_point]
-        part2 = clean_joke[mid_point + 1:]
-
-        return [f"🎭 {part1}", f"🎭 {part2}"]
+        return split_joke_text(joke_text, "🎭", self.SPLIT_POINTS)
 
     def format_joke(self, joke_data: dict[str, Any]) -> str:
         """Format the joke data into a readable string.

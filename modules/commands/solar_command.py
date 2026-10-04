@@ -19,6 +19,8 @@ class SolarCommand(BaseCommand):
     # Read-only informational output; safe for scheduled {cmd:...} rendering.
     render_safe = True
     name = "solar"
+    honors_skip_channel_check = False
+    enabled_attr = "solar_enabled"
     keywords = ['solar']
     description = "Get current solar conditions and HF band info"
     category = "solar"
@@ -37,19 +39,6 @@ class SolarCommand(BaseCommand):
         """
         super().__init__(bot)
         self.solar_enabled = self.get_config_value('Solar_Command', 'enabled', fallback=True, value_type='bool')
-
-    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
-        """Check if this command can be executed with the given message.
-
-        Args:
-            message: The message triggering the command.
-
-        Returns:
-            bool: True if command is enabled and checks pass, False otherwise.
-        """
-        if not self.solar_enabled:
-            return False
-        return super().can_execute(message)
 
     async def execute(self, message: MeshMessage) -> bool:
         """Execute the solar command.
@@ -78,7 +67,7 @@ class SolarCommand(BaseCommand):
             await self.send_response(message, error_msg)
             return False
 
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         """Get help text for this command.
 
         Returns:

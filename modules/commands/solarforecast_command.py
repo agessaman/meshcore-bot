@@ -12,6 +12,7 @@ from typing import Any, Optional
 
 import requests
 
+from ..location import repeater_by_name_rows
 from ..models import MeshMessage
 from ..security_utils import sanitize_name
 from ..utils import (
@@ -19,7 +20,7 @@ from ..utils import (
     geocode_city,
     geocode_zipcode,
     get_config_timezone,
-    get_nominatim_geocoder,  # noqa: F401
+    get_nominatim_geocoder,
     rate_limited_nominatim_reverse,
 )
 from .base_command import BaseCommand
@@ -47,6 +48,8 @@ class SolarforecastCommand(BaseCommand):
     # Read-only informational output; safe for scheduled {cmd:...} rendering.
     render_safe = True
     name = "solarforecast"
+    honors_skip_channel_check = False
+    enabled_attr = "solarforecast_enabled"
     keywords = ['solarforecast', 'sf']
     description = "Get solar panel production forecast (usage: sf <location|repeater_name|coordinates|zipcode> [panel_size] [azimuth, 0=south] [angle])"
     category = "solar"
@@ -103,20 +106,7 @@ class SolarforecastCommand(BaseCommand):
         # Get database manager for geocoding cache
         self.db_manager = bot.db_manager
 
-    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
-        """Check if this command can be executed with the given message.
-
-        Args:
-            message: The message triggering the command.
-
-        Returns:
-            bool: True if command is enabled and checks pass, False otherwise.
-        """
-        if not self.solarforecast_enabled:
-            return False
-        return super().can_execute(message)
-
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         return self.translate('commands.solarforecast.usage')
 
     def _translate_day_abbreviation(self, day_abbr: str) -> str:
@@ -317,33 +307,8 @@ class SolarforecastCommand(BaseCommand):
             # Query complete_contact_tracking table for matching name
             # Use case-insensitive matching and allow partial matches
             # Filter for repeaters and roomservers only
-            query = '''
-                SELECT latitude, longitude, name
-                FROM complete_contact_tracking
-                WHERE role IN ('repeater', 'roomserver')
-                AND latitude IS NOT NULL
-                AND longitude IS NOT NULL
-                AND latitude != 0
-                AND longitude != 0
-                AND LOWER(name) LIKE LOWER(?)
-                ORDER BY
-                    CASE
-                        WHEN LOWER(name) = LOWER(?) THEN 1
-                        WHEN LOWER(name) LIKE LOWER(?) THEN 2
-                        ELSE 3
-                    END,
-                    COALESCE(last_advert_timestamp, last_heard) DESC
-                LIMIT 1
-            '''
-
-            # Try exact match first, then partial match
-            exact_pattern = repeater_name.strip()
-            partial_pattern = f"%{exact_pattern}%"
-
-            results = self.bot.db_manager.execute_query(
-                query,
-                (partial_pattern, exact_pattern, f"{exact_pattern}%")
-            )
+            # Exact match first, then prefix, then substring (see repeater_by_name_rows)
+            results = repeater_by_name_rows(self.bot, repeater_name, zero_rule="either")
 
             self.logger.debug(f"Repeater lookup query returned {len(results) if results else 0} results for '{repeater_name}'")
 
@@ -435,7 +400,7 @@ class SolarforecastCommand(BaseCommand):
 
         try:
             import asyncio
-            asyncio.get_event_loop()
+            asyncio.get_running_loop()
 
             # For coordinates, always do reverse geocoding
             if location_type == "coordinates":
@@ -627,7 +592,7 @@ class SolarforecastCommand(BaseCommand):
 
         try:
             # Run HTTP request in executor to avoid blocking
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             response = await loop.run_in_executor(
                 None,
                 lambda: requests.get(url, timeout=self.url_timeout)

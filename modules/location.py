@@ -628,6 +628,57 @@ def get_config_default_lat_lon(bot: Any, section: str) -> Optional[tuple[float, 
     return None
 
 
+ZeroRule = Literal["both", "either"]
+
+# How each caller drops a (0, 0)-style "no position" fix: "both" only when both
+# coordinates are zero, "either" when either one is (which also drops a real
+# position on the equator or the prime meridian).
+_ZERO_FILTERS: dict[str, str] = {
+    "both": "AND NOT (latitude = 0 AND longitude = 0)",
+    "either": "AND latitude != 0 AND longitude != 0",
+}
+
+
+def latest_contact_position_rows(bot: Any, public_key: str, *, zero_rule: ZeroRule = "both") -> Any:
+    """``execute_query`` rows (at most one) with the contact's most recent latitude/longitude."""
+    query = f"""
+        SELECT latitude, longitude
+        FROM complete_contact_tracking
+        WHERE public_key = ?
+        AND latitude IS NOT NULL AND longitude IS NOT NULL
+        {_ZERO_FILTERS[zero_rule]}
+        ORDER BY COALESCE(last_advert_timestamp, last_heard) DESC
+        LIMIT 1
+    """
+    return bot.db_manager.execute_query(query, (public_key,))
+
+
+def repeater_by_name_rows(bot: Any, repeater_name: str, *, zero_rule: ZeroRule = "both") -> Any:
+    """``execute_query`` rows (at most one) for the repeater or room server best matching a name.
+
+    Case-insensitive: an exact name first, then a prefix, then any substring;
+    ties go to the most recently heard.
+    """
+    query = f"""
+        SELECT latitude, longitude, name
+        FROM complete_contact_tracking
+        WHERE role IN ('repeater', 'roomserver')
+        AND latitude IS NOT NULL AND longitude IS NOT NULL
+        {_ZERO_FILTERS[zero_rule]}
+        AND LOWER(name) LIKE LOWER(?)
+        ORDER BY
+            CASE
+                WHEN LOWER(name) = LOWER(?) THEN 1
+                WHEN LOWER(name) LIKE LOWER(?) THEN 2
+                ELSE 3
+            END,
+            COALESCE(last_advert_timestamp, last_heard) DESC
+        LIMIT 1
+    """
+    exact = repeater_name.strip()
+    return bot.db_manager.execute_query(query, (f"%{exact}%", exact, f"{exact}%"))
+
+
 def get_companion_lat_lon(
     bot: Any, message: Any, logger: Any = None, error_level: str = "debug", trace: bool = False
 ) -> Optional[tuple[float, float]]:
@@ -642,16 +693,7 @@ def get_companion_lat_lon(
             if trace and logger is not None:
                 logger.debug("No sender_pubkey in message for companion location lookup")
             return None
-        query = """
-            SELECT latitude, longitude
-            FROM complete_contact_tracking
-            WHERE public_key = ?
-            AND latitude IS NOT NULL AND longitude IS NOT NULL
-            AND NOT (latitude = 0 AND longitude = 0)
-            ORDER BY COALESCE(last_advert_timestamp, last_heard) DESC
-            LIMIT 1
-        """
-        results = bot.db_manager.execute_query(query, (sender_pubkey,))
+        results = latest_contact_position_rows(bot, sender_pubkey)
         if results:
             row = results[0]
             lat, lon = float(row["latitude"]), float(row["longitude"])
@@ -672,26 +714,8 @@ def lookup_repeater_lat_lon(
     try:
         if not hasattr(bot, "db_manager"):
             return None
-        query = """
-            SELECT latitude, longitude, name
-            FROM complete_contact_tracking
-            WHERE role IN ('repeater', 'roomserver')
-            AND latitude IS NOT NULL AND longitude IS NOT NULL
-            AND NOT (latitude = 0 AND longitude = 0)
-            AND LOWER(name) LIKE LOWER(?)
-            ORDER BY
-                CASE
-                    WHEN LOWER(name) = LOWER(?) THEN 1
-                    WHEN LOWER(name) LIKE LOWER(?) THEN 2
-                    ELSE 3
-                END,
-                COALESCE(last_advert_timestamp, last_heard) DESC
-            LIMIT 1
-        """
         exact = repeater_name.strip()
-        results = bot.db_manager.execute_query(
-            query, (f"%{exact}%", exact, f"{exact}%")
-        )
+        results = repeater_by_name_rows(bot, repeater_name)
         if results:
             row = results[0]
             lat, lon = row.get("latitude"), row.get("longitude")

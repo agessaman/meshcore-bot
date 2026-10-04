@@ -28,7 +28,13 @@ from ...utils import (  # noqa: F401  format_temperature_high_low and get_nomina
     normalize_us_state,
     rate_limited_nominatim_reverse_sync,
 )
-from ...weather_common import _ARROWS_8, _COMPASS_16, WeatherCommandMixin, load_open_meteo_model
+from ...weather_common import (
+    _ARROWS_8,
+    _COMPASS_16,
+    WeatherCommandMixin,
+    load_open_meteo_model,
+    load_open_meteo_units,
+)
 from ..base_command import BaseCommand
 
 # Kept for code that checked them; these imports used to be optional.
@@ -100,21 +106,10 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
         self.default_country = self.bot.config.get('Weather', 'default_country', fallback='US')
         self.always_show_location = self.bot.config.getboolean('Weather', 'always_show_location', fallback=False)
 
-        # Get unit preferences from config
-        self.temperature_unit = self.bot.config.get('Weather', 'temperature_unit', fallback='fahrenheit').lower()
-        self.wind_speed_unit = self.bot.config.get('Weather', 'wind_speed_unit', fallback='mph').lower()
-        self.precipitation_unit = self.bot.config.get('Weather', 'precipitation_unit', fallback='inch').lower()
-
-        # Validate units
-        if self.temperature_unit not in ['fahrenheit', 'celsius']:
-            self.logger.warning(f"Invalid temperature_unit '{self.temperature_unit}', using 'fahrenheit'")
-            self.temperature_unit = 'fahrenheit'
-        if self.wind_speed_unit not in ['mph', 'kmh', 'ms', 'kn']:
-            self.logger.warning(f"Invalid wind_speed_unit '{self.wind_speed_unit}', using 'mph'")
-            self.wind_speed_unit = 'mph'
-        if self.precipitation_unit not in ['inch', 'mm']:
-            self.logger.warning(f"Invalid precipitation_unit '{self.precipitation_unit}', using 'inch'")
-            self.precipitation_unit = 'inch'
+        # Get unit preferences from config (validated)
+        self.temperature_unit, self.wind_speed_unit, self.precipitation_unit = load_open_meteo_units(
+            self.bot.config, self.logger
+        )
 
         # Initialize geocoder (will use rate-limited helpers for actual calls)
         self.geolocator = get_nominatim_geocoder()
@@ -141,7 +136,7 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
         """
         return load_open_meteo_model(self.bot.config, self.logger)
 
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         """Get help text for the command.
 
         Returns:
@@ -211,6 +206,16 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
                 return self.bot.config.get(section, default_key)
 
         return None
+
+    async def _fetch_wxsim(
+        self, source: str, forecast_type: str, num_days: int, message: MeshMessage, location: Optional[str]
+    ) -> str:
+        # Blocking HTTP fetch of the WXSIM plaintext file.
+        if location is None:
+            return await asyncio.to_thread(self._get_wxsim_weather, source, forecast_type, num_days, message)
+        return await asyncio.to_thread(
+            self._get_wxsim_weather, source, forecast_type, num_days, message, location
+        )
 
     def _get_wxsim_weather(self, source_url: str, forecast_type: str = "default",
                                 num_days: int = 7, message: MeshMessage = None,
@@ -365,75 +370,21 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
         if len(parts) < 2:
             mqtt_topic = self._get_custom_mqtt_weather_topic(None)
             if mqtt_topic:
-                try:
-                    self.record_execution(message.sender_id)
-                    weather_data = self._mqtt_weather_line(mqtt_topic, option_type, None)
-                    return bool(await self.send_response(message, weather_data))
-                except Exception as e:
-                    self.logger.error(f"Error reading MQTT weather: {e}")
-                    await self.send_response(message, self.translate("commands.gwx.error", error=str(e)))
-                    return True
+                return await self._reply_from_mqtt(message, mqtt_topic, option_type, None, split_multiday=False)
 
             wxsim_source = self._get_custom_wxsim_source(None)  # Check for default
             if wxsim_source:
-                # Use custom WXSIM default source
-                try:
-                    self.record_execution(message.sender_id)
-                    # Blocking HTTP fetch of the WXSIM plaintext file.
-                    weather_data = await asyncio.to_thread(
-                        self._get_wxsim_weather, wxsim_source, option_type, option_days, message
-                    )
-                    if option_type == "multiday":
-                        return await self._send_multiday_forecast(message, weather_data)
-                    return bool(await self.send_response(message, weather_data))
-                except Exception as e:
-                    self.logger.error(f"Error fetching WXSIM weather: {e}")
-                    await self.send_response(message, self.translate('commands.gwx.error', error=str(e)))
-                    return True
+                return await self._reply_from_wxsim(message, wxsim_source, option_type, option_days)
 
-            # No custom source, try companion location
-            companion_location = self._get_companion_location(message)
-            if companion_location:
-                # Forecast the sender's own point. Re-geocoding a reverse-geocoded
-                # place name could move it to that town's center; the reply's
-                # label comes from one reverse lookup in geocode_location.
-                location_str = self._coordinates_query(*companion_location)
-                parts = [parts[0], location_str]
-                self.logger.info(f"Using companion coordinates: {location_str}")
-            else:
-                # No companion location: use default city if configured, then bot location fallback
-                if self.default_city:
-                    location_parts = [self.default_city]
-                    if self.default_state:
-                        location_parts.append(self.default_state)
-                    if self.default_country:
-                        location_parts.append(self.default_country)
-                    location_str = ", ".join(location_parts)
-                    parts = [parts[0], location_str]
-                    self.logger.info(f"Using default city (no args): {location_str}")
-                else:
-                    # No default city: optionally use bot's configured coordinates
-                    use_bot = self.get_config_value(
-                        'Wx_Command',
-                        'use_bot_location_when_no_location',
-                        fallback=False,
-                        value_type='bool',
-                    )
-                    bot_loc = self._get_bot_location() if use_bot else None
-                    if bot_loc:
-                        location_str = self._coordinates_query(*bot_loc)
-                        parts = [parts[0], location_str]
-                        self.logger.info(f"Using bot coordinates (no args): {location_str}")
-                    else:
-                        if use_bot:
-                            self.logger.debug(
-                                "use_bot_location_when_no_location enabled but bot_latitude/bot_longitude "
-                                "not set; showing usage"
-                            )
-                        else:
-                            self.logger.debug("No companion/default city location found, showing usage")
-                        await self.send_response(message, self.translate('commands.gwx.usage'))
-                        return True
+            # No custom source: the sender's position, default city, then the bot's position.
+            # Positions are forecast as coordinates: re-geocoding a reverse-geocoded
+            # place name could move it to that town's center; the reply's label
+            # comes from one reverse lookup in geocode_location.
+            location_str, _ = await self._no_location_fallback(message)
+            if location_str is None:
+                await self.send_response(message, self.translate('commands.gwx.usage'))
+                return True
+            parts = [parts[0], location_str]
 
         if option_word:
             parts.append(option_word)
@@ -458,35 +409,12 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
         mqtt_topic = self._get_custom_mqtt_weather_topic(location)
         if mqtt_topic:
             self.logger.info(f"Using custom MQTT weather topic for location '{location}': {mqtt_topic}")
-            try:
-                self.record_execution(message.sender_id)
-                weather_data = self._mqtt_weather_line(mqtt_topic, forecast_type, location)
-                if forecast_type == "multiday":
-                    return await self._send_multiday_forecast(message, weather_data)
-                return bool(await self.send_response(message, weather_data))
-            except Exception as e:
-                self.logger.error(f"Error reading MQTT weather: {e}")
-                await self.send_response(message, self.translate("commands.gwx.error", error=str(e)))
-                return True
+            return await self._reply_from_mqtt(message, mqtt_topic, forecast_type, location)
 
         # Check for custom WXSIM source first (before normal geocoding)
         wxsim_source = self._get_custom_wxsim_source(location)
         if wxsim_source:
-            # Use custom WXSIM source
-            try:
-                self.record_execution(message.sender_id)
-                # Blocking HTTP fetch of the WXSIM plaintext file.
-                weather_data = await asyncio.to_thread(
-                    self._get_wxsim_weather, wxsim_source, forecast_type, num_days,
-                    message, location,
-                )
-                if forecast_type == "multiday":
-                    return await self._send_multiday_forecast(message, weather_data)
-                return bool(await self.send_response(message, weather_data))
-            except Exception as e:
-                self.logger.error(f"Error fetching WXSIM weather: {e}")
-                await self.send_response(message, self.translate('commands.gwx.error', error=str(e)))
-                return True
+            return await self._reply_from_wxsim(message, wxsim_source, forecast_type, num_days, location)
 
         if forecast_type == "alerts":
             await self.send_response(message, self.translate('commands.gwx.source_option_not_available'))
@@ -499,25 +427,7 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
             # Get weather data for the location
             weather_data = await self.get_weather_for_location(location, forecast_type, num_days, message)
 
-            # Check if we need to send multiple messages (for alerts)
-            if isinstance(weather_data, tuple) and weather_data[0] == "multi_message":
-                # Send weather data first; if it was refused (rate limit, send failure),
-                # do not send its second part on its own.
-                if not await self.send_response(message, weather_data[1]):
-                    return False
-
-                # Wait for bot TX rate limiter
-                rate_limit = self.bot.config.getfloat('Bot', 'bot_tx_rate_limit_seconds', fallback=1.0)
-                sleep_time = max(rate_limit + 1.0, 2.0)
-                await self._pace_reply(message, sleep_time)
-
-                # Send alerts
-                # Second part of the same reply: the reply limiter already let the first through.
-                return bool(await self.send_response(message, weather_data[2], skip_user_rate_limit=True))
-            if forecast_type == "multiday":
-                # Use message splitting for multi-day forecasts
-                return await self._send_multiday_forecast(message, weather_data)
-            return bool(await self.send_response(message, weather_data))
+            return await self._send_weather_reply(message, weather_data, forecast_type)
 
         except Exception as e:
             self.logger.error(f"Error in global weather command: {e}")
@@ -639,81 +549,37 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
             # Check if location is coordinates (decimal numbers separated by comma, with optional spaces)
             # Handle formats like: "47.6,-122.3", "47.6, -122.3", "47.980525, -122.150649", " -47.6 , 122.3 "
             if self._COORDINATES_RE.match(location):
-                # Parse lat,lon coordinates
-                try:
-                    lat_str, lon_str = location.split(',')
-                    lat = float(lat_str.strip())
-                    lon = float(lon_str.strip())
-
-                    # Validate coordinate ranges
-                    if not (-90 <= lat <= 90):
-                        self.logger.warning(f"Invalid latitude: {lat}. Must be between -90 and 90.")
-                        return None, None, None, None
-                    if not (-180 <= lon <= 180):
-                        self.logger.warning(f"Invalid longitude: {lon}. Must be between -180 and 180.")
-                        return None, None, None, None
-
-                    # Get address info via reverse geocoding
-                    address_info = None
-                    geocode_result = None
-                    try:
-                        reverse_location = rate_limited_nominatim_reverse_sync(
-                            self.bot, f"{lat}, {lon}", timeout=10
-                        )
-                        if reverse_location:
-                            geocode_result = reverse_location
-                            address_info = reverse_location.raw.get('address', {})
-                    except Exception as e:
-                        self.logger.debug(f"Reverse geocoding failed for coordinates: {e}")
-                        address_info = {}
-
-                    return lat, lon, address_info or {}, geocode_result
-                except ValueError:
-                    self.logger.warning(f"Invalid coordinates format: {location}")
-                    return None, None, None, None
+                return self._geocode_coordinates(location)
 
             # US ZIP code (5 digits): use geocode_zipcode_sync so the query is "zip, US"
             # and we don't get non‑US matches (e.g. "98104" -> Lithuania) from Nominatim.
             if self._ZIP_RE.match(location.strip()):
-                lat, lon = geocode_zipcode_sync(
-                    self.bot, location,
-                    default_country=self.default_country,
-                    timeout=10
-                )
-                if lat is not None and lon is not None:
-                    # A ZIP code is not named in the reply (as in wx), so no reverse lookup,
-                    # unless [Weather] always_show_location asks for every place to be named.
-                    if not self.always_show_location:
-                        return lat, lon, {}, None
-                    try:
-                        reverse_location = rate_limited_nominatim_reverse_sync(
-                            self.bot, f"{lat}, {lon}", timeout=10
-                        )
-                    except Exception as e:
-                        self.logger.debug(f"Reverse geocoding failed for ZIP code {location}: {e}")
-                        reverse_location = None
-                    if reverse_location:
-                        return lat, lon, reverse_location.raw.get('address', {}) or {}, reverse_location
-                    return lat, lon, {}, None
-                # Invalid or unknown US ZIP; do not fall through to city (avoids foreign matches)
+                return self._geocode_zipcode(location)
+
+            return self._geocode_city(location)
+
+        except Exception as e:
+            self.logger.error(f"Error geocoding location {location}: {e}")
+            return None, None, None, None
+
+    def _geocode_coordinates(self, location: str) -> tuple:
+        """geocode_location for a "lat,lon" string: validate, then reverse geocode for a label."""
+        # Parse lat,lon coordinates
+        try:
+            lat_str, lon_str = location.split(',')
+            lat = float(lat_str.strip())
+            lon = float(lon_str.strip())
+
+            # Validate coordinate ranges
+            if not (-90 <= lat <= 90):
+                self.logger.warning(f"Invalid latitude: {lat}. Must be between -90 and 90.")
+                return None, None, None, None
+            if not (-180 <= lon <= 180):
+                self.logger.warning(f"Invalid longitude: {lon}. Must be between -180 and 180.")
                 return None, None, None, None
 
-            # Use the shared geocode_city_sync function which properly handles
-            # default state and country for city disambiguation
-            # This ensures "olympia" matches Olympia, WA (not Greece) when default_state=WA
-            lat, lon, address_info = geocode_city_sync(
-                self.bot, location,
-                default_state=self.default_state,
-                default_country=self.default_country,
-                include_address_info=True,
-                timeout=10
-            )
-
-            if lat is None or lon is None:
-                return None, None, None, None
-
-            # Get full geocode result for display name formatting
-            # Try reverse geocoding to get the full result object
+            # Get address info via reverse geocoding
+            address_info = None
             geocode_result = None
             try:
                 reverse_location = rate_limited_nominatim_reverse_sync(
@@ -721,15 +587,71 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
                 )
                 if reverse_location:
                     geocode_result = reverse_location
-            except Exception:
-                # If reverse geocoding fails, we still have lat/lon and address_info
-                pass
+                    address_info = reverse_location.raw.get('address', {})
+            except Exception as e:
+                self.logger.debug(f"Reverse geocoding failed for coordinates: {e}")
+                address_info = {}
 
             return lat, lon, address_info or {}, geocode_result
-
-        except Exception as e:
-            self.logger.error(f"Error geocoding location {location}: {e}")
+        except ValueError:
+            self.logger.warning(f"Invalid coordinates format: {location}")
             return None, None, None, None
+
+    def _geocode_zipcode(self, location: str) -> tuple:
+        """geocode_location for a US ZIP code (never falls through to a city lookup)."""
+        lat, lon = geocode_zipcode_sync(
+            self.bot, location,
+            default_country=self.default_country,
+            timeout=10
+        )
+        if lat is not None and lon is not None:
+            # A ZIP code is not named in the reply (as in wx), so no reverse lookup,
+            # unless [Weather] always_show_location asks for every place to be named.
+            if not self.always_show_location:
+                return lat, lon, {}, None
+            try:
+                reverse_location = rate_limited_nominatim_reverse_sync(
+                    self.bot, f"{lat}, {lon}", timeout=10
+                )
+            except Exception as e:
+                self.logger.debug(f"Reverse geocoding failed for ZIP code {location}: {e}")
+                reverse_location = None
+            if reverse_location:
+                return lat, lon, reverse_location.raw.get('address', {}) or {}, reverse_location
+            return lat, lon, {}, None
+        # Invalid or unknown US ZIP; do not fall through to city (avoids foreign matches)
+        return None, None, None, None
+
+    def _geocode_city(self, location: str) -> tuple:
+        """geocode_location for a place name, preferring the default state and country."""
+        # Use the shared geocode_city_sync function which properly handles
+        # default state and country for city disambiguation
+        # This ensures "olympia" matches Olympia, WA (not Greece) when default_state=WA
+        lat, lon, address_info = geocode_city_sync(
+            self.bot, location,
+            default_state=self.default_state,
+            default_country=self.default_country,
+            include_address_info=True,
+            timeout=10
+        )
+
+        if lat is None or lon is None:
+            return None, None, None, None
+
+        # Get full geocode result for display name formatting
+        # Try reverse geocoding to get the full result object
+        geocode_result = None
+        try:
+            reverse_location = rate_limited_nominatim_reverse_sync(
+                self.bot, f"{lat}, {lon}", timeout=10
+            )
+            if reverse_location:
+                geocode_result = reverse_location
+        except Exception:
+            # If reverse geocoding fails, we still have lat/lon and address_info
+            pass
+
+        return lat, lon, address_info or {}, geocode_result
 
     def _location_label_adds_information(self, location: str, address_info: Optional[dict]) -> bool:
         """Whether the reply should name the place, as wx decides: only when it adds information.
@@ -783,6 +705,37 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
         if address_info:
             country_code = address_info.get('country_code', '').upper()
 
+        city = self._display_city(address_info, geocode_result)
+
+        # For US locations, include state abbreviation
+        if country_code == 'US':
+            state = None
+            if address_info:
+                state = address_info.get('state')
+            if city and state:
+                state_abbrev = self._get_state_abbreviation(state)
+                return f"{city}, {state_abbrev}"
+            elif city:
+                return f"{city}, US"
+
+        # For international locations, always use country code if available
+        if city:
+            if country_code:
+                return f"{city}, {country_code}"
+            elif address_info and address_info.get('country'):
+                # Fallback to country name if no code available
+                country = address_info.get('country')
+                # Shorten very long country names
+                if len(country) > 15:
+                    return f"{city}, {country[:15]}"
+                return f"{city}, {country}"
+            else:
+                return city
+
+        return self._fallback_location_label(fallback, country_code)
+
+    def _display_city(self, address_info: dict, geocode_result: Any) -> Optional[str]:
+        """The city part of _format_location_display: address fields, then display_name."""
         # Try to get city name from address_info (this is more reliable than display_name)
         city = None
         if address_info:
@@ -822,31 +775,10 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
                             first_part = first_part.replace(suffix, '').strip()
                     city = first_part
 
-        # For US locations, include state abbreviation
-        if country_code == 'US':
-            state = None
-            if address_info:
-                state = address_info.get('state')
-            if city and state:
-                state_abbrev = self._get_state_abbreviation(state)
-                return f"{city}, {state_abbrev}"
-            elif city:
-                return f"{city}, US"
+        return city
 
-        # For international locations, always use country code if available
-        if city:
-            if country_code:
-                return f"{city}, {country_code}"
-            elif address_info and address_info.get('country'):
-                # Fallback to country name if no code available
-                country = address_info.get('country')
-                # Shorten very long country names
-                if len(country) > 15:
-                    return f"{city}, {country[:15]}"
-                return f"{city}, {country}"
-            else:
-                return city
-
+    def _fallback_location_label(self, fallback: str, country_code: str) -> str:
+        """_format_location_display's label when no city was found: built from the input."""
         # Final fallback: try to extract from input and capitalize
         if fallback:
             # Try to extract city name from input (before first comma if present)
@@ -1048,17 +980,7 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
         pressure = current.get('surface_pressure')
         weather_code = current.get('weather_code')
 
-        # Convert visibility to miles based on actual unit from API
-        # API returns visibility in feet when using imperial units
-        if visibility is not None:
-            if visibility_unit == 'ft' or 'ft' in str(visibility_unit).lower():
-                # Convert from feet to miles (1 mile = 5280 feet)
-                visibility_mi = visibility / 5280.0
-            else:
-                # Assume meters, convert to miles (1 mile = 1609.34 meters)
-                visibility_mi = visibility / 1609.34
-        else:
-            visibility_mi = None
+        visibility_mi = self._visibility_miles(visibility, visibility_unit)
 
         # Pressure validation - account for high elevation locations
         # Normal sea level pressure is 1013 hPa, range is typically 950-1050 hPa
@@ -1098,6 +1020,32 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
             weather += f" {humidity_str}"
 
         # Add additional conditions if space allows
+        conditions = self._open_meteo_extra_conditions(dewpoint, visibility_mi, pressure, temp_symbol)
+
+        # Add conditions to weather string if space allows
+        # Reserve space for forecast data (high/low and tomorrow)
+        conditions_max_length = max_length - 80  # Reserve ~80 chars for forecast data
+        if conditions and self._count_display_width(weather) < conditions_max_length:
+            weather += " " + " ".join(conditions)
+        return weather
+
+    def _visibility_miles(self, visibility, visibility_unit) -> Optional[float]:
+        """Open-Meteo's visibility in miles, from feet or meters as current_units says."""
+        # Convert visibility to miles based on actual unit from API
+        # API returns visibility in feet when using imperial units
+        if visibility is not None:
+            if visibility_unit == 'ft' or 'ft' in str(visibility_unit).lower():
+                # Convert from feet to miles (1 mile = 5280 feet)
+                visibility_mi = visibility / 5280.0
+            else:
+                # Assume meters, convert to miles (1 mile = 1609.34 meters)
+                visibility_mi = visibility / 1609.34
+        else:
+            visibility_mi = None
+        return visibility_mi
+
+    def _open_meteo_extra_conditions(self, dewpoint, visibility_mi, pressure, temp_symbol: str) -> list:
+        """Dew point, visibility and pressure strings, each only when its value is present."""
         conditions = []
 
         # Add dew point
@@ -1130,13 +1078,7 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
             else:
                 press_str = self.translate('commands.gwx.pressure', value=pressure_hpa)
             conditions.append(press_str)
-
-        # Add conditions to weather string if space allows
-        # Reserve space for forecast data (high/low and tomorrow)
-        conditions_max_length = max_length - 80  # Reserve ~80 chars for forecast data
-        if conditions and self._count_display_width(weather) < conditions_max_length:
-            weather += " " + " ".join(conditions)
-        return weather
+        return conditions
 
     def _open_meteo_daily_tail(self, weather: str, daily: dict, max_length: int, temp_symbol: str) -> str:
         """Append today's high/low, then tomorrow and its precipitation while they fit."""

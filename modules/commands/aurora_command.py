@@ -23,6 +23,8 @@ class AuroraCommand(BaseCommand):
     render_safe = True
 
     name = "aurora"
+    honors_skip_channel_check = False
+    enabled_attr = "aurora_enabled"
     keywords = ["aurora", "kp"]
     description = "Get aurora forecast (KP index and probability) for a location"
     category = "solar"
@@ -59,11 +61,6 @@ class AuroraCommand(BaseCommand):
         self.default_state = self.bot.config.get("Weather", "default_state", fallback="")
         self.default_country = self.bot.config.get("Weather", "default_country", fallback="US")
         self.url_timeout = 10
-
-    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
-        if not self.aurora_enabled:
-            return False
-        return super().can_execute(message)
 
     def _get_companion_location(self, message: MeshMessage) -> Optional[tuple[float, float]]:
         """Get companion/sender location from the contact-tracking database."""
@@ -219,7 +216,7 @@ class AuroraCommand(BaseCommand):
 
         try:
             self.record_execution(message.sender_id)
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             client = NOAAAuroraClient(latitude=lat, longitude=lon)
             data = await loop.run_in_executor(None, lambda: client.get_aurora_data())
         except Exception as e:

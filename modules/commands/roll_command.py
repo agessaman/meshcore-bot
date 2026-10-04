@@ -22,6 +22,8 @@ class RollCommand(BaseCommand):
     # Read-only informational output; safe for scheduled {cmd:...} rendering.
     render_safe = True
     name = "roll"
+    honors_skip_channel_check = False
+    enabled_attr = "roll_enabled"
     keywords = ['roll']
     description = "Roll a random number between 1 and X (default 100). Use 'roll' for 1-100, 'roll 50' for 1-50, etc."
     category = "games"
@@ -43,20 +45,7 @@ class RollCommand(BaseCommand):
         super().__init__(bot)
         self.roll_enabled = self.get_config_value('Roll_Command', 'enabled', fallback=True, value_type='bool')
 
-    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
-        """Check if this command can be executed with the given message.
-
-        Args:
-            message: The message triggering the command.
-
-        Returns:
-            bool: True if command is enabled and checks pass, False otherwise.
-        """
-        if not self.roll_enabled:
-            return False
-        return super().can_execute(message)
-
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         """Get help text for the roll command.
 
         Returns:

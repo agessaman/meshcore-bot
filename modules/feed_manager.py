@@ -5,7 +5,7 @@ Handles polling feeds and sending updates to channels
 """
 
 import asyncio
-import contextlib
+import contextlib  # noqa: F401  importable from this module on dev
 import hashlib
 import json
 import os
@@ -33,15 +33,21 @@ from modules.feed_format import (
     sort_feed_items,
     truncate_to_budget,
 )
+from modules.feed_parse import (  # noqa: F401 - the DEFAULT_* names are re-exported
+    DEFAULT_MAX_FEED_RESPONSE_BYTES,
+    DEFAULT_MAX_PARSED_FEED_ITEMS,
+    api_item_fields,
+    feed_allow_private_urls,
+    feed_max_parsed_items,
+    feed_max_response_bytes,
+    rss_entry_published,
+)
 from modules.security_utils import (
     SafeAiohttpResolver,
     SafeUrlPolicy,
     UnsafeUrlError,
     safe_aiohttp_request,
 )
-
-DEFAULT_MAX_FEED_RESPONSE_BYTES = 2 * 1024 * 1024
-DEFAULT_MAX_PARSED_FEED_ITEMS = 500
 
 
 def _useful_feed_content_type(content_type: str, feed_type: str) -> bool:
@@ -87,20 +93,10 @@ class FeedManager:
             self.max_message_length = 130
             self.default_output_format = '{emoji} {body|truncate:100} - {date}\n{link|truncate:50}'
             self.default_send_interval = 2.0
-            self.max_response_bytes = DEFAULT_MAX_FEED_RESPONSE_BYTES
-            self.max_parsed_items = DEFAULT_MAX_PARSED_FEED_ITEMS
+            self.max_response_bytes = feed_max_response_bytes(bot.config)
+            self.max_parsed_items = feed_max_parsed_items(bot.config)
             self.shorten_feed_urls = False
-            if bot.config.has_section('Feed_Command'):
-                try:
-                    self.allow_private_urls = bot.config.getboolean(
-                        'Feed_Command',
-                        'allow_private_urls',
-                        fallback=False,
-                    )
-                except ValueError:
-                    self.allow_private_urls = False
-            else:
-                self.allow_private_urls = False
+            self.allow_private_urls = feed_allow_private_urls(bot.config)
         else:
             self.enabled = bot.config.getboolean('Feed_Manager', 'feed_manager_enabled', fallback=False)
             self.default_check_interval = bot.config.getint('Feed_Manager', 'default_check_interval_seconds', fallback=300)
@@ -136,41 +132,12 @@ class FeedManager:
             )
             self.default_output_format = bot.config.get('Feed_Manager', 'default_output_format', fallback='{emoji} {body|truncate:100} - {date}\n{link|truncate:50}')
             self.default_send_interval = bot.config.getfloat('Feed_Manager', 'default_message_send_interval_seconds', fallback=2.0)
-            self.max_response_bytes = max(
-                1024,
-                bot.config.getint(
-                    'Feed_Manager',
-                    'max_response_bytes',
-                    fallback=DEFAULT_MAX_FEED_RESPONSE_BYTES,
-                ),
-            )
-            self.max_parsed_items = max(
-                1,
-                bot.config.getint(
-                    'Feed_Manager',
-                    'max_parsed_items',
-                    fallback=DEFAULT_MAX_PARSED_FEED_ITEMS,
-                ),
-            )
+            self.max_response_bytes = feed_max_response_bytes(bot.config)
+            self.max_parsed_items = feed_max_parsed_items(bot.config)
             self.shorten_feed_urls = bot.config.getboolean(
                 'Feed_Manager', 'shorten_urls', fallback=False
             )
-            if bot.config.has_section('Feed_Command'):
-                try:
-                    feed_command_allow_private = bot.config.getboolean(
-                        'Feed_Command',
-                        'allow_private_urls',
-                        fallback=False,
-                    )
-                except ValueError:
-                    feed_command_allow_private = False
-            else:
-                feed_command_allow_private = False
-            self.allow_private_urls = bot.config.getboolean(
-                'Feed_Manager',
-                'allow_private_urls',
-                fallback=feed_command_allow_private,
-            )
+            self.allow_private_urls = feed_allow_private_urls(bot.config)
 
         # Rate limiting per domain
         self._domain_last_request: dict[str, float] = {}
@@ -344,7 +311,6 @@ class FeedManager:
         feed_id = feed['id']
         feed_type = feed['feed_type']
         feed_url = feed['feed_url']
-        feed['channel_name']
 
         try:
             # Validate URL for SSRF protection
@@ -452,76 +418,81 @@ class FeedManager:
                         f"{entry.get('title', '')}{entry.get('link', '')}".encode()
                     ).hexdigest()
 
-                # Parse published date
-                published = None
-                if hasattr(entry, 'published_parsed') and entry.published_parsed:
-                    with contextlib.suppress(Exception):
-                        published = datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)
-
                 all_items.append({
                     'id': item_id,
                     'title': entry.get('title', 'Untitled'),
                     'link': entry.get('link', ''),
                     'description': entry.get('description', ''),
-                    'published': published
+                    'published': rss_entry_published(entry),
                 })
 
-            # Apply sorting if configured (before filtering, so we can properly track the last item)
-            sort_config_str = feed.get('sort_config')
-            if sort_config_str:
-                try:
-                    sort_config = json.loads(sort_config_str) if isinstance(sort_config_str, str) else sort_config_str
-                    all_items = self._sort_items(all_items, sort_config)
-                except (json.JSONDecodeError, TypeError, Exception) as e:
-                    self.logger.warning(f"Error applying sort config for feed {feed['id']}: {e}")
-
-            # Reverse to get oldest first (if no sort config)
-            if not sort_config_str:
-                all_items.reverse()
-
-            # Now filter out items that have already been processed
-            # Check against both last_item_id and the feed_activity table for robust deduplication
-            items = []
-            processed_item_ids = set()
-
-            # Get all previously processed item IDs from feed_activity table
-            if last_item_id:
-                processed_item_ids.add(last_item_id)
-
-            # Query database for all processed item IDs for this feed
-            try:
-                with self.bot.db_manager.connection() as conn:
-                    cursor = conn.cursor()
-                    cursor.execute('''
-                        SELECT item_id FROM feed_activity WHERE feed_id = ?
-                        UNION
-                        SELECT item_id FROM feed_message_queue
-                        WHERE feed_id = ? AND sent_at IS NULL
-                          AND item_id IS NOT NULL AND trim(item_id) <> ''
-                    ''', (feed['id'], feed['id']))
-                    for row in cursor.fetchall():
-                        processed_item_ids.add(row[0])
-            except Exception as e:
-                self.logger.warning(f"Error querying processed items for feed {feed['id']}: {e}")
-
-            # Filter out already processed items
-            for item in all_items:
-                if item['id'] not in processed_item_ids:
-                    items.append(item)
-                else:
-                    self.logger.debug(f"Skipping already processed item {item['id']} for feed {feed['id']}")
-
-            # Update last_item_id if we have new items (use the last item from the sorted list)
-            if items:
-                # Use the last item from the original sorted list (all_items), not the filtered list
-                # This ensures we track the most recent item even if it was already processed
-                self._update_feed_last_item_id(feed['id'], all_items[-1]['id'])
-
-            return items
+            return self._select_new_items(feed, all_items, last_item_id)
 
         except Exception as e:
             self.logger.error(f"Error processing RSS feed: {e}")
             raise
+
+    def _select_new_items(
+        self, feed: dict[str, Any], all_items: list[dict[str, Any]], last_item_id: Any
+    ) -> list[dict[str, Any]]:
+        """Order a feed's parsed items and keep those not yet posted or queued.
+
+        Applies the feed's sort config (else reverses to oldest first), drops
+        items already in feed_activity or still pending in the queue, and
+        records the newest item seen as the feed's last_item_id.
+        """
+        # Apply sorting if configured (before filtering, so we can properly track the last item)
+        sort_config_str = feed.get('sort_config')
+        if sort_config_str:
+            try:
+                sort_config = json.loads(sort_config_str) if isinstance(sort_config_str, str) else sort_config_str
+                all_items = self._sort_items(all_items, sort_config)
+            except (json.JSONDecodeError, TypeError, Exception) as e:
+                self.logger.warning(f"Error applying sort config for feed {feed['id']}: {e}")
+
+        # Reverse to get oldest first (if no sort config)
+        if not sort_config_str:
+            all_items.reverse()
+
+        # Now filter out items that have already been processed
+        # Check against both last_item_id and the feed_activity table for robust deduplication
+        items = []
+        processed_item_ids = set()
+
+        # Get all previously processed item IDs from feed_activity table
+        if last_item_id:
+            processed_item_ids.add(last_item_id)
+
+        # Query database for all processed item IDs for this feed
+        try:
+            with self.bot.db_manager.connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT item_id FROM feed_activity WHERE feed_id = ?
+                    UNION
+                    SELECT item_id FROM feed_message_queue
+                    WHERE feed_id = ? AND sent_at IS NULL
+                      AND item_id IS NOT NULL AND trim(item_id) <> ''
+                ''', (feed['id'], feed['id']))
+                for row in cursor.fetchall():
+                    processed_item_ids.add(row[0])
+        except Exception as e:
+            self.logger.warning(f"Error querying processed items for feed {feed['id']}: {e}")
+
+        # Filter out already processed items
+        for item in all_items:
+            if item['id'] not in processed_item_ids:
+                items.append(item)
+            else:
+                self.logger.debug(f"Skipping already processed item {item['id']} for feed {feed['id']}")
+
+        # Update last_item_id if we have new items (use the last item from the sorted list)
+        if items:
+            # Use the last item from the original sorted list (all_items), not the filtered list
+            # This ensures we track the most recent item even if it was already processed
+            self._update_feed_last_item_id(feed['id'], all_items[-1]['id'])
+
+        return items
 
     async def process_api_feed(self, feed: dict[str, Any]) -> list[dict[str, Any]]:
         """Process an API feed and return new items"""
@@ -580,10 +551,7 @@ class FeedManager:
 
             # Extract items
             id_field = parser_config.get('id_field', 'id')
-            title_field = parser_config.get('title_field', 'title')
-            description_field = parser_config.get('description_field', 'description')  # New: allow custom description field
-            timestamp_field = parser_config.get('timestamp_field', 'created_at')
-            emoji_field = parser_config.get('emoji_field', 'emoji')  # New: allow custom per-item emoji field
+            # title/description/timestamp/emoji fields are read by api_item_fields
 
             # Collect ALL items first (don't break early, as sorting may reorder them)
             all_items = []
@@ -596,104 +564,9 @@ class FeedManager:
                 if not item_id:
                     continue
 
-                # Parse timestamp if available - support nested paths
-                published = None
-                if timestamp_field:
-                    ts_value = self._get_nested_value(item_data, timestamp_field)
-                    if ts_value:
-                        try:
-                            if isinstance(ts_value, (int, float)):
-                                published = datetime.fromtimestamp(ts_value, tz=timezone.utc)
-                            elif isinstance(ts_value, str):
-                                # Try Microsoft date format first
-                                if ts_value.startswith('/Date('):
-                                    published = self._parse_microsoft_date(ts_value)
-                                else:
-                                    # Try ISO format
-                                    try:
-                                        published = datetime.fromisoformat(ts_value.replace('Z', '+00:00'))
-                                    except ValueError:
-                                        # Try common formats
-                                        for fmt in ['%Y-%m-%dT%H:%M:%S', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d']:
-                                            try:
-                                                published = datetime.strptime(ts_value, fmt)
-                                                if published.tzinfo is None:
-                                                    published = published.replace(tzinfo=timezone.utc)
-                                                break
-                                            except ValueError:
-                                                continue
-                        except Exception:
-                            pass
+                all_items.append({'id': item_id, **api_item_fields(item_data, parser_config)})
 
-                # Get description - support nested paths
-                description = ''
-                if description_field:
-                    desc_value = self._get_nested_value(item_data, description_field)
-                    if desc_value:
-                        description = str(desc_value)
-
-                all_items.append({
-                    'id': item_id,
-                    'title': self._get_nested_value(item_data, title_field, 'Untitled'),
-                    'emoji': self._get_nested_value(item_data, emoji_field, ''),
-                    'link': item_data.get('link', ''),
-                    'description': description,
-                    'published': published,
-                    'raw': item_data  # Store full raw response for field access
-                })
-
-            # Apply sorting if configured (before filtering, so we can properly track the last item)
-            sort_config_str = feed.get('sort_config')
-            if sort_config_str:
-                try:
-                    sort_config = json.loads(sort_config_str) if isinstance(sort_config_str, str) else sort_config_str
-                    all_items = self._sort_items(all_items, sort_config)
-                except (json.JSONDecodeError, TypeError, Exception) as e:
-                    self.logger.warning(f"Error applying sort config for feed {feed['id']}: {e}")
-
-            # Reverse to get oldest first (if no sort config)
-            if not sort_config_str:
-                all_items.reverse()
-
-            # Now filter out items that have already been processed
-            # Check against both last_item_id and the feed_activity table for robust deduplication
-            items = []
-            processed_item_ids = set()
-
-            # Get all previously processed item IDs from feed_activity table
-            if last_item_id:
-                processed_item_ids.add(last_item_id)
-
-            # Query database for all processed item IDs for this feed
-            try:
-                with self.bot.db_manager.connection() as conn:
-                    cursor = conn.cursor()
-                    cursor.execute('''
-                        SELECT item_id FROM feed_activity WHERE feed_id = ?
-                        UNION
-                        SELECT item_id FROM feed_message_queue
-                        WHERE feed_id = ? AND sent_at IS NULL
-                          AND item_id IS NOT NULL AND trim(item_id) <> ''
-                    ''', (feed['id'], feed['id']))
-                    for row in cursor.fetchall():
-                        processed_item_ids.add(row[0])
-            except Exception as e:
-                self.logger.warning(f"Error querying processed items for feed {feed['id']}: {e}")
-
-            # Filter out already processed items
-            for item in all_items:
-                if item['id'] not in processed_item_ids:
-                    items.append(item)
-                else:
-                    self.logger.debug(f"Skipping already processed item {item['id']} for feed {feed['id']}")
-
-            # Update last_item_id if we have new items (use the last item from the sorted list)
-            if items:
-                # Use the last item from the original sorted list (all_items), not the filtered list
-                # This ensures we track the most recent item even if it was already processed
-                self._update_feed_last_item_id(feed['id'], all_items[-1]['id'])
-
-            return items
+            return self._select_new_items(feed, all_items, last_item_id)
 
         except Exception as e:
             self.logger.error(f"Error processing API feed: {e}")

@@ -6,55 +6,59 @@ Processes incoming messages and routes them to appropriate command handlers
 
 import asyncio
 import copy
-import hmac as hmac_mod
+import hmac as hmac_mod  # noqa: F401  importable from this module on dev
 import time
 from collections import OrderedDict
-from collections.abc import Iterable
-from hashlib import sha256
+from collections.abc import (
+    Callable,
+    Iterable,  # noqa: F401  importable from this module on dev
+)
+from hashlib import sha256  # noqa: F401  importable from this module on dev
 from typing import Any
 
-from .enums import AdvertFlags, DeviceRole, PayloadType, PayloadVersion, RouteType
-from .graph_trace_helper import update_mesh_graph_from_trace_data
-from .meshcore_payload_decode import channel_hash_for_key, decrypt_group_text
+from . import packet_decode, scope_gate
+from .channel_message import (  # noqa: F401  CHANNEL_SENDER_FALLBACK, _signal_value re-exported
+    CHANNEL_SENDER_FALLBACK,
+    ChannelMessageMixin,
+    _signal_value,
+)
+from .contact_events import ContactEventsMixin
+from .enums import (
+    AdvertFlags,
+    DeviceRole,
+    PayloadType,
+    PayloadVersion,  # noqa: F401
+    RouteType,
+)
+from .graph_trace_helper import update_mesh_graph_from_trace_data  # noqa: F401  re-exported
+from .mesh_graph_recorder import MeshGraphRecorderMixin
+from .meshcore_payload_decode import channel_hash_for_key, decrypt_group_text  # noqa: F401  re-exported
 from .models import MeshMessage
-from .neighbors_discovery import upsert_zero_hop_observed_path_via_manager
-from .region_warning import VERDICT_GLOBAL, VERDICT_SCOPED, VERDICT_UNKNOWN
+from .neighbors_discovery import upsert_zero_hop_observed_path_via_manager  # noqa: F401  re-exported
+from .packet_decode import split_path_hex
+from .region_warning import VERDICT_GLOBAL, VERDICT_SCOPED, VERDICT_UNKNOWN  # noqa: F401  re-exported
+from .rf_correlation import RfCorrelationMixin
+from .rf_log import RfLogMixin
+from .rf_match import (  # noqa: F401 - re-exported for callers and tests
+    RF_MATCH_CHANNEL_AUTHENTICATED,
+    RF_MATCH_EXACT,
+    RF_MATCH_FALLBACK,
+    RF_MATCH_KEY,
+    RF_MATCH_PARTIAL,
+    RF_MATCH_PAYLOAD,
+    RF_MATCH_PUBKEY,
+    rf_data_is_correlated,
+)
 from .security_utils import sanitize_input, sanitize_name
 from .utils import (
-    calculate_packet_hash,
-    decode_path_len_byte,
-    encode_path_len_byte,
+    calculate_packet_hash,  # noqa: F401  re-exported
+    decode_path_len_byte,  # noqa: F401
+    encode_path_len_byte,  # noqa: F401
     format_elapsed_display,
 )
 
-# How a cached RF entry was matched to a message, recorded on the dict returned by
-# MessageHandler.find_recent_rf_data. Anything other than a fallback is known to be
-# this message's own packet; a fallback is merely the most recent packet heard, so its
-# route belongs to some other transmission and must not be attributed (issue #80).
-# Stand-in used when a channel message carries no "Name: " prefix to extract a
-# sender from. It is not a node: every such message would share this identity.
-CHANNEL_SENDER_FALLBACK = "Channel User"
 
-RF_MATCH_KEY = "_rf_match"
-RF_MATCH_EXACT = "exact"
-RF_MATCH_PUBKEY = "pubkey"
-RF_MATCH_PARTIAL = "partial"
-# Verified against the decoded message payload's own fields rather than a packet
-# prefix. Channel messages have no prefix to match on, so this is the only positive
-# correlation available to them (see _rf_data_matches_chan_payload).
-RF_MATCH_PAYLOAD = "payload"
-RF_MATCH_CHANNEL_AUTHENTICATED = "channel_authenticated"
-RF_MATCH_FALLBACK = "fallback"
-
-
-def rf_data_is_correlated(rf_data: dict | None) -> bool:
-    """True when rf_data is known to be this message's packet, not a fallback guess."""
-    if not rf_data:
-        return False
-    return rf_data.get(RF_MATCH_KEY, RF_MATCH_FALLBACK) != RF_MATCH_FALLBACK
-
-
-class MessageHandler:
+class MessageHandler(MeshGraphRecorderMixin, ContactEventsMixin, RfCorrelationMixin, RfLogMixin, ChannelMessageMixin):
     """Handles incoming messages and routes them to command processors.
 
     This class is responsible for processing various types of MeshCore events,
@@ -106,51 +110,9 @@ class MessageHandler:
 
         self.logger.info(f"RF Data Correlation: timeout={self.rf_data_timeout}s, enhanced={self.enhanced_correlation}")
 
-    @staticmethod
-    def _match_scope(
-        transport_code: int, payload_type: int, pkt_payload: bytes, scope_keys: dict[str, bytes]
-    ) -> str | None:
-        """Return the scope name whose HMAC matches transport_code, or None.
+    _match_scope = staticmethod(scope_gate.match_scope)
 
-        Mirrors the firmware's TransportKey::calcTransportCode: computes
-        HMAC-SHA256(scope_key, [payload_type_byte] + pkt_payload)[0:2] as uint16_le
-        and compares it against transport_code (transport_codes[0] from TC_FLOOD header).
-        """
-        if not scope_keys:
-            return None
-        check_data = bytes([payload_type]) + pkt_payload
-        for name, key in scope_keys.items():
-            digest = hmac_mod.new(key, check_data, sha256).digest()
-            computed = int.from_bytes(digest[:2], "little")
-            if computed == 0:
-                computed = 1
-            elif computed == 0xFFFF:
-                computed = 0xFFFE
-            if computed == transport_code:
-                return name
-        return None
-
-    @staticmethod
-    def _scope_fields_from_packet_info(
-        packet_info: dict[str, Any] | None,
-    ) -> tuple[int | None, int | None, int | None, str]:
-        """Extract TC_FLOOD scope-match inputs from decode_meshcore_packet output."""
-        if not packet_info:
-            return None, None, None, ""
-        rt = packet_info.get("route_type")
-        if rt is not None and hasattr(rt, "value"):
-            rt = rt.value
-        pt = packet_info.get("payload_type")
-        if pt is not None and hasattr(pt, "value"):
-            pt = int(pt.value)
-        elif pt is not None:
-            pt = int(pt)
-        tc_code1 = None
-        transport_codes = packet_info.get("transport_codes")
-        if isinstance(transport_codes, dict):
-            tc_code1 = transport_codes.get("code1")
-        payload_hex = (packet_info.get("payload_hex") or "") or ""
-        return rt, tc_code1, pt, payload_hex
+    _scope_fields_from_packet_info = staticmethod(scope_gate.scope_fields_from_packet_info)
 
     def _resolve_reply_scope_from_rf_data(
         self,
@@ -158,228 +120,17 @@ class MessageHandler:
         packet_info: dict[str, Any] | None,
         scope_keys: dict[str, bytes],
     ) -> str | None:
-        """Match incoming TC_FLOOD to flood_scopes, preferring decoded packet over stale cache."""
-        rt = recent_rf_data.get("route_type_int")
-        tc_code1 = recent_rf_data.get("transport_code1")
-        scope_payload_type = recent_rf_data.get("payload_type_int")
-        scope_payload_hex = recent_rf_data.get("scope_payload_hex") or ""
+        return scope_gate.resolve_reply_scope_from_rf_data(recent_rf_data, packet_info, scope_keys, self.logger)
 
-        dec_rt, dec_tc, dec_pt, dec_hex = self._scope_fields_from_packet_info(packet_info)
-        used_decode_fallback = False
-        if dec_rt == 0:
-            if rt != 0:
-                used_decode_fallback = True
-            rt = 0
-            if dec_tc is not None:
-                if tc_code1 != dec_tc:
-                    used_decode_fallback = True
-                tc_code1 = dec_tc
-            if dec_pt is not None:
-                if scope_payload_type != dec_pt:
-                    used_decode_fallback = True
-                scope_payload_type = dec_pt
-            if dec_hex:
-                if scope_payload_hex != dec_hex:
-                    used_decode_fallback = True
-                scope_payload_hex = dec_hex
+    _effective_route_type_int = staticmethod(scope_gate.effective_route_type_int)
 
-        if used_decode_fallback:
-            self.logger.debug(
-                "TC_FLOOD scope fields from packet decode (cache had route_type=%s tc=%s)",
-                recent_rf_data.get("route_type_int"),
-                recent_rf_data.get("transport_code1"),
-            )
+    _grp_txt_payload_type_int = staticmethod(scope_gate.grp_txt_payload_type_int)
 
-        if not (
-            rt == 0
-            and tc_code1 is not None
-            and scope_payload_type is not None
-            and scope_payload_hex
-        ):
-            if scope_keys:
-                self.logger.debug(
-                    "Scope check: route_type=%s (need 0=TC_FLOOD), "
-                    "tc_code1=%s, payload_type=%s, payload_hex=%s",
-                    rt,
-                    "set" if tc_code1 is not None else "None",
-                    scope_payload_type,
-                    "set" if scope_payload_hex else "empty",
-                )
-            return None
+    _is_confirmed_global_flood = staticmethod(scope_gate.is_confirmed_global_flood)
 
-        try:
-            pkt_payload_bytes = bytes.fromhex(scope_payload_hex)
-        except ValueError:
-            self.logger.debug("Scope check: invalid scope_payload_hex on correlated RF data")
-            return None
+    _is_rf_data_scope_eligible = staticmethod(scope_gate.is_rf_data_scope_eligible)
 
-        reply_scope = self._match_scope(tc_code1, scope_payload_type, pkt_payload_bytes, scope_keys)
-        if reply_scope:
-            self.logger.info(
-                "Incoming TC_FLOOD matched scope '%s' (tc_code1=%s); reply will use same scope",
-                reply_scope,
-                tc_code1,
-            )
-        elif scope_keys:
-            self.logger.debug(
-                "TC_FLOOD scope not matched: tc_code1=%s payload_type=%s "
-                "(configured scopes: %s)",
-                tc_code1,
-                scope_payload_type,
-                ", ".join(sorted(scope_keys.keys())),
-            )
-        return reply_scope
-
-    def _effective_route_type_int(
-        self,
-        recent_rf_data: dict[str, Any] | None,
-        packet_info: dict[str, Any] | None,
-    ) -> int | None:
-        """Route type for allowlist gate, preferring decode when it indicates TC_FLOOD."""
-        if not recent_rf_data:
-            return None
-        rt = recent_rf_data.get("route_type_int")
-        dec_rt, _, _, _ = self._scope_fields_from_packet_info(packet_info)
-        if dec_rt == 0:
-            return 0
-        return rt
-
-    @staticmethod
-    def _grp_txt_payload_type_int() -> int:
-        """Payload type used for channel text on TC_FLOOD (GRP_TXT)."""
-        return int(PayloadType.GRP_TXT.value)
-
-    def _is_confirmed_global_flood(
-        self,
-        rf_data: dict[str, Any] | None,
-        packet_info: dict[str, Any] | None = None,
-        *,
-        scoped_traffic_in_window: bool = True,
-    ) -> bool:
-        """True only when this message is proven *not* to be a scoped regional flood.
-
-        Used to decide whether a '*' entry in flood_scopes authorizes a reply. '*'
-        permits unscoped global traffic, so it needs positive evidence, and there
-        are two independent ways to get it:
-
-        * RF data correlated to *this* message showing RouteType.FLOOD.
-        * No scope-eligible packet anywhere in the RF window
-          (``scoped_traffic_in_window=False``). A scoped message travels as
-          TRANSPORT_FLOOD GRP_TXT, so if the radio heard no such packet while this
-          message arrived, the message cannot have been scoped. That conclusion is
-          window-wide, so unlike a route type read off a fallback row it does not
-          depend on having picked the right cached packet.
-
-        The second route is what makes '*' usable on a channel: MeshCore's CHAN
-        payload carries neither raw_hex nor a pubkey prefix, so a channel message
-        has no correlation key at all and always lands on the most-recent-packet
-        fallback. Requiring correlation alone rejected *every* channel message.
-
-        An empty RF window still fails closed: with no observed traffic there is
-        no evidence either way.
-        """
-        if not rf_data:
-            return False
-
-        if rf_data_is_correlated(rf_data):
-            route_type = rf_data.get("route_type_int")
-            dec_rt, _tc, _pt, _hex = self._scope_fields_from_packet_info(packet_info)
-            if dec_rt is not None:
-                route_type = dec_rt
-            return route_type == RouteType.FLOOD.value
-
-        # Uncorrelated: this row describes some other packet, so its route type
-        # proves nothing about the message. Only the absence of scoped traffic does.
-        return not scoped_traffic_in_window
-
-    def _is_rf_data_scope_eligible(
-        self,
-        rf_data: dict[str, Any] | None,
-        packet_info: dict[str, Any] | None = None,
-    ) -> bool:
-        """True when RF row has fields needed for TC_FLOOD regional scope HMAC matching."""
-        if not rf_data:
-            return False
-        rt = rf_data.get("route_type_int")
-        tc_code1 = rf_data.get("transport_code1")
-        payload_type = rf_data.get("payload_type_int")
-        scope_payload_hex = rf_data.get("scope_payload_hex") or ""
-
-        dec_rt, dec_tc, dec_pt, dec_hex = self._scope_fields_from_packet_info(packet_info)
-        if dec_rt == 0:
-            rt = 0
-            if dec_tc is not None:
-                tc_code1 = dec_tc
-            if dec_pt is not None:
-                payload_type = dec_pt
-            if dec_hex:
-                scope_payload_hex = dec_hex
-
-        if rt != int(RouteType.TRANSPORT_FLOOD.value):
-            return False
-        if tc_code1 is None or payload_type is None or not scope_payload_hex:
-            return False
-        return int(payload_type) == self._grp_txt_payload_type_int()
-
-    def _classify_channel_flood_scope(
-        self,
-        *,
-        reply_scope: str | None,
-        recent_rf_data: dict[str, Any] | None,
-        packet_info: dict[str, Any] | None,
-        scope_rf_data: dict[str, Any] | None,
-        scope_packet_info: dict[str, Any] | None,
-    ) -> str:
-        """Classify a channel message's flood scope as scoped, global, or unknown.
-
-        "Scoped" means the message carried a region code (a TC_FLOOD transport
-        code), whether or not that code matches one of ours. "Global" means it
-        was proven to be an ordinary unscoped FLOOD. Anything else is unknown.
-
-        Every test here needs RF data correlated to *this* message, and the
-        scoped tests run before the global one, so both kinds of ambiguity
-        resolve away from ``global``. That direction matters: ``global`` is the
-        verdict that can spend airtime telling someone to fix their config, and
-        a message whose scope the radio did not witness is not evidence that the
-        sender omitted a region.
-
-        In particular this does **not** use ``_is_confirmed_global_flood``'s
-        second route, which infers "unscoped" from the absence of any
-        scope-eligible packet in the window. That inference is sound enough to
-        decide whether a ``*`` entry in ``flood_scopes`` authorizes a reply — the
-        cost of being wrong is one reply the operator broadly wanted — but it is
-        an argument from absence, and the cost of being wrong here is an
-        unsolicited message accusing someone of a misconfiguration they may not
-        have. Channel messages still correlate through
-        ``_find_rf_row_matching_chan_payload`` (payload type, path length and
-        SNR all agreeing), so the ordinary case is unaffected.
-        """
-        if reply_scope:
-            return VERDICT_SCOPED
-
-        # A correlated scope-eligible row *is* a TC_FLOOD GRP_TXT for this
-        # message: it carried a transport code, so a region was set even though
-        # it is not one this bot has keys for.
-        if (
-            scope_rf_data
-            and rf_data_is_correlated(scope_rf_data)
-            and self._is_rf_data_scope_eligible(scope_rf_data, scope_packet_info)
-        ):
-            return VERDICT_SCOPED
-
-        if recent_rf_data and rf_data_is_correlated(recent_rf_data):
-            route_type = self._effective_route_type_int(recent_rf_data, packet_info)
-            if route_type == int(RouteType.TRANSPORT_FLOOD.value):
-                return VERDICT_SCOPED
-
-        if rf_data_is_correlated(recent_rf_data) and self._is_confirmed_global_flood(
-            recent_rf_data,
-            packet_info,
-            scoped_traffic_in_window=scope_rf_data is not None,
-        ):
-            return VERDICT_GLOBAL
-
-        return VERDICT_UNKNOWN
+    _classify_channel_flood_scope = staticmethod(scope_gate.classify_channel_flood_scope)
 
     async def _observe_flood_scope(
         self,
@@ -455,200 +206,51 @@ class MessageHandler:
             # If we can't parse timestamp, process the message (safer to process than skip)
             return False
 
-    @staticmethod
-    def _channel_message_identity(
-        channel_idx: Any, sender_timestamp: Any, txt_type: Any, text: Any
-    ) -> str | None:
-        """Return the identity shared by an authenticated RF row and CHAN event."""
-        try:
-            idx = int(channel_idx)
-            timestamp = int(sender_timestamp)
-            message_type = int(txt_type)
-        except (TypeError, ValueError):
+    def _find_contact(self, predicate: Callable[[dict[str, Any]], bool]) -> dict[str, Any] | None:
+        """The first radio contact matching ``predicate``, or None (also when there are no contacts)."""
+        contacts = getattr(self.bot.meshcore, "contacts", None)
+        if not contacts:
             return None
-        if not 0 <= idx <= 0xFFFF or not 0 <= timestamp <= 0xFFFFFFFF:
-            return None
-        if not 0 <= message_type <= 0xFF or not isinstance(text, str):
-            return None
+        return next((contact for contact in contacts.values() if predicate(contact)), None)
 
-        digest = sha256()
-        digest.update(b"meshcore-channel-message-v1\0")
-        digest.update(idx.to_bytes(2, "little"))
-        digest.update(timestamp.to_bytes(4, "little"))
-        digest.update(bytes([message_type]))
-        digest.update(text.rstrip("\x00").encode("utf-8"))
-        return digest.hexdigest()
+    def _viewer_bridge(self) -> Any:
+        """The web viewer's bot-side bridge, or None when the viewer integration is off."""
+        integration = getattr(self.bot, "web_viewer_integration", None)
+        return integration.bot_integration if integration else None
 
-    def _channel_secrets(self) -> list[tuple[int, bytes]]:
-        """Return configured channel indexes and keys without logging secrets."""
-        meshcore = getattr(self.bot, "meshcore", None)
-        channels = getattr(meshcore, "channels", None)
-        items: Iterable[tuple[int, Any]]
-        if isinstance(channels, dict):
-            items = channels.items()
-        elif isinstance(channels, list):
-            items = enumerate(channels)
-        else:
-            return []
+    def _log_dm_routing_from_rf(self, message_pubkey: str) -> None:
+        """Log the route of a DM's correlated RF packet (INFO), when one is found.
 
-        result: list[tuple[int, bytes]] = []
-        for fallback_idx, channel in items:
-            if not isinstance(channel, dict):
-                continue
-            # Annotated Any: with a mixed Any | int default, mypy matches .get()'s
-            # None-default overload and infers Any | None. int() rejects None anyway.
-            raw_idx: Any = channel.get("channel_idx", fallback_idx)
-            try:
-                channel_idx = int(raw_idx)
-            except (TypeError, ValueError):
-                continue
-
-            secret = channel.get("channel_secret")
-            if isinstance(secret, str):
-                try:
-                    secret = bytes.fromhex(secret)
-                except ValueError:
-                    secret = None
-            if not isinstance(secret, (bytes, bytearray)):
-                key_hex = channel.get("channel_key_hex")
-                if isinstance(key_hex, str):
-                    try:
-                        secret = bytes.fromhex(key_hex)
-                    except ValueError:
-                        secret = None
-            if isinstance(secret, bytearray):
-                secret = bytes(secret)
-            if isinstance(secret, bytes) and len(secret) == 16 and any(secret):
-                result.append((channel_idx, secret))
-        return result
-
-    def _decode_authenticated_channel_identity(
-        self, packet_info: dict[str, Any] | None, *, include_text: bool = False
-    ) -> dict[str, Any] | None:
-        """Authenticate a decoded GRP_TXT packet and derive its CHAN identity.
-
-        ``include_text`` adds the full decrypted text as ``channel_message`` and
-        the text without its sender prefix as ``channel_text``.
+        Only for DMs without raw_hex, correlated by sender pubkey. This is
+        logging only: the route actually attached to the message is decided
+        later in handle_contact_message.
         """
-        if not packet_info or packet_info.get("payload_type") != self._grp_txt_payload_type_int():
-            return None
-        payload_hex = packet_info.get("payload_hex")
-        if not isinstance(payload_hex, str):
-            return None
-        try:
-            group_payload = bytes.fromhex(payload_hex)
-        except ValueError:
-            return None
-        if len(group_payload) < 3:
-            return None
-
-        channel_hash = f"{group_payload[0]:02x}"
-        cipher_mac = group_payload[1:3]
-        ciphertext = group_payload[3:]
-        for channel_idx, secret in self._channel_secrets():
-            if channel_hash_for_key(secret) != channel_hash:
-                continue
-            decrypted = decrypt_group_text(ciphertext, cipher_mac, secret)
-            if not decrypted:
-                continue
-            txt_type = int(decrypted["flags"]) >> 2
-            identity = self._channel_message_identity(
-                channel_idx,
-                decrypted["timestamp"],
-                txt_type,
-                decrypted["message"],
-            )
-            if identity is None:
-                return None
-            result = {
-                "channel_message_id": identity,
-                "channel_idx": channel_idx,
-                "channel_attempt": int(decrypted["flags"]) & 0x03,
-            }
-            if include_text:
-                result["channel_text"] = decrypted["text"]
-                result["channel_message"] = decrypted["message"]
-            return result
-        return None
-
-    def _transmission_evidence(self, packet_info: dict[str, Any]) -> dict[str, Any]:
-        """What a received packet says about itself, for TransmissionTracker to recognize our own."""
-        evidence: dict[str, Any] = {
-            "payload_type": packet_info.get("payload_type"),
-            "payload_hex": packet_info.get("payload_hex") or "",
-        }
-        channel = self._decode_authenticated_channel_identity(packet_info, include_text=True)
-        if channel:
-            evidence["channel_idx"] = channel["channel_idx"]
-            evidence["channel_text"] = channel["channel_text"]
-            evidence["channel_message"] = channel["channel_message"]
-        return evidence
-
-    def _cache_authenticated_channel_rf_data(
-        self,
-        rf_data: dict[str, Any],
-        packet_info: dict[str, Any] | None,
-        current_time: float,
-    ) -> None:
-        identity = self._decode_authenticated_channel_identity(packet_info)
-        if identity is None:
+        recent_rf_data = self.find_recent_rf_data(message_pubkey)
+        if not (recent_rf_data and recent_rf_data.get("raw_hex")):
             return
-        rf_data.update(identity)
-        self.channel_rf_data.append(rf_data)
-        cutoff = current_time - self._channel_rf_cache_timeout
-        self.channel_rf_data = [
-            row for row in self.channel_rf_data if row.get("timestamp", 0) >= cutoff
-        ]
-        if len(self.channel_rf_data) > self._max_rf_cache_size:
-            self.channel_rf_data = self.channel_rf_data[-self._max_rf_cache_size :]
-
-    def _find_authenticated_channel_rf_data(
-        self, payload: dict[str, Any] | None
-    ) -> tuple[dict[str, Any] | None, bool]:
-        """Find the first RF reception for an authenticated channel message.
-
-        The companion logs raw RF before duplicate suppression and queues only
-        the first unseen channel packet. Repeater echoes share the packet hash,
-        so the earliest row is the reception represented by CHANNEL_MSG_RECV.
-        The boolean prevents weaker matching after an authenticated ambiguity.
-        """
-        if not payload:
-            return None, False
-        identity = self._channel_message_identity(
-            payload.get("channel_idx"),
-            payload.get("sender_timestamp"),
-            payload.get("txt_type"),
-            payload.get("text"),
-        )
-        if identity is None:
-            return None, False
-        now = time.time()
-        max_age = getattr(
-            self,
-            "_channel_rf_cache_timeout",
-            max(300.0, getattr(self, "rf_data_timeout", 15.0) * 4),
-        )
-        matches = [
-            row
-            for row in getattr(self, "channel_rf_data", [])
-            if row.get("channel_message_id") == identity
-            and isinstance(row.get("timestamp"), (int, float))
-            and now - row["timestamp"] <= max_age
-        ]
-        if not matches:
-            return None, False
-
-        packet_hashes = {row.get("packet_hash") for row in matches}
-        if len(packet_hashes) != 1 or not all(packet_hashes):
-            self.logger.warning(
-                "Authenticated channel message matched %d distinct or unidentified packets; "
-                "leaving RF attribution unresolved",
-                len(packet_hashes),
-            )
-            return None, True
-
-        selected = min(matches, key=lambda row: row.get("timestamp", float("inf")))
-        return {**selected, RF_MATCH_KEY: RF_MATCH_CHANNEL_AUTHENTICATED}, True
+        decoded_packet = self.decode_meshcore_packet(recent_rf_data["raw_hex"], recent_rf_data.get("payload"))
+        if not decoded_packet:
+            return
+        self.logger.debug(f"Decoded packet for routing from RF data: {decoded_packet}")
+        if not recent_rf_data.get("routing_info"):
+            return
+        if not rf_data_is_correlated(recent_rf_data):
+            self.logger.debug("Ignoring routing info from an uncorrelated fallback packet")
+            return
+        routing_info = recent_rf_data["routing_info"]
+        self.logger.debug(f"Found routing info: {routing_info}")
+        path_len = routing_info.get("path_length", 0)
+        if path_len > 0:
+            path_hex = routing_info.get("path_hex", "")
+            path_nodes = routing_info.get("path_nodes", [])
+            route_type = routing_info.get("route_type", "Unknown")
+            if path_nodes:
+                path_info = f"{','.join(path_nodes)} ({path_len} hops via {route_type})"
+            else:
+                path_info = f"Path: {path_hex} ({path_len} hops via {route_type})"
+            self.logger.info(f"🛣️  MESSAGE ROUTING: {path_info}")
+        else:
+            self.logger.info(f"📡 DIRECT MESSAGE: Direct via {routing_info.get('route_type', 'Unknown')}")
 
     async def handle_contact_message(self, event: Any, metadata: dict[str, Any] | None = None) -> None:
         """Handle incoming contact message (DM).
@@ -678,176 +280,17 @@ class MessageHandler:
                 f"Received DM from {sanitize_name(payload.get('pubkey_prefix', 'unknown'))}: {sanitize_name(payload.get('text', ''))}"
             )
 
-            # Extract path information from contacts using pubkey_prefix
-            path_info = "Unknown"
-            path_len = payload.get("path_len", 255)
-
-            if metadata and "pubkey_prefix" in metadata:
-                pubkey_prefix = metadata.get("pubkey_prefix", "")
-                if pubkey_prefix:
-                    self.logger.debug(f"Looking up path for pubkey_prefix: {pubkey_prefix}")
-
-                    # Look up the contact to get path information
-                    if hasattr(self.bot.meshcore, "contacts") and self.bot.meshcore.contacts:
-                        for _contact_key, contact_data in self.bot.meshcore.contacts.items():
-                            if contact_data.get("public_key", "").startswith(pubkey_prefix):
-                                out_path = contact_data.get("out_path", "")
-                                out_path_len = contact_data.get("out_path_len", -1)
-
-                                if out_path and out_path_len > 0:
-                                    # Chunk by bytes_per_hop (multi-byte path support); derive if not stored
-                                    try:
-                                        bph = contact_data.get("out_bytes_per_hop")
-                                        if bph is None and out_path_len > 0:
-                                            byte_len = len(out_path) // 2
-                                            if byte_len > 0 and (byte_len % out_path_len) == 0:
-                                                bph = byte_len // out_path_len
-                                            else:
-                                                bph = 1
-                                        hex_chars = (bph or 1) * 2
-                                        path_nodes = [
-                                            out_path[i : i + hex_chars].lower()
-                                            for i in range(0, len(out_path), hex_chars)
-                                        ]
-                                        if (len(out_path) % hex_chars) != 0 or not path_nodes:
-                                            path_nodes = [
-                                                out_path[i : i + 2].lower() for i in range(0, len(out_path), 2)
-                                            ]
-                                        path_info = f"{','.join(path_nodes)} ({out_path_len} hops)"
-                                        self.logger.debug(f"Found path info: {path_info}")
-                                    except Exception as e:
-                                        self.logger.debug(f"Error converting path: {e}")
-                                        path_info = f"Path: {out_path} ({out_path_len} hops)"
-                                    break
-                                elif out_path_len == 0:
-                                    path_info = "Direct"
-                                    self.logger.debug(f"Direct connection: {path_info}")
-                                    break
-                                else:
-                                    path_info = "Unknown path"
-                                    self.logger.debug(f"No path info available: {path_info}")
-                                    break
-
-            # Fallback to basic path logic if no detailed info found
-            if path_info == "Unknown":
-                if path_len == 255:
-                    path_info = "Direct"
-                elif path_len > 0:
-                    path_info = f"Routed ({path_len} hops)"
-                elif path_len == 0:
-                    path_info = "Direct"
-
-            # Try to decode packet and extract routing information from stored raw data
-            decoded_packet = None
-            routing_info = None
-            # Look for raw packet data in recent RF data
-            # Extract packet prefix from message raw_hex for correlation
+            # Correlation keys for this DM's RF data (packet prefix, else sender pubkey).
             message_raw_hex = payload.get("raw_hex", "")
             message_packet_prefix = message_raw_hex[:32] if message_raw_hex else None
             message_pubkey = payload.get("pubkey_prefix", "")  # Keep for contact lookup
-
-            if message_packet_prefix:
-                recent_rf_data = self.find_recent_rf_data(message_packet_prefix)
-            elif message_pubkey:
-                # Fallback to pubkey correlation if no raw_hex
-                recent_rf_data = self.find_recent_rf_data(message_pubkey)
-                if recent_rf_data and recent_rf_data.get("raw_hex"):
-                    # Use payload field if available, otherwise fall back to raw_hex
-                    payload_hex = recent_rf_data.get("payload")
-                    decoded_packet = self.decode_meshcore_packet(recent_rf_data["raw_hex"], payload_hex)
-                    if decoded_packet:
-                        self.logger.debug(f"Decoded packet for routing from RF data: {decoded_packet}")
-
-                        # Extract routing information, but only from a packet actually
-                        # correlated to this DM. Without this the path_info built below
-                        # comes from whatever packet was heard most recently (#80); the
-                        # later provenance check only declines to *overwrite* it.
-                        if recent_rf_data.get("routing_info"):
-                            if rf_data_is_correlated(recent_rf_data):
-                                routing_info = recent_rf_data["routing_info"]
-                                self.logger.debug(f"Found routing info: {routing_info}")
-                            else:
-                                self.logger.debug(
-                                    "Ignoring routing info from an uncorrelated fallback packet"
-                                )
-
-                # If we have routing info, use it for path information
-                if routing_info:
-                    path_len = routing_info.get("path_length", 0)
-                    if path_len > 0:
-                        path_hex = routing_info.get("path_hex", "")
-                        path_nodes = routing_info.get("path_nodes", [])
-                        route_type = routing_info.get("route_type", "Unknown")
-
-                        # Convert path to readable format
-                        if path_nodes:
-                            path_info = f"{','.join(path_nodes)} ({path_len} hops via {route_type})"
-                        else:
-                            path_info = f"Path: {path_hex} ({path_len} hops via {route_type})"
-
-                        self.logger.info(f"🛣️  MESSAGE ROUTING: {path_info}")
-                    else:
-                        path_info = f"Direct via {routing_info.get('route_type', 'Unknown')}"
-                        self.logger.info(f"📡 DIRECT MESSAGE: {path_info}")
+            if not message_packet_prefix and message_pubkey:
+                self._log_dm_routing_from_rf(message_pubkey)
 
             # Get additional metadata - try multiple sources for SNR and RSSI
-            snr: float | None = None
-            rssi: int | None = None
-
-            # Try to get SNR from payload first - check multiple possible field names
-            if "SNR" in payload:
-                _snr = payload.get("SNR")
-                snr = float(_snr) if _snr is not None else None
-            elif "snr" in payload:
-                _snr = payload.get("snr")
-                snr = float(_snr) if _snr is not None else None
-            elif "signal_to_noise" in payload:
-                _snr = payload.get("signal_to_noise")
-                snr = float(_snr) if _snr is not None else None
-            elif "signal_noise_ratio" in payload:
-                _snr = payload.get("signal_noise_ratio")
-                snr = float(_snr) if _snr is not None else None
-            # Try to get SNR from event metadata if available
-            elif metadata:
-                if "snr" in metadata:
-                    _snr = metadata.get("snr")
-                    snr = float(_snr) if _snr is not None else None
-                elif "SNR" in metadata:
-                    _snr = metadata.get("SNR")
-                    snr = float(_snr) if _snr is not None else None
-
-            # If still no SNR, try to get it from the cache using pubkey prefix from payload
-            if snr is None:
-                pubkey_prefix = payload.get("pubkey_prefix", "")
-                if pubkey_prefix and pubkey_prefix in self.snr_cache:
-                    snr = self.snr_cache[pubkey_prefix]
-                    self.logger.debug(f"Retrieved cached SNR {snr} for pubkey {pubkey_prefix}")
-
-            # Try to get RSSI from payload first
-            if "RSSI" in payload:
-                _rssi = payload.get("RSSI")
-                rssi = int(_rssi) if _rssi is not None else None
-            elif "rssi" in payload:
-                _rssi = payload.get("rssi")
-                rssi = int(_rssi) if _rssi is not None else None
-            elif "signal_strength" in payload:
-                _rssi = payload.get("signal_strength")
-                rssi = int(_rssi) if _rssi is not None else None
-            # Try to get RSSI from event metadata if available
-            elif metadata:
-                if "rssi" in metadata:
-                    _rssi = metadata.get("rssi")
-                    rssi = int(_rssi) if _rssi is not None else None
-                elif "RSSI" in metadata:
-                    _rssi = metadata.get("RSSI")
-                    rssi = int(_rssi) if _rssi is not None else None
-
-            # If still no RSSI, try to get it from the cache using pubkey prefix from payload
-            if rssi is None:
-                pubkey_prefix = payload.get("pubkey_prefix", "")
-                if pubkey_prefix and pubkey_prefix in self.rssi_cache:
-                    rssi = int(self.rssi_cache[pubkey_prefix])
-                    self.logger.debug(f"Retrieved cached RSSI {rssi} for pubkey {pubkey_prefix}")
+            snr, rssi = self._message_signal(
+                payload, metadata, ("SNR", "snr", "signal_to_noise", "signal_noise_ratio")
+            )
 
             # For DMs, we can't decode the encrypted packet, but we can get SNR/RSSI from the payload
             # For channel messages, we can decode the packet since they use shared keys
@@ -900,23 +343,18 @@ class MessageHandler:
             # Look up contact name from pubkey prefix
             sender_id = sanitize_name(payload.get("pubkey_prefix", ""))
             sender_name = sender_id  # Default to sender_id
-            if hasattr(self.bot.meshcore, "contacts") and self.bot.meshcore.contacts:
-                for _contact_key, contact_data in self.bot.meshcore.contacts.items():
-                    if contact_data.get("public_key", "").startswith(sender_id):
-                        # Use the contact name if available, otherwise use adv_name
-                        contact_name = sanitize_name(contact_data.get("name", contact_data.get("adv_name", sender_id)))
-                        sender_name = contact_name
-                        break
+            # An empty prefix matches the first contact here; that is long-standing
+            # behavior for the display name, but the full key below requires a prefix.
+            contact = self._find_contact(lambda c: c.get("public_key", "").startswith(sender_id))
+            if contact:
+                # Use the contact name if available, otherwise use adv_name
+                sender_name = sanitize_name(contact.get("name", contact.get("adv_name", sender_id)))
 
             # Get the full public key from contacts if available
             sender_pubkey = sender_id  # Default to pubkey prefix (same value as sender_id at this point)
-            if sender_id and hasattr(self.bot.meshcore, "contacts") and self.bot.meshcore.contacts:
-                for _contact_key, contact_data in self.bot.meshcore.contacts.items():
-                    if contact_data.get("public_key", "").startswith(sender_id):
-                        # Use the full public key from the contact
-                        sender_pubkey = contact_data.get("public_key", sender_id)
-                        self.logger.debug(f"Found full public key for {sender_name}: {sender_pubkey[:16]}...")
-                        break
+            if sender_id and contact:
+                sender_pubkey = contact.get("public_key", sender_id)
+                self.logger.debug(f"Found full public key for {sender_name}: {sender_pubkey[:16]}...")
 
             # Sanitize message content to prevent injection attacks
             # Note: Firmware enforces 150-char limit at hardware level, so we disable length check
@@ -1050,596 +488,6 @@ class MessageHandler:
 
             self.logger.error(traceback.format_exc())
 
-    async def _process_advertisement_packet(
-        self, packet_info: dict[str, Any], metadata: dict[str, Any] | None = None
-    ) -> None:
-        """Process advertisement packets for complete repeater tracking.
-
-        Extracts node information, location data, and routing path from
-        advertisement packets and updates the repeater database.
-
-        Args:
-            packet_info: Dictionary containing decoded packet information.
-            metadata: Optional metadata dictionary with signal metrics.
-        """
-        try:
-            # Check if this is an advertisement packet
-            if (
-                packet_info.get("payload_type") == "ADVERT"
-                or packet_info.get("payload_type_name") == "ADVERT"
-                or packet_info.get("type") == "advert"
-            ):
-                self.logger.debug(f"Processing advertisement packet: {packet_info}")
-
-                # Parse the advert payload if we have it
-                advert_data = {}
-                if "payload_hex" in packet_info:
-                    try:
-                        payload_bytes = bytes.fromhex(packet_info["payload_hex"])
-                        parsed_advert = self.parse_advert(payload_bytes)
-                        if parsed_advert:
-                            advert_data = parsed_advert
-                            self.logger.info(
-                                f"✅ Parsed ADVERT: {sanitize_name(advert_data.get('mode', 'Unknown'))} - {sanitize_name(advert_data.get('name', 'No name'))}"
-                            )
-                    except Exception as e:
-                        self.logger.warning(f"Failed to parse ADVERT payload: {e}")
-
-                # Fallback to basic information if parsing failed
-                if not advert_data:
-                    advert_data = {
-                        "public_key": packet_info.get("sender_id", ""),
-                        "name": packet_info.get("name", packet_info.get("adv_name", "Unknown")),
-                        "mode": "Unknown",
-                    }
-
-                # Add advert data to packet_info for web viewer
-                if advert_data:
-                    packet_info["advert_name"] = advert_data.get("name")
-                    packet_info["advert_mode"] = advert_data.get("mode")
-                    packet_info["advert_public_key"] = advert_data.get("public_key")
-
-                # Extract signal information from metadata
-                signal_info = {}
-                if metadata:
-                    signal_info.update(metadata)
-
-                # Add hop count if available
-                if "hops" in packet_info:
-                    signal_info["hops"] = packet_info["hops"]
-
-                # Extract packet_hash and path information if available (from routing_info or packet_info)
-                packet_hash = None
-                out_path = ""
-                out_path_len = -1
-
-                if "routing_info" in packet_info and packet_info["routing_info"]:
-                    routing_info = packet_info["routing_info"]
-                    packet_hash = routing_info.get("packet_hash")
-                    # Extract path information from routing_info
-                    path_hex = routing_info.get("path_hex", "")
-                    path_length = routing_info.get("path_length", 0)
-                    if path_hex and path_length > 0:
-                        out_path = path_hex
-                        out_path_len = path_length
-                    elif path_length == 0:
-                        # Direct connection
-                        out_path = ""
-                        out_path_len = 0
-                elif "packet_hash" in packet_info:
-                    packet_hash = packet_info["packet_hash"]
-
-                # Also check packet_info directly for path information (fallback)
-                if out_path_len == -1:
-                    if "path_hex" in packet_info:
-                        out_path = packet_info.get("path_hex", "")
-                        out_path_len = packet_info.get("path_len", -1)
-                    elif "path_len" in packet_info:
-                        out_path_len = packet_info.get("path_len", -1)
-                        if out_path_len == 0:
-                            out_path = ""
-
-                # Add path information to advert_data so it gets saved to the database
-                if out_path_len >= 0:
-                    advert_data["out_path"] = out_path
-                    advert_data["out_path_len"] = out_path_len
-                    advert_data["out_bytes_per_hop"] = packet_info.get("bytes_per_hop", 1)
-
-                # Update mesh graph with edges from the advert path (one edge per hop).
-                # This can trigger many send_mesh_edge_update() calls in quick succession;
-                # if the web viewer is down, that produces a wave of connection-refused logs.
-                path_byte_length = packet_info.get("path_byte_length") or (len(out_path) // 2 if out_path else 0)
-                if (
-                    out_path
-                    and out_path_len > 0
-                    and hasattr(self.bot, "mesh_graph")
-                    and self.bot.mesh_graph
-                    and self.bot.mesh_graph.capture_enabled
-                ):
-                    self._update_mesh_graph_from_advert(advert_data, out_path, path_byte_length, packet_info)
-
-                # Store complete path in observed_paths table. Empty-path (direct RF)
-                # adverts are stored too — those are true one-hop neighbours.
-                if out_path_len == 0 and advert_data.get("public_key"):
-                    upsert_zero_hop_observed_path_via_manager(
-                        getattr(self.bot, "db_manager", None),
-                        advert_data["public_key"],
-                        self.logger,
-                        snr=signal_info.get("snr") if signal_info else None,
-                        rssi=(
-                            signal_info.get("rssi", signal_info.get("signal_strength"))
-                            if signal_info
-                            else None
-                        ),
-                        bytes_per_hop=packet_info.get("bytes_per_hop", 1) or 1,
-                        packet_hash=packet_hash,
-                        update_rssi=True,
-                    )
-                elif out_path and out_path_len > 0:
-                    self._store_observed_path(
-                        advert_data,
-                        out_path,
-                        path_byte_length,
-                        "advert",
-                        packet_hash=packet_hash,
-                        bytes_per_hop=packet_info.get("bytes_per_hop", 1),
-                    )
-
-                # Track this advertisement in the complete database
-                if hasattr(self.bot, "repeater_manager"):
-                    # Track all advertisements regardless of type
-                    track_result = await self.bot.repeater_manager.track_contact_advertisement(
-                        advert_data, signal_info, packet_hash=packet_hash
-                    )
-                    if track_result.ok:
-                        # Log rich advert information
-                        mode = advert_data.get("mode", "Unknown")
-                        name = advert_data.get("name", "No name")
-                        location = ""
-                        if "lat" in advert_data and "lon" in advert_data:
-                            # Try to get resolved location from database if available
-                            try:
-                                if hasattr(self.bot, "repeater_manager"):
-                                    # Look up the contact to get resolved location
-                                    public_key = advert_data.get("public_key")
-                                    if public_key:
-                                        contact_query = self.bot.db_manager.execute_query(
-                                            "SELECT city, state, country FROM complete_contact_tracking WHERE public_key = ?",
-                                            (public_key,),
-                                        )
-                                        if contact_query:
-                                            contact = contact_query[0]
-                                            city = contact.get("city")
-                                            state = contact.get("state")
-                                            if city and state:
-                                                location = f" at {city}, {state}"
-                                            elif city:
-                                                location = f" at {city}"
-                                            else:
-                                                # Fallback to coordinates if no resolved location
-                                                location = f" at {advert_data['lat']:.4f},{advert_data['lon']:.4f}"
-                                        else:
-                                            # No contact found yet, use coordinates
-                                            location = f" at {advert_data['lat']:.4f},{advert_data['lon']:.4f}"
-                                    else:
-                                        # No public key, use coordinates
-                                        location = f" at {advert_data['lat']:.4f},{advert_data['lon']:.4f}"
-                                else:
-                                    # No repeater manager, use coordinates
-                                    location = f" at {advert_data['lat']:.4f},{advert_data['lon']:.4f}"
-                            except Exception as e:
-                                # If lookup fails, fallback to coordinates
-                                self.logger.debug(f"Could not get resolved location for logging: {e}")
-                                location = f" at {advert_data['lat']:.4f},{advert_data['lon']:.4f}"
-
-                        # Show hop count in log
-                        hop_count = signal_info.get("hops", 0)
-                        hop_info = f" ({hop_count} hop{'s' if hop_count != 1 else ''})" if hop_count is not None else ""
-
-                        self.logger.info(f"📡 Tracked {mode}: {name}{location}{hop_info}")
-                    else:
-                        self.logger.warning(
-                            f"Failed to track contact advertisement: {sanitize_name(advert_data.get('name', 'Unknown'))}"
-                        )
-
-        except Exception as e:
-            self.logger.error(f"Error processing advertisement packet: {e}")
-
-    async def handle_rf_log_data(self, event: Any, metadata: dict[str, Any] | None = None) -> None:
-        """Handle RF log data events to cache SNR information and store raw packet data.
-
-        Captures low-level RF information (SNR, RSSI) and raw packet data to
-        correlate with higher-level messages for detailed signal reporting.
-
-        Args:
-            event: The MeshCore event object containing RF data.
-            metadata: Optional metadata dictionary.
-        """
-        try:
-            # Copy payload immediately to avoid segfault if event is freed
-            import copy
-
-            payload = copy.deepcopy(event.payload) if hasattr(event, "payload") else None
-            if payload is None:
-                self.logger.warning("RF log data event has no payload")
-                return
-
-            # Extract SNR from payload
-            if "snr" in payload:
-                snr_value = payload.get("snr")
-
-                # Use raw_hex prefix for correlation instead of trying to extract pubkey
-                raw_hex = payload.get("raw_hex", "")
-                packet_prefix = None
-
-                if raw_hex:
-                    # Use first 32 characters as correlation key (16 bytes)
-                    # This provides unique identification while being consistent
-                    packet_prefix = raw_hex[:32]
-                    self.logger.debug(f"Using packet prefix for correlation: {packet_prefix}")
-
-                # Keep pubkey_prefix for contact lookup (from metadata if available)
-                pubkey_prefix = None
-                if metadata and "pubkey_prefix" in metadata:
-                    pubkey_prefix = metadata.get("pubkey_prefix")
-                    if isinstance(pubkey_prefix, str):
-                        self.logger.debug(f"Got pubkey_prefix from metadata: {pubkey_prefix[:16]}...")
-
-                if packet_prefix and snr_value is not None:
-                    # Cache the SNR value for this packet prefix (LRU-bounded)
-                    self.snr_cache[packet_prefix] = snr_value
-                    self.snr_cache.move_to_end(packet_prefix)
-                    while len(self.snr_cache) > self._max_signal_cache_size:
-                        self.snr_cache.popitem(last=False)
-                    self.logger.debug(f"Cached SNR {snr_value} for packet prefix {packet_prefix}")
-
-                # Extract and cache RSSI if available
-                if "rssi" in payload:
-                    rssi_value = payload.get("rssi")
-                    if packet_prefix and rssi_value is not None:
-                        # Cache the RSSI value for this packet prefix (LRU-bounded)
-                        self.rssi_cache[packet_prefix] = rssi_value
-                        self.rssi_cache.move_to_end(packet_prefix)
-                        while len(self.rssi_cache) > self._max_signal_cache_size:
-                            self.rssi_cache.popitem(last=False)
-                        self.logger.debug(f"Cached RSSI {rssi_value} for packet prefix {packet_prefix}")
-
-                # Store recent RF data with timestamp for SNR/RSSI matching only
-                if packet_prefix:
-                    import time
-
-                    current_time = time.time()
-
-                    # Store both raw packet data and extracted payload for analysis
-                    raw_hex = payload.get("raw_hex", "")
-                    extracted_payload = payload.get("payload", "")
-                    payload_length = payload.get("payload_length", 0)
-
-                    # Extract routing information from raw packet if available
-                    routing_info = None
-                    packet_hash = None
-                    if raw_hex:
-                        # Use extracted payload if available, otherwise use raw_hex
-                        decoded_packet = self.decode_meshcore_packet(raw_hex, extracted_payload)
-                        if decoded_packet:
-                            # Calculate packet hash for this packet (useful for tracking same message via different paths)
-                            # Use extracted_payload if available (actual MeshCore packet), otherwise use raw_hex
-                            # This matches the logic in decode_meshcore_packet which prefers extracted_payload
-                            # extracted_payload is the actual MeshCore packet without RF wrapper, so use it if available
-                            packet_hex_for_hash = (
-                                extracted_payload if (extracted_payload and len(extracted_payload) > 0) else raw_hex
-                            )
-
-                            # Ensure we use the numeric payload_type value (not enum or string)
-                            payload_type_value = decoded_packet.get("payload_type", None)
-                            if payload_type_value is not None:
-                                # Handle enum.value if it's an enum
-                                if hasattr(payload_type_value, "value"):
-                                    payload_type_value = payload_type_value.value
-                                payload_type_value = int(payload_type_value)
-                            packet_hash = calculate_packet_hash(packet_hex_for_hash, payload_type_value)
-
-                            is_trace = decoded_packet.get("payload_type") == PayloadType.TRACE.value
-
-                            # Check if this is a repeat of one of our transmissions
-                            if (
-                                hasattr(self.bot, "transmission_tracker")
-                                and self.bot.transmission_tracker
-                                and packet_hash
-                                and packet_hash != "0000000000000000"
-                            ):
-                                # TRACE: RF path bytes are per-hop SNR×4, not repeater hashes — do not
-                                # extract prefixes or record repeats from them.
-                                if not is_trace:
-                                    # Extract repeater prefixes from path - try multiple field names
-                                    # decode_meshcore_packet returns 'path' not 'path_nodes'
-                                    path_nodes = decoded_packet.get("path", [])
-                                    # Also try 'path_nodes' field (from routing_info)
-                                    if not path_nodes:
-                                        path_nodes = decoded_packet.get("path_nodes", [])
-
-                                    path_hex = decoded_packet.get("path_hex", "")
-
-                                    # If we don't have path_nodes but have path_hex, convert it
-                                    if not path_nodes and path_hex and len(path_hex) >= 2:
-                                        path_nodes = self._path_hex_to_nodes(path_hex)
-
-                                    path_string = ",".join(path_nodes) if path_nodes else None
-
-                                    # Debug logging
-                                    if path_nodes:
-                                        self.logger.debug(
-                                            f"📡 Extracting prefixes from path_nodes: {path_nodes}, path_hex: {path_hex}, bot_prefix: {self.bot.transmission_tracker.bot_prefix}"
-                                        )
-
-                                    # Try to match this packet hash to a transmission
-                                    record = self.bot.transmission_tracker.match_packet_hash(
-                                        packet_hash, current_time, self._transmission_evidence(decoded_packet)
-                                    )
-
-                                    if record:
-                                        # This is one of our transmissions - check for repeats
-                                        # Extract repeater prefix from the last hop in the path
-                                        # (the repeater that sent this packet to us)
-                                        prefixes = self.bot.transmission_tracker.extract_repeater_prefixes_from_path(
-                                            path_string, path_nodes
-                                        )
-
-                                        # Log for debugging
-                                        if prefixes:
-                                            self.logger.info(
-                                                f"📡 Found {len(prefixes)} repeater prefix(es) in repeat: {', '.join(prefixes)}"
-                                            )
-                                        elif path_nodes or path_hex:
-                                            self.logger.debug(
-                                                f"📡 Repeat detected but no repeater prefixes extracted (path_nodes: {path_nodes}, path_hex: {path_hex}, bot_prefix: {self.bot.transmission_tracker.bot_prefix})"
-                                            )
-
-                                        # Record the repeat
-                                        for prefix in prefixes:
-                                            self.bot.transmission_tracker.record_repeat(packet_hash, prefix)
-
-                                        # If no prefixes but we have a path, it might be a direct repeat
-                                        # (path contains our own node, so we filter it out)
-                                        if not prefixes and (path_nodes or path_hex):
-                                            # Still count as a repeat (heard by our radio)
-                                            self.bot.transmission_tracker.record_repeat(packet_hash, None)
-                                else:
-                                    record = self.bot.transmission_tracker.match_packet_hash(
-                                        packet_hash, current_time, self._transmission_evidence(decoded_packet)
-                                    )
-                                    if record:
-                                        self.logger.debug(
-                                            "📡 TRACE packet matched our transmission; skipping repeater prefix "
-                                            "extraction (RF path holds SNR bytes, not node hashes)"
-                                        )
-
-                            pi = decoded_packet.get("path_info") or {}
-                            trace_route_hashes = list(pi.get("path_hashes") or pi.get("path") or [])
-                            trace_snr_db = list(pi.get("snr_data") or [])
-
-                            if is_trace:
-                                routing_info = {
-                                    "path_length": len(trace_route_hashes)
-                                    if trace_route_hashes
-                                    else decoded_packet.get("path_len", 0),
-                                    "path_len_byte": decoded_packet.get("path_len_byte"),
-                                    "path_byte_length": decoded_packet.get("path_byte_length"),
-                                    "bytes_per_hop": decoded_packet.get("bytes_per_hop", 1),
-                                    "path_hex": decoded_packet.get("path_hex", ""),
-                                    "path_nodes": trace_route_hashes,
-                                    "trace_route_hashes": trace_route_hashes,
-                                    "trace_snr_db": trace_snr_db,
-                                    "trace_snr_path_hex": decoded_packet.get("path_hex", ""),
-                                    "route_type": decoded_packet.get("route_type_name", "Unknown"),
-                                    "payload_length": payload_length,
-                                    "payload_type": decoded_packet.get("payload_type_name", "Unknown"),
-                                    "packet_hash": packet_hash,
-                                }
-                            else:
-                                routing_info = {
-                                    "path_length": decoded_packet.get("path_len", 0),
-                                    "path_len_byte": decoded_packet.get("path_len_byte"),
-                                    "path_byte_length": decoded_packet.get("path_byte_length"),
-                                    "bytes_per_hop": decoded_packet.get("bytes_per_hop", 1),
-                                    "path_hex": decoded_packet.get("path_hex", ""),
-                                    "path_nodes": decoded_packet.get("path", []),
-                                    "route_type": decoded_packet.get("route_type_name", "Unknown"),
-                                    "payload_length": payload_length,
-                                    "payload_type": decoded_packet.get("payload_type_name", "Unknown"),
-                                    "packet_hash": packet_hash,
-                                }
-                            # Validate path consistency (path_byte_length, path_hex, path_nodes, bytes_per_hop)
-                            if not is_trace:
-                                path_len = routing_info["path_length"]
-                                path_byte_len = routing_info.get("path_byte_length")
-                                path_hex_str = routing_info.get("path_hex", "")
-                                path_nodes_list = routing_info.get("path_nodes") or []
-                                bph = routing_info.get("bytes_per_hop", 1) or 1
-                                expected_hex_len = (
-                                    (path_byte_len * 2) if path_byte_len is not None else (path_len * bph * 2)
-                                )
-                                if path_len > 0 and path_hex_str:
-                                    if len(path_hex_str) != expected_hex_len:
-                                        self.logger.warning(
-                                            "Path length mismatch: path_hex has %d hex chars, expected %d (path_byte_length=%s, path_length=%s, bytes_per_hop=%s)",
-                                            len(path_hex_str),
-                                            expected_hex_len,
-                                            path_byte_len,
-                                            path_len,
-                                            bph,
-                                        )
-                                    if path_nodes_list and len(path_nodes_list) != path_len:
-                                        self.logger.warning(
-                                            "Path nodes count mismatch: %d nodes, path_length=%d",
-                                            len(path_nodes_list),
-                                            path_len,
-                                        )
-                                    if (
-                                        path_nodes_list
-                                        and bph >= 1
-                                        and any(len(str(n)) != bph * 2 for n in path_nodes_list)
-                                    ):
-                                        self.logger.warning(
-                                            "Path node width mismatch: bytes_per_hop=%d expects %d hex chars per node, nodes=%s",
-                                            bph,
-                                            bph * 2,
-                                            path_nodes_list[:5],
-                                        )
-                            # Log the routing information for analysis
-                            rf_path_bytes = decoded_packet.get("path_byte_length") or 0
-                            trace_has_route = bool(trace_route_hashes)
-                            trace_has_snr_path = rf_path_bytes > 0
-
-                            if is_trace and (trace_has_route or trace_has_snr_path):
-                                route_part = (
-                                    f"Trace route: {','.join(h.lower() for h in trace_route_hashes)}"
-                                    if trace_route_hashes
-                                    else "Trace route: (none decoded yet)"
-                                )
-                                snr_part = ""
-                                if trace_snr_db:
-                                    snr_fmt = ",".join(f"{v:.2f}" for v in trace_snr_db)
-                                    snr_part = f" | Trace SNR (dB): {snr_fmt}"
-                                elif routing_info.get("trace_snr_path_hex"):
-                                    snr_part = (
-                                        f" | Trace SNR path (raw hex, int8×4 per hop): "
-                                        f"{routing_info['trace_snr_path_hex']}"
-                                    )
-                                hops_display = (
-                                    len(trace_route_hashes) if trace_route_hashes else decoded_packet.get("path_len", 0)
-                                )
-                                log_message = (
-                                    f"🛣️  ROUTING INFO: {routing_info['route_type']} | {route_part}{snr_part} "
-                                    f"({hops_display} route hops, {rf_path_bytes} RF path bytes) | "
-                                    f"Payload: {routing_info['payload_length']} bytes | Type: {routing_info['payload_type']}"
-                                )
-                                self.logger.info(log_message)
-                            elif routing_info["path_length"] > 0:
-                                # Use path_nodes when present (multi-byte); else chunk path_hex
-                                path_nodes_list = routing_info.get("path_nodes") or []
-                                if path_nodes_list:
-                                    formatted_path = ",".join(str(n).lower() for n in path_nodes_list)
-                                else:
-                                    path_hex = routing_info["path_hex"]
-                                    path_nodes_fmt = self._path_hex_to_nodes(path_hex)
-                                    formatted_path = ",".join(path_nodes_fmt)
-                                path_bytes_str = decoded_packet.get("path_byte_length", routing_info["path_length"])
-                                log_message = f"🛣️  ROUTING INFO: {routing_info['route_type']} | Path: {formatted_path} ({routing_info['path_length']} hops, {path_bytes_str} bytes) | Payload: {routing_info['payload_length']} bytes | Type: {routing_info['payload_type']}"
-                                self.logger.info(log_message)
-                            else:
-                                log_message = f"📡 DIRECT MESSAGE: {routing_info['route_type']} | Type: {routing_info['payload_type']}"
-                                self.logger.info(log_message)
-
-                            # Capture full packet data for web viewer (for all packets)
-                            if (
-                                hasattr(self.bot, "web_viewer_integration")
-                                and self.bot.web_viewer_integration
-                                and self.bot.web_viewer_integration.bot_integration
-                            ):
-                                decoded_packet["routing_info"] = routing_info
-                                if is_trace and trace_route_hashes:
-                                    decoded_packet["path"] = list(trace_route_hashes)
-                                    decoded_packet["path_len"] = len(trace_route_hashes)
-                                # Use extracted_payload which is the full MeshCore packet
-                                # (header + path_len + path + payload, without RF wrapper)
-                                decoded_packet["raw_packet_hex"] = extracted_payload if extracted_payload else raw_hex
-                                decoded_packet["packet_hash"] = packet_hash
-                                decoded_packet["snr"] = snr_value
-                                if "rssi" in payload:
-                                    decoded_packet["rssi"] = payload.get("rssi")
-                                self.bot.web_viewer_integration.bot_integration.capture_full_packet_data(decoded_packet)
-
-                            # Process ADVERT packets for contact tracking (regardless of path length)
-                            if routing_info["payload_type"] == "ADVERT":
-                                # Add routing_info to decoded_packet so it's available in _process_advertisement_packet
-                                decoded_packet["routing_info"] = routing_info
-                                # Create signal info from available data
-                                signal_info = {
-                                    "snr": snr_value,
-                                    "rssi": payload.get("rssi") if "rssi" in payload else None,
-                                    "hops": routing_info["path_length"],
-                                }
-                                self._remember_advert_rf(
-                                    decoded_packet, routing_info, packet_hash, signal_info, current_time
-                                )
-                                await self._process_advertisement_packet(decoded_packet, signal_info)
-
-                    # Prefer library-provided scope fields (already parsed by meshcore-py).
-                    # The library's parsePacketPayload populates these directly from the
-                    # inner MeshCore packet, avoiding any raw_hex prefix/offset issues.
-                    _lib_route_type = payload.get("route_type")  # int: 0=TC_FLOOD, 1=FLOOD
-                    _lib_tc_hex = payload.get("transport_code")  # hex str e.g. "26f10000"
-                    _lib_payload_type = payload.get("payload_type")  # int
-                    _lib_pkt_payload = payload.get("pkt_payload")  # bytes after path
-
-                    # Compute transport code1 (uint16 LE) from library hex string
-                    _lib_tc_code1 = None
-                    if _lib_tc_hex and len(_lib_tc_hex) >= 4:
-                        try:
-                            _lib_tc_code1 = int.from_bytes(bytes.fromhex(_lib_tc_hex[:4]), "little")
-                        except ValueError:
-                            pass
-
-                    # pkt_payload may be bytes or hex string depending on library version
-                    _lib_pkt_hex = None
-                    if isinstance(_lib_pkt_payload, bytes):
-                        _lib_pkt_hex = _lib_pkt_payload.hex()
-                    elif isinstance(_lib_pkt_payload, str) and _lib_pkt_payload:
-                        _lib_pkt_hex = _lib_pkt_payload
-
-                    rf_data = {
-                        "timestamp": current_time,
-                        "packet_prefix": packet_prefix,  # Use packet prefix for correlation
-                        "pubkey_prefix": pubkey_prefix,  # Keep for contact lookup
-                        "snr": snr_value,
-                        "rssi": payload.get("rssi") if "rssi" in payload else None,
-                        "raw_hex": raw_hex,  # Full packet data
-                        "payload": extracted_payload,  # Extracted payload
-                        "payload_length": payload_length,  # Payload length
-                        "routing_info": routing_info,  # Extracted routing information
-                        "packet_hash": packet_hash,  # Packet hash for tracking same message via different paths
-                        # Fields for TC_FLOOD scope matching — use library values first, decoded_packet as fallback
-                        "route_type_int": _lib_route_type
-                        if _lib_route_type is not None
-                        else (decoded_packet.get("route_type") if decoded_packet else None),
-                        "transport_code1": _lib_tc_code1
-                        if _lib_tc_code1 is not None
-                        else ((decoded_packet.get("transport_codes") or {}).get("code1") if decoded_packet else None),
-                        "payload_type_int": _lib_payload_type
-                        if _lib_payload_type is not None
-                        else (decoded_packet.get("payload_type") if decoded_packet else None),
-                        "scope_payload_hex": _lib_pkt_hex
-                        if _lib_pkt_hex
-                        else (decoded_packet.get("payload_hex") if decoded_packet else None),
-                    }
-                    self._cache_authenticated_channel_rf_data(
-                        rf_data, decoded_packet, current_time
-                    )
-                    if rf_data.get("route_type_int") == 0:
-                        self.logger.debug(
-                            "TC_FLOOD scope fields: tc_code1=%s payload_type=%s payload_hex_prefix=%s",
-                            rf_data.get("transport_code1"),
-                            rf_data.get("payload_type_int"),
-                            (rf_data.get("scope_payload_hex") or "")[:16],
-                        )
-                    self.recent_rf_data.append(rf_data)
-
-                    # Update correlation indexes
-                    self.rf_data_by_timestamp[current_time] = rf_data
-                    if packet_prefix:
-                        if packet_prefix not in self.rf_data_by_pubkey:
-                            self.rf_data_by_pubkey[packet_prefix] = []
-                        self.rf_data_by_pubkey[packet_prefix].append(rf_data)
-
-                    # Clean up old data from all indexes
-                    self._cleanup_stale_cache_entries(current_time)
-
-                    self.logger.debug(f"Stored recent RF data with routing info: {rf_data}")
-
-        except Exception as e:
-            self.logger.error(f"Error handling RF log data: {e}")
-
     def extract_path_from_raw_hex(self, raw_hex: str, expected_hops: int) -> str | None:
         """Extract path information directly from raw hex data.
 
@@ -1712,557 +560,11 @@ class MessageHandler:
             self.logger.debug(f"Error extracting path from raw hex: {e}")
             return None
 
-    def _cleanup_stale_cache_entries(self, current_time: float | None = None) -> None:
-        """Remove stale entries from RF data caches and enforce maximum size limits.
-
-        Args:
-            current_time: Optional timestamp to use as "now". Defaults to time.time().
-        """
-        if current_time is None:
-            current_time = time.time()
-
-        # Only run periodic cleanup if enough time has passed
-        if current_time - self._last_cache_cleanup < self._cache_cleanup_interval:
-            # Still do basic timeout cleanup, but skip size enforcement
-            cutoff_time = current_time - self.rf_data_timeout
-
-            # Clean timestamp-indexed cache (timeout only)
-            stale_timestamps = [ts for ts in self.rf_data_by_timestamp if ts < cutoff_time]
-            for ts in stale_timestamps:
-                del self.rf_data_by_timestamp[ts]
-
-            # Clean pubkey-indexed cache (timeout only)
-            for pubkey in list(self.rf_data_by_pubkey.keys()):
-                self.rf_data_by_pubkey[pubkey] = [
-                    data
-                    for data in self.rf_data_by_pubkey[pubkey]
-                    if current_time - data["timestamp"] < self.rf_data_timeout
-                ]
-                if not self.rf_data_by_pubkey[pubkey]:
-                    del self.rf_data_by_pubkey[pubkey]
-
-            # Clean recent_rf_data list (timeout only)
-            self.recent_rf_data = [
-                data for data in self.recent_rf_data if current_time - data["timestamp"] < self.rf_data_timeout
-            ]
-            return
-
-        # Full cleanup with size enforcement
-        self._last_cache_cleanup = current_time
-        cutoff_time = current_time - self.rf_data_timeout
-
-        # Clean timestamp-indexed cache
-        stale_timestamps = [ts for ts in self.rf_data_by_timestamp if ts < cutoff_time]
-        for ts in stale_timestamps:
-            del self.rf_data_by_timestamp[ts]
-
-        # Enforce maximum size on timestamp cache (keep most recent)
-        if len(self.rf_data_by_timestamp) > self._max_rf_cache_size:
-            sorted_items = sorted(
-                self.rf_data_by_timestamp.items(), key=lambda x: x[1].get("timestamp", 0), reverse=True
-            )
-            self.rf_data_by_timestamp = dict(sorted_items[: self._max_rf_cache_size])
-
-        # Clean pubkey-indexed cache
-        for pubkey in list(self.rf_data_by_pubkey.keys()):
-            self.rf_data_by_pubkey[pubkey] = [
-                data
-                for data in self.rf_data_by_pubkey[pubkey]
-                if current_time - data["timestamp"] < self.rf_data_timeout
-            ]
-            if not self.rf_data_by_pubkey[pubkey]:
-                del self.rf_data_by_pubkey[pubkey]
-
-        # Enforce maximum size on pubkey cache (keep most recent per pubkey)
-        total_pubkey_entries = sum(len(entries) for entries in self.rf_data_by_pubkey.values())
-        if total_pubkey_entries > self._max_rf_cache_size:
-            # Sort all entries by timestamp and keep most recent
-            all_pubkey_entries = []
-            for pubkey, entries in self.rf_data_by_pubkey.items():
-                for entry in entries:
-                    all_pubkey_entries.append((pubkey, entry))
-            all_pubkey_entries.sort(key=lambda x: x[1].get("timestamp", 0), reverse=True)
-
-            # Rebuild pubkey cache with only the most recent entries
-            self.rf_data_by_pubkey = {}
-            for pubkey, entry in all_pubkey_entries[: self._max_rf_cache_size]:
-                if pubkey not in self.rf_data_by_pubkey:
-                    self.rf_data_by_pubkey[pubkey] = []
-                self.rf_data_by_pubkey[pubkey].append(entry)
-
-        # Clean recent_rf_data list
-        self.recent_rf_data = [
-            data for data in self.recent_rf_data if current_time - data["timestamp"] < self.rf_data_timeout
-        ]
-
-        # Enforce maximum size on recent_rf_data (keep most recent)
-        if len(self.recent_rf_data) > self._max_rf_cache_size:
-            self.recent_rf_data.sort(key=lambda x: x.get("timestamp", 0), reverse=True)
-            self.recent_rf_data = self.recent_rf_data[: self._max_rf_cache_size]
-
-    async def _correlate_channel_message_rf_data(
-        self,
-        message_packet_prefix: str | None,
-        message_pubkey: str,
-        payload: dict[str, Any],
-        *,
-        scope_eligible_only: bool,
-        extended_timeout: float,
-    ) -> dict[str, Any] | None:
-        """Correlate a channel message with cached RF log rows (strategies 1–4)."""
-        authenticated, authenticated_identity_seen = self._find_authenticated_channel_rf_data(payload)
-        if authenticated_identity_seen:
-            if authenticated is None:
-                return None
-            if scope_eligible_only and not self._is_rf_data_scope_eligible(authenticated):
-                return None
-            self.logger.debug(
-                "Authenticated channel message matched first RF reception %s (packet %s)",
-                (authenticated.get("packet_prefix") or "?")[:16],
-                authenticated.get("packet_hash") or "?",
-            )
-            return authenticated
-
-        recent_rf_data: dict[str, Any] | None = None
-
-        if message_packet_prefix:
-            recent_rf_data = self.find_recent_rf_data(
-                message_packet_prefix, scope_eligible_only=scope_eligible_only
-            )
-        elif message_pubkey:
-            recent_rf_data = self.find_recent_rf_data(
-                message_pubkey, scope_eligible_only=scope_eligible_only
-            )
-
-        if not recent_rf_data and self.enhanced_correlation and not scope_eligible_only:
-            # The RF log row can trail the message event; give it a moment, then look again
-            await asyncio.sleep(0.1)
-            authenticated, authenticated_identity_seen = self._find_authenticated_channel_rf_data(payload)
-            if authenticated_identity_seen:
-                if authenticated is None:
-                    return None
-                if scope_eligible_only and not self._is_rf_data_scope_eligible(authenticated):
-                    return None
-                return authenticated
-            recent_rf_data = self.find_recent_rf_data(payload.get("pubkey_prefix", ""))
-
-        if not recent_rf_data:
-            if message_packet_prefix:
-                recent_rf_data = self.find_recent_rf_data(
-                    message_packet_prefix,
-                    max_age_seconds=extended_timeout,
-                    scope_eligible_only=scope_eligible_only,
-                )
-            elif message_pubkey:
-                recent_rf_data = self.find_recent_rf_data(
-                    message_pubkey,
-                    max_age_seconds=extended_timeout,
-                    scope_eligible_only=scope_eligible_only,
-                )
-
-        if not recent_rf_data:
-            recent_rf_data = self.find_recent_rf_data(
-                max_age_seconds=extended_timeout,
-                scope_eligible_only=scope_eligible_only,
-            )
-
-        # A channel message has no packet prefix or pubkey to match on, so everything
-        # above lands on the most-recent-packet fallback. The decoded payload carries
-        # its own copies of fields the RF row also has, though, so the cache can be
-        # searched for this message's own packet rather than assuming the newest row.
-        if recent_rf_data is not None and not rf_data_is_correlated(recent_rf_data):
-            verified = self._find_rf_row_matching_chan_payload(
-                payload, scope_eligible_only=scope_eligible_only
-            )
-            if verified is not None:
-                if verified.get("packet_prefix") != recent_rf_data.get("packet_prefix"):
-                    self.logger.debug(
-                        "Most recent RF row %s is not this message's packet (a later "
-                        "reception of another packet); the payload matches %s instead",
-                        (recent_rf_data.get("packet_prefix") or "?")[:16],
-                        (verified.get("packet_prefix") or "?")[:16],
-                    )
-                recent_rf_data = {**verified, RF_MATCH_KEY: RF_MATCH_PAYLOAD}
-                self.logger.debug(
-                    "Verified RF row %s against the channel payload (GRP_TXT, path_len=%s, "
-                    "SNR=%s); treating it as this message's packet",
-                    (recent_rf_data.get("packet_prefix") or "?")[:16],
-                    payload.get("path_len"),
-                    payload.get("SNR"),
-                )
-
-        return recent_rf_data
-
-    def _find_rf_row_matching_chan_payload(
-        self, payload: dict[str, Any] | None, *, scope_eligible_only: bool = False
-    ) -> dict[str, Any] | None:
-        """Return the cached RF row this channel message was received on, or None.
-
-        Checking only the newest row assumes the RF log row and the decoded CHAN
-        event for one reception arrive back to back with nothing in between. On a
-        dense mesh they do not: a repeater's echo of the very same packet is
-        routinely logged in the gap, so the newest row is that echo — a different
-        path length and a different measured SNR — and the message loses its route
-        even though its own row is sitting in the cache (#255). Search the cache
-        instead, and let _rf_data_matches_chan_payload decide which row is ours.
-
-        Two rows can only both match when they are receptions of the same packet
-        (same hash) that also agree on path length and SNR; anything else is
-        ambiguous and keeps the fallback tag, because a guess is what #80 cost.
-        """
-        if not payload:
-            return None
-
-        matches = [
-            row
-            for row in self.recent_rf_data
-            if self._rf_data_matches_chan_payload(row, payload)
-            and (not scope_eligible_only or self._is_rf_data_scope_eligible(row))
-        ]
-        if not matches:
-            return None
-
-        if len(matches) > 1:
-            hashes = {row.get("packet_hash") for row in matches}
-            if len(hashes) != 1 or not all(hashes):
-                self.logger.debug(
-                    "%d cached RF rows agree with the channel payload across %d packet(s); "
-                    "leaving the route unresolved rather than guessing",
-                    len(matches),
-                    len(hashes),
-                )
-                return None
-
-        return max(matches, key=lambda row: row["timestamp"])
-
-    def _rf_data_matches_chan_payload(
-        self, rf_data: dict[str, Any] | None, payload: dict[str, Any] | None
-    ) -> bool:
-        """True when a cached RF row is confirmed to be this channel message's packet.
-
-        MeshCore's CHAN event carries neither raw_hex nor a pubkey prefix, so the
-        prefix strategies in find_recent_rf_data cannot fire and every channel
-        message falls through to the most recent packet. That fallback is normally
-        right — the firmware emits the RF log row and the decoded CHAN event for the
-        same reception back to back — but "normally right" is not evidence, and #80
-        is what happens when a guess is treated as one.
-
-        The CHAN payload does, however, restate three things the RF row records
-        independently: payload type, path length and SNR. Requiring all three to
-        agree on a row heard within the correlation window turns the fallback into
-        a checked hypothesis. SNR is the discriminating one: it is the measured
-        value of a single reception, quantised to 0.25 dB, so an unrelated packet
-        matching all three is improbable rather than merely unlikely.
-
-        _find_rf_row_matching_chan_payload applies this to every cached row rather
-        than only the newest, so a repeater echo logged in between cannot displace
-        the message's own row (#255).
-        """
-        if not rf_data or not payload:
-            return False
-
-        if rf_data.get("payload_type_int") != self._grp_txt_payload_type_int():
-            return False
-
-        # Bound the age: the RF row and its CHAN event arrive together, so an old row
-        # that happens to agree is a coincidence, not this message.
-        timestamp = rf_data.get("timestamp")
-        if not isinstance(timestamp, (int, float)):
-            return False
-        if time.time() - timestamp > self.message_timeout:
-            return False
-
-        payload_path_len = payload.get("path_len")
-        rf_path_len = (rf_data.get("routing_info") or {}).get("path_length")
-        if payload_path_len is None or rf_path_len is None:
-            return False
-        if int(payload_path_len) != int(rf_path_len):
-            return False
-
-        payload_snr = payload.get("SNR")
-        rf_snr = rf_data.get("snr")
-        if payload_snr is None or rf_snr is None:
-            return False
-        try:
-            # Tolerance covers float representation only; SNR is quantised to 0.25 dB.
-            return abs(float(payload_snr) - float(rf_snr)) < 1e-6
-        except (TypeError, ValueError):
-            return False
-
-    def find_recent_rf_data(
-        self,
-        correlation_key: str | None = None,
-        max_age_seconds: float | None = None,
-        *,
-        scope_eligible_only: bool = False,
-    ) -> dict[str, Any] | None:
-        """Find recent RF data for SNR/RSSI and packet decoding with improved correlation
-
-        Args:
-            correlation_key: Can be either:
-                - packet_prefix (from raw_hex[:32]) for RF data correlation
-                - pubkey_prefix (from message payload) for message correlation
-            max_age_seconds: Maximum age of RF cache entries to consider.
-            scope_eligible_only: When True, only return TC_FLOOD / GRP_TXT rows suitable
-                for flood_scopes HMAC matching. Strategy 4 (most-recent fallback) skips
-                unrelated packets such as ADVERT.
-
-        Returns:
-            A shallow copy of the cached RF entry with ``RF_MATCH_KEY`` describing how it
-            was found: "exact", "pubkey", "partial", or "fallback". A "fallback" result is
-            the most recent packet in the cache and is **not** known to be this message's
-            packet, so its route must not be attributed to the message (see issue #80).
-        """
-        import time
-
-        current_time = time.time()
-
-        # Use default timeout if not specified
-        if max_age_seconds is None:
-            max_age_seconds = self.rf_data_timeout
-
-        # Filter recent RF data by age
-        recent_data = [data for data in self.recent_rf_data if current_time - data["timestamp"] < max_age_seconds]
-
-        if not recent_data:
-            self.logger.debug(f"No recent RF data found within {max_age_seconds}s window")
-            return None
-
-        def _accept(data: dict[str, Any], how: str) -> dict[str, Any] | None:
-            if scope_eligible_only and not self._is_rf_data_scope_eligible(data):
-                return None
-            # Shallow copy so the provenance tag never persists into the cache.
-            return {**data, RF_MATCH_KEY: how}
-
-        # Strategy 1: Try exact packet prefix match first (for RF data correlation)
-        if correlation_key:
-            for data in recent_data:
-                rf_packet_prefix = data.get("packet_prefix", "") or ""
-                if rf_packet_prefix == correlation_key:
-                    accepted = _accept(data, RF_MATCH_EXACT)
-                    if accepted:
-                        self.logger.debug(f"Found exact packet prefix match: {rf_packet_prefix}")
-                        return accepted
-
-        # Strategy 2: Try pubkey prefix match (for message correlation).
-        # A pubkey prefix identifies a sender, not one transmission. When the cache
-        # holds several packets from that sender the match is ambiguous, so take the
-        # newest and mark it non-authoritative rather than attributing its route.
-        if correlation_key:
-            pubkey_matches = [
-                data for data in recent_data
-                if (data.get("pubkey_prefix", "") or "") == correlation_key
-            ]
-            if pubkey_matches:
-                newest = max(pubkey_matches, key=lambda x: x["timestamp"])
-                unique = len(pubkey_matches) == 1
-                accepted = _accept(newest, RF_MATCH_PUBKEY if unique else RF_MATCH_FALLBACK)
-                if accepted:
-                    if unique:
-                        self.logger.debug(f"Found exact pubkey prefix match: {correlation_key}")
-                    else:
-                        self.logger.debug(
-                            "%d cached packets share pubkey prefix %s; using the newest "
-                            "for signal only, not for routing",
-                            len(pubkey_matches), correlation_key,
-                        )
-                    return accepted
-
-        # Strategy 3: Try partial packet prefix matches. Same ambiguity caveat as
-        # above: a shared 16-character prefix is not proof of the same transmission.
-        if correlation_key:
-            partial_matches = []
-            for data in recent_data:
-                rf_packet_prefix = data.get("packet_prefix", "") or ""
-                min_length = min(len(rf_packet_prefix), len(correlation_key), 16)
-                if rf_packet_prefix[:min_length] == correlation_key[:min_length] and min_length >= 16:
-                    partial_matches.append(data)
-            if partial_matches:
-                newest = max(partial_matches, key=lambda x: x["timestamp"])
-                unique = len(partial_matches) == 1
-                accepted = _accept(newest, RF_MATCH_PARTIAL if unique else RF_MATCH_FALLBACK)
-                if accepted:
-                    if unique:
-                        self.logger.debug(
-                            f"Found partial packet prefix match for {correlation_key[:16]}..."
-                        )
-                    else:
-                        self.logger.debug(
-                            "%d cached packets share the partial prefix %s...; using the "
-                            "newest for signal only, not for routing",
-                            len(partial_matches), correlation_key[:16],
-                        )
-                    return accepted
-
-        # Strategy 4: Use most recent data (fallback for timing issues)
-        if recent_data:
-            candidates = recent_data
-            if scope_eligible_only:
-                candidates = [d for d in recent_data if self._is_rf_data_scope_eligible(d)]
-                if not candidates:
-                    self.logger.debug(
-                        "No scope-eligible RF data in cache for fallback "
-                        "(need TC_FLOOD GRP_TXT with transport code)"
-                    )
-                    return None
-            most_recent = max(candidates, key=lambda x: x["timestamp"])
-            packet_prefix = most_recent.get("packet_prefix", "unknown")
-            if scope_eligible_only:
-                self.logger.debug(
-                    "Using most recent scope-eligible RF data (fallback): %s at %s",
-                    packet_prefix,
-                    most_recent["timestamp"],
-                )
-            else:
-                self.logger.debug(
-                    f"Using most recent RF data (fallback): {packet_prefix} at {most_recent['timestamp']}"
-                )
-            return {**most_recent, RF_MATCH_KEY: RF_MATCH_FALLBACK}
-
-        return None
-
     def decode_meshcore_packet(self, raw_hex: str, payload_hex: str | None = None) -> dict | None:
-        """
-        Decode a MeshCore packet from raw hex data - matches Packet.cpp exactly
-
-        Args:
-            raw_hex: Raw packet data as hex string (may be RF data or direct MeshCore packet)
-            payload_hex: Optional extracted payload hex string (preferred over raw_hex)
-
-        Returns:
-            Decoded packet information or None if parsing fails
-        """
-        # Ensure these are always defined for error logging (BUG-028)
-        byte_data: bytes = b""
-        hex_data: str = ""
-        try:
-            # Use payload_hex if provided (this is the actual MeshCore packet)
-            if payload_hex:
-                self.logger.debug("Using provided payload_hex for decoding")
-                hex_data = payload_hex
-            elif raw_hex:
-                self.logger.debug("Using raw_hex for decoding")
-                hex_data = raw_hex
-            else:
-                self.logger.debug("No packet data provided for decoding")
-                return None
-
-            # Remove 0x prefix if present (like in your other project)
-            if hex_data.startswith("0x"):
-                hex_data = hex_data[2:]
-
-            byte_data = bytes.fromhex(hex_data)
-
-            # Validate minimum packet size
-            if len(byte_data) < 2:
-                self.logger.error(f"Packet too short: {len(byte_data)} bytes")
-                return None
-
-            header = byte_data[0]
-
-            # Extract route type
-            route_type = RouteType(header & 0x03)
-            has_transport = route_type in [RouteType.TRANSPORT_FLOOD, RouteType.TRANSPORT_DIRECT]
-
-            # Calculate path length offset based on presence of transport codes
-            offset = 1
-            if has_transport:
-                offset += 4
-
-            # Check if we have enough data for path_len
-            if len(byte_data) <= offset:
-                self.logger.error(f"Packet too short for path_len at offset {offset}: {len(byte_data)} bytes")
-                return None
-
-            path_len_byte = byte_data[offset]
-            offset += 1
-            # Decode per firmware: low 6 bits = hop count, high 2 bits = size code (bytes_per_hop = code+1)
-            path_parts = decode_path_len_byte(path_len_byte)
-            if path_parts is None:
-                self.logger.debug("decode_meshcore_packet: invalid path_len byte (firmware would reject)")
-                return None
-            path_byte_length, bytes_per_hop = path_parts
-
-            # Check if we have enough data for the full path
-            if len(byte_data) < offset + path_byte_length:
-                self.logger.error(
-                    f"Packet too short for path (need {offset + path_byte_length}, have {len(byte_data)})"
-                )
-                return None
-
-            # Extract path
-            path_bytes = byte_data[offset : offset + path_byte_length]
-            offset += path_byte_length
-
-            # Remaining data is payload
-            payload = byte_data[offset:]
-
-            # Extract payload version (bits 6-7)
-            payload_version = PayloadVersion((header >> 6) & 0x03)
-
-            # Only accept VER_1 (version 0)
-            if payload_version != PayloadVersion.VER_1:
-                self.logger.warning(
-                    f"Encountered an unknown packet version. Version: {payload_version.value} RAW: {hex_data}"
-                )
-                return None
-
-            # Extract payload type (bits 2-5)
-            payload_type = PayloadType((header >> 2) & 0x0F)
-
-            # Chunk path by bytes_per_hop from packet (1, 2, or 3)
-            path_hex, path_values = self._path_bytes_to_nodes(path_bytes, prefix_hex_chars=bytes_per_hop * 2)
-
-            # Process path based on packet type
-            path_info = self._process_packet_path(path_bytes, payload, route_type, payload_type)
-
-            # Extract transport codes if present (only for TRANSPORT_FLOOD and TRANSPORT_DIRECT)
-            transport_codes = None
-            if has_transport and len(byte_data) >= 5:  # header(1) + transport(4)
-                transport_bytes = byte_data[1:5]
-                transport_codes = {
-                    "code1": int.from_bytes(transport_bytes[0:2], byteorder="little"),
-                    "code2": int.from_bytes(transport_bytes[2:4], byteorder="little"),
-                    "hex": transport_bytes.hex(),
-                }
-
-            packet_info = {
-                "header": f"0x{header:02x}",
-                # Raw values for backward compatibility
-                "route_type": route_type.value,
-                "route_type_name": route_type.name,
-                "payload_type": payload_type.value,
-                "payload_type_name": payload_type.name,
-                "payload_version": payload_version.value,
-                # Enum objects for improved type safety
-                "route_type_enum": route_type,
-                "payload_type_enum": payload_type,
-                "payload_version_enum": payload_version,
-                # Transport and path information
-                "has_transport_codes": has_transport,
-                "transport_codes": transport_codes,
-                "transport_size": 4 if has_transport else 0,
-                "path_len": len(path_values),  # Hop count for display / routing_info
-                "path_len_byte": path_len_byte,  # Raw wire byte (same as firmware Packet path_len)
-                "path_byte_length": path_byte_length,  # Path bytes (for logs showing "X bytes")
-                "bytes_per_hop": bytes_per_hop,  # For multi-byte path storage/retrieval
-                "path_info": path_info,
-                "path": path_values,  # For backward compatibility
-                "path_hex": path_hex,
-                "payload_hex": payload.hex(),
-                "payload_bytes": len(payload),
-            }
-
-            self.logger.debug(
-                f"Successfully decoded: route={packet_info.get('route_type_name')}, type={packet_info.get('payload_type_name')}"
-            )
-            return packet_info
-
-        except Exception as e:
-            # Log as ERROR not DEBUG so we can see what's failing
-            self.logger.error(f"Error decoding packet (len={len(byte_data)}): {e}", exc_info=True)
-            self.logger.error(f"Failed packet hex: {hex_data}")
-            return None
+        """Decode a MeshCore packet; see :func:`modules.packet_decode.decode_meshcore_packet`."""
+        return packet_decode.decode_meshcore_packet(
+            raw_hex, payload_hex, prefix_hex_chars=self._prefix_hex_chars(), logger=self.logger
+        )
 
     def parse_advert(self, payload: bytes) -> dict[str, Any]:
         """Parse advert payload - matches C++ AdvertDataHelpers.h implementation"""
@@ -2284,10 +586,6 @@ class MessageHandler:
                 return {}
 
             flags_byte = app_data[0]
-
-            # Log the full flag byte for debugging
-            if hasattr(self, "debug") and self.debug:
-                self.logger.debug(f"ADVERT flags: 0x{flags_byte:02X} (binary: {flags_byte:08b})")
 
             # Bit tests match firmware AdvertDataParser (do not use AdvertFlags(flags_byte):
             # enum.Flag rejects some valid uint8 values, e.g. corrupt wires or type nibble > 4).
@@ -2364,25 +662,14 @@ class MessageHandler:
             self.logger.warning(f"Error parsing ADVERT payload: {e}")
             return {}
 
+    def _prefix_hex_chars(self) -> int:
+        """Configured node-prefix width in hex chars (2 when the bot does not say)."""
+        return getattr(getattr(self, "bot", None), "prefix_hex_chars", 2)
+
     def _path_bytes_to_nodes(self, path_bytes: bytes, prefix_hex_chars: int | None = None) -> tuple:
-        """Chunk path bytes into hex node IDs using configured prefix length, with legacy 2-char fallback.
-
-        Args:
-            path_bytes: Raw path bytes from packet.
-            prefix_hex_chars: Hex chars per node (2 = 1 byte, 4 = 2 bytes). Default from bot.prefix_hex_chars.
-
-        Returns:
-            Tuple of (path_hex_str, path_nodes_list).
-        """
-        n = prefix_hex_chars if prefix_hex_chars is not None else getattr(self.bot, "prefix_hex_chars", 2)
-        if n <= 0:
-            n = 2
-        path_hex = path_bytes.hex()
-        nodes = [path_hex[i : i + n].upper() for i in range(0, len(path_hex), n)]
-        # Legacy fallback: if remainder or no nodes, treat as 1-byte-per-hop
-        if (len(path_hex) % n) != 0 or not nodes:
-            nodes = [path_hex[i : i + 2].upper() for i in range(0, len(path_hex), 2)]
-        return path_hex, nodes
+        """Chunk path bytes into ``(hex, node IDs)``; width defaults to the configured prefix length."""
+        width = prefix_hex_chars if prefix_hex_chars is not None else self._prefix_hex_chars()
+        return packet_decode.path_bytes_to_nodes(path_bytes, width)
 
     def _path_hex_to_nodes(self, path_hex: str) -> list[str]:
         """Chunk path_hex string into node list using configured prefix length, with legacy 2-char fallback.
@@ -2391,13 +678,10 @@ class MessageHandler:
         """
         if not path_hex or len(path_hex) < 2:
             return []
-        n = getattr(self.bot, "prefix_hex_chars", 2)
+        n = self._prefix_hex_chars()
         if n <= 0:
             n = 2
-        nodes = [path_hex[i : i + n].lower() for i in range(0, len(path_hex), n)]
-        if (len(path_hex) % n) != 0 or not nodes:
-            nodes = [path_hex[i : i + 2].lower() for i in range(0, len(path_hex), 2)]
-        return nodes
+        return split_path_hex(path_hex, n)
 
     def _get_path_from_rf_data(
         self, rf_data: dict[str, Any], payload_hex: str | None = None, packet_info: dict[str, Any] | None = None
@@ -2433,9 +717,7 @@ class MessageHandler:
         if path_hex and len(path_hex) >= 2:
             bytes_per_hop = packet_info.get("bytes_per_hop", 1)
             n = (bytes_per_hop * 2) if bytes_per_hop and bytes_per_hop >= 1 else 2
-            path_nodes_list = [path_hex[i : i + n].lower() for i in range(0, len(path_hex), n)]
-            if (len(path_hex) % n) != 0:
-                path_nodes_list = [path_hex[i : i + 2].lower() for i in range(0, len(path_hex), 2)]
+            path_nodes_list = split_path_hex(path_hex, n)
             if path_nodes_list:
                 return (",".join(path_nodes_list), path_nodes_list, len(path_nodes_list))
         path_info = packet_info.get("path_info") or {}
@@ -2448,125 +730,16 @@ class MessageHandler:
     def _process_packet_path(
         self, path_bytes: bytes, payload: bytes, route_type: RouteType, payload_type: PayloadType
     ) -> dict:
-        """
-        Process the path field based on packet and route type
-
-        Args:
-            path_bytes: Raw path bytes
-            payload: Payload bytes (needed for TRACE packets)
-            route_type: Route type from header
-            payload_type: Payload type from header
-
-        Returns:
-            dict: Processed path information
-        """
-        try:
-            # Chunk path bytes into node IDs using configured prefix length (with legacy fallback)
-            _, path_nodes = self._path_bytes_to_nodes(path_bytes)
-
-            # Special handling for TRACE packets
-            if payload_type == PayloadType.TRACE:
-                # RF path bytes are per-hop SNR×4 (int8), not node hashes. The commanded route is
-                # in the payload after tag(4)+auth(4)+flags(1); use path_info / parse_trace_payload_route_hashes for display.
-                # In TRACE packets, path field contains SNR data
-                # Real routing path is in the payload as pathHashes (after tag(4) + auth(4) + flags(1))
-                snr_values = []
-                for b in path_bytes:
-                    # Convert SNR byte to dB (signed value)
-                    snr_db = (b - 256) / 4 if b > 127 else b / 4
-                    snr_values.append(snr_db)
-
-                # Decode trace payload to extract pathHashes (routing path)
-                # path_hash_len from flags (bits 0-1): 1 << (flags & 3) = 1, 2, 4, or 8 bytes per hop
-                path_hashes = []
-                if len(payload) >= 9:  # Minimum: tag(4) + auth(4) + flags(1)
-                    try:
-                        path_hashes_bytes = payload[9:]
-                        flags = payload[8]
-                        path_hash_len = 1 << (flags & 3)  # 1, 2, 4, or 8 bytes per hop
-                        if path_hash_len <= 0:
-                            path_hash_len = 1
-                        if len(path_hashes_bytes) % path_hash_len == 0:
-                            path_hashes = [
-                                path_hashes_bytes[i : i + path_hash_len].hex().upper()
-                                for i in range(0, len(path_hashes_bytes), path_hash_len)
-                            ]
-                        else:
-                            # Fallback: 1 byte per hop (legacy)
-                            path_hashes = [f"{b:02x}".upper() for b in path_hashes_bytes]
-                    except Exception as e:
-                        self.logger.debug(f"Error extracting pathHashes from trace payload: {e}")
-                        path_hashes = [f"{b:02x}".upper() for b in payload[9:]]
-
-                return {
-                    "type": "trace",
-                    "snr_data": snr_values,
-                    "snr_path": path_nodes,  # SNR data as hex for reference
-                    "path": path_hashes,  # Actual routing path from payload pathHashes
-                    "path_hashes": path_hashes,  # Explicit field for pathHashes
-                    "description": f"TRACE packet with {len(snr_values)} SNR readings and {len(path_hashes)} path nodes",
-                }
-
-            # Regular packets - determine path type based on route type
-            is_direct = route_type in [RouteType.DIRECT, RouteType.TRANSPORT_DIRECT]
-
-            if is_direct:
-                # Direct routing: path contains routing instructions
-                # Bytes are stripped at each hop
-                return {
-                    "type": "routing_instructions",
-                    "path": path_nodes,
-                    "meaning": "bytes_stripped_at_each_hop",
-                    "description": f"Direct route via {','.join(path_nodes)} ({len(path_nodes)} hops)",
-                }
-            else:
-                # Flood routing: path contains historical route
-                # Bytes are added as packet floods through network
-                return {
-                    "type": "historical_route",
-                    "path": path_nodes,
-                    "meaning": "bytes_added_as_packet_floods",
-                    "description": f"Flooded through {','.join(path_nodes)} ({len(path_nodes)} hops)",
-                }
-
-        except Exception as e:
-            self.logger.error(f"Error processing packet path: {e}")
-            # Return basic path info as fallback (legacy 1-byte-per-hop)
-            _, path_nodes = self._path_bytes_to_nodes(path_bytes, prefix_hex_chars=2)
-            return {"type": "unknown", "path": path_nodes, "description": f"Path: {','.join(path_nodes)}"}
+        return packet_decode.process_packet_path(
+            path_bytes, payload, route_type, payload_type,
+            prefix_hex_chars=self._prefix_hex_chars(), logger=self.logger,
+        )
 
     def _get_route_type_name(self, route_type: int) -> str:
-        """Get human-readable name for route type"""
-        route_types = {
-            0x00: "ROUTE_TYPE_TRANSPORT_FLOOD",
-            0x01: "ROUTE_TYPE_FLOOD",
-            0x02: "ROUTE_TYPE_DIRECT",
-            0x03: "ROUTE_TYPE_TRANSPORT_DIRECT",
-        }
-        return route_types.get(route_type, f"UNKNOWN_ROUTE_{route_type:02x}")
+        return packet_decode.route_type_name(route_type)
 
     def get_payload_type_name(self, payload_type: int) -> str:
-        """Get human-readable name for payload type"""
-        payload_types = {
-            0x00: "REQ",
-            0x01: "RESPONSE",
-            0x02: "TXT_MSG",
-            0x03: "ACK",
-            0x04: "ADVERT",
-            0x05: "GRP_TXT",
-            0x06: "GRP_DATA",
-            0x07: "ANON_REQ",
-            0x08: "PATH",
-            0x09: "TRACE",
-            0x0A: "MULTIPART",
-            # Additional payload types found in meshcore library (may not be in official spec)
-            0x0B: "UNKNOWN_0b",  # Not defined in official spec
-            0x0C: "UNKNOWN_0c",  # Not defined in official spec
-            0x0D: "UNKNOWN_0d",  # Not defined in official spec
-            0x0E: "UNKNOWN_0e",  # Not defined in official spec
-            0x0F: "RAW_CUSTOM",
-        }
-        return payload_types.get(payload_type, f"UNKNOWN_{payload_type:02x}")
+        return packet_decode.payload_type_name(payload_type)
 
     async def handle_channel_message(self, event: Any, metadata: dict[str, Any] | None = None) -> None:
         """Handle incoming channel message"""
@@ -2585,22 +758,8 @@ class MessageHandler:
             self.logger.debug(f"Channel message payload: {payload}")
             self.logger.debug(f"Payload keys: {list(payload.keys())}")
 
-            # Get sender information from text field if it's in "SENDER: message" format
             text = payload.get("text", "")
-            sender_id = CHANNEL_SENDER_FALLBACK  # Default fallback
-
-            # Try to extract sender from text field (e.g., "HOWL: Test" -> "HOWL")
-            message_content = text  # Default to full text
-            if ":" in text and not text.startswith(":"):
-                parts = text.split(":", 1)
-                if len(parts) == 2 and parts[0].strip():
-                    sender_id = parts[0].strip()
-                    message_content = parts[1].strip()  # Use the part after the colon for keyword processing
-                    self.logger.debug(f"Extracted sender from text: {sender_id}")
-                    self.logger.debug(f"Message content for processing: {message_content}")
-
-            # Always strip trailing whitespace/newlines from message content to handle cases like "Wx 98104\n"
-            message_content = message_content.strip()
+            sender_id, message_content = self._split_channel_sender(text)
 
             # Get channel name from channel number
             channel_name = self.bot.channel_manager.get_channel_name(channel_idx)
@@ -2608,57 +767,7 @@ class MessageHandler:
             self.logger.info(f"Received channel message ({channel_name}) from {sender_id}: {text}")
 
             # Get SNR and RSSI using the same logic as contact messages
-            snr: float | None = None
-            rssi: int | None = None
-
-            # Try to get SNR from payload first
-            if "SNR" in payload:
-                _snr = payload.get("SNR")
-                snr = float(_snr) if _snr is not None else None
-            elif "snr" in payload:
-                _snr = payload.get("snr")
-                snr = float(_snr) if _snr is not None else None
-            # Try to get SNR from event metadata if available
-            elif metadata:
-                if "snr" in metadata:
-                    _snr = metadata.get("snr")
-                    snr = float(_snr) if _snr is not None else None
-                elif "SNR" in metadata:
-                    _snr = metadata.get("SNR")
-                    snr = float(_snr) if _snr is not None else None
-
-            # If still no SNR, try to get it from the cache using pubkey prefix from payload
-            if snr is None:
-                pubkey_prefix = payload.get("pubkey_prefix", "")
-                if pubkey_prefix and pubkey_prefix in self.snr_cache:
-                    snr = self.snr_cache[pubkey_prefix]
-                    self.logger.debug(f"Retrieved cached SNR {snr} for pubkey {pubkey_prefix}")
-
-            # Try to get RSSI from payload first
-            if "RSSI" in payload:
-                _rssi = payload.get("RSSI")
-                rssi = int(_rssi) if _rssi is not None else None
-            elif "rssi" in payload:
-                _rssi = payload.get("rssi")
-                rssi = int(_rssi) if _rssi is not None else None
-            elif "signal_strength" in payload:
-                _rssi = payload.get("signal_strength")
-                rssi = int(_rssi) if _rssi is not None else None
-            # Try to get RSSI from event metadata if available
-            elif metadata:
-                if "rssi" in metadata:
-                    _rssi = metadata.get("rssi")
-                    rssi = int(_rssi) if _rssi is not None else None
-                elif "RSSI" in metadata:
-                    _rssi = metadata.get("RSSI")
-                    rssi = int(_rssi) if _rssi is not None else None
-
-            # If still no RSSI, try to get it from the cache using pubkey prefix from payload
-            if rssi is None:
-                pubkey_prefix = payload.get("pubkey_prefix", "")
-                if pubkey_prefix and pubkey_prefix in self.rssi_cache:
-                    rssi = int(self.rssi_cache[pubkey_prefix])
-                    self.logger.debug(f"Retrieved cached RSSI {rssi} for pubkey {pubkey_prefix}")
+            snr, rssi = self._message_signal(payload, metadata, ("SNR", "snr"))
 
             # For channel messages, we can decode the packet since they use shared channel keys
             # This gives us access to the actual routing information
@@ -2690,126 +799,20 @@ class MessageHandler:
                     "Using separate scope-eligible RF correlation (path/SNR source differs)"
                 )
 
-            packet_info: dict[str, Any] | None = None
-            scope_packet_info: dict[str, Any] | None = None
-            if recent_rf_data and recent_rf_data.get("raw_hex"):
-                raw_hex = recent_rf_data["raw_hex"]
-                self.logger.info(f"🔍 FOUND RF DATA: {len(raw_hex)} chars, starts with: {raw_hex[:32]}...")
-                self.logger.debug(f"Full RF data: {raw_hex}")
-
-                # Extract SNR/RSSI from the RF data
-                if recent_rf_data.get("snr"):
-                    snr = recent_rf_data["snr"]
-                    self.logger.debug(f"Using SNR from RF data: {snr}")
-
-                if recent_rf_data.get("rssi"):
-                    rssi = recent_rf_data["rssi"]
-                    self.logger.debug(f"Using RSSI from RF data: {rssi}")
-
-                # Single path source: prefer routing_info, else decode/fallback via helper
-                path_string = None
-                hops = payload.get("path_len", 255)
-                payload_hex = recent_rf_data.get("payload")
-                packet_info = self.decode_meshcore_packet(raw_hex, payload_hex)
-                packet_hash = recent_rf_data.get("packet_hash")
-                if packet_hash and packet_info:
-                    packet_info["packet_hash"] = packet_hash
-
-                # A fallback correlation is just the most recent packet heard, not this
-                # message's packet. Attributing its route here is how a multi-hop message
-                # ended up recorded as a single direct hop (#80) — and it would write a
-                # fabricated edge into the mesh graph. Leave the route unknown instead.
-                route_is_attributable = rf_data_is_correlated(recent_rf_data)
-
-                if not route_is_attributable:
-                    # Terminal on purpose. Falling through would reach the raw-hex and
-                    # routing_info fallbacks below, which would take the route from the
-                    # unrelated packet — the exact bug this guards against (#80).
-                    self.logger.debug(
-                        "RF data for this channel message is an uncorrelated fallback; "
-                        "not attributing its route (hops/path left unresolved)"
-                    )
-                    hops = payload.get("path_len", 255)
-                    path_string = None
-                elif packet_info and packet_info.get("path_len") is not None:
-                    hops = packet_info.get("path_len", 0)
-                    if packet_info.get("payload_type") == 9:  # TRACE packet
-                        path_info = packet_info.get("path_info", {})
-                        path_hashes = path_info.get("path_hashes") or path_info.get("path", [])
-                        if path_hashes:
-                            path_string = ",".join(path_hashes)
-                            self.logger.debug(f"Path from TRACE packet: {path_string} ({len(path_hashes)} hops)")
-                            if (
-                                hasattr(self.bot, "mesh_graph")
-                                and self.bot.mesh_graph
-                                and self.bot.mesh_graph.capture_enabled
-                            ):
-                                self._update_mesh_graph_from_trace(path_hashes, packet_info)
-                        else:
-                            path_string = "Direct" if hops == 0 else f"Unknown routing ({hops} hops)"
-                            self.logger.debug(f"Path from TRACE packet: {path_string}")
-                    else:
-                        had_routing_nodes = bool((recent_rf_data.get("routing_info") or {}).get("path_nodes"))
-                        path_string, path_nodes, hops = self._get_path_from_rf_data(
-                            recent_rf_data, payload_hex=payload_hex, packet_info=packet_info
-                        )
-                        if (
-                            path_string
-                            and path_nodes
-                            and hasattr(self.bot, "mesh_graph")
-                            and self.bot.mesh_graph
-                            and self.bot.mesh_graph.capture_enabled
-                        ):
-                            self._update_mesh_graph(path_nodes, packet_info)
-                        if path_string and not had_routing_nodes:
-                            self.logger.debug(f"Path from fallback decode: {path_string} ({hops} hops)")
-                else:
-                    self.logger.debug("Packet decoding failed, trying direct hex or routing_info fallback")
-                    path_string = self.extract_path_from_raw_hex(raw_hex, hops)
-                    if (
-                        not path_string
-                        and recent_rf_data.get("routing_info")
-                        and recent_rf_data["routing_info"].get("path_nodes")
-                    ):
-                        routing_info = recent_rf_data["routing_info"]
-                        path_nodes = routing_info["path_nodes"]
-                        hops = len(path_nodes)
-                        path_string = ",".join(str(n).lower() for n in path_nodes)
-                        self.logger.debug(f"Path from RF routing_info fallback: {path_string} ({hops} hops)")
-            else:
-                self.logger.warning("❌ NO RF DATA found for channel message after all correlation attempts")
-                hops = payload.get("path_len", 255)
-                path_string = None
-
-            if scope_rf_data and scope_rf_data.get("raw_hex"):
-                # Decode the full inner MeshCore packet (header + path + ciphertext).
-                # scope_payload_hex is ciphertext-only for HMAC; do not pass it to decode_meshcore_packet.
-                inner_packet_hex = scope_rf_data.get("payload")
-                if inner_packet_hex:
-                    scope_packet_info = self.decode_meshcore_packet(inner_packet_hex)
-                if scope_rf_data.get("packet_hash") and scope_packet_info:
-                    scope_packet_info["packet_hash"] = scope_rf_data["packet_hash"]
+            snr, rssi, packet_info, hops, path_string = self._channel_route_from_rf(
+                recent_rf_data, payload, snr, rssi
+            )
+            scope_packet_info = self._decode_scope_packet(scope_rf_data)
 
             # Scope matching: use scope-eligible RF only (never a stale ADVERT fallback).
             # The scope also has to come from *this* message's packet. The HMAC proves
             # the cached packet belongs to an allowed scope, not that this message does,
             # so an uncorrelated fallback would let a recent allowed-scope packet admit
             # an unrelated message past the flood_scopes allowlist.
-            reply_scope: str | None = None
             cmd_mgr = getattr(self.bot, "command_manager", None)
             scope_keys = getattr(cmd_mgr, "flood_scope_keys", {})
             scope_rf_is_correlated = rf_data_is_correlated(scope_rf_data)
-            if scope_rf_data and scope_keys:
-                if scope_rf_is_correlated:
-                    reply_scope = self._resolve_reply_scope_from_rf_data(
-                        scope_rf_data, scope_packet_info, scope_keys
-                    )
-                else:
-                    self.logger.info(
-                        "Scope for this channel message is unknown: the only scope-eligible "
-                        "RF data is an uncorrelated fallback from another packet, so it "
-                        "cannot authorise a reply under flood_scopes"
-                    )
+            reply_scope = self._channel_reply_scope(scope_rf_data, scope_rf_is_correlated, scope_packet_info, scope_keys)
 
             # Region-code observation happens here, ahead of the flood_scopes
             # allowlist below, because an unscoped message is exactly what that
@@ -2833,55 +836,20 @@ class MessageHandler:
             # messages whose scope matched an entry.  Unscoped FLOOD is allowed only
             # when '*' (or equivalent) is explicitly listed.
             allow_global = getattr(cmd_mgr, "flood_scope_allow_global", False)
-            # A '*'-only flood_scopes leaves scope_keys empty but still means an
-            # allowlist is configured (global only). Gating on scope_keys alone let
-            # that configuration skip authorisation entirely.
-            if (scope_keys or allow_global) and reply_scope is None:
-                if (
-                    scope_rf_data
-                    and scope_rf_is_correlated
-                    and self._is_rf_data_scope_eligible(scope_rf_data, scope_packet_info)
-                ):
-                    self.logger.info("Ignoring TC_FLOOD: scope not in flood_scopes allowlist")
-                    return
-                # '*' permits *unscoped global* traffic, not traffic of unknown scope,
-                # so it needs positive evidence that this message's own packet was
-                # ordinary FLOOD. The general RF correlation carries that evidence for
-                # the normal case; without it the scope is unknown and an allowlist
-                # should fail closed rather than assume global.
-                if allow_global and not self._is_confirmed_global_flood(
-                    recent_rf_data,
-                    packet_info,
-                    scoped_traffic_in_window=scope_rf_data is not None,
-                ):
-                    self.logger.info(
-                        "Ignoring channel message: flood_scopes lists '*', but a scoped "
-                        "TC_FLOOD packet was heard alongside this message and it could "
-                        "not be confirmed as unscoped FLOOD (scope unknown, not global)"
-                    )
-                    return
-
-                if not allow_global:
-                    if scope_rf_data is None:
-                        self.logger.info(
-                            "Ignoring channel message: no TC_FLOOD RF correlation for "
-                            "flood_scopes allowlist (avoid replying on wrong scope)"
-                        )
-                    else:
-                        self.logger.debug(
-                            "Ignoring FLOOD: unscoped messages not permitted (add '*' to flood_scopes)"
-                        )
-                    return
+            if not self._channel_scope_allowed(
+                scope_keys,
+                allow_global,
+                reply_scope,
+                scope_rf_data,
+                scope_rf_is_correlated,
+                scope_packet_info,
+                recent_rf_data,
+                packet_info,
+            ):
+                return
 
             # Get the full public key from contacts if available
-            sender_pubkey = payload.get("pubkey_prefix", "")
-            if sender_pubkey and hasattr(self.bot.meshcore, "contacts") and self.bot.meshcore.contacts:
-                for _contact_key, contact_data in self.bot.meshcore.contacts.items():
-                    if contact_data.get("public_key", "").startswith(sender_pubkey):
-                        # Use the full public key from the contact
-                        sender_pubkey = contact_data.get("public_key", sender_pubkey)
-                        self.logger.debug(f"Found full public key for {sender_id}: {sender_pubkey[:16]}...")
-                        break
+            sender_pubkey = self._full_sender_pubkey(payload, sender_id)
 
             # Elapsed: "Nms" when device clock is valid, or "Sync Device Clock" when invalid.
             _translator = getattr(self.bot, "translator", None)
@@ -2912,11 +880,6 @@ class MessageHandler:
             ):
                 message.routing_info = recent_rf_data["routing_info"]
 
-            # Path information is now set directly in the MeshMessage constructor from RF data
-            # No need for additional path extraction since we're using the actual routing data
-
-            # Path information is now set directly in the MeshMessage constructor
-            # No need for additional path processing since we're using the actual routing data
             self.logger.debug(f"Message routing info: hops={message.hops}, routing={message.path}")
 
             # Always decode and log packet information for debugging (regardless of keywords)
@@ -2937,13 +900,9 @@ class MessageHandler:
             await self.process_message(message)
 
             # Capture for web viewer live monitor
-            if (
-                hasattr(self.bot, "web_viewer_integration")
-                and self.bot.web_viewer_integration
-                and self.bot.web_viewer_integration.bot_integration
-            ):
+            if viewer := self._viewer_bridge():
                 try:
-                    self.bot.web_viewer_integration.bot_integration.capture_channel_message(message)
+                    viewer.capture_channel_message(message)
                 except Exception:
                     pass
 
@@ -2952,687 +911,6 @@ class MessageHandler:
             import traceback
 
             self.logger.error(traceback.format_exc())
-
-    def _update_mesh_graph(self, path_nodes: list[str], packet_info: dict[str, Any]) -> None:
-        """Update mesh graph with edges from a message path.
-
-        path_nodes may be 2, 4, or 6 hex chars per node depending on the packet's
-        bytes_per_hop (sender setting). add_edge stores at the resolution provided;
-        no truncation, so distinct links (e.g. 7e42→8611 and 7e99→86ff) stay separate.
-
-        Args:
-            path_nodes: List of node prefixes in path order (length per node from packet's bytes_per_hop).
-            packet_info: Packet information dictionary with routing data.
-        """
-        if not path_nodes or len(path_nodes) < 2:
-            self.logger.debug(f"Mesh graph: Skipping path with < 2 nodes: {path_nodes}")
-            return  # Need at least 2 nodes to form an edge
-
-        if not hasattr(self.bot, "mesh_graph") or not self.bot.mesh_graph:
-            self.logger.debug("Mesh graph: Graph not initialized, skipping update")
-            return  # Graph not initialized
-
-        mesh_graph = self.bot.mesh_graph
-        self.logger.debug(f"Mesh graph: Updating graph with path: {path_nodes} ({len(path_nodes)} nodes)")
-
-        # Get recency window from config (default 7 days)
-        recency_days = self.bot.config.getint("Path_Command", "graph_edge_expiration_days", fallback=7)
-
-        # Get public keys if available from database
-        # Note: We don't check device contacts because repeaters aren't stored on the device
-        # IMPORTANT: Only use database lookup if prefix is unique (to avoid wrong public key assignment)
-        # In busy meshes, prefixes are rarely unique, so we must verify uniqueness first
-        # Also filter by recency to avoid using old/stale repeaters
-        node_keys = {}
-
-        for node_prefix in path_nodes:
-            try:
-                # First check if prefix is unique in database (within recency window)
-                count_query = f"""
-                    SELECT COUNT(DISTINCT public_key) as count
-                    FROM complete_contact_tracking
-                    WHERE public_key LIKE ?
-                    AND role IN ('repeater', 'roomserver')
-                    AND COALESCE(last_advert_timestamp, last_heard) >= datetime('now', '-{recency_days} days')
-                """
-                prefix_pattern = f"{node_prefix}%"
-                count_results = self.bot.db_manager.execute_query(count_query, (prefix_pattern,))
-
-                if count_results and count_results[0].get("count", 0) == 1:
-                    # Prefix is unique within recency window - safe to use database lookup
-                    query = f"""
-                        SELECT public_key
-                        FROM complete_contact_tracking
-                        WHERE public_key LIKE ?
-                        AND role IN ('repeater', 'roomserver')
-                        AND COALESCE(last_advert_timestamp, last_heard) >= datetime('now', '-{recency_days} days')
-                        ORDER BY is_starred DESC, COALESCE(last_advert_timestamp, last_heard) DESC
-                        LIMIT 1
-                    """
-                    results = self.bot.db_manager.execute_query(query, (prefix_pattern,))
-                    if results and results[0].get("public_key"):
-                        node_keys[node_prefix] = results[0]["public_key"]
-                        self.logger.debug(
-                            f"Mesh graph: Found unique public key for prefix {node_prefix} from database: {results[0]['public_key'][:16]}..."
-                        )
-                else:
-                    # Prefix collision or no recent matches - don't use database lookup (would risk wrong public key)
-                    count = count_results[0].get("count", 0) if count_results else 0
-                    self.logger.debug(
-                        f"Mesh graph: Prefix {node_prefix} has {count} recent matches in database, skipping public key lookup (not unique or stale)"
-                    )
-            except Exception as e:
-                self.logger.debug(f"Error looking up public key for prefix {node_prefix}: {e}")
-
-        # Calculate geographic distances if locations are available
-        from .utils import _get_node_location_from_db, calculate_distance
-
-        # Extract edges from path
-        for i in range(len(path_nodes) - 1):
-            from_prefix = path_nodes[i]
-            to_prefix = path_nodes[i + 1]
-            hop_position = i + 1  # Position in path (1-indexed)
-
-            # Get public keys if available
-            from_key = node_keys.get(from_prefix)
-            to_key = node_keys.get(to_prefix)
-
-            # Calculate geographic distance if both nodes have locations
-            # IMPORTANT: Only use public keys that we're 100% certain of (from uniqueness check above)
-            # For location lookups, we can use distance-based selection to get better distance calculations,
-            # but we do NOT store those selected public keys - we only store keys we're certain of
-            geographic_distance = None
-            try:
-                from_location = None
-                to_location = None
-
-                # Try to get location using full public key first (more accurate)
-                if from_key:
-                    from_location = self._get_location_by_public_key(from_key)
-                if not from_location:
-                    # For LoRa: prefer shorter edges - use to_location as reference if we have it
-                    # This helps resolve prefix collisions by preferring closer repeaters for distance calculation
-                    to_location_temp = None
-                    if to_key:
-                        to_location_temp = self._get_location_by_public_key(to_key)
-                    if not to_location_temp:
-                        # Try to get to_location first to use as reference
-                        # Use bot location as fallback reference to ensure distance-based selection
-                        bot_location_ref = self._get_bot_location_fallback()
-                        to_location_result = _get_node_location_from_db(
-                            self.bot, to_prefix, bot_location_ref, recency_days
-                        )
-                        if to_location_result:
-                            to_location_temp, temp_key = to_location_result
-                            if not to_key and temp_key:
-                                to_key = temp_key  # Store the selected public key for distance-based selection
-
-                    # Get from_location using to_location as reference (prefers shorter distance for LoRa)
-                    # If to_location not available, use bot location as fallback reference
-                    reference_for_from = to_location_temp if to_location_temp else self._get_bot_location_fallback()
-                    # Capture the selected public key when distance-based selection is used
-                    # Apply recency window to avoid using stale repeaters
-                    from_location_result = _get_node_location_from_db(
-                        self.bot, from_prefix, reference_for_from, recency_days
-                    )
-                    if from_location_result:
-                        from_location, selected_from_key = from_location_result
-                        if not from_key and selected_from_key:
-                            from_key = selected_from_key  # Store the selected public key
-
-                if to_key:
-                    to_location = self._get_location_by_public_key(to_key)
-                if not to_location:
-                    # Use from_location as reference to prefer shorter distance for LoRa
-                    # If from_location not available, use bot location as fallback reference
-                    reference_for_to = from_location if from_location else self._get_bot_location_fallback()
-                    # Capture the selected public key when distance-based selection is used
-                    # Apply recency window to avoid using stale repeaters
-                    to_location_result = _get_node_location_from_db(self.bot, to_prefix, reference_for_to, recency_days)
-                    if to_location_result:
-                        to_location, selected_to_key = to_location_result
-                        if not to_key and selected_to_key:
-                            to_key = selected_to_key  # Store the selected public key
-
-                if from_location and to_location:
-                    geographic_distance = calculate_distance(
-                        from_location[0], from_location[1], to_location[0], to_location[1]
-                    )
-            except Exception as e:
-                self.logger.debug(f"Could not calculate distance for edge {from_prefix}->{to_prefix}: {e}")
-
-            # Add edge to graph - only use public keys we're 100% certain of (from uniqueness check)
-            # Do NOT use public keys from distance-based selection - we can't be certain they're correct
-            self.logger.debug(f"Mesh graph: Adding edge {from_prefix} -> {to_prefix} (hop {hop_position})")
-            mesh_graph.add_edge(
-                from_prefix=from_prefix,
-                to_prefix=to_prefix,
-                from_public_key=from_key,  # Only if prefix was unique (certain)
-                to_public_key=to_key,  # Only if prefix was unique (certain)
-                hop_position=hop_position,
-                geographic_distance=geographic_distance,
-            )
-
-    def _store_observed_path(
-        self,
-        advert_data: dict[str, Any],
-        path_hex: str,
-        path_length: int,
-        packet_type: str,
-        packet_hash: str | None = None,
-        bytes_per_hop: int | None = None,
-    ) -> None:
-        """Store a complete path in the observed_paths table.
-
-        Args:
-            advert_data: Advertisement data dictionary with public_key (for adverts).
-            path_hex: Hex string of the complete path.
-            path_length: Length of the path in bytes.
-            packet_type: Type of packet ('advert', 'message', etc.).
-            packet_hash: Optional packet hash to group paths from the same packet.
-            bytes_per_hop: Optional bytes per hop (1, 2, or 3) for multi-byte path decode; None = legacy 1.
-        """
-        if not path_hex or path_length < 2:
-            return  # Need at least 2 bytes (1 node) to form a path
-
-        try:
-            # Parse path to extract from_prefix and to_prefix (use bytes_per_hop when provided for multi-byte paths)
-            hex_chars = (bytes_per_hop or 1) * 2
-            if bytes_per_hop is not None and bytes_per_hop > 0:
-                path_nodes = [path_hex[i : i + hex_chars].lower() for i in range(0, len(path_hex), hex_chars)]
-                if (len(path_hex) % hex_chars) != 0 or not path_nodes:
-                    path_nodes = [path_hex[i : i + 2].lower() for i in range(0, len(path_hex), 2)]
-            else:
-                path_nodes = self._path_hex_to_nodes(path_hex)
-
-            if len(path_nodes) < 1:
-                return  # No valid path nodes
-
-            from_prefix = path_nodes[0]
-            to_prefix = path_nodes[-1]  # Last hop in path (last repeater that forwarded to bot)
-
-            # Get public_key for adverts (NULL for messages)
-            public_key = advert_data.get("public_key", "") if packet_type == "advert" else None
-
-            # Check if path already exists
-            if public_key:
-                # For adverts: check by public_key, path_hex, packet_type
-                query = """
-                    SELECT id, observation_count, last_seen
-                    FROM observed_paths
-                    WHERE public_key = ? AND path_hex = ? AND packet_type = ?
-                """
-                existing = self.bot.db_manager.execute_query(query, (public_key, path_hex, packet_type))
-            else:
-                # For messages: check by from_prefix, to_prefix, path_hex, packet_type
-                query = """
-                    SELECT id, observation_count, last_seen
-                    FROM observed_paths
-                    WHERE from_prefix = ? AND to_prefix = ? AND path_hex = ? AND packet_type = ?
-                    AND public_key IS NULL
-                """
-                existing = self.bot.db_manager.execute_query(query, (from_prefix, to_prefix, path_hex, packet_type))
-
-            from datetime import datetime
-
-            now = datetime.now()
-
-            if existing and len(existing) > 0:
-                # Path exists - update observation count and last_seen
-                path_id = existing[0]["id"]
-                current_count = existing[0].get("observation_count", 1)
-                update_query = """
-                    UPDATE observed_paths
-                    SET observation_count = ?, last_seen = ?
-                    WHERE id = ?
-                """
-                self.bot.db_manager.execute_update(update_query, (current_count + 1, now.isoformat(), path_id))
-                self.logger.debug(
-                    f"Updated observed_paths entry for {packet_type} path {path_hex[:20]}... (count: {current_count + 1})"
-                )
-            else:
-                # New path - insert
-                insert_query = """
-                    INSERT INTO observed_paths
-                    (public_key, packet_hash, from_prefix, to_prefix, path_hex, path_length, bytes_per_hop, packet_type, first_seen, last_seen, observation_count)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-                """
-                # Only store packet_hash if it's valid (not None and not the default invalid hash)
-                stored_packet_hash = packet_hash if (packet_hash and packet_hash != "0000000000000000") else None
-                self.bot.db_manager.execute_update(
-                    insert_query,
-                    (
-                        public_key,
-                        stored_packet_hash,
-                        from_prefix,
-                        to_prefix,
-                        path_hex,
-                        path_length,
-                        bytes_per_hop,
-                        packet_type,
-                        now.isoformat(),
-                        now.isoformat(),
-                    ),
-                )
-                self.logger.debug(
-                    f"Stored new {packet_type} path in observed_paths: {from_prefix}->{to_prefix} ({path_length} bytes)"
-                )
-
-        except Exception as e:
-            self.logger.warning(f"Error storing observed path: {e}")
-            import traceback
-
-            self.logger.debug(traceback.format_exc())
-
-    def _get_bot_location_fallback(self) -> tuple[float, float] | None:
-        """Get bot location from config to use as fallback reference for distance-based selection.
-
-        Returns:
-            Optional[Tuple[float, float]]: (latitude, longitude) or None if not configured.
-        """
-        try:
-            lat = self.bot.config.getfloat("Bot", "bot_latitude", fallback=None)
-            lon = self.bot.config.getfloat("Bot", "bot_longitude", fallback=None)
-
-            if lat is not None and lon is not None:
-                # Validate coordinates
-                if -90 <= lat <= 90 and -180 <= lon <= 180:
-                    return (lat, lon)
-            return None
-        except Exception as e:
-            self.logger.debug(f"Error getting bot location fallback: {e}")
-            return None
-
-    def _get_location_by_public_key(self, public_key: str) -> tuple[float, float] | None:
-        """Get location for a full public key (more accurate than prefix lookup).
-
-        Prefers starred repeaters if there are somehow multiple entries (shouldn't happen with full key).
-
-        Args:
-            public_key: Full public key string.
-
-        Returns:
-            Optional[Tuple[float, float]]: (latitude, longitude) or None.
-        """
-        try:
-            query = """
-                SELECT latitude, longitude
-                FROM complete_contact_tracking
-                WHERE public_key = ?
-                AND latitude IS NOT NULL AND longitude IS NOT NULL
-                AND latitude != 0 AND longitude != 0
-                AND role IN ('repeater', 'roomserver')
-                ORDER BY is_starred DESC, COALESCE(last_advert_timestamp, last_heard) DESC
-                LIMIT 1
-            """
-            results = self.bot.db_manager.execute_query(query, (public_key,))
-            if results:
-                row = results[0]
-                lat = row.get("latitude")
-                lon = row.get("longitude")
-                if lat is not None and lon is not None:
-                    return (float(lat), float(lon))
-        except Exception as e:
-            self.logger.debug(f"Error getting location by public key {public_key[:16]}...: {e}")
-        return None
-
-    def _update_mesh_graph_from_advert(
-        self, advert_data: dict[str, Any], out_path: str, out_path_len: int, packet_info: dict[str, Any]
-    ) -> None:
-        """Update mesh graph with edges from an advertisement's out_path.
-
-        Creates an edge from the advertising device to the first hop in their out_path,
-        and edges between subsequent hops in the path.
-
-        Args:
-            advert_data: Advertisement data dictionary with public_key.
-            out_path: Hex string of the path the advert took to reach us.
-            out_path_len: Length of the path in bytes.
-            packet_info: Packet information dictionary with routing data.
-        """
-        if not out_path or out_path_len < 2:
-            return  # Need at least 2 bytes (1 node) to form an edge
-
-        if not hasattr(self.bot, "mesh_graph") or not self.bot.mesh_graph:
-            return  # Graph not initialized
-
-        mesh_graph = self.bot.mesh_graph
-
-        # Get advertiser's public key
-        advertiser_key = advert_data.get("public_key", "")
-        if not advertiser_key:
-            self.logger.debug("Mesh graph: No public key in advert data, skipping graph update")
-            return
-
-        advertiser_prefix = advertiser_key[: self.bot.prefix_hex_chars].lower()
-
-        # Parse path from hex string (use bytes_per_hop from packet for multi-byte paths)
-        hex_chars = (packet_info.get("bytes_per_hop") or 1) * 2
-        path_nodes = []
-        for i in range(0, len(out_path), hex_chars):
-            if i + hex_chars <= len(out_path):
-                path_nodes.append(out_path[i : i + hex_chars].lower())
-
-        if len(path_nodes) == 0:
-            return  # No valid path nodes
-
-        self.logger.debug(f"Mesh graph: Updating graph from advert path: {advertiser_prefix} -> {path_nodes}")
-
-        # Get recency window from config (default 7 days)
-        recency_days = self.bot.config.getint("Path_Command", "graph_edge_expiration_days", fallback=7)
-
-        # Calculate geographic distances if locations are available
-        from .utils import _get_node_location_from_db, calculate_distance
-
-        # Create edge from advertiser to first hop in path
-        first_hop = path_nodes[0]
-        geographic_distance = None
-        first_hop_key = None
-
-        # IMPORTANT: Only use public keys we're 100% certain of
-        # For the first hop, we can only be certain if the prefix is unique (and recent)
-        try:
-            # Check if first_hop prefix is unique within recency window (only then can we be certain of the public key)
-            count_query = f"""
-                SELECT COUNT(DISTINCT public_key) as count
-                FROM complete_contact_tracking
-                WHERE public_key LIKE ?
-                AND role IN ('repeater', 'roomserver')
-                AND COALESCE(last_advert_timestamp, last_heard) >= datetime('now', '-{recency_days} days')
-            """
-            prefix_pattern = f"{first_hop}%"
-            count_results = self.bot.db_manager.execute_query(count_query, (prefix_pattern,))
-
-            if count_results and count_results[0].get("count", 0) == 1:
-                # Prefix is unique within recency window - safe to use database lookup
-                query = f"""
-                    SELECT public_key
-                    FROM complete_contact_tracking
-                    WHERE public_key LIKE ?
-                    AND role IN ('repeater', 'roomserver')
-                    AND COALESCE(last_advert_timestamp, last_heard) >= datetime('now', '-{recency_days} days')
-                    ORDER BY is_starred DESC, COALESCE(last_advert_timestamp, last_heard) DESC
-                    LIMIT 1
-                """
-                results = self.bot.db_manager.execute_query(query, (prefix_pattern,))
-                if results and results[0].get("public_key"):
-                    first_hop_key = results[0]["public_key"]
-                    self.logger.debug(
-                        f"Mesh graph: Found unique public key for first hop {first_hop}: {first_hop_key[:16]}..."
-                    )
-            else:
-                count = count_results[0].get("count", 0) if count_results else 0
-                self.logger.debug(
-                    f"Mesh graph: First hop prefix {first_hop} has {count} recent matches, cannot be certain of public key"
-                )
-        except Exception as e:
-            self.logger.debug(f"Error checking uniqueness for first hop {first_hop}: {e}")
-
-        try:
-            # Use full public key for advertiser (we're 100% certain - it's from the event)
-            advertiser_location = None
-            if advertiser_key:
-                advertiser_location = self._get_location_by_public_key(advertiser_key)
-            if not advertiser_location:
-                # Get first_hop location first to use as reference for LoRa distance preference
-                # Use bot location as fallback reference to ensure distance-based selection
-                bot_location_ref = self._get_bot_location_fallback()
-                first_hop_temp_result = _get_node_location_from_db(self.bot, first_hop, bot_location_ref, recency_days)
-                first_hop_location_temp: tuple[float, float] | None
-                if first_hop_temp_result:
-                    first_hop_location_temp, _ = first_hop_temp_result
-                else:
-                    first_hop_location_temp = bot_location_ref  # Use bot location as fallback
-
-                if first_hop_location_temp:
-                    advertiser_result = _get_node_location_from_db(
-                        self.bot, advertiser_prefix, first_hop_location_temp, recency_days
-                    )
-                    if advertiser_result:
-                        advertiser_location, _ = advertiser_result
-
-            # Get first_hop location using advertiser location as reference for LoRa preference
-            # Capture the selected public key when distance-based selection is used
-            # Apply recency window to avoid using stale repeaters
-            first_hop_result = _get_node_location_from_db(self.bot, first_hop, advertiser_location, recency_days)
-            if first_hop_result:
-                first_hop_location, selected_first_hop_key = first_hop_result
-                if not first_hop_key and selected_first_hop_key:
-                    first_hop_key = selected_first_hop_key  # Store the selected public key
-
-            if advertiser_location and first_hop_location:
-                geographic_distance = calculate_distance(
-                    advertiser_location[0], advertiser_location[1], first_hop_location[0], first_hop_location[1]
-                )
-        except Exception as e:
-            self.logger.debug(f"Could not calculate distance for advert edge {advertiser_prefix}->{first_hop}: {e}")
-
-        # Add edge from advertiser to first hop
-        # from_public_key: advertiser_key (100% certain - from event)
-        # to_public_key: first_hop_key (only if prefix was unique - certain)
-        mesh_graph.add_edge(
-            from_prefix=advertiser_prefix,
-            to_prefix=first_hop,
-            from_public_key=advertiser_key,  # 100% certain - from NEW_CONTACT event
-            to_public_key=first_hop_key,  # Only if prefix was unique (certain)
-            hop_position=1,  # First hop in path
-            geographic_distance=geographic_distance,
-        )
-
-        # Create edges between subsequent hops in the path
-        # Track previous location to use as reference for better distance-based selection
-        # Start with first_hop_location (if available) or advertiser_location as reference
-        previous_location = None
-        try:
-            if "first_hop_location" in locals() and first_hop_location:
-                previous_location = first_hop_location
-            elif advertiser_location:
-                previous_location = advertiser_location
-        except:
-            pass
-
-        for i in range(len(path_nodes) - 1):
-            from_node = path_nodes[i]
-            to_node = path_nodes[i + 1]
-            hop_position = i + 2  # Position in path (1-indexed, advertiser is 0)
-
-            # IMPORTANT: Only use public keys we're 100% certain of (when prefix is unique and recent)
-            from_node_key = None
-            to_node_key = None
-
-            # Check if from_node prefix is unique within recency window
-            try:
-                count_query = f"""
-                    SELECT COUNT(DISTINCT public_key) as count
-                    FROM complete_contact_tracking
-                    WHERE public_key LIKE ?
-                    AND role IN ('repeater', 'roomserver')
-                    AND COALESCE(last_advert_timestamp, last_heard) >= datetime('now', '-{recency_days} days')
-                """
-                prefix_pattern = f"{from_node}%"
-                count_results = self.bot.db_manager.execute_query(count_query, (prefix_pattern,))
-
-                if count_results and count_results[0].get("count", 0) == 1:
-                    query = f"""
-                        SELECT public_key
-                        FROM complete_contact_tracking
-                        WHERE public_key LIKE ?
-                        AND role IN ('repeater', 'roomserver')
-                        AND COALESCE(last_advert_timestamp, last_heard) >= datetime('now', '-{recency_days} days')
-                        ORDER BY is_starred DESC, COALESCE(last_advert_timestamp, last_heard) DESC
-                        LIMIT 1
-                    """
-                    results = self.bot.db_manager.execute_query(query, (prefix_pattern,))
-                    if results and results[0].get("public_key"):
-                        from_node_key = results[0]["public_key"]
-                        self.logger.debug(
-                            f"Mesh graph: Found unique public key for {from_node}: {from_node_key[:16]}..."
-                        )
-            except Exception as e:
-                self.logger.debug(f"Error checking uniqueness for {from_node}: {e}")
-
-            # Check if to_node prefix is unique within recency window
-            try:
-                count_query = f"""
-                    SELECT COUNT(DISTINCT public_key) as count
-                    FROM complete_contact_tracking
-                    WHERE public_key LIKE ?
-                    AND role IN ('repeater', 'roomserver')
-                    AND COALESCE(last_advert_timestamp, last_heard) >= datetime('now', '-{recency_days} days')
-                """
-                prefix_pattern = f"{to_node}%"
-                count_results = self.bot.db_manager.execute_query(count_query, (prefix_pattern,))
-
-                if count_results and count_results[0].get("count", 0) == 1:
-                    query = f"""
-                        SELECT public_key
-                        FROM complete_contact_tracking
-                        WHERE public_key LIKE ?
-                        AND role IN ('repeater', 'roomserver')
-                        AND COALESCE(last_advert_timestamp, last_heard) >= datetime('now', '-{recency_days} days')
-                        ORDER BY is_starred DESC, COALESCE(last_advert_timestamp, last_heard) DESC
-                        LIMIT 1
-                    """
-                    results = self.bot.db_manager.execute_query(query, (prefix_pattern,))
-                    if results and results[0].get("public_key"):
-                        to_node_key = results[0]["public_key"]
-                        self.logger.debug(f"Mesh graph: Found unique public key for {to_node}: {to_node_key[:16]}...")
-            except Exception as e:
-                self.logger.debug(f"Error checking uniqueness for {to_node}: {e}")
-
-            # Calculate geographic distance if available
-            # For LoRa, prefer shorter distances when resolving prefix collisions for location lookup
-            # IMPORTANT: Use previous_location as reference to ensure we select the closer repeater
-            # NOTE: We do NOT store public keys from distance-based selection - only use them for location
-            # Apply recency window to avoid using stale repeaters
-            geographic_distance = None
-            try:
-                from .utils import _get_node_location_from_db, calculate_distance
-
-                # Get from_location using previous_location as reference (ensures we select closer repeater)
-                # Use bot location as fallback if previous_location not available
-                reference_for_from = previous_location if previous_location else self._get_bot_location_fallback()
-                from_result = _get_node_location_from_db(self.bot, from_node, reference_for_from, recency_days)
-                if from_result:
-                    from_location, selected_from_key = from_result
-                    if not from_node_key and selected_from_key:
-                        from_node_key = selected_from_key  # Store the selected public key
-                else:
-                    from_location = None
-
-                # Get to_location using from_location as reference
-                # Use bot location as fallback if from_location not available
-                reference_for_to = from_location if from_location else self._get_bot_location_fallback()
-                to_result = _get_node_location_from_db(self.bot, to_node, reference_for_to, recency_days)
-                if to_result:
-                    to_location, selected_to_key = to_result
-                    if not to_node_key and selected_to_key:
-                        to_node_key = selected_to_key  # Store the selected public key
-                else:
-                    to_location = None
-
-                # Re-get from_location with to_location as reference (for better collision resolution)
-                if to_location:
-                    from_result2 = _get_node_location_from_db(self.bot, from_node, to_location, recency_days)
-                    if from_result2:
-                        from_location, selected_from_key2 = from_result2
-                        if not from_node_key and selected_from_key2:
-                            from_node_key = selected_from_key2
-
-                # Re-get to_location with from_location as reference
-                if from_location:
-                    to_result2 = _get_node_location_from_db(self.bot, to_node, from_location, recency_days)
-                    if to_result2:
-                        to_location, selected_to_key2 = to_result2
-                        if not to_node_key and selected_to_key2:
-                            to_node_key = selected_to_key2
-
-                # Update previous_location for next iteration
-                previous_location = to_location if to_location else from_location
-
-                if from_location and to_location:
-                    geographic_distance = calculate_distance(
-                        from_location[0], from_location[1], to_location[0], to_location[1]
-                    )
-            except Exception as e:
-                self.logger.debug(f"Could not calculate distance for edge {from_node}->{to_node}: {e}")
-
-            # Add edge between path nodes - only use public keys we're 100% certain of (from uniqueness check)
-            mesh_graph.add_edge(
-                from_prefix=from_node,
-                to_prefix=to_node,
-                from_public_key=from_node_key,  # Only if prefix was unique (certain)
-                to_public_key=to_node_key,  # Only if prefix was unique (certain)
-                hop_position=hop_position,
-                geographic_distance=geographic_distance,
-            )
-
-    def _update_mesh_graph_from_trace(self, path_hashes: list[str], packet_info: dict[str, Any]) -> None:
-        """Update mesh graph with edges from a trace packet's pathHashes. Delegates to shared helper."""
-        update_mesh_graph_from_trace_data(self.bot, path_hashes, packet_info)
-
-    async def discover_message_path(self, sender_id: str, rf_data: dict) -> tuple[int, str]:
-        """
-        Discover the actual routing path for a message using CLI commands.
-        This is more reliable than trying to decode packet fragments.
-
-        Args:
-            sender_id: The name or ID of the sender
-            rf_data: The RF data containing pubkey information
-
-        Returns:
-            tuple[int, str]: (Number of hops, formatted path string)
-        """
-        try:
-            # First try to find the contact by name
-            if hasattr(self.bot.meshcore, "contacts") and self.bot.meshcore.contacts:
-                contact = None
-                pubkey_prefix = rf_data.get("pubkey_prefix", "")
-
-                # Look for contact by name first
-                for _contact_key, contact_data in self.bot.meshcore.contacts.items():
-                    if contact_data.get("adv_name") == sender_id:
-                        contact = contact_data
-                        break
-
-                # If not found by name, try by pubkey prefix
-                if not contact and pubkey_prefix:
-                    for _contact_key, contact_data in self.bot.meshcore.contacts.items():
-                        if contact_data.get("public_key", "").startswith(pubkey_prefix):
-                            contact = contact_data
-                            break
-
-                if contact:
-                    # Use the stored path information if available
-                    out_path = contact.get("out_path", "")
-                    out_path_len = contact.get("out_path_len", -1)
-
-                    if out_path_len == 0:
-                        self.logger.debug(f"Direct connection to {sender_id}")
-                        return 0, "Direct"
-                    elif out_path_len > 0:
-                        # Format the path string (use stored bytes_per_hop for multi-byte paths)
-                        bph = contact.get("out_bytes_per_hop")
-                        if bph is None and out_path_len > 0 and out_path:
-                            byte_len = len(out_path) // 2
-                            if byte_len > 0 and (byte_len % out_path_len) == 0:
-                                bph = byte_len // out_path_len
-                        path_string = self._format_path_string(out_path, bytes_per_hop=bph)
-                        self.logger.debug(f"Stored path to {sender_id}: {out_path_len} hops via {path_string}")
-                        return out_path_len, path_string
-                    else:
-                        # Path not set - use basic info
-                        self.logger.debug(f"No stored path for {sender_id}, using basic info")
-                        return 255, "No stored path"
-                else:
-                    self.logger.debug(f"Contact {sender_id} not found in contacts")
-                    return 255, "Unknown"  # Unknown path
-
-            return 255, "Unknown"  # Fallback to unknown
-
-        except Exception as e:
-            self.logger.error(f"Error discovering message path: {e}")
-            return 255, "Error"
 
     # CLI path discovery removed - focusing only on packet decoding
 
@@ -3660,21 +938,11 @@ class MessageHandler:
                 return
 
             # Try to find the contact to get stored path information
-            if hasattr(self.bot.meshcore, "contacts") and self.bot.meshcore.contacts:
-                contact = None
-
-                # Look for contact by name first
-                for _contact_key, contact_data in self.bot.meshcore.contacts.items():
-                    if contact_data.get("adv_name") == sender_id:
-                        contact = contact_data
-                        break
-
-                # If not found by name, try by pubkey prefix
-                if not contact:
-                    for _contact_key, contact_data in self.bot.meshcore.contacts.items():
-                        if contact_data.get("public_key", "").startswith(pubkey_prefix):
-                            contact = contact_data
-                            break
+            if getattr(self.bot.meshcore, "contacts", None):
+                # By name first, then by pubkey prefix
+                contact = self._find_contact(lambda c: c.get("adv_name") == sender_id) or self._find_contact(
+                    lambda c: c.get("public_key", "").startswith(pubkey_prefix)
+                )
 
                 if contact:
                     out_path = contact.get("out_path", "")
@@ -3737,45 +1005,7 @@ class MessageHandler:
             self.logger.error(f"Error in debug packet decoding: {e}")
 
     def _format_path_string(self, hex_path: str, bytes_per_hop: int | None = None) -> str:
-        """
-        Convert a hex path string to node prefix format.
-
-        Args:
-            hex_path: Hex string representing the path (e.g., "01025f7e" or "01025fab" for 2-byte hops).
-            bytes_per_hop: Optional bytes per hop (1, 2, or 3) for multi-byte paths; None = legacy 1 byte per node.
-
-        Returns:
-            str: Formatted path string (e.g., "01,02,5f,7e" or "0102,5fab")
-        """
-        try:
-            if not hex_path:
-                return "Direct"
-
-            if bytes_per_hop is not None and bytes_per_hop > 0:
-                hex_chars = bytes_per_hop * 2
-                path_nodes = [hex_path[i : i + hex_chars].lower() for i in range(0, len(hex_path), hex_chars)]
-                if (len(hex_path) % hex_chars) != 0 or not path_nodes:
-                    path_nodes = [hex_path[i : i + 2].lower() for i in range(0, len(hex_path), 2)]
-                if path_nodes:
-                    return ",".join(path_nodes)
-                return "Direct"
-
-            # Legacy: one byte per node (two hex chars)
-            path_bytes = bytes.fromhex(hex_path)
-            path_nodes = []
-            for i in range(len(path_bytes)):
-                node_id = path_bytes[i]
-                path_nodes.append(f"{node_id:02x}")
-
-            if path_nodes:
-                return ",".join(path_nodes)
-            else:
-                return "Direct"
-
-        except Exception as e:
-            self.logger.debug(f"Error formatting path string: {e}")
-            truncated = hex_path[:16] if len(hex_path) > 16 else hex_path
-            return f"Raw: {truncated}{'...' if len(hex_path) > 16 else ''}"
+        return packet_decode.format_path_string(hex_path, bytes_per_hop, logger=self.logger)
 
     async def process_message(self, message: MeshMessage) -> None:
         """Process a received message"""
@@ -3914,13 +1144,9 @@ class MessageHandler:
                     success = False
 
                 # Capture keyword command data for web viewer
-                if (
-                    hasattr(self.bot, "web_viewer_integration")
-                    and self.bot.web_viewer_integration
-                    and self.bot.web_viewer_integration.bot_integration
-                ):
+                if viewer := self._viewer_bridge():
                     try:
-                        self.bot.web_viewer_integration.bot_integration.capture_command(
+                        viewer.capture_command(
                             message, keyword, response, success, command_id
                         )
                     except Exception as e:
@@ -4021,435 +1247,58 @@ class MessageHandler:
             return True
         return getattr(self.bot, "channel_responses_enabled", True)
 
-    def _ensure_contact_meshcore_path_encoding(self, contact_data: dict[str, Any]) -> None:
-        """If out_path_len is set but out_path_hash_mode is still flood (-1), rebuild wire fields.
+    async def discover_message_path(self, sender_id: str, rf_data: dict) -> tuple[int, str]:
+        """
+        Discover the actual routing path for a message using CLI commands.
+        This is more reliable than trying to decode packet fragments.
 
-        meshcore update_contact uses out_path_len | (out_path_hash_mode << 6); hash_mode -1 with
-        non-negative hop count produces a negative int and OverflowError on unsigned to_bytes.
+        Args:
+            sender_id: The name or ID of the sender
+            rf_data: The RF data containing pubkey information
+
+        Returns:
+            tuple[int, str]: (Number of hops, formatted path string)
         """
         try:
-            hash_mode = int(contact_data.get("out_path_hash_mode", 0))
-        except (TypeError, ValueError):
-            return
-        if hash_mode != -1:
-            return
+            # First try to find the contact by name
+            if hasattr(self.bot.meshcore, "contacts") and self.bot.meshcore.contacts:
+                pubkey_prefix = rf_data.get("pubkey_prefix", "")
 
-        opl: int | None
-        raw_opl = contact_data.get("out_path_len")
-        try:
-            opl = None if raw_opl is None else int(raw_opl)
-        except (TypeError, ValueError):
-            opl = None
+                # Look for contact by name first
+                contact = self._find_contact(lambda c: c.get("adv_name") == sender_id)
 
-        bph_raw = contact_data.get("out_bytes_per_hop", 1) or 1
-        try:
-            bph = int(bph_raw)
-        except (TypeError, ValueError):
-            bph = 1
-        if bph not in (1, 2, 3):
-            bph = 1
+                # If not found by name, try by pubkey prefix
+                if not contact and pubkey_prefix:
+                    contact = self._find_contact(lambda c: c.get("public_key", "").startswith(pubkey_prefix))
 
-        # Some NEW_CONTACT payloads omit out_path_len but include out_path + bytes_per_hop.
-        # Derive hop count here so meshcore doesn't combine a non-flood path with hash_mode=-1.
-        if opl is None:
-            out_path_hex = contact_data.get("out_path") or ""
-            if not isinstance(out_path_hex, str) or not out_path_hex:
-                return
-            if (len(out_path_hex) % 2) != 0:
-                return
-            path_bytes = len(out_path_hex) // 2
-            if path_bytes <= 0:
-                return
-            if (path_bytes % bph) == 0:
-                opl = path_bytes // bph
-            else:
-                opl = path_bytes
+                if contact:
+                    # Use the stored path information if available
+                    out_path = contact.get("out_path", "")
+                    out_path_len = contact.get("out_path_len", -1)
 
-        if opl < 0 or opl == -1:
-            return
-
-        try:
-            pb = encode_path_len_byte(opl, bph)
-        except ValueError:
-            pb = encode_path_len_byte(min(opl, 0x3F), 1)
-        contact_data["out_path_hash_mode"] = (pb >> 6) & 0x03
-        contact_data["out_path_len"] = pb & 0x3F
-
-    def _remember_advert_rf(
-        self,
-        packet_info: dict[str, Any],
-        routing_info: dict[str, Any],
-        packet_hash: str | None,
-        signal_info: dict[str, Any],
-        current_time: float,
-    ) -> None:
-        """Record an advert heard on RF for handle_new_contact.
-
-        Called before the advert is processed, which can yield, so a NEW_CONTACT
-        handled meanwhile still finds it. An ADVERT payload starts with the
-        sender's 32-byte public key and its 4-byte advert timestamp.
-        """
-        payload_hex = packet_info.get("payload_hex")
-        if not isinstance(payload_hex, str) or len(payload_hex) < 72:
-            return
-        try:
-            advert_timestamp = int.from_bytes(bytes.fromhex(payload_hex[64:72]), "little")
-        except ValueError:
-            return
-        self._advert_rf.append({
-            "timestamp": current_time,
-            "public_key": payload_hex[:64].lower(),
-            "advert_timestamp": advert_timestamp,
-            "routing_info": routing_info,
-            "packet_hash": packet_hash,
-            "snr": signal_info.get("snr"),
-            "rssi": signal_info.get("rssi"),
-        })
-        cutoff = current_time - self.rf_data_timeout
-        self._advert_rf = [entry for entry in self._advert_rf if entry["timestamp"] >= cutoff][-256:]
-
-    def _find_advert_rf_data(self, public_key: str, advert_timestamp: Any = None) -> dict[str, Any] | None:
-        """The first copy heard of ``public_key``'s advert, or None.
-
-        With ``advert_timestamp`` (NEW_CONTACT's ``last_advert``, 0 included) only
-        that advert matches; without it, the most recent one. Copies of one advert heard over
-        different paths share its timestamp; the first is the one the device acted on.
-        """
-        if not public_key:
-            return None
-        key = public_key.lower()
-        now = time.time()
-        matches = [
-            entry
-            for entry in self._advert_rf
-            if entry["public_key"] == key and now - entry["timestamp"] < self.rf_data_timeout
-        ]
-        if isinstance(advert_timestamp, int) and not isinstance(advert_timestamp, bool) and advert_timestamp >= 0:
-            matches = [entry for entry in matches if entry["advert_timestamp"] == advert_timestamp]
-        elif matches:
-            newest = max(matches, key=lambda entry: entry["timestamp"])["advert_timestamp"]
-            matches = [entry for entry in matches if entry["advert_timestamp"] == newest]
-        if not matches:
-            return None
-        return min(matches, key=lambda entry: entry["timestamp"])
-
-    def _release_new_contact_add(self, public_key: str, packet_hash: str | None) -> None:
-        """Let a later NEW_CONTACT for this advert try again after a failed add."""
-        self._new_contact_adds.pop((public_key, packet_hash or ""), None)
-
-    def _claim_new_contact_add(self, public_key: str, packet_hash: str | None) -> bool:
-        """False when a NEW_CONTACT for this advert packet already added the contact."""
-        if not packet_hash or packet_hash == "0000000000000000":
-            return True
-        key = (public_key, packet_hash)
-        if key in self._new_contact_adds:
-            return False
-        self._new_contact_adds[key] = None
-        while len(self._new_contact_adds) > 256:
-            del self._new_contact_adds[next(iter(self._new_contact_adds))]
-        return True
-
-    async def handle_new_contact(self, event: Any, metadata: dict[str, Any] | None = None) -> None:
-        """Handle NEW_CONTACT events for automatic contact management"""
-        try:
-            # Copy payload immediately to avoid segfault if event is freed
-            # Make a deep copy to ensure we have all the data we need
-            if hasattr(event, "payload"):
-                contact_data = copy.deepcopy(event.payload)
-            else:
-                # Fallback: try to copy the event itself if it's a dict-like object
-                contact_data = copy.deepcopy(event) if isinstance(event, dict) else None
-
-            if not contact_data:
-                self.logger.warning("NEW_CONTACT event has no payload data")
-                return
-
-            self.logger.debug(f"🔍 NEW_CONTACT EVENT RECEIVED: {event}")
-
-            # Get contact details
-            contact_name = sanitize_name(contact_data.get("name", contact_data.get("adv_name", "Unknown")))
-            public_key = contact_data.get("public_key", "")
-
-            self.logger.info(f"Processing new contact: {contact_name} (key: {public_key[:16]}...)")
-
-            # Extract additional signal information from the event
-            signal_info = {}
-            if metadata:
-                signal_info.update(metadata)
-
-            # Take the route, signal data and packet_hash from this contact's own ADVERT
-            # packet. Its mesh-graph edges and observed path were already recorded when
-            # the packet itself was processed, so they are not recorded again here.
-            # Only collect RSSI/SNR for zero-hop (direct) advertisements
-            packet_hash = None
-            try:
-                rf_entry = self._find_advert_rf_data(public_key, contact_data.get("last_advert"))
-                if rf_entry:
-                    routing_info = rf_entry["routing_info"]
-
-                    # Extract packet_hash if available
-                    packet_hash = routing_info.get("packet_hash") or rf_entry.get("packet_hash")
-
-                    # Extract path information from routing_info
-                    path_hex = routing_info.get("path_hex", "")
-                    path_length = routing_info.get("path_length", 0)
-
-                    # Add path information to contact_data if not already present
-                    if "out_path" not in contact_data or not contact_data.get("out_path"):
-                        if path_hex and path_length > 0:
-                            contact_data["out_path"] = path_hex
-                            contact_data["out_bytes_per_hop"] = routing_info.get("bytes_per_hop", 1) or 1
-                            bph = contact_data["out_bytes_per_hop"]
-                            pb = routing_info.get("path_len_byte")
-                            if pb is None or pb == 255:
-                                try:
-                                    pb = encode_path_len_byte(path_length, bph)
-                                except ValueError:
-                                    pb = encode_path_len_byte(path_length, 1)
-                            contact_data["out_path_hash_mode"] = (pb >> 6) & 0x03
-                            contact_data["out_path_len"] = pb & 0x3F
-                        elif path_length == 0:
-                            contact_data["out_path"] = ""
-                            contact_data["out_path_len"] = 0
-                            contact_data["out_path_hash_mode"] = 0
-
-                    # Only collect signal data for direct (zero-hop) advertisements
-                    if path_length == 0:
-                        # Direct advertisement - collect signal data
-                        if "snr" in rf_entry:
-                            signal_info["snr"] = rf_entry["snr"]
-                        if "rssi" in rf_entry:
-                            signal_info["rssi"] = rf_entry["rssi"]
-                        signal_info["hops"] = 0
-                        self.logger.debug(
-                            f"📡 Direct advertisement - collecting signal data: SNR={rf_entry.get('snr')}, RSSI={rf_entry.get('rssi')}"
-                        )
+                    if out_path_len == 0:
+                        self.logger.debug(f"Direct connection to {sender_id}")
+                        return 0, "Direct"
+                    elif out_path_len > 0:
+                        # Format the path string (use stored bytes_per_hop for multi-byte paths)
+                        bph = contact.get("out_bytes_per_hop")
+                        if bph is None and out_path_len > 0 and out_path:
+                            byte_len = len(out_path) // 2
+                            if byte_len > 0 and (byte_len % out_path_len) == 0:
+                                bph = byte_len // out_path_len
+                        path_string = self._format_path_string(out_path, bytes_per_hop=bph)
+                        self.logger.debug(f"Stored path to {sender_id}: {out_path_len} hops via {path_string}")
+                        return out_path_len, path_string
                     else:
-                        # Multi-hop advertisement - only collect hop count, not signal data
-                        signal_info["hops"] = path_length
-                        self.logger.debug(
-                            f"📡 Multi-hop advertisement ({path_length} hops) - skipping signal data collection"
-                        )
-            except Exception as e:
-                self.logger.debug(f"Could not correlate RF data: {e}")
-
-            # Log captured signal information
-            if signal_info:
-                self.logger.info(f"📡 Signal data: {signal_info}")
-            else:
-                self.logger.info("📡 No signal data available")
-
-            # Check if this is a repeater or companion
-            if hasattr(self.bot, "repeater_manager"):
-                is_repeater = self.bot.repeater_manager._is_repeater_device(contact_data)
-                existing_tracking = self.bot.repeater_manager.get_tracked_contact_row(public_key)
-                already_on_device = self.bot.repeater_manager.is_contact_on_device(public_key)
-                known_contact = already_on_device or existing_tracking is not None
-
-                if is_repeater:
-                    # REPEATER: Track directly in SQLite database (no device contact list)
-                    if known_contact:
-                        self.logger.info(f"📡 Known repeater advert: {contact_name} - tracking in database only")
-                    else:
-                        self.logger.info(f"📡 New repeater discovered: {contact_name} - tracking in database only")
-
-                    # Track repeater in complete database with signal info
-                    await self.bot.repeater_manager.track_contact_advertisement(
-                        contact_data, signal_info, packet_hash=packet_hash
-                    )
-
-                    # Notify web viewer of new node
-                    if (
-                        hasattr(self.bot, "web_viewer_integration")
-                        and self.bot.web_viewer_integration
-                        and self.bot.web_viewer_integration.bot_integration
-                    ):
-                        try:
-                            node_data = {
-                                "public_key": public_key,
-                                "prefix": public_key[: self.bot.prefix_hex_chars].lower() if public_key else "",
-                                "name": contact_name,
-                                "role": "repeater",
-                            }
-                            self.bot.web_viewer_integration.bot_integration.send_mesh_node_update(node_data)
-                        except Exception as e:
-                            self.logger.debug(f"Failed to notify web viewer of new node: {e}")
-
-                    # Check if auto-purge is needed (run after tracking to ensure data is captured)
-                    await self.bot.repeater_manager.check_and_auto_purge()
-
-                    self.logger.info(f"✅ Repeater {contact_name} tracked in database - not added to device contacts")
-                    return
+                        # Path not set - use basic info
+                        self.logger.debug(f"No stored path for {sender_id}, using basic info")
+                        return 255, "No stored path"
                 else:
-                    # COMPANION: track in DB; device add behaviour depends on auto_manage_contacts
-                    auto_manage_setting = self.bot.config.get("Bot", "auto_manage_contacts", fallback="device").lower()
-                    if known_contact:
-                        self.logger.info(
-                            "👤 Known companion advert: %s — auto_manage_contacts=%s",
-                            contact_name,
-                            auto_manage_setting,
-                        )
-                    else:
-                        self.logger.info(
-                            "👤 New companion discovered: %s — auto_manage_contacts=%s",
-                            contact_name,
-                            auto_manage_setting,
-                        )
+                    self.logger.debug(f"Contact {sender_id} not found in contacts")
+                    return 255, "Unknown"  # Unknown path
 
-                    await self.bot.repeater_manager.track_contact_advertisement(
-                        contact_data, signal_info, packet_hash=packet_hash
-                    )
-
-                    if auto_manage_setting == "false":
-                        self.logger.info(
-                            "Manual mode — companion %s tracked in database only (not added to device)",
-                            contact_name,
-                        )
-                    elif auto_manage_setting == "device":
-                        self.logger.info(
-                            "Device mode — companion %s tracked; firmware handles addition; bot may manage capacity",
-                            contact_name,
-                        )
-                        status = await self.bot.repeater_manager.get_contact_list_status()
-                        if status and status.get("is_near_limit", False):
-                            self.logger.warning(
-                                "Contact list near limit (%.1f%%) — managing capacity",
-                                status["usage_percentage"],
-                            )
-                            await self.bot.repeater_manager.manage_contact_list(auto_cleanup=True)
-                        else:
-                            self.logger.info(
-                                "Companion %s — contact list has adequate space",
-                                contact_name,
-                            )
-                    elif auto_manage_setting == "bot":
-                        # One add per advert: NEW_CONTACT can repeat for the same packet. The
-                        # tracking result can't tell, since the advert packet itself was
-                        # usually tracked first. Without a packet_hash every event adds.
-                        if not self._claim_new_contact_add(public_key, packet_hash):
-                            self.logger.debug(
-                                "Skipping add_companion — duplicate packet_hash for %s (already tracked)",
-                                contact_name,
-                            )
-                        else:
-                            self.logger.info(
-                                "Bot mode — adding companion %s to device with capacity management",
-                                contact_name,
-                            )
-                            try:
-                                self._ensure_contact_meshcore_path_encoding(contact_data)
-                                ok = await self.bot.repeater_manager.add_companion_from_contact_data(
-                                    contact_data, contact_name, public_key
-                                )
-                                if not ok:
-                                    self._release_new_contact_add(public_key, packet_hash)
-                                    self.logger.warning(
-                                        "Failed to add companion contact %s to device after managed add/retry",
-                                        contact_name,
-                                    )
-                            except asyncio.CancelledError:
-                                self._release_new_contact_add(public_key, packet_hash)
-                                raise
-                            except Exception as e:
-                                self._release_new_contact_add(public_key, packet_hash)
-                                self.logger.error("Error adding companion %s to device: %s", contact_name, e)
-
-                            status = await self.bot.repeater_manager.get_contact_list_status()
-                            if status and status.get("is_near_limit", False):
-                                self.logger.warning(
-                                    "Contact list near limit (%.1f%%) — managing capacity after add",
-                                    status["usage_percentage"],
-                                )
-                                await self.bot.repeater_manager.manage_contact_list(auto_cleanup=True)
-                            else:
-                                self.logger.info(
-                                    "Companion %s — contact list has adequate space after add attempt",
-                                    contact_name,
-                                )
-                    else:
-                        self.logger.warning(
-                            "Unknown auto_manage_contacts value %r — treating as manual for %s",
-                            auto_manage_setting,
-                            contact_name,
-                        )
-
-                    await self.bot.repeater_manager.check_and_auto_purge()
-
-                    if not known_contact:
-                        self.bot.repeater_manager.log_purging_action(
-                            "new_contact_discovered",
-                            f"New contact discovered: {contact_name} (key: {public_key[:16]}...)",
-                        )
-                    return
-
-            # Fallback: Track in database for unknown contact types (no repeater_manager)
-            if hasattr(self.bot, "repeater_manager"):
-                await self.bot.repeater_manager.track_contact_advertisement(contact_data, packet_hash=packet_hash)
-                await self.bot.repeater_manager.check_and_auto_purge()
-
-            # For unknown contact types, handle based on auto_manage_contacts setting
-            if hasattr(self.bot, "repeater_manager"):
-                auto_manage_setting = self.bot.config.get("Bot", "auto_manage_contacts", fallback="device").lower()
-
-                if auto_manage_setting == "device":
-                    # Device mode: Let device handle auto-addition, bot manages capacity
-                    self.logger.info(
-                        f"Device auto-addition mode - new contact '{contact_name}' will be handled by device"
-                    )
-
-                    # Check contact list capacity and manage if needed
-                    status = await self.bot.repeater_manager.get_contact_list_status()
-
-                    if status and status.get("is_near_limit", False):
-                        self.logger.warning(
-                            f"Contact list near limit ({status['usage_percentage']:.1f}%) - managing capacity"
-                        )
-                        await self.bot.repeater_manager.manage_contact_list(auto_cleanup=True)
-                    else:
-                        self.logger.info(f"New contact '{contact_name}' - contact list has adequate space")
-
-                elif auto_manage_setting == "bot":
-                    # Bot mode: Bot automatically adds companion contacts to device and manages capacity
-                    self.logger.info(
-                        f"Bot auto-addition mode - automatically adding new companion contact '{contact_name}' to device"
-                    )
-
-                    # Add the contact to the device's contact list
-                    success = await self.bot.repeater_manager.add_discovered_contact(
-                        contact_name, public_key, "Auto-added companion contact discovered via NEW_CONTACT event"
-                    )
-
-                    if success:
-                        self.logger.info(f"Successfully added companion contact '{contact_name}' to device")
-                    else:
-                        self.logger.warning(f"Failed to add companion contact '{contact_name}' to device")
-
-                    # Check contact list capacity and manage if needed
-                    status = await self.bot.repeater_manager.get_contact_list_status()
-
-                    if status and status.get("is_near_limit", False):
-                        self.logger.warning(
-                            f"Contact list near limit ({status['usage_percentage']:.1f}%) - managing capacity"
-                        )
-                        await self.bot.repeater_manager.manage_contact_list(auto_cleanup=True)
-                    else:
-                        self.logger.info(f"New contact '{contact_name}' - contact list has adequate space")
-
-                else:  # false or any other value
-                    # Manual mode: Just log the discovery, no automatic actions
-                    self.logger.info(
-                        f"Manual mode - new companion contact '{contact_name}' discovered (not auto-added)"
-                    )
-
-            # Log the new contact discovery
-            if hasattr(self.bot, "repeater_manager"):
-                self.bot.repeater_manager.log_purging_action(
-                    "new_contact_discovered",
-                    f"New contact discovered: {contact_name} (key: {public_key[:16]}...)",
-                )
+            return 255, "Unknown"  # Fallback to unknown
 
         except Exception as e:
-            self.logger.error(f"Error handling new contact event: {e}")
-            import traceback
-
-            self.logger.error(traceback.format_exc())
+            self.logger.error(f"Error discovering message path: {e}")
+            return 255, "Error"

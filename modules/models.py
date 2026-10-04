@@ -7,6 +7,8 @@ Contains shared data structures used across modules
 from dataclasses import dataclass
 from typing import Any, Optional
 
+from .flood_scope import channel_scope_entry, is_global_marker, outgoing_override
+
 # Firmware reserves extra bytes for regional (non-global) TC_FLOOD scope on channel text.
 CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD = 10
 
@@ -43,6 +45,29 @@ def channel_body_limit(username: Optional[str]) -> int:
     """
     name = str(username or "Bot")
     return max(CHANNEL_FRAME_TEXT_LIMIT - len(name.encode("utf-8")) - 2, CHANNEL_BODY_FLOOR)
+
+
+def self_info_name(self_info: Any, fields: tuple[str, ...], *, by_presence: bool = False) -> Any:
+    """The radio's own name from ``meshcore.self_info`` (a dict or an object).
+
+    Returns the first truthy value among ``fields``, or None. With
+    ``by_presence`` an *object* answers with the first field it has at all,
+    even when that value is empty, which is how BaseCommand has always read it;
+    dicts are always read by truthiness. Callers apply their own fallback.
+    """
+    if not self_info:
+        return None
+    if isinstance(self_info, dict):
+        return next((self_info.get(f) for f in fields if self_info.get(f)), None)
+    for field in fields:
+        if by_presence:
+            if hasattr(self_info, field):
+                return getattr(self_info, field)
+        else:
+            value = getattr(self_info, field, None)
+            if value:
+                return value
+    return None
 
 
 @dataclass
@@ -94,22 +119,12 @@ class MeshMessage:
             return ""
         if self.reply_scope is not None:
             return (self.reply_scope or "").strip()
-        if self.channel and bot.config.has_section("Channels"):
-            channel_key = self.channel.strip().removeprefix("#").lower()
-            for key, value in bot.config.items("Channels"):
-                if not key.startswith("flood_scope."):
-                    continue
-                configured_channel = key[len("flood_scope."):].strip().removeprefix("#").lower()
-                if configured_channel == channel_key:
-                    return (value or "").strip()
-        scope_cfg = ""
-        if bot.config.has_section("Channels") and bot.config.has_option(
-            "Channels", "outgoing_flood_scope_override"
-        ):
-            scope_cfg = (bot.config.get("Channels", "outgoing_flood_scope_override") or "").strip()
-        return scope_cfg
+        channel_scope = channel_scope_entry(bot.config, self.channel)
+        if channel_scope is not None:
+            return channel_scope
+        return outgoing_override(bot.config)
 
     @staticmethod
     def is_global_flood_scope(scope: str) -> bool:
         """Match ``send_channel_message`` global markers (before ``_normalize_scope_name``)."""
-        return scope in ("", "*", "0", "None") or scope.lower() == "none"
+        return is_global_marker(scope)

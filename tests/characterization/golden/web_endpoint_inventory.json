@@ -1,0 +1,1883 @@
+{
+ "/": {
+  "GET locked anon": {
+   "content_type": "text/html",
+   "csp_script_src": "script-src 'self' 'nonce-X' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "text/html",
+   "csp_script_src": "script-src 'self' 'nonce-X' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "index",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/admin/config": {
+  "GET locked anon": {
+   "content_type": "text/html",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "/login?next=/admin/config",
+   "status": 302,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "text/html",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "admin_config",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/api-explorer": {
+  "GET locked anon": {
+   "content_type": "text/html",
+   "csp_script_src": "script-src 'self' 'nonce-X' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "/login?next=/api-explorer",
+   "status": 302,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "text/html",
+   "csp_script_src": "script-src 'self' 'nonce-X' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_explorer",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/api/admin/radio-offline-clear": {
+  "POST locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_admin_radio_offline_clear",
+  "methods": [
+   "POST"
+  ]
+ },
+ "/api/admin/zombie-recover": {
+  "POST locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_admin_zombie_recover",
+  "methods": [
+   "POST"
+  ]
+ },
+ "/api/banner-status": {
+  "GET locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_banner_status",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/api/cache": {
+  "GET locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_cache",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/api/channel-operations/<int:operation_id>": {
+  "endpoint": "api_get_operation_status",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/api/channels": {
+  "POST locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_create_channel",
+  "methods": [
+   "POST"
+  ]
+ },
+ "/api/channels/<int:channel_idx>": {
+  "PUT locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_update_channel",
+  "methods": [
+   "PUT"
+  ]
+ },
+ "/api/channels/<int:channel_idx>/feeds": {
+  "endpoint": "api_channel_feeds",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/api/channels/stats": {
+  "GET locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_channel_stats",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/api/channels/validate": {
+  "POST locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_validate_channel",
+  "methods": [
+   "POST"
+  ]
+ },
+ "/api/config/logging": {
+  "POST locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_config_logging_post",
+  "methods": [
+   "POST"
+  ]
+ },
+ "/api/config/maintenance": {
+  "POST locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_config_maintenance_post",
+  "methods": [
+   "POST"
+  ]
+ },
+ "/api/config/notifications": {
+  "POST locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_config_notifications_post",
+  "methods": [
+   "POST"
+  ]
+ },
+ "/api/config/notifications/test": {
+  "POST locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_config_notifications_test",
+  "methods": [
+   "POST"
+  ]
+ },
+ "/api/config/radio-debug": {
+  "POST locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_config_radio_debug_post",
+  "methods": [
+   "POST"
+  ]
+ },
+ "/api/config/radio-offline-alert": {
+  "POST locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_config_radio_offline_alert_post",
+  "methods": [
+   "POST"
+  ]
+ },
+ "/api/config/radio-probe": {
+  "POST locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_config_radio_probe_post",
+  "methods": [
+   "POST"
+  ]
+ },
+ "/api/config/zombie-alert": {
+  "POST locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_config_zombie_alert_post",
+  "methods": [
+   "POST"
+  ]
+ },
+ "/api/connected_clients": {
+  "GET locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_connected_clients",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/api/contact-detail": {
+  "GET locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 400,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 400,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_contact_detail",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/api/contacts": {
+  "GET locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_contacts",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/api/contacts/purge": {
+  "POST locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_contacts_purge",
+  "methods": [
+   "POST"
+  ]
+ },
+ "/api/contacts/purge-preview": {
+  "GET locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_contacts_purge_preview",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/api/dashboard/refresh": {
+  "POST locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_dashboard_refresh",
+  "methods": [
+   "POST"
+  ]
+ },
+ "/api/dashboard/series": {
+  "GET locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_dashboard_series",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/api/dashboard/summary": {
+  "GET locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 503,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 503,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_dashboard_summary",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/api/dashboard/top": {
+  "GET locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_dashboard_top",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/api/dashboard/windows": {
+  "GET locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_dashboard_windows",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/api/database": {
+  "GET locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_database",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/api/decode-path": {
+  "POST locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 400,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_decode_path",
+  "methods": [
+   "POST"
+  ]
+ },
+ "/api/delete-contact": {
+  "POST locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_delete_contact",
+  "methods": [
+   "POST"
+  ]
+ },
+ "/api/export/contacts": {
+  "GET locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_export_contacts",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/api/export/paths": {
+  "GET locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_export_paths",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/api/feeds": {
+  "GET locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_feeds",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/api/feeds/<int:feed_id>": {
+  "PUT locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_update_feed",
+  "methods": [
+   "PUT"
+  ]
+ },
+ "/api/feeds/<int:feed_id>/activity": {
+  "endpoint": "api_feed_activity",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/api/feeds/<int:feed_id>/errors": {
+  "endpoint": "api_feed_errors",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/api/feeds/<int:feed_id>/errors/reset": {
+  "POST locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_reset_feed_errors",
+  "methods": [
+   "POST"
+  ]
+ },
+ "/api/feeds/<int:feed_id>/refresh": {
+  "POST locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_refresh_feed",
+  "methods": [
+   "POST"
+  ]
+ },
+ "/api/feeds/default-format": {
+  "GET locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_get_default_format",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/api/feeds/errors/reset": {
+  "POST locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_reset_all_feed_errors",
+  "methods": [
+   "POST"
+  ]
+ },
+ "/api/feeds/preview": {
+  "POST locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_preview_feed",
+  "methods": [
+   "POST"
+  ]
+ },
+ "/api/feeds/stats": {
+  "GET locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_feed_stats",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/api/feeds/test": {
+  "POST locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_test_feed",
+  "methods": [
+   "POST"
+  ]
+ },
+ "/api/geocode-contact": {
+  "POST locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_geocode_contact",
+  "methods": [
+   "POST"
+  ]
+ },
+ "/api/greeter": {
+  "GET locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_greeter",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/api/greeter/end-rollout": {
+  "POST locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_end_rollout",
+  "methods": [
+   "POST"
+  ]
+ },
+ "/api/greeter/ungreet": {
+  "POST locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_ungreet_user",
+  "methods": [
+   "POST"
+  ]
+ },
+ "/api/health": {
+  "GET locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_health",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/api/maintenance/backup_now": {
+  "POST locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_maintenance_backup_now",
+  "methods": [
+   "POST"
+  ]
+ },
+ "/api/maintenance/list_backups": {
+  "GET locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_maintenance_list_backups",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/api/maintenance/purge": {
+  "POST locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_maintenance_purge",
+  "methods": [
+   "POST"
+  ]
+ },
+ "/api/maintenance/restore": {
+  "POST locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_maintenance_restore",
+  "methods": [
+   "POST"
+  ]
+ },
+ "/api/maintenance/status": {
+  "GET locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_maintenance_status",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/api/mesh/edges": {
+  "GET locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_mesh_edges",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/api/mesh/nodes": {
+  "GET locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_mesh_nodes",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/api/mesh/resolve-path": {
+  "POST locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 400,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_resolve_path",
+  "methods": [
+   "POST"
+  ]
+ },
+ "/api/mesh/stats": {
+  "GET locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_mesh_stats",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/api/multibyte-rollout": {
+  "GET locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "text/html",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 404,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_multibyte_rollout",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/api/optimize-database": {
+  "POST locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_optimize_database",
+  "methods": [
+   "POST"
+  ]
+ },
+ "/api/plugins": {
+  "GET locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_plugins_get",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/api/plugins/<kind>/<name>": {
+  "POST locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_plugins_save",
+  "methods": [
+   "POST"
+  ]
+ },
+ "/api/plugins/reload-status": {
+  "GET locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_plugins_reload_status",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/api/radio/advert": {
+  "POST locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_radio_advert",
+  "methods": [
+   "POST"
+  ]
+ },
+ "/api/radio/connect": {
+  "POST locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_radio_connect",
+  "methods": [
+   "POST"
+  ]
+ },
+ "/api/radio/firmware/config/read": {
+  "POST locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_firmware_config_read",
+  "methods": [
+   "POST"
+  ]
+ },
+ "/api/radio/firmware/config/write": {
+  "POST locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_firmware_config_write",
+  "methods": [
+   "POST"
+  ]
+ },
+ "/api/radio/params": {
+  "POST locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_radio_params_write",
+  "methods": [
+   "POST"
+  ]
+ },
+ "/api/radio/reboot": {
+  "POST locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_radio_reboot",
+  "methods": [
+   "POST"
+  ]
+ },
+ "/api/radio/status": {
+  "GET locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_radio_status",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/api/recent_commands": {
+  "GET locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_recent_commands",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/api/region-scopes": {
+  "POST locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_region_scopes_save",
+  "methods": [
+   "POST"
+  ]
+ },
+ "/api/region-warnings": {
+  "GET locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_region_warnings",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/api/region-warnings/settings": {
+  "POST locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_region_warnings_save",
+  "methods": [
+   "POST"
+  ]
+ },
+ "/api/scheduled-messages": {
+  "PUT locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_update_scheduled_message",
+  "methods": [
+   "PUT"
+  ]
+ },
+ "/api/scheduled-messages/preview": {
+  "POST locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_scheduled_messages_preview",
+  "methods": [
+   "POST"
+  ]
+ },
+ "/api/stats": {
+  "GET locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_stats",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/api/stats/rate_limiters": {
+  "GET locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_rate_limiter_stats",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/api/stream_data": {
+  "POST locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 400,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_stream_data",
+  "methods": [
+   "POST"
+  ]
+ },
+ "/api/system-health": {
+  "GET locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_system_health",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/api/toggle-star-contact": {
+  "POST locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_toggle_star_contact",
+  "methods": [
+   "POST"
+  ]
+ },
+ "/apple-touch-icon.png": {
+  "GET locked anon": {
+   "content_type": "image/png",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "image/png",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "apple_touch_icon",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/cache": {
+  "GET locked anon": {
+   "content_type": "text/html",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "/login?next=/cache",
+   "status": 302,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "text/html",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "/config#database",
+   "status": 302,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "cache",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/config": {
+  "GET locked anon": {
+   "content_type": "text/html",
+   "csp_script_src": "script-src 'self' 'nonce-X' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "/login?next=/config",
+   "status": 302,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "text/html",
+   "csp_script_src": "script-src 'self' 'nonce-X' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "config_page",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/contacts": {
+  "GET locked anon": {
+   "content_type": "text/html",
+   "csp_script_src": "script-src 'self' 'nonce-X' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "text/html",
+   "csp_script_src": "script-src 'self' 'nonce-X' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "contacts",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/favicon-16x16.png": {
+  "GET locked anon": {
+   "content_type": "image/png",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "image/png",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "favicon_16x16",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/favicon-32x32.png": {
+  "GET locked anon": {
+   "content_type": "image/png",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "image/png",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "favicon_32x32",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/favicon.ico": {
+  "GET locked anon": {
+   "content_type": "image/x-icon",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "image/x-icon",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "favicon",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/feeds": {
+  "GET locked anon": {
+   "content_type": "text/html",
+   "csp_script_src": "script-src 'self' 'nonce-X' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "/login?next=/feeds",
+   "status": 302,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "text/html",
+   "csp_script_src": "script-src 'self' 'nonce-X' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "feeds",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/greeter": {
+  "GET locked anon": {
+   "content_type": "text/html",
+   "csp_script_src": "script-src 'self' 'nonce-X' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "/login?next=/greeter",
+   "status": 302,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "text/html",
+   "csp_script_src": "script-src 'self' 'nonce-X' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "greeter",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/login": {
+  "GET locked anon": {
+   "content_type": "text/html",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "text/html",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "/",
+   "status": 302,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "POST locked anon": {
+   "content_type": "text/html",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "login",
+  "methods": [
+   "GET",
+   "POST"
+  ]
+ },
+ "/logout": {
+  "GET locked anon": {
+   "content_type": "text/html",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "/",
+   "status": 302,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "text/html",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "/",
+   "status": 302,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "logout",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/logs": {
+  "GET locked anon": {
+   "content_type": "text/html",
+   "csp_script_src": "script-src 'self' 'nonce-X' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "/login?next=/logs",
+   "status": 302,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "text/html",
+   "csp_script_src": "script-src 'self' 'nonce-X' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "logs",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/mesh": {
+  "GET locked anon": {
+   "content_type": "text/html",
+   "csp_script_src": "script-src 'self' 'nonce-X' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "text/html",
+   "csp_script_src": "script-src 'self' 'nonce-X' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "mesh",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/multibyte-rollout": {
+  "GET locked anon": {
+   "content_type": "text/html",
+   "csp_script_src": "script-src 'self' 'nonce-X' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "/login?next=/multibyte-rollout",
+   "status": 302,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "text/html",
+   "csp_script_src": "script-src 'self' 'nonce-X' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 404,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "multibyte_rollout",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/plugins": {
+  "GET locked anon": {
+   "content_type": "text/html",
+   "csp_script_src": "script-src 'self' 'nonce-X' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "/login?next=/plugins",
+   "status": 302,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "text/html",
+   "csp_script_src": "script-src 'self' 'nonce-X' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "plugins_page",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/radio": {
+  "GET locked anon": {
+   "content_type": "text/html",
+   "csp_script_src": "script-src 'self' 'nonce-X' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "/login?next=/radio",
+   "status": 302,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "text/html",
+   "csp_script_src": "script-src 'self' 'nonce-X' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "radio",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/realtime": {
+  "GET locked anon": {
+   "content_type": "text/html",
+   "csp_script_src": "script-src 'self' 'nonce-X' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "text/html",
+   "csp_script_src": "script-src 'self' 'nonce-X' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "realtime",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/region-warnings": {
+  "GET locked anon": {
+   "content_type": "text/html",
+   "csp_script_src": "script-src 'self' 'nonce-X' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "/login?next=/region-warnings",
+   "status": 302,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "text/html",
+   "csp_script_src": "script-src 'self' 'nonce-X' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "region_warnings_page",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/schedule": {
+  "GET locked anon": {
+   "content_type": "text/html",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "/login?next=/schedule",
+   "status": 302,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "text/html",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "schedule_page",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/site.webmanifest": {
+  "GET locked anon": {
+   "content_type": "application/manifest+json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "application/manifest+json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "site_webmanifest",
+  "methods": [
+   "GET"
+  ]
+ }
+}

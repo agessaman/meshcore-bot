@@ -176,6 +176,8 @@ class AlertCommand(BaseCommand):
 
     # Plugin metadata
     name = "alert"
+    honors_skip_channel_check = False
+    enabled_attr = "alert_enabled"
     keywords = ['alert', 'alerts', 'incident', 'incidents']
     description = "Get active emergency incidents (usage: alert seattle, alert 98258, alert 178th seattle, alert seattle all)"
     category = "emergency"
@@ -235,21 +237,6 @@ class AlertCommand(BaseCommand):
         self.alert_enabled = self.get_config_value('Alert_Command', 'enabled', fallback=None, value_type='bool')
         if self.alert_enabled is None:
             self.alert_enabled = self.get_config_value('Alert_Command', 'alert_enabled', fallback=True, value_type='bool')
-
-    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
-        """Check if this command can be executed with the given message.
-
-        Args:
-            message: The message triggering the command.
-
-        Returns:
-            bool: True if command is enabled and checks pass, False otherwise.
-        """
-        if not self.alert_enabled:
-            return False
-
-        # Call parent can_execute() which includes channel checking, cooldown, etc.
-        return super().can_execute(message)
 
     def _load_agencies(self) -> tuple[dict[str, str], dict[str, str]]:
         """Load agency IDs from config, separating cities and counties.

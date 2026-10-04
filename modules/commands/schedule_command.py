@@ -56,7 +56,7 @@ class ScheduleCommand(BaseCommand):
             return False
         return super().can_execute(message)
 
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         return "schedule [list] — show scheduled messages and advert interval"
 
     async def execute(self, message: MeshMessage) -> bool:

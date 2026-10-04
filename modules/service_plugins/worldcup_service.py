@@ -120,11 +120,7 @@ class WorldCupLiveService(BaseServicePlugin):
         self._running = False
         if self._fastcast:
             self._fastcast.stop()
-        for task in (self._fastcast_task, self._poll_task):
-            if task:
-                task.cancel()
-                with contextlib.suppress(asyncio.CancelledError):
-                    await task
+        await self._cancel_tasks(self._fastcast_task, self._poll_task)
         self._fastcast_task = None
         self._poll_task = None
         self.logger.info("World Cup live service stopped")

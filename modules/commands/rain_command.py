@@ -727,6 +727,8 @@ class RainCommand(BaseCommand):
     render_safe = True
 
     name = "rain"
+    honors_skip_channel_check = False
+    enabled_attr = "rain_enabled"
     keywords = ["rain", "nowcast", "snow"]
     description = "Rain/snow nowcast: when precip starts or stops in the next ~2h, with amount"
     category = "weather"
@@ -805,11 +807,6 @@ class RainCommand(BaseCommand):
         )
         self._reverse_cache: dict[str, tuple[Optional[str], Optional[str]]] = {}
         self._zip_cache: dict[str, str] = {}
-
-    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
-        if not self.rain_enabled:
-            return False
-        return super().can_execute(message)
 
     def _create_retry_session(self) -> requests.Session:
         """Session with light retry/backoff for the Open-Meteo call."""
@@ -1103,7 +1100,7 @@ class RainCommand(BaseCommand):
 
         try:
             self.record_execution(message.sender_id)
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             series = await loop.run_in_executor(None, lambda: self._fetch_series(lat, lon))
         except Exception as e:
             self.logger.error(f"Error fetching rain nowcast: {e}")

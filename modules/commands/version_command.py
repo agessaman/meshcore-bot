@@ -19,6 +19,7 @@ class VersionCommand(BaseCommand):
     render_safe = True
 
     name = "version"
+    enabled_attr = "version_enabled"
     keywords = ["version", "ver"]
     description = "Show the running bot version."
     category = "basic"
@@ -36,12 +37,7 @@ class VersionCommand(BaseCommand):
             value_type="bool",
         )
 
-    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
-        if not self.version_enabled:
-            return False
-        return super().can_execute(message, skip_channel_check=skip_channel_check)
-
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         return self.description
 
     async def execute(self, message: MeshMessage) -> bool:

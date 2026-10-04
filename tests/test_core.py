@@ -1676,3 +1676,24 @@ async def _make_coro_async(value):
 def _make_coro(value):
     """Return a coroutine that immediately resolves to *value*."""
     return _make_coro_async(value)
+
+
+class TestHealthStateAvailableToPluginConstructors:
+    """Plugins built in MeshCoreBot.__init__ may read radio-health properties."""
+
+    def test_command_constructor_can_read_health_properties(self, tmp_path):
+        from modules.command_manager import CommandManager
+
+        seen = {}
+        real_init = CommandManager.__init__
+
+        def spying_init(self, bot):
+            seen["offline"] = bot.is_radio_offline
+            seen["zombie"] = bot.is_radio_zombie
+            real_init(self, bot)
+
+        config_file = tmp_path / "config.ini"
+        _write_config(config_file, tmp_path / "bot.db")
+        with patch.object(CommandManager, "__init__", spying_init):
+            MeshCoreBot(config_file=str(config_file))
+        assert seen == {"offline": False, "zombie": False}

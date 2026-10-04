@@ -3,7 +3,7 @@
 import asyncio
 import configparser
 import time
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
@@ -2463,7 +2463,7 @@ class TestZeroHopObservedPathWriter:
         )
         pk = "ab" * 32
         with patch(
-            "modules.message_handler.upsert_zero_hop_observed_path_via_manager"
+            "modules.contact_events.upsert_zero_hop_observed_path_via_manager"
         ) as upsert:
             await handler._process_advertisement_packet(
                 {
@@ -2844,6 +2844,56 @@ class TestChannelPayloadCorrelation:
         assert result[RF_MATCH_KEY] == RF_MATCH_FALLBACK
         assert result["packet_prefix"] == "cc" * 16
 
+
+@pytest.mark.asyncio
+class TestNewContactCapacityLogs:
+    """The contact-capacity check after a companion advert, in device and bot mode."""
+
+    @pytest.mark.parametrize(
+        "mode, near_limit, level, message",
+        [
+            ("device", True, "warning", "Contact list near limit (%.1f%%) — managing capacity"),
+            ("device", False, "info", "Companion %s — contact list has adequate space"),
+            ("bot", True, "warning", "Contact list near limit (%.1f%%) — managing capacity after add"),
+            ("bot", False, "info", "Companion %s — contact list has adequate space after add attempt"),
+        ],
+    )
+    async def test_capacity_log_and_cleanup(self, new_contact_env, mode, near_limit, level, message):
+        bot, handler, rm, mesh = new_contact_env
+        bot.config.set("Bot", "auto_manage_contacts", mode)
+        rm.get_contact_list_status = AsyncMock(
+            return_value={"is_near_limit": near_limit, "usage_percentage": 92.5}
+        )
+        await handler.handle_new_contact(_NewContactEvent(_companion_contact_payload()), None)
+        expected_arg = 92.5 if near_limit else "Alice"
+        calls = getattr(bot.logger, level).call_args_list
+        assert any(c.args == (message, expected_arg) for c in calls), calls
+        if near_limit:
+            rm.manage_contact_list.assert_awaited_once_with(auto_cleanup=True)
+        else:
+            rm.manage_contact_list.assert_not_called()
+
+
+class TestMeshGraphCapturing:
+    """_mesh_graph_capturing truth-tests the graph and capture_enabled once each."""
+
+    def test_falsy_graph_is_tested_once(self, handler, bot):
+        graph = MagicMock()
+        graph.__bool__ = Mock(side_effect=[False, RuntimeError("tested twice")])
+        bot.mesh_graph = graph
+        assert handler._mesh_graph_capturing() is False
+        assert graph.__bool__.call_count == 1
+
+    def test_capture_enabled_is_tested_once(self, handler, bot):
+        flag = MagicMock()
+        flag.__bool__ = Mock(side_effect=[True, RuntimeError("tested twice")])
+        bot.mesh_graph = Mock(capture_enabled=flag)
+        assert handler._mesh_graph_capturing() is True
+        assert flag.__bool__.call_count == 1
+
+    def test_no_graph_attribute(self, handler, bot):
+        del bot.mesh_graph
+        assert handler._mesh_graph_capturing() is False
 
 # ---------------------------------------------------------------------------
 # _correlate_channel_message_rf_data: the short wait for a trailing RF log row

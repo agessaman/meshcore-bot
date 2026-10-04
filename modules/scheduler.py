@@ -24,8 +24,8 @@ from apscheduler.triggers.date import DateTrigger
 from meshcore.events import EventType
 
 from .flood_scope import scope_key_hex
-from .maintenance import MaintenanceRunner
-from .models import CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD, channel_body_limit
+from .maintenance import MaintenanceRunner, read_smtp_settings, send_smtp_message
+from .models import CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD, channel_body_limit, self_info_name
 from .scheduled_message_cron import (
     is_valid_legacy_hhmm,
     parse_schedule_key,
@@ -703,10 +703,7 @@ class MessageScheduler:
         username = ""
         try:
             self_info = getattr(getattr(self.bot, "meshcore", None), "self_info", None)
-            if isinstance(self_info, dict):
-                username = self_info.get("name") or self_info.get("user_name") or ""
-            elif self_info is not None:
-                username = getattr(self_info, "name", "") or getattr(self_info, "user_name", "")
+            username = self_info_name(self_info, ("name", "user_name")) or ""
         except Exception:  # noqa: BLE001 - budget must never break a send
             username = ""
         if not isinstance(username, str) or not username:
@@ -866,6 +863,20 @@ class MessageScheduler:
             if self.scheduler_thread.is_alive():
                 self.logger.debug("Scheduler thread did not finish within %s s", timeout)
 
+    def _submit_to_main_loop(self, coro: Any, error_message: str, *, log_traceback: bool = True) -> Any:
+        """Schedule *coro* on the bot's event loop from this thread, fire-and-forget.
+
+        A failure is logged as ``"<error_message>: <exception>"`` (with the
+        traceback unless ``log_traceback`` is False). Returns the future.
+        """
+        future = asyncio.run_coroutine_threadsafe(coro, self.bot.main_event_loop)
+        report = self.logger.exception if log_traceback else self.logger.error
+        future.add_done_callback(
+            lambda f: report(f"{error_message}: %s", f.exception())
+            if not f.cancelled() and f.exception() else None
+        )
+        return future
+
     def run_scheduler(self):
         """Run the scheduler in a separate thread"""
         self.logger.info("Scheduler thread started")
@@ -904,14 +915,7 @@ class MessageScheduler:
                     import asyncio
                     if hasattr(self.bot, 'main_event_loop') and self.bot.main_event_loop and self.bot.main_event_loop.is_running():
                         # Schedule coroutine in the running main event loop
-                        future = asyncio.run_coroutine_threadsafe(
-                            self.bot.feed_manager.poll_all_feeds(),
-                            self.bot.main_event_loop
-                        )
-                        future.add_done_callback(
-                            lambda f: self.logger.error("Error in feed polling cycle: %s", f.exception())
-                            if not f.cancelled() and f.exception() else None
-                        )
+                        self._submit_to_main_loop(self.bot.feed_manager.poll_all_feeds(), "Error in feed polling cycle", log_traceback=False)
                     else:
                         # Fallback: create a temporary event loop and close it when done
                         loop = asyncio.new_event_loop()
@@ -934,14 +938,7 @@ class MessageScheduler:
                     import asyncio
                     if hasattr(self.bot, 'main_event_loop') and self.bot.main_event_loop and self.bot.main_event_loop.is_running():
                         # Schedule coroutine in the running main event loop
-                        future = asyncio.run_coroutine_threadsafe(
-                            self._process_channel_operations(),
-                            self.bot.main_event_loop
-                        )
-                        future.add_done_callback(
-                            lambda f: self.logger.exception("Error processing channel operations: %s", f.exception())
-                            if not f.cancelled() and f.exception() else None
-                        )
+                        self._submit_to_main_loop(self._process_channel_operations(), "Error processing channel operations")
                     else:
                         # Fallback: create new event loop if main loop not available
                         try:
@@ -957,23 +954,9 @@ class MessageScheduler:
             if time.time() - self.last_radio_ops_check_time >= 5:
                 if hasattr(self.bot, 'main_event_loop') and self.bot.main_event_loop and self.bot.main_event_loop.is_running():
                     import asyncio
-                    future = asyncio.run_coroutine_threadsafe(
-                        self._process_radio_operations(),
-                        self.bot.main_event_loop
-                    )
-                    future.add_done_callback(
-                        lambda f: self.logger.exception("Error processing radio operations: %s", f.exception())
-                        if not f.cancelled() and f.exception() else None
-                    )
+                    self._submit_to_main_loop(self._process_radio_operations(), "Error processing radio operations")
                     # Config-reload requests from the web viewer use the same table.
-                    config_future = asyncio.run_coroutine_threadsafe(
-                        self._process_config_operations(),
-                        self.bot.main_event_loop
-                    )
-                    config_future.add_done_callback(
-                        lambda f: self.logger.exception("Error processing config operations: %s", f.exception())
-                        if not f.cancelled() and f.exception() else None
-                    )
+                    self._submit_to_main_loop(self._process_config_operations(), "Error processing config operations")
                 self.last_radio_ops_check_time = time.time()
 
             # Process feed message queue (every 2 seconds, fire-and-forget)
@@ -984,14 +967,7 @@ class MessageScheduler:
                     hasattr(self.bot, 'connected') and self.bot.connected):
                     import asyncio
                     if hasattr(self.bot, 'main_event_loop') and self.bot.main_event_loop and self.bot.main_event_loop.is_running():
-                        future = asyncio.run_coroutine_threadsafe(
-                            self.bot.feed_manager.process_message_queue(),
-                            self.bot.main_event_loop
-                        )
-                        future.add_done_callback(
-                            lambda f: self.logger.exception("Error processing message queue: %s", f.exception())
-                            if not f.cancelled() and f.exception() else None
-                        )
+                        self._submit_to_main_loop(self.bot.feed_manager.process_message_queue(), "Error processing message queue")
                 self.last_message_queue_check_time = time.time()
 
             # Data retention: run daily (packet_stream, repeater tables, stats, caches, mesh_connections)
@@ -1017,90 +993,6 @@ class MessageScheduler:
             time.sleep(1)
 
         self.logger.info("Scheduler thread stopped")
-
-    def _run_data_retention(self):
-        """Run data retention cleanup: packet_stream, repeater tables, stats, caches, mesh_connections."""
-        import asyncio
-
-        def get_retention_days(section: str, key: str, default: int) -> int:
-            try:
-                if self.bot.config.has_section(section) and self.bot.config.has_option(section, key):
-                    return self.bot.config.getint(section, key)
-            except Exception:
-                pass
-            return default
-
-        packet_stream_days = get_retention_days('Data_Retention', 'packet_stream_retention_days', 3)
-        purging_log_days = get_retention_days('Data_Retention', 'purging_log_retention_days', 90)
-        daily_stats_days = get_retention_days('Data_Retention', 'daily_stats_retention_days', 90)
-        observed_paths_days = get_retention_days('Data_Retention', 'observed_paths_retention_days', 90)
-        mesh_connections_days = get_retention_days('Data_Retention', 'mesh_connections_retention_days', 7)
-        stats_days = get_retention_days('Stats_Command', 'data_retention_days', 7)
-
-        try:
-            # Packet stream (web viewer integration)
-            if hasattr(self.bot, 'web_viewer_integration') and self.bot.web_viewer_integration:
-                bi = getattr(self.bot.web_viewer_integration, 'bot_integration', None)
-                if bi and hasattr(bi, 'cleanup_old_data'):
-                    bi.cleanup_old_data(packet_stream_days)
-
-            # Repeater manager: purging_log and optional daily_stats / unique_advert / observed_paths
-            if hasattr(self.bot, 'repeater_manager') and self.bot.repeater_manager:
-                if hasattr(self.bot, 'main_event_loop') and self.bot.main_event_loop and self.bot.main_event_loop.is_running():
-                    future = asyncio.run_coroutine_threadsafe(
-                        self.bot.repeater_manager.cleanup_database(purging_log_days),
-                        self.bot.main_event_loop
-                    )
-                    try:
-                        future.result(timeout=60)
-                    except RuntimeError as e:
-                        self.logger.warning("Event loop gone during cleanup_database: %s", e)
-                    except Exception as e:
-                        self.logger.error(f"Error in repeater_manager.cleanup_database: {type(e).__name__}: {e}")
-                else:
-                    try:
-                        loop = asyncio.get_event_loop()
-                    except RuntimeError:
-                        loop = asyncio.new_event_loop()
-                        asyncio.set_event_loop(loop)
-                    loop.run_until_complete(self.bot.repeater_manager.cleanup_database(purging_log_days))
-                if hasattr(self.bot.repeater_manager, 'cleanup_repeater_retention'):
-                    self.bot.repeater_manager.cleanup_repeater_retention(
-                        daily_stats_days=daily_stats_days,
-                        observed_paths_days=observed_paths_days
-                    )
-
-            # Stats tables (message_stats, command_stats, path_stats)
-            if hasattr(self.bot, 'command_manager') and self.bot.command_manager:
-                stats_cmd = self.bot.command_manager.commands.get('stats') if getattr(self.bot.command_manager, 'commands', None) else None
-                if stats_cmd and hasattr(stats_cmd, 'cleanup_old_stats'):
-                    stats_cmd.cleanup_old_stats(stats_days)
-
-            # Expired caches (geocoding_cache, generic_cache)
-            if hasattr(self.bot, 'db_manager') and self.bot.db_manager and hasattr(self.bot.db_manager, 'cleanup_expired_cache'):
-                self.bot.db_manager.cleanup_expired_cache()
-
-            # Mesh connections (DB prune to match in-memory expiration)
-            if hasattr(self.bot, 'mesh_graph') and self.bot.mesh_graph and hasattr(self.bot.mesh_graph, 'delete_expired_edges_from_db'):
-                self.bot.mesh_graph.delete_expired_edges_from_db(mesh_connections_days)
-
-            ran_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
-            self._last_retention_stats['ran_at'] = ran_at
-            try:
-                self.bot.db_manager.set_metadata('maint.status.data_retention_ran_at', ran_at)
-                self.bot.db_manager.set_metadata('maint.status.data_retention_outcome', 'ok')
-            except Exception:
-                pass
-
-        except Exception as e:
-            self.logger.exception(f"Error during data retention cleanup: {e}")
-            self._last_retention_stats['error'] = str(e)
-            try:
-                ran_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
-                self.bot.db_manager.set_metadata('maint.status.data_retention_ran_at', ran_at)
-                self.bot.db_manager.set_metadata('maint.status.data_retention_outcome', f'error: {e}')
-            except Exception:
-                pass
 
     def check_interval_advertising(self):
         """Check if it's time to send an interval-based advert"""
@@ -1926,8 +1818,6 @@ class MessageScheduler:
         This method is intentionally synchronous so it can be run in a thread
         executor from the async event loop without blocking it.
         """
-        import smtplib
-        import ssl as _ssl
         from email.message import EmailMessage
 
         zombie_alert_enabled = self.bot.config.getboolean(
@@ -1952,12 +1842,7 @@ class MessageScheduler:
         if not zombie_alert_enabled:
             return
 
-        smtp_host     = self._get_notif('smtp_host')
-        smtp_security = self._get_notif('smtp_security') or 'starttls'
-        smtp_user     = self._get_notif('smtp_user')
-        smtp_password = self._get_notif('smtp_password')
-        from_name     = self._get_notif('from_name') or 'MeshCore Bot'
-        from_email    = self._get_notif('from_email')
+        smtp = read_smtp_settings(self._get_notif)
 
         # Alert recipients: dedicated config key, falls back to nightly recipients
         alert_email_cfg = zombie_alert_email_cfg or self.bot.config.get(
@@ -1970,26 +1855,20 @@ class MessageScheduler:
         else:
             recipients = [r.strip() for r in self._get_notif('recipients').split(',') if r.strip()]
 
-        if not smtp_host or not from_email or not recipients:
+        if not smtp.host or not smtp.from_email or not recipients:
             self.bot.logger.warning(
                 "Zombie alert email enabled but SMTP settings incomplete "
-                f"(host={smtp_host!r}, from={from_email!r}, recipients={recipients}) "
+                f"(host={smtp.host!r}, from={smtp.from_email!r}, recipients={recipients}) "
                 "— alert email not sent"
             )
             return
 
-        allow_local = self._get_notif('allow_local_smtp').lower() == 'true'
-        if not validate_external_url(f'http://{smtp_host}', allow_private=allow_local):
+        if not validate_external_url(f'http://{smtp.host}', allow_private=smtp.allow_local):
             self.bot.logger.error(
                 "Zombie alert email aborted: SMTP host %r resolves to a private or reserved address",
-                smtp_host,
+                smtp.host,
             )
             return
-
-        try:
-            smtp_port = int(self._get_notif('smtp_port') or (465 if smtp_security == 'ssl' else 587))
-        except ValueError:
-            smtp_port = 587
 
         now_utc         = datetime.datetime.now(datetime.timezone.utc)
         connection_type = self.bot.config.get('Connection', 'connection_type', fallback='unknown')
@@ -2032,27 +1911,11 @@ class MessageScheduler:
         try:
             msg = EmailMessage()
             msg['Subject'] = subject
-            msg['From']    = f'{from_name} <{from_email}>'
+            msg['From']    = smtp.from_header
             msg['To']      = ', '.join(recipients)
             msg.set_content(body)
 
-            context = _ssl.create_default_context()
-            _smtp_timeout = 30
-
-            if smtp_security == 'ssl':
-                with smtplib.SMTP_SSL(smtp_host, smtp_port, context=context, timeout=_smtp_timeout) as s:
-                    if smtp_user and smtp_password:
-                        s.login(smtp_user, smtp_password)
-                    s.send_message(msg)
-            else:
-                with smtplib.SMTP(smtp_host, smtp_port, timeout=_smtp_timeout) as s:
-                    if smtp_security == 'starttls':
-                        s.ehlo()
-                        s.starttls(context=context)
-                        s.ehlo()
-                    if smtp_user and smtp_password:
-                        s.login(smtp_user, smtp_password)
-                    s.send_message(msg)
+            send_smtp_message(smtp, msg)
 
             self.bot.logger.info(
                 f"Zombie radio alert email sent to {recipients}"
@@ -2085,8 +1948,6 @@ class MessageScheduler:
 
         Intentionally synchronous — intended to be run in a daemon thread.
         """
-        import smtplib
-        import ssl as _ssl
         from email.message import EmailMessage
 
         alert_enabled = self.bot.config.getboolean(
@@ -2097,12 +1958,7 @@ class MessageScheduler:
         if not alert_enabled:
             return
 
-        smtp_host     = self._get_notif('smtp_host')
-        smtp_security = self._get_notif('smtp_security') or 'starttls'
-        smtp_user     = self._get_notif('smtp_user')
-        smtp_password = self._get_notif('smtp_password')
-        from_name     = self._get_notif('from_name') or 'MeshCore Bot'
-        from_email    = self._get_notif('from_email')
+        smtp = read_smtp_settings(self._get_notif)
 
         alert_email_cfg = self.bot.config.get(
             'Connection',
@@ -2114,26 +1970,20 @@ class MessageScheduler:
         else:
             recipients = [r.strip() for r in self._get_notif('recipients').split(',') if r.strip()]
 
-        if not smtp_host or not from_email or not recipients:
+        if not smtp.host or not smtp.from_email or not recipients:
             self.bot.logger.warning(
                 "Radio-offline alert email enabled but SMTP settings incomplete "
-                f"(host={smtp_host!r}, from={from_email!r}, recipients={recipients}) "
+                f"(host={smtp.host!r}, from={smtp.from_email!r}, recipients={recipients}) "
                 "— alert email not sent"
             )
             return
 
-        allow_local = self._get_notif('allow_local_smtp').lower() == 'true'
-        if not validate_external_url(f'http://{smtp_host}', allow_private=allow_local):
+        if not validate_external_url(f'http://{smtp.host}', allow_private=smtp.allow_local):
             self.bot.logger.error(
                 "Radio-offline alert email aborted: SMTP host %r resolves to a private or reserved address",
-                smtp_host,
+                smtp.host,
             )
             return
-
-        try:
-            smtp_port = int(self._get_notif('smtp_port') or (465 if smtp_security == 'ssl' else 587))
-        except ValueError:
-            smtp_port = 587
 
         now_utc         = datetime.datetime.now(datetime.timezone.utc)
         connection_type = self.bot.config.get('Connection', 'connection_type', fallback='unknown')
@@ -2174,27 +2024,11 @@ class MessageScheduler:
         try:
             msg = EmailMessage()
             msg['Subject'] = subject
-            msg['From']    = f'{from_name} <{from_email}>'
+            msg['From']    = smtp.from_header
             msg['To']      = ', '.join(recipients)
             msg.set_content(body)
 
-            context = _ssl.create_default_context()
-            _smtp_timeout = 30
-
-            if smtp_security == 'ssl':
-                with smtplib.SMTP_SSL(smtp_host, smtp_port, context=context, timeout=_smtp_timeout) as s:
-                    if smtp_user and smtp_password:
-                        s.login(smtp_user, smtp_password)
-                    s.send_message(msg)
-            else:
-                with smtplib.SMTP(smtp_host, smtp_port, timeout=_smtp_timeout) as s:
-                    if smtp_security == 'starttls':
-                        s.ehlo()
-                        s.starttls(context=context)
-                        s.ehlo()
-                    if smtp_user and smtp_password:
-                        s.login(smtp_user, smtp_password)
-                    s.send_message(msg)
+            send_smtp_message(smtp, msg)
 
             self.bot.logger.info(f"Radio-offline alert email sent to {recipients}")
         except Exception as e:

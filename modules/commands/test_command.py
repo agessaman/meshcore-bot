@@ -9,6 +9,7 @@ import re
 from datetime import datetime
 from typing import Any, Optional
 
+from ..location import latest_contact_position_rows
 from ..models import MeshMessage
 from ..response_template import format_piped_template
 from ..utils import (
@@ -28,6 +29,8 @@ class TestCommand(BaseCommand):
 
     # Plugin metadata
     name = "test"
+    honors_skip_channel_check = False
+    enabled_attr = "test_enabled"
     keywords = ['test', 't']
     description = "Responds to 'test' or 't' with connection info"
     category = "basic"
@@ -83,20 +86,7 @@ class TestCommand(BaseCommand):
         except Exception as e:
             self.logger.warning(f"Error reading bot location from config: {e}")
 
-    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
-        """Check if this command can be executed with the given message.
-
-        Args:
-            message: The message triggering the command.
-
-        Returns:
-            bool: True if command is enabled and checks pass, False otherwise.
-        """
-        if not self.test_enabled:
-            return False
-        return super().can_execute(message)
-
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         """Get help text for the command.
 
         Returns:
@@ -259,17 +249,7 @@ class TestCommand(BaseCommand):
                 return None
 
             # Look up sender location from database (any role, not just repeaters)
-            query = '''
-                SELECT latitude, longitude
-                FROM complete_contact_tracking
-                WHERE public_key = ?
-                AND latitude IS NOT NULL AND longitude IS NOT NULL
-                AND latitude != 0 AND longitude != 0
-                ORDER BY COALESCE(last_advert_timestamp, last_heard) DESC
-                LIMIT 1
-            '''
-
-            results = self.bot.db_manager.execute_query(query, (sender_pubkey,))
+            results = latest_contact_position_rows(self.bot, sender_pubkey, zero_rule="either")
 
             if results:
                 row = results[0]
