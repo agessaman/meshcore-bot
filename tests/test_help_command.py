@@ -205,14 +205,33 @@ class TestGetSpecificHelp:
         assert "commands.help.specific" in result or result != ""
 
     def test_known_command_help_text_no_message_param(self):
-        """Falls back to no-argument get_help_text when TypeError is raised."""
+        """A local command whose get_help_text takes no message still gets help."""
         bot = _make_bot()
-        mock_cmd = MagicMock()
-        mock_cmd.get_help_text = Mock(side_effect=[TypeError("no param"), "Simple help"])
-        bot.command_manager.commands = {"foo": mock_cmd}
+
+        class LocalCommand:
+            def get_help_text(self):
+                return "Simple help"
+
+        bot.command_manager.commands = {"foo": LocalCommand()}
         cmd = HelpCommand(bot)
         result = cmd.get_specific_help("foo")
         assert isinstance(result, str)
+
+    def test_error_inside_help_body_is_not_retried(self):
+        """A TypeError raised by the help body itself propagates after one call."""
+        bot = _make_bot()
+        calls = []
+
+        class Broken:
+            def get_help_text(self, message=None):
+                calls.append(message)
+                raise TypeError("bug in help body")
+
+        bot.command_manager.commands = {"foo": Broken()}
+        cmd = HelpCommand(bot)
+        with pytest.raises(TypeError):
+            cmd.get_specific_help("foo", None)
+        assert len(calls) == 1
 
     def test_unknown_command_returns_unknown_key(self):
         bot = _make_bot()

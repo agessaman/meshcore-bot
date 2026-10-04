@@ -27,7 +27,7 @@ from .command_prefix import (
 from .command_prefix import (
     normalize_command_content as normalize_command_content_text,
 )
-from .commands.base_command import BaseCommand
+from .commands.base_command import BaseCommand, help_text_for
 from .config_validation import (
     PUBLIC_CHANNEL_KEY_HEX,  # noqa: F401 — re-exported; used by core.py
     PUBLIC_CHANNEL_OVERRIDE_KEY,
@@ -1699,10 +1699,7 @@ class CommandManager:
         if not command and requested_name:
             command = self._find_help_command(requested_name.split(maxsplit=1)[0])
         if command:
-            try:
-                help_text = command.get_help_text(message)
-            except TypeError:
-                help_text = command.get_help_text()
+            help_text = help_text_for(command, message)
             if hasattr(self.bot, 'translator'):
                 return self.bot.translator.translate('commands.help.specific', command=command_name, help_text=help_text)
             return f"Help {command_name}: {help_text}"

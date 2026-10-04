@@ -11,7 +11,7 @@ from typing import (
 )
 
 from ..models import MeshMessage
-from .base_command import BaseCommand
+from .base_command import BaseCommand, help_text_for
 
 
 class HelpCommand(BaseCommand):
@@ -120,11 +120,8 @@ class HelpCommand(BaseCommand):
         if command:
             # Pass message context to get_help_text if the method supports it
             if hasattr(command, 'get_help_text') and callable(command.get_help_text):
-                try:
-                    help_text = command.get_help_text(message)
-                except TypeError:
-                    # Fallback for commands that don't accept message parameter
-                    help_text = command.get_help_text()
+                # Commands that don't accept the message get the no-argument call
+                help_text = help_text_for(command, message)
             else:
                 help_text = self.translate('commands.help.no_help')
             return self.translate('commands.help.specific', command=command_name, help_text=help_text)
