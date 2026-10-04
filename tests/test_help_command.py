@@ -271,6 +271,23 @@ class TestGetSpecificHelp:
         cmd = HelpCommand(bot)
         cmd.get_specific_help("operatorweather", Mock())  # must not raise
 
+    def test_wrapped_operator_override_inside_modules_gets_help(self):
+        """functools.wraps must not lend an operator override the bundled signature."""
+        import functools
+
+        from modules.commands.ping_command import PingCommand
+
+        class OperatorPing(PingCommand):
+            @functools.wraps(PingCommand.get_help_text)
+            def get_help_text(self):
+                return "operator help"
+
+        OperatorPing.__module__ = "modules.commands.operator_ping"
+        bot = _make_bot()
+        bot.command_manager.commands = {"operatorping": object.__new__(OperatorPing)}
+        cmd = HelpCommand(bot)
+        cmd.get_specific_help("operatorping", Mock())  # must not raise
+
     def test_local_plugin_help_keeps_the_typeerror_retry(self):
         """A local get_help_text(message=None) that raises TypeError is retried without it."""
         bot = _make_bot()

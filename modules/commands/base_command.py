@@ -73,9 +73,13 @@ def _defined_by_bundled_class(command: Any, method: Any) -> bool:
 
 
 def _accepts_message(method: Any, message: Any) -> bool:
-    """Whether ``method(message)`` binds, per its signature (False when that can't be read)."""
+    """Whether ``method(message)`` binds, per its own signature (False when that can't be read).
+
+    ``follow_wrapped=False``: a functools.wraps-decorated override reports the
+    wrapped function's signature otherwise, not its own.
+    """
     try:
-        inspect.signature(method).bind(message)
+        inspect.signature(method, follow_wrapped=False).bind(message)
     except (TypeError, ValueError):
         return False
     return True
