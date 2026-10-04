@@ -227,6 +227,12 @@ settings_schema = [
 
 **Supported types:** `bool`, `int`, `float`, `str`, `enum`, `list`, `password`
 
+**Other field keys:**
+
+- `section`: read and write a shared section (such as `[Weather]`) instead of the plugin's own. A plugin can have the same key in its own section and a shared one; the form tells them apart.
+- `inherit_section`: when the plugin's own section doesn't set the key, show the value it inherits from this section.
+- An `enum` option with the value `""` means "not set": choosing it removes the key, so the plugin's own fallback applies. A blank `int` or `float` is removed the same way.
+
 **Note:** `enabled` and `channels` do not need to be defined in the
           `settings_schema` as they get automatically included.
 

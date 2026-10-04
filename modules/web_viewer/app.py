@@ -79,6 +79,7 @@ from modules.security_utils import (
 )
 from modules.settings_schema import (
     build_plugin_settings_view,
+    field_id,
     to_config_string,
     validate_field,
 )
@@ -1205,7 +1206,16 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
                     return jsonify({'success': False, 'error': 'Unknown plugin'}), 404
 
                 section = entry['section']
-                schema_by_key = {f['key']: f for f in entry['fields']}
+                # Fields are addressed by field_id (key, or key@Section for a shared
+                # section). A bare key still resolves when only one field has it, so
+                # scripted saves written before field ids keep working.
+                schema_by_id = {field_id(f): f for f in entry['fields']}
+                key_counts: dict[str, int] = {}
+                for f in entry['fields']:
+                    key_counts[f['key']] = key_counts.get(f['key'], 0) + 1
+                for f in entry['fields']:
+                    if key_counts[f['key']] == 1:
+                        schema_by_id.setdefault(f['key'], f)
                 raw_values = data.get('values', {}) or {}
 
                 errors: dict[str, str] = {}
@@ -1215,22 +1225,24 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
                 # schema, so a partial schema never hides remaining settings).
                 updates: dict[str, dict[str, str]] = {section: {}}
                 deletes: dict[str, list[str]] = {}
-                for key, val in raw_values.items():
-                    field = schema_by_key.get(key)
+                for submitted, val in raw_values.items():
+                    field = schema_by_id.get(submitted)
                     if field is not None:
+                        key = field['key']
                         ok, coerced, err = validate_field(field, val)
                         if not ok:
-                            errors[key] = err
+                            errors[submitted] = err
                         else:
                             tsec = field.get('section') or section
-                            if field.get('type') in ('int', 'float') and coerced == '':
-                                # A cleared number means unset: `key =` would make
-                                # getint/getfloat raise instead of using their fallback.
+                            if field.get('type') in ('int', 'float', 'enum') and coerced == '':
+                                # A cleared number, or an enum's "" (inherit) option,
+                                # means unset: `key =` would make getint/getfloat
+                                # raise, or read as an invalid choice.
                                 deletes.setdefault(tsec, []).append(key)
                             else:
                                 updates.setdefault(tsec, {})[key] = to_config_string(field, coerced)
                     else:
-                        updates[section][str(key)] = '' if val is None else str(val)
+                        updates[section][str(submitted)] = '' if val is None else str(val)
 
                 if errors:
                     return jsonify({'success': False, 'errors': errors}), 400
@@ -1302,6 +1314,10 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
                                 if not ok:
                                     return jsonify({'success': False,
                                                     'error': f'{rb["label"]} #{i}: {err}'}), 400
+                                if field.get('type') in ('int', 'float', 'enum') and coerced == '':
+                                    # Unset, as for top-level fields; leaving it out of
+                                    # `written` deletes any existing key below.
+                                    continue
                                 updates[section][full] = to_config_string(field, coerced)
                             else:
                                 updates[section][full] = '' if val is None else str(val)
@@ -1401,7 +1417,7 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
             if not spec or not spec.get('previewable'):
                 return jsonify({'error': 'This field has no preview'}), 404
             try:
-                return jsonify({'scenarios': render_preview(spec, template)})
+                return jsonify(render_preview(spec, template, self.config))
             except Exception:
                 self.logger.exception("Error rendering template preview")
                 return jsonify({'error': 'Internal error — see server logs'}), 500

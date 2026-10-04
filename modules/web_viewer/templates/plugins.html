@@ -405,7 +405,7 @@ class PluginsManager {
             });
         };
 
-        const schemaKeys = new Set((plugin.fields || []).map(f => f.key));
+        const schemaKeys = new Set((plugin.fields || []).filter(f => !f.section).map(f => f.key));
         const values = plugin.values || {};
         // Keys managed by a dynamic editor on this same section (by prefix) are
         // excluded from the raw "Other config values" list to avoid duplication.
@@ -524,7 +524,7 @@ class PluginsManager {
                 markInvalid(input, err);
                 if (!firstError) firstError = err;
             }
-            values[field.key] = raw;
+            values[field.id || field.key] = raw;
         });
 
         // Dynamic sections: collect rows, validate keys, detect changes.
@@ -578,7 +578,8 @@ class PluginsManager {
             if (!resp.ok) {
                 if (data.errors) {
                     inputs.forEach(({ field, input }) => {
-                        if (data.errors[field.key]) markInvalid(input, data.errors[field.key]);
+                        const err = data.errors[field.id || field.key];
+                        if (err) markInvalid(input, err);
                     });
                     throw new Error('Please fix the highlighted fields');
                 }
@@ -880,7 +881,7 @@ function buildTemplateReference(field, input, refBtn, plugin) {
         let timer = null;
         let seq = 0;
         const render = async () => {
-            const mine = ++seq;
+            const mine = seq;
             try {
                 const resp = await fetch(`/api/plugins/${plugin.kind}/${plugin.name}/template-preview`, {
                     method: 'POST',
@@ -888,16 +889,16 @@ function buildTemplateReference(field, input, refBtn, plugin) {
                     body: JSON.stringify({ key: field.key, template: input.value }),
                 });
                 const data = await resp.json();
-                if (mine !== seq) return;  // a newer keystroke already asked
+                if (mine !== seq) return;  // the field changed while this was in flight
                 if (!resp.ok) throw new Error(data.error || 'Preview failed');
                 const rows = [];
-                if (!input.value.trim() && spec.blank_default) {
+                if (data.note) {
                     const note = document.createElement('div');
                     note.className = 'template-ref-intro mb-0';
-                    note.textContent = 'The field is blank, so this is the default reply.';
+                    note.textContent = data.note;
                     rows.push(note);
                 }
-                if (!data.scenarios.length) {
+                if (!data.scenarios.length && !data.note) {
                     const none = document.createElement('div');
                     none.className = 'template-ref-intro mb-0';
                     none.textContent = 'Nothing to preview.';
@@ -937,6 +938,9 @@ function buildTemplateReference(field, input, refBtn, plugin) {
             }
         };
         refreshPreview = () => {
+            // Invalidate any request in flight now, not when the timer fires: a
+            // response that lands inside the debounce would show a stale template.
+            seq++;
             clearTimeout(timer);
             timer = setTimeout(render, 300);
         };

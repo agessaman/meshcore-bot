@@ -30,6 +30,7 @@ class FeedCommand(BaseCommand):
     # Web-viewer settings schema (see modules/settings_schema.py).
     settings_schema = [
         {"key": "allow_private_urls", "label": "Allow private URLs", "type": "bool", "default": False,
+         "inherit_section": "Feed_Manager",
          "help": "Accept feed URLs on private or internal addresses. Off guards against SSRF. "
                  "Unset falls back to [Feed_Manager] allow_private_urls."},
     ]

@@ -39,9 +39,10 @@ class RepeaterPrefixCollisionService(BaseServicePlugin):
     settings_schema = [
         {"key": "channels", "label": "Alert channels", "type": "list", "default": "",
          "help": "Channels to post collision alerts to (comma-separated)."},
-        {"key": "notify_on_prefix_bytes", "label": "Notify on prefix bytes", "type": "int",
-         "min": 1, "max": 3, "default": 1,
-         "help": "Prefix length that counts as a collision: 1 byte (01), 2 (0101), or 3 (010101)."},
+        {"key": "notify_on_prefix_bytes", "label": "Notify on prefix bytes", "type": "list",
+         "pattern": "[123]", "default": "1",
+         "help": "Prefix lengths that count as a collision, comma-separated: 1 byte (01), 2 (0101), "
+                 "3 (010101). E.g. 2,3."},
         {"key": "heard_window_days", "label": "Heard window", "type": "int", "min": 0, "default": 30, "unit": "days",
          "help": "Only treat an existing prefix as in-use if heard within this window."},
         {"key": "prefix_free_days", "label": "Free window", "type": "int", "min": 0, "default": 30, "unit": "days",
@@ -69,6 +70,9 @@ class RepeaterPrefixCollisionService(BaseServicePlugin):
         {"key": "post_process_timeout_seconds", "label": "Post-process timeout", "type": "float",
          "min": 0, "default": 15.0, "unit": "s",
          "help": "Give up waiting for the advert to be stored after this long."},
+        {"key": "post_process_poll_interval_seconds", "label": "Post-process poll interval", "type": "float",
+         "min": 0.01, "default": 0.2, "unit": "s",
+         "help": "How often to check whether the advert has been stored."},
     ]
 
     def __init__(self, bot: Any) -> None:

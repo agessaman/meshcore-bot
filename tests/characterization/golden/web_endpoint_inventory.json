@@ -1109,6 +1109,20 @@
    "POST"
   ]
  },
+ "/api/plugins/<kind>/<name>/template-preview": {
+  "POST locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_plugins_template_preview",
+  "methods": [
+   "POST"
+  ]
+ },
  "/api/plugins/reload-status": {
   "GET locked anon": {
    "content_type": "application/json",

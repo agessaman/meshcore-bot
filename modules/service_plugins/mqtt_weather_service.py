@@ -51,9 +51,9 @@ class MqttWeatherService(BaseServicePlugin):
         {"key": "password", "label": "Password", "type": "str", "default": "", "help": "Broker password (optional)."},
         {"key": "client_id", "label": "Client ID", "type": "str", "default": "", "help": "Optional MQTT client id."},
         {"key": "qos", "label": "QoS", "type": "int", "min": 0, "max": 2, "default": 0, "help": "MQTT quality of service."},
-        {"key": "max_payload_bytes", "label": "Max payload", "type": "int", "min": 1, "default": 65536, "unit": "bytes",
+        {"key": "max_payload_bytes", "label": "Max payload", "type": "int", "min": 256, "max": 1048576, "default": 65536, "unit": "bytes",
          "help": "Drop incoming payloads larger than this."},
-        {"key": "stale_after_seconds", "label": "Stale after", "type": "int", "min": 1, "default": 3600, "unit": "s",
+        {"key": "stale_after_seconds", "label": "Stale after", "type": "int", "min": 5, "max": 604800, "default": 3600, "unit": "s",
          "help": "Cached reading is stale after this long without a fresh message."},
         {"key": "output_mode", "label": "Output mode", "type": "enum",
          "options": [{"value": "passthrough", "label": "Passthrough"},
@@ -77,7 +77,7 @@ class MqttWeatherService(BaseServicePlugin):
          "help": "Optional filter: JSON key to match."},
         {"key": "json_device_value", "label": "JSON device value", "type": "str", "default": "",
          "help": "Optional filter: required value for the device key."},
-        {"key": "passthrough_max_length", "label": "Passthrough max length", "type": "int", "min": 1, "default": 500, "unit": "chars",
+        {"key": "passthrough_max_length", "label": "Passthrough max length", "type": "int", "min": 64, "max": 4000, "default": 500, "unit": "chars",
          "help": "Max output length after sanitize."},
     ]
 

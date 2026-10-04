@@ -564,6 +564,54 @@ class TestPluginsApi:
         )
         assert rows and rows[0]["status"] == "pending"
 
+    def test_same_key_in_two_sections_saves_to_each(self, viewer, tmp_path):
+        """wx has temperature_unit in [Weather] and as a [Wx_Command] override."""
+        client = viewer.app.test_client()
+        resp = client.post("/api/plugins/command/wx", json={"enabled": True, "values": {
+            "temperature_unit@Weather": "celsius",
+            "temperature_unit": "fahrenheit",
+        }})
+        assert resp.status_code == 200, resp.get_json()
+        cfg = configparser.ConfigParser()
+        cfg.read(tmp_path / "config.ini", encoding="utf-8")
+        assert cfg.get("Weather", "temperature_unit") == "celsius"
+        assert cfg.get("Wx_Command", "temperature_unit") == "fahrenheit"
+
+    def test_bare_key_of_a_unique_shared_field_still_resolves(self, viewer, tmp_path):
+        client = viewer.app.test_client()
+        resp = client.post("/api/plugins/command/wx", json={"enabled": True, "values": {"default_city": "Tacoma"}})
+        assert resp.status_code == 200, resp.get_json()
+        cfg = configparser.ConfigParser()
+        cfg.read(tmp_path / "config.ini", encoding="utf-8")
+        assert cfg.get("Weather", "default_city") == "Tacoma"
+        assert not cfg.has_option("Wx_Command", "default_city")
+
+    def test_inherit_option_removes_the_override(self, viewer, tmp_path):
+        client = viewer.app.test_client()
+        client.post("/api/plugins/command/wx", json={"enabled": True, "values": {"temperature_unit": "celsius"}})
+        resp = client.post("/api/plugins/command/wx", json={"enabled": True, "values": {"temperature_unit": ""}})
+        assert resp.status_code == 200, resp.get_json()
+        cfg = configparser.ConfigParser()
+        cfg.read(tmp_path / "config.ini", encoding="utf-8")
+        assert not cfg.has_option("Wx_Command", "temperature_unit")
+
+    def test_blank_inheriting_broker_fields_are_not_written(self, viewer, tmp_path):
+        """getint/getboolean read these when present, so a blank must not be saved."""
+        client = viewer.app.test_client()
+        resp = client.post("/api/plugins/service/packetcapture", json={
+            "enabled": False,
+            "values": {},
+            "repeating_blocks": {"mqtt": [{"enabled": True, "values": {
+                "server": "mqtt.example.org", "jwt_renewal_interval": "", "include_decoded": "",
+            }}]},
+        })
+        assert resp.status_code == 200, resp.get_json()
+        cfg = configparser.ConfigParser()
+        cfg.read(tmp_path / "config.ini", encoding="utf-8")
+        assert cfg.get("PacketCapture", "mqtt1_server") == "mqtt.example.org"
+        assert not cfg.has_option("PacketCapture", "mqtt1_jwt_renewal_interval")
+        assert not cfg.has_option("PacketCapture", "mqtt1_include_decoded")
+
     def test_cleared_number_field_removes_key(self, viewer, tmp_path):
         """A blank number must unset the key: `key =` makes getfloat raise."""
         client = viewer.app.test_client()

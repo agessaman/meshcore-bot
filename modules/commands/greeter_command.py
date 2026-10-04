@@ -16,6 +16,11 @@ from ..template_reference import template_spec
 from ..utils import decode_escape_sequences
 from .base_command import BaseCommand
 
+# What the greeter uses when the keys are missing; the settings form shows the same.
+DEFAULT_GREETING = 'Welcome to the mesh, {sender}!'
+# As written in config.ini: decode_escape_sequences turns the \\n into newlines.
+DEFAULT_MESH_INFO_FORMAT = '\\n\\nMesh Info: {total_contacts} contacts, {repeaters} repeaters'
+
 # A plausible channel name at the head of a ``channel_greetings`` entry: no
 # whitespace, no punctuation beyond the ones channels actually use.
 _CHANNEL_KEY_RE = re.compile(r"^#?[A-Za-z0-9][A-Za-z0-9_-]{0,31}$")
@@ -97,12 +102,12 @@ class GreeterCommand(BaseCommand):
     # Web-viewer settings schema (see modules/settings_schema.py)
     settings_schema = [
         {"key": "greeting_message", "label": "Greeting message", "type": "str",
-         "default": "Welcome to the mesh, @[{sender}]!",
+         "default": DEFAULT_GREETING,
          "help": "Default greeting. Separate multi-part messages with |.",
          "template": template_spec("format", ("sender",), notes=[
              "| splits the greeting into separate messages.",
              "\\n starts a new line.",
-         ], blank_default="Welcome to the mesh, @[{sender}]!", preview="greeting")},
+         ], blank_default=DEFAULT_GREETING, preview="greeting")},
         {"key": "rollout_days", "label": "Rollout period", "type": "int",
          "min": 0, "default": 7, "unit": "days",
          "help": "Days the greeter rollout runs before auto-ending."},
@@ -120,7 +125,7 @@ class GreeterCommand(BaseCommand):
          "default": True,
          "help": "Append mesh statistics to the greeting."},
         {"key": "mesh_info_format", "label": "Mesh info format", "type": "str",
-         "default": "",
+         "default": DEFAULT_MESH_INFO_FORMAT,
          "help": "Template for mesh info, appended to the last greeting part.",
          "template": template_spec("format", {
              "total_contacts": "Contacts ever heard",
@@ -247,7 +252,7 @@ class GreeterCommand(BaseCommand):
         """Load configuration for greeter command."""
         self.enabled = self.get_config_value('Greeter_Command', 'enabled', fallback=False, value_type='bool')
         self.greeting_message = self.get_config_value('Greeter_Command', 'greeting_message',
-                                                      fallback='Welcome to the mesh, {sender}!')
+                                                      fallback=DEFAULT_GREETING)
         # Decode escape sequences (e.g., \n for newlines)
         self.greeting_message = decode_escape_sequences(self.greeting_message)
 
@@ -255,7 +260,7 @@ class GreeterCommand(BaseCommand):
         self.include_mesh_info = self.get_config_value('Greeter_Command', 'include_mesh_info',
                                                        fallback=True, value_type='bool')
         self.mesh_info_format = self.get_config_value('Greeter_Command', 'mesh_info_format',
-                                                      fallback='\n\nMesh Info: {total_contacts} contacts, {repeaters} repeaters')
+                                                      fallback=DEFAULT_MESH_INFO_FORMAT)
         # Decode escape sequences (e.g., \n for newlines)
         self.mesh_info_format = decode_escape_sequences(self.mesh_info_format)
 

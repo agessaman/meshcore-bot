@@ -27,6 +27,7 @@ from ..location import get_bot_lat_lon, get_companion_lat_lon
 from ..models import MeshMessage
 from ..nws_alerts import WX_SPECIAL_RULES, entry_nws_headline, entry_summary, entry_title, parse_alert_fields
 from ..nws_coverage import NWSNoCoverageCache
+from ..template_reference import template_spec
 from ..utils import (
     format_temperature_high_low,
     geocode_city_sync,
@@ -45,6 +46,19 @@ WXSIM_PARSER_AVAILABLE = True
 
 # Multiday: plain digits (e.g. 7), 7day/7-day, or suffix form 7d/10d (min 2, max below).
 WX_MULTIDAY_MAX_DAYS = 16
+
+# Placeholders of the [Weather] temperature_*_format templates (utils.format_temperature_high_low).
+_TEMP_FORMAT_PLACEHOLDERS = {
+    "high": "Day's high, rounded",
+    "low": "Day's low, rounded",
+    "units": "Unit symbol, e.g. °F",
+    "high_label": "H, or its translation in the reply language",
+    "low_label": "L, or its translation in the reply language",
+}
+_TEMP_FORMAT_NOTES = [
+    "A mistake makes the bot log a warning and use the default format instead.",
+    "Keep {high_label}/{low_label} to follow the reply language; the preview shows English.",
+]
 
 _P = ParamSpec("_P")
 _T = TypeVar("_T")
@@ -186,29 +200,52 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
 
     # Web-viewer settings schema (see modules/settings_schema.py)
     settings_schema = [
+        {"key": "temperature_unit", "label": "Temperature unit", "type": "enum", "section": "Weather",
+         "options": [
+             {"value": "fahrenheit", "label": "Fahrenheit (°F)"},
+             {"value": "celsius", "label": "Celsius (°C)"},
+         ],
+         "default": "fahrenheit",
+         "help": "For wx, gwx, rain and the weather service. Celsius also shows visibility in km. "
+                 "Shared weather setting."},
+        {"key": "wind_speed_unit", "label": "Wind speed unit", "type": "enum", "section": "Weather",
+         "options": [
+             {"value": "mph", "label": "Miles per hour (mph)"},
+             {"value": "kmh", "label": "Kilometers per hour (km/h)"},
+             {"value": "ms", "label": "Meters per second (m/s)"},
+             {"value": "kn", "label": "Knots (kn)"},
+         ],
+         "default": "mph", "help": "For wx, gwx and the weather service. Shared weather setting."},
+        {"key": "precipitation_unit", "label": "Precipitation unit", "type": "enum", "section": "Weather",
+         "options": [{"value": "inch", "label": "Inches"}, {"value": "mm", "label": "Millimeters"}],
+         "default": "inch", "help": "For wx, gwx and the weather service. Shared weather setting."},
+        # [Wx_Command] overrides of the shared units. "" (the default) means no
+        # override; the save endpoint removes the key rather than writing it blank.
         {
             "key": "temperature_unit",
-            "label": "Temperature unit",
+            "label": "wx-only temperature unit",
             "type": "enum",
             "options": [
+                {"value": "", "label": "Same as [Weather]"},
                 {"value": "fahrenheit", "label": "Fahrenheit (°F)"},
                 {"value": "celsius", "label": "Celsius (°C)"},
             ],
-            "default": "fahrenheit",
-            "help": "Unit used when reporting temperatures.",
+            "default": "",
+            "help": "Overrides the shared temperature unit for wx only.",
         },
         {
             "key": "wind_speed_unit",
-            "label": "Wind speed unit",
+            "label": "wx-only wind speed unit",
             "type": "enum",
             "options": [
+                {"value": "", "label": "Same as [Weather]"},
                 {"value": "mph", "label": "Miles per hour (mph)"},
                 {"value": "kmh", "label": "Kilometers per hour (km/h)"},
                 {"value": "ms", "label": "Meters per second (m/s)"},
                 {"value": "kn", "label": "Knots (kn)"},
             ],
-            "default": "mph",
-            "help": "Unit used when reporting wind speed.",
+            "default": "",
+            "help": "Overrides the shared wind speed unit for wx only.",
         },
         {"key": "weather_provider", "label": "Weather provider", "type": "enum", "section": "Weather",
          "options": [
@@ -231,6 +268,24 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
          "help": "Name the place in every wx/gwx reply a place is found for, not only when it is outside the "
                  "default state or country. Costs message length, and a reverse lookup for ZIP codes. "
                  "Shared weather setting."},
+        {"key": "temperature_high_low_format", "label": "High/low format", "type": "str", "section": "Weather",
+         "default": "{high_label}:{high}{units} {low_label}:{low}{units}",
+         "help": "How a day's high and low are shown in wx, gwx and the weather service. Shared weather setting.",
+         "template": template_spec("format", _TEMP_FORMAT_PLACEHOLDERS, notes=_TEMP_FORMAT_NOTES,
+                                   escapes=False, preview="temp_pair",
+                                   blank_default="{high_label}:{high}{units} {low_label}:{low}{units}")},
+        {"key": "temperature_high_only_format", "label": "High-only format", "type": "str", "section": "Weather",
+         "default": "{high_label}:{high}{units}",
+         "help": "Used when a day has only a high. Shared weather setting.",
+         "template": template_spec("format", _TEMP_FORMAT_PLACEHOLDERS, notes=_TEMP_FORMAT_NOTES,
+                                   escapes=False, preview="temp_high",
+                                   blank_default="{high_label}:{high}{units}")},
+        {"key": "temperature_low_only_format", "label": "Low-only format", "type": "str", "section": "Weather",
+         "default": "{low_label}:{low}{units}",
+         "help": "Used when a day has only a low, such as tonight's forecast. Shared weather setting.",
+         "template": template_spec("format", _TEMP_FORMAT_PLACEHOLDERS, notes=_TEMP_FORMAT_NOTES,
+                                   escapes=False, preview="temp_low",
+                                   blank_default="{low_label}:{low}{units}")},
         {"key": "use_bot_location_when_no_location", "label": "Bot location as last resort", "type": "bool",
          "section": "Weather", "default": False,
          "help": "A bare wx/gwx with no custom source, companion location or default city uses [Bot] bot_latitude/bot_longitude instead of showing usage. Shared weather setting."},

@@ -17,9 +17,15 @@ from modules.service_plugins.mqtt_weather_service import MqttWeatherService
 from modules.template_reference import (
     MESSAGE_PLACEHOLDERS,
     PIPED_FILTERS,
-    render_preview,
     template_spec,
 )
+from modules.template_reference import render_preview as _render_preview
+from modules.utils import decode_escape_sequences
+
+
+def render_preview(spec, template, config=None):
+    """The preview's rows; see TestPreviewNotes for the note beside them."""
+    return _render_preview(spec, template, config)["scenarios"]
 
 
 def _field(cls, key):
@@ -168,7 +174,7 @@ class TestFormatPreviews:
 
     def test_blank_greeting_previews_the_default(self):
         (row,) = _preview(GreeterCommand, "greeting_message", "")
-        assert row["output"] == "Welcome to the mesh, @[Alice]!"
+        assert row["output"] == "Welcome to the mesh, Alice!"
 
     def test_channel_greetings_use_the_greeters_parser(self):
         rows = _preview(GreeterCommand, "channel_greetings", "stray, Public:Hi, {sender}!,#local:Hey")
@@ -218,3 +224,90 @@ class TestFormatPreviews:
     def test_mqtt_unknown_placeholder(self):
         full, _ = _preview(MqttWeatherService, "json_template", "{bogus}")
         assert "Invalid template placeholder: {bogus}" in full["output"]
+
+
+def _config(text):
+    config = configparser.ConfigParser(interpolation=None)
+    config.read_string(text)
+    return config
+
+
+@pytest.mark.unit
+class TestCodexReviewFixes:
+    def test_blank_test_format_previews_the_keywords_fallback(self):
+        spec = _field(MeshTestCommand, "response_format")["template"]
+        config = _config('[Keywords]\ntest = "ack {hops}"\n')
+        result = _render_preview(spec, "", config)
+        assert _by_id(result["scenarios"])["direct"] == "ack 0"
+        assert "[Keywords] test" in result["note"]
+
+    def test_quoted_empty_test_format_is_blank_too(self):
+        spec = _field(MeshTestCommand, "response_format")["template"]
+        result = _render_preview(spec, '""')
+        assert _by_id(result["scenarios"])["direct"].startswith("ack @[Alice]: radio check")
+        assert "built-in default" in result["note"]
+
+    def test_quoted_empty_multitest_format_is_the_default(self):
+        (row,) = _preview(MultitestCommand, "response_format", '""')
+        assert row["output"].startswith("Paths(3):\n")
+
+    def test_multitest_follows_the_saved_path_layout(self):
+        spec = _field(MultitestCommand, "response_format")["template"]
+        flat = _render_preview(spec, "{paths}", _config("[Multitest_Command]\ncondense_paths = false\n"))
+        condensed = _render_preview(spec, "{paths}", _config("[Multitest_Command]\ncondense_paths = true\n"))
+        assert flat["scenarios"][0]["output"] == "a1,b7,e5\na1,c3,e5\na1,c3,f2"
+        assert condensed["scenarios"][0]["output"] != flat["scenarios"][0]["output"]
+
+    def test_mqtt_uses_the_configured_length_limit(self):
+        spec = _field(MqttWeatherService, "json_template")["template"]
+        config = _config("[MqttWeather]\npassthrough_max_length = 64\n")
+        rows = _render_preview(spec, "{time}" + "x" * 100, config)["scenarios"]
+        assert len(rows[0]["output"]) == 64
+
+    def test_huge_format_width_is_not_rendered(self):
+        (row,) = _preview(GreeterCommand, "greeting_message", "{sender:100000000}")
+        assert row["output"] == ""
+        assert "over 500" in row["error"]
+
+    def test_greeter_form_defaults_are_its_missing_key_fallbacks(self, command_mock_bot):
+        command_mock_bot.config.add_section("Greeter_Command")
+        with patch.object(GreeterCommand, "_init_greeter_tables"):
+            cmd = GreeterCommand(command_mock_bot)
+        assert cmd.greeting_message == _field(GreeterCommand, "greeting_message")["default"]
+        assert cmd.mesh_info_format == decode_escape_sequences(_field(GreeterCommand, "mesh_info_format")["default"])
+
+    def test_temperature_format_preview_and_fallback(self):
+        from modules.commands.wx_command import WxCommand
+
+        spec = _field(WxCommand, "temperature_high_low_format")["template"]
+        assert render_preview(spec, "↓{low}°↑{high}{units}")[0]["output"] == "↓51°↑68°F"
+        (row,) = render_preview(spec, "{hi}")
+        assert row["output"] == "H:68°F L:51°F"
+        assert "default format" in row["error"]
+
+
+@pytest.mark.unit
+class TestSchemaFixes:
+    def test_feed_shows_the_inherited_feed_manager_value(self):
+        from modules.commands.feed_command import FeedCommand
+        from modules.settings_schema import _read_typed
+
+        field = _field(FeedCommand, "allow_private_urls")
+        assert _read_typed(_config("[Feed_Manager]\nallow_private_urls = true\n"), "Feed_Command", field) is True
+        own = _config("[Feed_Manager]\nallow_private_urls = true\n[Feed_Command]\nallow_private_urls = false\n")
+        assert _read_typed(own, "Feed_Command", field) is False
+
+    def test_sports_reads_its_api_timeout(self, command_mock_bot):
+        from modules.commands.sports_command import SportsCommand
+
+        command_mock_bot.config.add_section("Sports_Command")
+        command_mock_bot.config.set("Sports_Command", "api_timeout", "42")
+        assert SportsCommand(command_mock_bot).url_timeout == 42
+
+    def test_prefix_collision_accepts_a_list_of_lengths(self):
+        from modules.service_plugins.repeater_prefix_collision_service import RepeaterPrefixCollisionService
+        from modules.settings_schema import validate_field
+
+        field = _field(RepeaterPrefixCollisionService, "notify_on_prefix_bytes")
+        assert validate_field(field, "2, 3") == (True, ["2", "3"], None)
+        assert validate_field(field, "4")[0] is False

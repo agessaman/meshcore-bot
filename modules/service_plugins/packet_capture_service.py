@@ -306,6 +306,10 @@ class PacketCaptureService(BaseServicePlugin):
                 {"key": "tls_insecure", "label": "Skip TLS verification", "type": "bool", "default": False,
                  "help": "INSECURE — accept any broker certificate. Only for self-signed brokers on a "
                          "trusted network; leave off so certificate and hostname are verified."},
+                {"key": "username", "label": "Username", "type": "str", "default": "",
+                 "help": "Broker username, when not using a JWT."},
+                {"key": "password", "label": "Password", "type": "password", "default": "",
+                 "help": "Broker password, when not using a JWT."},
                 {"key": "use_auth_token", "label": "Use JWT auth token", "type": "bool", "default": False,
                  "help": "Authenticate with a signed JWT instead of username/password."},
                 {"key": "token_audience", "label": "Token audience", "type": "str", "default": "",
@@ -315,6 +319,13 @@ class PacketCaptureService(BaseServicePlugin):
                  "help": "Reconnect right after renewing the token, so the fresh one is in "
                          "force. Brokers that enforce the JWT's expiry drop the session "
                          "otherwise. Turn off only if your broker ignores expiry."},
+                {"key": "jwt_renewal_interval", "label": "JWT renewal interval", "type": "int", "min": 0,
+                 "default": "", "unit": "s",
+                 "help": "Blank = the service-wide JWT renewal interval."},
+                {"key": "jwt_ttl_seconds", "label": "JWT TTL", "type": "int", "min": 1, "default": "", "unit": "s",
+                 "help": "Blank = the service-wide JWT TTL."},
+                {"key": "topic_prefix", "label": "Topic prefix", "type": "str", "default": "",
+                 "help": "Base for the status/packets topics when those aren't set."},
                 {"key": "topic_status", "label": "Status topic", "type": "str", "default": ""},
                 {"key": "topic_packets", "label": "Packets topic", "type": "str", "default": ""},
                 {"key": "neighbors", "label": "Publish neighbours", "type": "bool", "default": True,
@@ -335,6 +346,11 @@ class PacketCaptureService(BaseServicePlugin):
                          "that drops idle connections."},
                 {"key": "upload_packet_types", "label": "Upload packet types", "type": "str", "default": "",
                  "help": "Comma-separated type numbers (e.g. 2,4). Empty = upload all."},
+                {"key": "include_decoded", "label": "Publish decoded", "type": "enum",
+                 "options": [{"value": "", "label": "Same as all brokers"},
+                             {"value": "true", "label": "On"}, {"value": "false", "label": "Off"}],
+                 "default": "",
+                 "help": "Publish the decoded object to this broker. Needs Decode payloads on."},
             ],
         }
     ]

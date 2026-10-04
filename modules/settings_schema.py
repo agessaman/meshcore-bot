@@ -27,6 +27,8 @@ Schema field format (a list of these dicts on ``settings_schema``)::
         "required": False,
         "pattern": None,               # validation regex (str/list)
         "unit": "ms",                  # optional display suffix
+        "section": None,               # read/write a shared section instead
+        "inherit_section": None,       # show this section's value when unset
     }
 """
 
@@ -131,6 +133,17 @@ def validate_field(field: dict, raw: Any) -> tuple[bool, Any, Optional[str]]:
     return True, s, None
 
 
+def field_id(field: dict) -> str:
+    """A field's identity within its plugin: ``key``, or ``key@Section`` for a shared section.
+
+    A plugin may expose the same key in two sections (``wx``'s shared ``[Weather]``
+    units and its own ``[Wx_Command]`` overrides), so the key alone can't name the
+    field in a save payload.
+    """
+    section = field.get("section")
+    return f"{field['key']}@{section}" if section else field["key"]
+
+
 def to_config_string(field: dict, coerced: Any) -> str:
     """Convert a coerced value into its config.ini string form."""
     ftype = field.get("type", "str")
@@ -173,6 +186,11 @@ def _read_typed(config: configparser.ConfigParser, section: str, field: dict) ->
     ftype = field.get("type", "str")
     default = field.get("default")
     if not config.has_section(section) or not config.has_option(section, key):
+        # A field the plugin inherits from another section when its own is unset
+        # shows the inherited value, so the form doesn't misstate what runs.
+        inherit = field.get("inherit_section")
+        if inherit and config.has_section(inherit) and config.has_option(inherit, key):
+            return _read_typed(config, inherit, {**field, "inherit_section": None, "section": None})
         return default
     # raw=True so values containing '%' (cron/strftime/templates) don't trip
     # configparser's interpolation, which would raise InterpolationError.
@@ -493,6 +511,7 @@ def _assemble_entry(
         if not isinstance(field, dict) or "key" not in field:
             continue
         resolved = dict(field)
+        resolved["id"] = field_id(field)
         resolved["value"] = _read_typed(config, section, field)
         if field.get("type") == "password":
             # Never send the plaintext secret to the browser; the UI shows a
@@ -512,6 +531,7 @@ def _assemble_entry(
                      "global monitored channels (default). DMs always work."),
         }
         channels_field["value"] = _read_typed(config, section, channels_field)
+        channels_field["id"] = "channels"
         fields.append(channels_field)
 
     # Keys handled elsewhere shouldn't appear in the raw "Other config values"

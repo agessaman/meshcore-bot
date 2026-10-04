@@ -87,7 +87,7 @@ class SportsCommand(BaseCommand):
             bot: The MeshCoreBot instance that owns this command.
         """
         super().__init__(bot)
-        self.url_timeout = 10  # seconds
+        self.url_timeout = self.get_config_value('Sports_Command', 'api_timeout', fallback=10, value_type='int')
 
         # Load enabled (standard enabled; sports_enabled legacy)
         self.sports_enabled = self.get_config_value('Sports_Command', 'enabled', fallback=None, value_type='bool')

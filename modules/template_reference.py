@@ -23,7 +23,10 @@ filter list in step with :data:`~modules.response_template.RESPONSE_TEMPLATE_FIL
 
 from __future__ import annotations
 
+import configparser
+import dataclasses
 import json
+import re
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -144,6 +147,7 @@ def template_spec(
     escapes: bool = True,
     samples: Optional[dict[str, Any]] = None,
     blank_default: Optional[str] = None,
+    blank_config: Optional[tuple[str, str]] = None,
     preview: Optional[str] = None,
 ) -> dict[str, Any]:
     """Build the ``"template"`` attribute of a settings_schema field.
@@ -154,7 +158,8 @@ def template_spec(
     newline. ``samples`` overrides preview values for this field, as
     ``{name: value_or_{scenario_id: value}}``. ``blank_default`` is the
     template the plugin uses when the field is blank, which the preview renders
-    in that case. ``preview`` names the :data:`FORMAT_PREVIEWS` renderer for a
+    in that case; ``blank_config`` is a ``(section, key)`` the plugin tries
+    first. ``preview`` names the :data:`FORMAT_PREVIEWS` renderer for a
     ``format`` field; piped fields always preview.
     """
     if preview is not None and preview not in FORMAT_PREVIEWS:
@@ -175,6 +180,8 @@ def template_spec(
         spec["samples"] = samples
     if blank_default is not None:
         spec["blank_default"] = blank_default
+    if blank_config is not None:
+        spec["blank_config"] = list(blank_config)
     if syntax == "piped":
         spec["filters"] = PIPED_FILTERS
         spec["syntax_notes"] = PIPED_SYNTAX_NOTES
@@ -220,32 +227,87 @@ def _row(row_id: str, label: str, output: str, error: Optional[str] = None) -> d
     return row
 
 
-def render_preview(spec: dict[str, Any], template: str) -> list[dict[str, Any]]:
+def _strip_quotes(text: str) -> str:
+    """BaseCommand._strip_quotes_from_config: drop one pair of surrounding double quotes."""
+    if text and text.startswith('"') and text.endswith('"'):
+        return text[1:-1]
+    return text
+
+
+# A preview renders str.format specs for real, and `{sender:999999999}` would build
+# a gigabyte string; the endpoint is admin-only but still shouldn't be a memory lever.
+_MAX_FORMAT_WIDTH = 500
+_FORMAT_SPEC_RE = re.compile(r"\{[^{}:]*:([^{}]*)\}")
+
+
+def _oversized_format_spec(text: str) -> bool:
+    return any(
+        int(number) > _MAX_FORMAT_WIDTH
+        for spec in _FORMAT_SPEC_RE.findall(text)
+        for number in re.findall(r"\d+", spec)
+    )
+
+
+Preview = dict[str, Any]
+Renderer = Callable[[dict[str, Any], str, Optional[configparser.ConfigParser]], Preview]
+
+
+def _preview(rows: list[dict[str, Any]], note: Optional[str] = None) -> Preview:
+    return {"scenarios": rows, "note": note}
+
+
+def render_preview(
+    spec: dict[str, Any],
+    template: str,
+    config: Optional[configparser.ConfigParser] = None,
+) -> Preview:
     """Render a template field as its plugin would, against sample data.
 
-    Each row is ``{id, label, output, bytes}``, plus ``error`` when the plugin
-    would hit a problem; ``output`` is then what the plugin sends instead.
+    Returns ``{"scenarios": rows, "note": text_or_None}``. Each row is
+    ``{id, label, output, bytes}``, plus ``error`` when the plugin would hit a
+    problem; ``output`` is then what the plugin sends instead. ``note`` says when
+    the preview shows a fallback (a blank field) rather than the template.
+    ``config`` is the bot's current configuration, for the settings beyond the
+    template that change the output (a [Keywords] fallback, the multitest path
+    layout, the MQTT length limit); without it the defaults apply.
     """
     if spec.get("syntax") == "piped":
-        return _preview_piped(spec, template)
+        return _preview_piped(spec, template, config)
     renderer = FORMAT_PREVIEWS.get(spec.get("preview") or "")
     if renderer is None:
         raise ValueError("this template field has no preview")
-    return renderer[0](spec, template)
+    if _oversized_format_spec(template):
+        return _preview([_row("template", "Template", "",
+                              f"A format width or precision over {_MAX_FORMAT_WIDTH} isn't previewed.")])
+    return renderer[0](spec, template, config)
 
 
-def _preview_piped(spec: dict[str, Any], template: str) -> list[dict[str, Any]]:
+def _config_get(config: Optional[configparser.ConfigParser], section: str, key: str) -> Optional[str]:
+    if config is None or not config.has_section(section) or not config.has_option(section, key):
+        return None
+    return config.get(section, key, raw=True)
+
+
+def _preview_piped(spec: dict[str, Any], template: str, config: Optional[configparser.ConfigParser]) -> Preview:
     """Render a piped template against every sample scenario.
 
-    Mirrors what the commands do before rendering: a blank field falls back to
-    the plugin's ``blank_default``, surrounding double quotes are stripped and,
-    when the field takes them, escape sequences are decoded. The ``shorten``
-    filter gets no config, so it passes the URL through instead of calling the
-    shortener.
+    Mirrors what the commands do before rendering: surrounding double quotes are
+    stripped, a blank result falls back (to ``blank_config`` in the bot's config,
+    then ``blank_default``) and, when the field takes them, escape sequences are
+    decoded. The ``shorten`` filter gets no config, so it passes the URL through
+    instead of calling the shortener.
     """
-    text = template.strip() or spec.get("blank_default") or ""
-    if len(text) >= 2 and text.startswith('"') and text.endswith('"'):
-        text = text[1:-1]
+    text = _strip_quotes(template.strip()).strip()
+    note = None
+    if not text:
+        fallback_key = spec.get("blank_config")
+        configured = _config_get(config, *fallback_key) if fallback_key else None
+        if configured:
+            text = _strip_quotes(configured)
+            note = f"The field is blank, so the bot uses [{fallback_key[0]}] {fallback_key[1]}."
+        elif spec.get("blank_default"):
+            text = spec["blank_default"]
+            note = "The field is blank, so this is the built-in default."
     if spec.get("escapes", True):
         text = decode_escape_sequences(text)
 
@@ -263,10 +325,21 @@ def _preview_piped(spec: dict[str, Any], template: str) -> list[dict[str, Any]]:
                 fields[name] = _sample(ALL_PLACEHOLDERS[name][1], sid)
         output = format_piped_template(text, fields, message=_scenario_message(scenario))
         results.append(_row(sid, scenario["label"], output))
-    return results
+    return _preview(results, note)
 
 
 # --- str.format fields ------------------------------------------------------
+
+_SAVES_DEFAULT = "The field is blank; saving it stores the default, shown here."
+
+
+def _blank_or(spec: dict[str, Any], template: str) -> tuple[str, Optional[str]]:
+    """The template a blank field saves as (the schema default), with a note saying so."""
+    text = template.strip()
+    if text or not spec.get("blank_default"):
+        return text, None
+    return spec["blank_default"], _SAVES_DEFAULT
+
 
 def _describe_format_error(exc: Exception) -> str:
     """Say what is wrong with a str.format template, in the operator's terms."""
@@ -296,12 +369,14 @@ def _greeting_rows(text: str, row_id: str, label: str) -> list[dict[str, Any]]:
     ]
 
 
-def _preview_greeting(spec: dict[str, Any], template: str) -> list[dict[str, Any]]:
-    text = template.strip() or spec.get("blank_default") or ""
-    return _greeting_rows(decode_escape_sequences(text), "greeting", "Greeting")
+def _preview_greeting(spec: dict[str, Any], template: str, config: Optional[configparser.ConfigParser]) -> Preview:
+    text, note = _blank_or(spec, template)
+    return _preview(_greeting_rows(decode_escape_sequences(text), "greeting", "Greeting"), note)
 
 
-def _preview_channel_greetings(spec: dict[str, Any], template: str) -> list[dict[str, Any]]:
+def _preview_channel_greetings(
+    spec: dict[str, Any], template: str, config: Optional[configparser.ConfigParser]
+) -> Preview:
     from .commands.greeter_command import parse_channel_greetings
 
     greetings, ignored = parse_channel_greetings(template.strip())
@@ -312,50 +387,50 @@ def _preview_channel_greetings(spec: dict[str, Any], template: str) -> list[dict
     ]
     for key, entry in greetings.items():
         rows.extend(_greeting_rows(entry["greeting"], f"ch-{key}", entry["channel"]))
-    return rows
+    note = None if rows else "No channel greetings: every channel gets the default greeting."
+    return _preview(rows, note)
 
 
 _MESH_INFO_SAMPLE = {"total_contacts": 412, "repeaters": 57, "companions": 331, "recent_activity_24h": 38}
 
 
-def _preview_mesh_info(spec: dict[str, Any], template: str) -> list[dict[str, Any]]:
-    text = decode_escape_sequences(template.strip())
+def _preview_mesh_info(spec: dict[str, Any], template: str, config: Optional[configparser.ConfigParser]) -> Preview:
+    text, note = _blank_or(spec, template)
+    text = decode_escape_sequences(text)
     try:
-        return [_row("mesh_info", "Appended", text.format(**_MESH_INFO_SAMPLE))]
+        return _preview([_row("mesh_info", "Appended", text.format(**_MESH_INFO_SAMPLE))], note)
     except Exception as exc:  # noqa: BLE001 - the greeter catches everything here
-        return [_row("mesh_info", "Appended", "",
-                     f"{_describe_format_error(exc)}. The greeting goes out without mesh info.")]
+        return _preview([_row("mesh_info", "Appended", "",
+                              f"{_describe_format_error(exc)}. The greeting goes out without mesh info.")], note)
 
 
-_MULTITEST_SAMPLE = {
-    "sender": "Alice",
-    "path_count": 3,
-    "paths": "a1,c3,e5\na1,b7,e5\nf2,e5",
-    "listening_duration": 6,
-}
+_MULTITEST_PATHS = ["a1,c3,e5", "a1,b7,e5", "a1,c3,f2"]
 
 
-def _preview_multitest(spec: dict[str, Any], template: str) -> list[dict[str, Any]]:
-    """As MultitestCommand._load_config and its reply: unicode_escape decoding, default on error."""
-    sample = _MULTITEST_SAMPLE
-    default = f"Paths({sample['path_count']}):\n{sample['paths']}"
-    text = template.strip()
+def _preview_multitest(spec: dict[str, Any], template: str, config: Optional[configparser.ConfigParser]) -> Preview:
+    """As MultitestCommand._load_config and its reply: layout, decoding, default on error."""
+    from .commands.multitest_command import _condense_path_lines, _parse_condense_paths_mode
+
+    mode = _parse_condense_paths_mode(_config_get(config, "Multitest_Command", "condense_paths") or "true")
+    paths = sorted(_MULTITEST_PATHS)
+    paths_text = _condense_path_lines(paths, mode) if mode in ("flat", "nested") else "\n".join(paths)
+    sample = {"sender": "Alice", "path_count": len(paths), "paths": paths_text, "listening_duration": 6}
+    default = f"Paths({len(paths)}):\n{paths_text}"
+
+    text = _strip_quotes(template.strip()).strip()
     if not text:
-        return [_row("reply", "Reply", default)]
-    if len(text) >= 2 and text.startswith('"') and text.endswith('"'):
-        text = text[1:-1]
-    text = text.strip()
+        return _preview([_row("reply", "Reply", default)], "The field is blank, so multitest uses its default format.")
     try:
         text = text.encode("latin-1").decode("unicode_escape")
     except (UnicodeDecodeError, UnicodeEncodeError):
         pass
     try:
-        return [_row("reply", "Reply", text.format(**sample))]
+        return _preview([_row("reply", "Reply", text.format(**sample))])
     except (KeyError, ValueError) as exc:
-        return [_row("reply", "Reply", default,
-                     f"{_describe_format_error(exc)}. Multitest sends its default format instead.")]
+        return _preview([_row("reply", "Reply", default,
+                              f"{_describe_format_error(exc)}. Multitest sends its default format instead.")])
     except Exception as exc:  # noqa: BLE001 - shows what reaches the command's caller
-        return [_row("reply", "Reply", "", f"{_describe_format_error(exc)}. The multitest reply fails.")]
+        return _preview([_row("reply", "Reply", "", f"{_describe_format_error(exc)}. The multitest reply fails.")])
 
 
 _MQTT_SAMPLES = [
@@ -382,37 +457,78 @@ def _mqtt_reply_for_error(err: str) -> str:
     return wx.get("mqtt_weather_payload_error", "{detail}").format(detail=err.replace("_", " "))
 
 
-def _preview_mqtt_json(spec: dict[str, Any], template: str) -> list[dict[str, Any]]:
-    from .clients.mqtt_weather import (
-        _DEFAULT_PASSTHROUGH_MAX,
-        MqttWeatherFormatConfig,
-        format_mqtt_weather_payload,
-    )
+def _preview_mqtt_json(spec: dict[str, Any], template: str, config: Optional[configparser.ConfigParser]) -> Preview:
+    """Through format_mqtt_weather_payload, with the configured length limit."""
+    from .clients.mqtt_weather import format_mqtt_weather_payload, load_mqtt_weather_format_config
 
-    fmt = MqttWeatherFormatConfig(
+    text, note = _blank_or(spec, template)
+    fmt = dataclasses.replace(
+        load_mqtt_weather_format_config(config or configparser.ConfigParser()),
         output_mode="json_template",
-        json_template=template.strip() or spec.get("blank_default") or "",
+        json_template=text,
         json_device_key="",
         json_device_value="",
-        max_payload_bytes=65536,
-        passthrough_max_length=_DEFAULT_PASSTHROUGH_MAX,
-        stale_after_seconds=3600.0,
     )
     rows = []
     for row_id, label, data in _MQTT_SAMPLES:
-        text, err = format_mqtt_weather_payload(json.dumps(data).encode(), fmt)
+        out, err = format_mqtt_weather_payload(json.dumps(data).encode(), fmt)
         if err:
             rows.append(_row(row_id, label, _mqtt_reply_for_error(err), f"The template failed ({err}); wx sends this instead."))
         else:
-            rows.append(_row(row_id, label, text or ""))
-    return rows
+            rows.append(_row(row_id, label, out or ""))
+    return _preview(rows, note)
+
+
+class _WarningCatcher:
+    """Logger stand-in that keeps the warnings a renderer logs."""
+
+    def __init__(self) -> None:
+        self.warnings: list[str] = []
+
+    def warning(self, msg: str, *args: Any) -> None:
+        self.warnings.append(msg % args if args else msg)
+
+
+def _temperature_preview(key: str, high: Optional[int], low: Optional[int], label: str) -> Renderer:
+    """Preview one [Weather] temperature_*_format through utils.format_temperature_high_low."""
+
+    def render(spec: dict[str, Any], template: str, config: Optional[configparser.ConfigParser]) -> Preview:
+        from .utils import format_temperature_high_low
+
+        text, note = _blank_or(spec, template)
+        weather = configparser.ConfigParser(interpolation=None)
+        weather.add_section("Weather")
+        weather.set("Weather", key, text)
+        catcher = _WarningCatcher()
+        try:
+            out = format_temperature_high_low(weather, high, low, "°F", logger=catcher)
+        except Exception as exc:  # noqa: BLE001 - what escapes reaches the weather reply
+            return _preview([_row(key, label, "", f"{_describe_format_error(exc)}. The weather reply fails.")], note)
+        if catcher.warnings:
+            # The template failed and the default went out; say why in the template's terms.
+            try:
+                text.format(high=high, low=low, units="°F", high_label="H", low_label="L")
+                reason = "Template error"
+            except Exception as exc:  # noqa: BLE001
+                reason = _describe_format_error(exc)
+            return _preview([_row(key, label, out, f"{reason}. The bot uses the default format instead.")], note)
+        return _preview([_row(key, label, out)], note)
+
+    return render
 
 
 # name -> (renderer, description of the sample data shown under the preview)
-FORMAT_PREVIEWS: dict[str, tuple[Callable[[dict[str, Any], str], list[dict[str, Any]]], str]] = {
+FORMAT_PREVIEWS: dict[str, tuple[Renderer, str]] = {
     "greeting": (_preview_greeting, "Greeting a user named Alice. Mesh info, when on, is added to the last message."),
     "channel_greetings": (_preview_channel_greetings, "Greeting a user named Alice on each listed channel."),
     "mesh_info": (_preview_mesh_info, "Sample counts: 412 contacts, 57 repeaters, 331 companions, 38 active."),
-    "multitest": (_preview_multitest, "Alice heard over 3 paths in 6 seconds, one path per line."),
-    "mqtt_json": (_preview_mqtt_json, "Two sample station payloads; the second has no humidity."),
+    "multitest": (_preview_multitest, "Alice heard over 3 paths in 6 seconds, laid out per the saved Path layout."),
+    "mqtt_json": (_preview_mqtt_json, "Two sample station payloads; the second has no humidity. "
+                                      "Uses the saved passthrough length limit."),
+    "temp_pair": (_temperature_preview("temperature_high_low_format", 68, 51, "High 68, low 51"),
+                  "A day with a high of 68 and a low of 51 °F."),
+    "temp_high": (_temperature_preview("temperature_high_only_format", 68, None, "High 68 only"),
+                  "A day with only a high of 68 °F."),
+    "temp_low": (_temperature_preview("temperature_low_only_format", None, 51, "Low 51 only"),
+                 "A night with only a low of 51 °F."),
 }

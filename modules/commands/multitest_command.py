@@ -495,7 +495,7 @@ class MultitestCommand(BaseCommand):
          "help": "How collected paths are displayed."},
         {"key": "require_path_bytes_greater_or_equal_to", "label": "Require path bytes ≥", "type": "int",
          "min": 0, "max": 3, "default": 0,
-         "help": "Only include paths with at least this many bytes per hop (3 = exactly 3). 0/1 = allow all."},
+         "help": "Only respond when the path's total size is at least 2 bytes (2) or exactly 3 bytes (3), counting every hop. 0/1 = allow all."},
         {"key": "require_path_bytes_failure_response", "label": "Path-byte reject reply", "type": "str",
          "default": "",
          "help": "Reply when rejected by the path-byte requirement. Empty = silent reject."},
