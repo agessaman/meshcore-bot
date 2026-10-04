@@ -252,6 +252,25 @@ class TestGetSpecificHelp:
         cmd = HelpCommand(bot)
         cmd.get_specific_help("ping", Mock())  # must not raise
 
+    def test_operator_command_inside_modules_without_message_param_gets_help(self):
+        """An installed-only command file in modules/commands may use get_help_text(self)."""
+        from modules.commands.base_command import BaseCommand
+
+        class OperatorWeatherCommand(BaseCommand):
+            name = "operatorweather"
+
+            def get_help_text(self):
+                return "operator help"
+
+            async def execute(self, message):
+                return True
+
+        OperatorWeatherCommand.__module__ = "modules.commands.operatorweather"
+        bot = _make_bot()
+        bot.command_manager.commands = {"operatorweather": object.__new__(OperatorWeatherCommand)}
+        cmd = HelpCommand(bot)
+        cmd.get_specific_help("operatorweather", Mock())  # must not raise
+
     def test_local_plugin_help_keeps_the_typeerror_retry(self):
         """A local get_help_text(message=None) that raises TypeError is retried without it."""
         bot = _make_bot()

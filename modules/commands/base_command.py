@@ -4,6 +4,7 @@ Base command class for all MeshCore Bot commands
 Provides common functionality and interface for command implementations
 """
 
+import inspect
 import re
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterator
@@ -71,17 +72,28 @@ def _defined_by_bundled_class(command: Any, method: Any) -> bool:
     return False
 
 
+def _accepts_message(method: Any, message: Any) -> bool:
+    """Whether ``method(message)`` binds, per its signature (False when that can't be read)."""
+    try:
+        inspect.signature(method).bind(message)
+    except (TypeError, ValueError):
+        return False
+    return True
+
+
 def help_text_for(command: Any, message: Any) -> str:
     """``command.get_help_text(message)``, retrying without the message for local plugins.
 
     Every bundled command's get_help_text takes the message, so when the
-    method comes from a bundled class it is called once and an error from its
-    body propagates. Anything else (a local plugin or subclass override, which
-    may implement ``get_help_text(self)``, or any other callable) keeps the old
-    contract: a TypeError from the message call is retried without the message.
+    method comes from a class under ``modules.`` and its signature accepts the
+    message, it is called once and an error from its body propagates. Anything
+    else keeps the old contract, where a TypeError from the message call is
+    retried without the message: local plugins and overrides, operator-installed
+    commands inside modules/commands written as ``get_help_text(self)``, and
+    any other callable.
     """
     get_help_text = command.get_help_text
-    if _defined_by_bundled_class(command, get_help_text):
+    if _defined_by_bundled_class(command, get_help_text) and _accepts_message(get_help_text, message):
         return get_help_text(message)
     try:
         return get_help_text(message)
