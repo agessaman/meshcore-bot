@@ -561,6 +561,18 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                 return f"{location_name}: {current}"
             return current
 
+    async def _fetch_wxsim(
+        self, source: str, forecast_type: str, num_days: int, message: MeshMessage, location: Optional[str]
+    ) -> str:
+        if location is None:
+            return await self._get_wxsim_weather_async(source, forecast_type, num_days, message)
+        return await self._get_wxsim_weather_async(
+            source, forecast_type, num_days, message, location_name=location
+        )
+
+    async def _fallback_place_name(self, lat: float, lon: float) -> Optional[str]:
+        return await self._coordinates_to_location_string_async(lat, lon)
+
     async def _get_wxsim_weather_async(
         self,
         source_url: str,
@@ -646,88 +658,18 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         if len(parts) < 2:
             mqtt_topic = self._get_custom_mqtt_weather_topic(None)
             if mqtt_topic:
-                try:
-                    self.record_execution(message.sender_id)
-                    weather_data = self._mqtt_weather_line(mqtt_topic, option_type, None)
-                    return bool(await self.send_response(message, weather_data))
-                except Exception as e:
-                    self.logger.error(f"Error reading MQTT weather: {e}")
-                    await self.send_response(message, self.translate("commands.wx.error", error=str(e)))
-                    return True
+                return await self._reply_from_mqtt(message, mqtt_topic, option_type, None, split_multiday=False)
 
             wxsim_source = self._get_custom_wxsim_source(None)  # Check for default
             if wxsim_source:
-                # Use custom WXSIM default source
-                try:
-                    self.record_execution(message.sender_id)
-                    weather_data = await self._get_wxsim_weather_async(
-                        wxsim_source, option_type, option_days, message
-                    )
-                    if option_type == "multiday":
-                        return await self._send_multiday_forecast(message, weather_data)
-                    return bool(await self.send_response(message, weather_data))
-                except Exception as e:
-                    self.logger.error(f"Error fetching WXSIM weather: {e}")
-                    await self.send_response(message, self.translate('commands.wx.error', error=str(e)))
-                    return True
+                return await self._reply_from_wxsim(message, wxsim_source, option_type, option_days)
 
-            # No custom source, try companion location
-            companion_location = self._get_companion_location(message)
-            if companion_location:
-                # Use coordinates directly to avoid re-geocoding issues
-                location_str = self._coordinates_query(*companion_location)
-                parts = [parts[0], location_str]
-                using_companion_location = True
-                # Get city name for display
-                display_name = await self._coordinates_to_location_string_async(
-                    companion_location[0], companion_location[1]
-                )
-                if display_name:
-                    self.logger.info(f"Using companion location: {display_name} ({companion_location[0]}, {companion_location[1]})")
-                else:
-                    self.logger.info(f"Using companion coordinates: {location_str}")
-            else:
-                # No companion location: use default city if configured, then bot location fallback
-                if self.default_city:
-                    location_parts = [self.default_city]
-                    if self.default_state:
-                        location_parts.append(self.default_state)
-                    if self.default_country:
-                        location_parts.append(self.default_country)
-                    location_str = ", ".join(location_parts)
-                    parts = [parts[0], location_str]
-                    self.logger.info(f"Using default city (no args): {location_str}")
-                else:
-                    # No default city: optionally use bot's configured coordinates
-                    use_bot = self.get_config_value(
-                        'Wx_Command',
-                        'use_bot_location_when_no_location',
-                        fallback=False,
-                        value_type='bool',
-                    )
-                    bot_loc = self._get_bot_location() if use_bot else None
-                    if bot_loc:
-                        location_str = self._coordinates_query(*bot_loc)
-                        parts = [parts[0], location_str]
-                        display_name = await self._coordinates_to_location_string_async(
-                            bot_loc[0], bot_loc[1]
-                        )
-                        if display_name:
-                            self.logger.info(
-                                f"Using bot location (no args): {display_name} ({bot_loc[0]}, {bot_loc[1]})"
-                            )
-                        else:
-                            self.logger.info(f"Using bot coordinates (no args): {location_str}")
-                    else:
-                        if use_bot:
-                            self.logger.debug(
-                                "use_bot_location_when_no_location enabled but bot_latitude/bot_longitude "
-                                "not set; showing usage"
-                            )
-                        else:
-                            self.logger.debug("No companion/default city location found, showing usage")
-                        await self.send_response(message, self.translate('commands.wx.usage'))
-                        return True
+            # No custom source: the sender's position, default city, then the bot's position
+            location_str, using_companion_location = await self._no_location_fallback(message)
+            if location_str is None:
+                await self.send_response(message, self.translate('commands.wx.usage'))
+                return True
+            parts = [parts[0], location_str]
 
         if option_word:
             parts.append(option_word)
@@ -758,42 +700,14 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         mqtt_topic = self._get_custom_mqtt_weather_topic(location)
         if mqtt_topic:
             self.logger.info(f"Using custom MQTT weather topic for location '{location}': {mqtt_topic}")
-            try:
-                self.record_execution(message.sender_id)
-                weather_data = self._mqtt_weather_line(
-                    mqtt_topic, forecast_type, location
-                )
-                if forecast_type == "multiday":
-                    return await self._send_multiday_forecast(message, weather_data)
-                return bool(await self.send_response(message, weather_data))
-            except Exception as e:
-                self.logger.error(f"Error reading MQTT weather: {e}")
-                await self.send_response(message, self.translate("commands.wx.error", error=str(e)))
-                return True
+            return await self._reply_from_mqtt(message, mqtt_topic, forecast_type, location)
 
         # Check for custom WXSIM source first (before checking location type)
         wxsim_source = self._get_custom_wxsim_source(location)
         if wxsim_source:
             self.logger.info(f"Using custom WXSIM source for location '{location}': {wxsim_source}")
-            # Use custom WXSIM source
-            try:
-                self.record_execution(message.sender_id)
-                weather_data = await self._get_wxsim_weather_async(
-                    wxsim_source,
-                    forecast_type,
-                    num_days,
-                    message,
-                    location_name=location,
-                )
-                if forecast_type == "multiday":
-                    return await self._send_multiday_forecast(message, weather_data)
-                return bool(await self.send_response(message, weather_data))
-            except Exception as e:
-                self.logger.error(f"Error fetching WXSIM weather: {e}")
-                await self.send_response(message, self.translate('commands.wx.error', error=str(e)))
-                return True
-        else:
-            self.logger.debug(f"No custom WXSIM source found for location '{location}', using normal weather API")
+            return await self._reply_from_wxsim(message, wxsim_source, forecast_type, num_days, location)
+        self.logger.debug(f"No custom WXSIM source found for location '{location}', using normal weather API")
 
         # Check if it's coordinates, zipcode, or city name
         if re.match(r'^\s*-?\d+\.?\d*\s*,\s*-?\d+\.?\d*\s*$', location):
@@ -847,28 +761,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             # Get weather data for the location
             weather_data = await self.get_weather_for_location(location, location_type, forecast_type, num_days, message, using_companion_location=using_companion_location)
 
-            # Check if we need to send multiple messages
-            if isinstance(weather_data, tuple) and weather_data[0] == "multi_message":
-                # Send weather data first; if it was refused (rate limit, send failure),
-                # do not send its second part on its own.
-                if not await self.send_response(message, weather_data[1]):
-                    return False
-
-                # Wait for bot TX rate limiter to allow next message
-                rate_limit = self.bot.config.getfloat('Bot', 'bot_tx_rate_limit_seconds', fallback=1.0)
-                # Use a conservative sleep time to avoid rate limiting
-                sleep_time = max(rate_limit + 1.0, 2.0)  # At least 2 seconds, or rate_limit + 1 second
-                await self._pace_reply(message, sleep_time)
-
-                # Send the special weather statement (already formatted with prioritization)
-                alert_text = weather_data[2]
-                # Second part of the same reply: the reply limiter already let the first through.
-                return bool(await self.send_response(message, alert_text, skip_user_rate_limit=True))
-            if forecast_type == "multiday":
-                # Use message splitting for multi-day forecasts
-                return await self._send_multiday_forecast(message, weather_data)
-            # Send single message as usual
-            return bool(await self.send_response(message, weather_data))
+            return await self._send_weather_reply(message, weather_data, forecast_type)
 
         except Exception as e:
             self.logger.error(f"Error in weather command: {e}")
