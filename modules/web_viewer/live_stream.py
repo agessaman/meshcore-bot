@@ -32,15 +32,19 @@ class LiveStreamMixin:
     logger: Any
     socketio: Any
 
+    def _subscribed_clients(self, flag: str) -> list:
+        """Sids of connected clients with ``flag`` set, read under the clients lock."""
+        with self._clients_lock:
+            return [
+                client_id for client_id, client_info in self.connected_clients.items()
+                if client_info.get(flag, False)
+            ]
+
     def _handle_command_data(self, command_data):
         """Handle incoming command data from bot"""
         try:
             # Broadcast to subscribed clients
-            with self._clients_lock:
-                subscribed_clients = [
-                    client_id for client_id, client_info in self.connected_clients.items()
-                    if client_info.get('subscribed_commands', False)
-                ]
+            subscribed_clients = self._subscribed_clients('subscribed_commands')
 
             if subscribed_clients:
                 self.socketio.emit('command_data', command_data, room=None)
@@ -52,11 +56,7 @@ class LiveStreamMixin:
         """Handle incoming packet data from bot"""
         try:
             # Broadcast to subscribed clients
-            with self._clients_lock:
-                subscribed_clients = [
-                    client_id for client_id, client_info in self.connected_clients.items()
-                    if client_info.get('subscribed_packets', False)
-                ]
+            subscribed_clients = self._subscribed_clients('subscribed_packets')
 
             if subscribed_clients:
                 self.socketio.emit('packet_data', packet_data, room=None)
@@ -68,11 +68,7 @@ class LiveStreamMixin:
         """Handle incoming mesh edge data from bot"""
         try:
             # Broadcast to subscribed clients
-            with self._clients_lock:
-                subscribed_clients = [
-                    client_id for client_id, client_info in self.connected_clients.items()
-                    if client_info.get('subscribed_mesh', False)
-                ]
+            subscribed_clients = self._subscribed_clients('subscribed_mesh')
 
             if subscribed_clients:
                 event_type = 'mesh_edge_added' if edge_data.get('is_new', False) else 'mesh_edge_updated'
@@ -84,11 +80,7 @@ class LiveStreamMixin:
         """Handle incoming mesh node data from bot"""
         try:
             # Broadcast to subscribed clients
-            with self._clients_lock:
-                subscribed_clients = [
-                    client_id for client_id, client_info in self.connected_clients.items()
-                    if client_info.get('subscribed_mesh', False)
-                ]
+            subscribed_clients = self._subscribed_clients('subscribed_mesh')
 
             if subscribed_clients:
                 self.socketio.emit('mesh_node_added', node_data, room=None)
@@ -98,11 +90,7 @@ class LiveStreamMixin:
     def _handle_message_data(self, msg_data):
         """Broadcast a captured channel message to subscribed clients."""
         try:
-            with self._clients_lock:
-                subscribed_clients = [
-                    client_id for client_id, client_info in self.connected_clients.items()
-                    if client_info.get('subscribed_messages', False)
-                ]
+            subscribed_clients = self._subscribed_clients('subscribed_messages')
             if subscribed_clients:
                 self.socketio.emit('message_data', msg_data, room=None)
         except Exception as e:
@@ -111,11 +99,7 @@ class LiveStreamMixin:
     def _handle_log_line(self, line: str) -> None:
         """Broadcast a log line to clients subscribed to the log stream."""
         try:
-            with self._clients_lock:
-                subscribed = [
-                    cid for cid, info in self.connected_clients.items()
-                    if info.get('subscribed_logs', False)
-                ]
+            subscribed = self._subscribed_clients('subscribed_logs')
             if subscribed:
                 self.socketio.emit(
                     'log_line', {'line': _strip_ansi_codes(line.rstrip())}, room=None
