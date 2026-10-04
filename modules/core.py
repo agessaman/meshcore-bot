@@ -546,7 +546,13 @@ class MeshCoreBot(ServiceSupervisorMixin, RadioLinkMixin, RadioOfflineBreaker, D
                 if not Path(self.config_file).exists():
                     return (False, "Config file not found")
                 new_config, new_local_root = self._read_config_snapshot()
-                self._validate_config_snapshot(new_config)
+                uninterpolatable = self._validate_config_snapshot(new_config)
+                if uninterpolatable:
+                    self.logger.warning(
+                        "Config values with a bare '%%' (fine where they are read raw, such as "
+                        "templates; use '%%%%' elsewhere): %s",
+                        ", ".join(uninterpolatable),
+                    )
 
                 old_radio_settings = self._get_radio_settings(old_config)
                 new_radio_settings = self._get_radio_settings(new_config)

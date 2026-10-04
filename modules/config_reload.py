@@ -83,8 +83,13 @@ class ConfigReloadMixin:
         return changed
 
     @staticmethod
-    def _validate_config_snapshot(config: configparser.ConfigParser) -> None:
-        """Validate the fully merged candidate before it can be published."""
+    def _validate_config_snapshot(config: configparser.ConfigParser) -> list[str]:
+        """Validate the fully merged candidate before it can be published.
+
+        Returns the options whose values would fail '%' interpolation. They do not
+        block the reload: a literal '%' is legal in values read raw (templates,
+        strftime formats), and startup accepts the same file.
+        """
         from .config_schema import SECTIONS
         from .config_validation import REQUIRED_SECTIONS
 
@@ -94,10 +99,15 @@ class ConfigReloadMixin:
                 "Missing required configuration section(s): " + ", ".join(missing)
             )
 
-        # Expand interpolation across every final value, not just the base file.
-        # This catches malformed '%' expressions in an overlay before publish.
+        # Expand interpolation across every final value, not just the base file,
+        # so a malformed '%' expression in an overlay is reported before publish.
+        uninterpolatable = []
         for section in config.sections():
-            list(config.items(section))
+            for key in config.options(section):
+                try:
+                    config.get(section, key)
+                except configparser.InterpolationError:
+                    uninterpolatable.append(f"[{section}] {key}")
 
         # Validate all typed keys currently covered by the project schema.
         for section, section_meta in SECTIONS.items():
@@ -117,6 +127,7 @@ class ConfigReloadMixin:
                             f"[{section}] {key} must be one of "
                             f"{', '.join(meta.values)} (got {value!r})"
                         )
+        return uninterpolatable
 
     @classmethod
     def _command_config_state(cls, manager: CommandManager) -> dict[str, Any]:
