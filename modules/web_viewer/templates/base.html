@@ -422,11 +422,13 @@
                             <i class="fas fa-tachometer-alt"></i> Dashboard
                         </a>
                     </li>
+                    {% if not auth_enabled or is_admin %}
                     <li class="nav-item">
                         <a class="nav-link {{ 'active' if request.path == '/realtime' }}" href="/realtime">
                             <i class="fas fa-broadcast-tower"></i> Real-time
                         </a>
                     </li>
+                    {% endif %}
                     <li class="nav-item">
                         <a class="nav-link {{ 'active' if request.path == '/contacts' }}" href="/contacts">
                             <i class="fas fa-users"></i> Contacts
@@ -437,7 +439,7 @@
                             <i class="fas fa-project-diagram"></i> Mesh Graph
                         </a>
                     </li>
-                    {% if multibyte_monitor_enabled and (not auth_enabled or is_admin) %}
+                    {% if multibyte_monitor_enabled %}
                     <li class="nav-item">
                         <a class="nav-link {{ 'active' if request.path == '/multibyte-rollout' }}" href="/multibyte-rollout">
                             <i class="fas fa-code-branch"></i> Multibyte

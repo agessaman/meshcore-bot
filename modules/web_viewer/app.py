@@ -852,7 +852,7 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
 
         # Issue #240 public HTML surface (Realtime page renders; live socket stays admin).
         _PUBLIC_PAGE_PATHS = frozenset([
-            '/', '/realtime', '/contacts', '/mesh',
+            '/', '/contacts', '/mesh', '/multibyte-rollout',
         ])
 
         # Anonymous-safe GET APIs: mesh-visible / aggregate data only. No channel

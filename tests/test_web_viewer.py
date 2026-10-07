@@ -1234,13 +1234,13 @@ class TestRoleBasedAccess:
     """Public allowlist vs fail-closed admin when web_viewer_password is set."""
 
     def test_public_pages_accessible_without_auth(self, auth_client):
-        public_pages = ["/", "/realtime", "/mesh", "/contacts"]
+        public_pages = ["/", "/mesh", "/contacts"]
         for page in public_pages:
             resp = auth_client.get(page)
             assert resp.status_code == 200, f"{page} should be accessible without auth"
 
     def test_admin_pages_require_auth(self, auth_client):
-        admin_pages = ["/logs", "/config", "/plugins", "/radio", "/greeter", "/feeds", "/schedule"]
+        admin_pages = ["/logs", "/config", "/plugins", "/radio", "/greeter", "/feeds", "/schedule", "/realtime"]
         for page in admin_pages:
             resp = auth_client.get(page, follow_redirects=False)
             assert resp.status_code == 302, f"{page} should redirect to login"
