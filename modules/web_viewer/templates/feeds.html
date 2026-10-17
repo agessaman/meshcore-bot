@@ -103,18 +103,18 @@
                     <!-- Basic Settings Row -->
                     <div class="row mb-3">
                         <div class="col-md-3">
-                            <label class="form-label">Feed Type</label>
+                            <label class="form-label" for="feedType">Feed Type</label>
                             <select class="form-select" id="feedType" name="feed_type" required>
                                 <option value="rss">RSS Feed</option>
                                 <option value="api">API Feed</option>
                             </select>
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label">Feed URL</label>
+                            <label class="form-label" for="feedUrl">Feed URL</label>
                             <input type="url" class="form-control" id="feedUrl" name="feed_url" required>
                         </div>
                         <div class="col-md-3">
-                            <label class="form-label">Check Interval (seconds)</label>
+                            <label class="form-label" for="checkInterval">Check Interval (seconds)</label>
                             <input type="number" class="form-control" id="checkInterval" name="check_interval_seconds" value="300" min="60">
                         </div>
                     </div>
@@ -122,7 +122,7 @@
                     <!-- Channel and Name Row -->
                     <div class="row mb-3">
                         <div class="col-md-6">
-                            <label class="form-label">Channel</label>
+                            <label class="form-label" for="channelSelect">Channel</label>
                             <div class="input-group">
                                 <select class="form-select" id="channelSelect" name="channel_name" required>
                                     <option value="">Select channel...</option>
@@ -133,7 +133,7 @@
                             </div>
                             <div id="newChannelGroup" style="display: none;" class="mt-2">
                                 <div class="input-group input-group-sm">
-                                    <input type="text" class="form-control" id="newChannelName" placeholder="#channelname" autocomplete="off">
+                                    <input type="text" class="form-control" id="newChannelName" aria-label="New channel name" placeholder="#channelname" autocomplete="off">
                                     <button type="button" class="btn btn-primary" id="submitNewChannelBtn" title="Create channel on the bot (same as Radio page)">
                                         <i class="fas fa-check"></i> Create channel
                                     </button>
@@ -142,11 +142,11 @@
                             </div>
                         </div>
                         <div class="col-md-3">
-                            <label class="form-label">Feed Name <small class="text-muted">(Optional)</small></label>
+                            <label class="form-label" for="feedName">Feed Name <small class="text-muted">(Optional)</small></label>
                             <input type="text" class="form-control" id="feedName" name="feed_name" placeholder="My Feed">
                         </div>
                         <div class="col-md-3">
-                            <label class="form-label">Send Interval (seconds)</label>
+                            <label class="form-label" for="messageSendInterval">Send Interval (seconds)</label>
                             <input type="number" class="form-control" id="messageSendInterval" name="message_send_interval_seconds" value="2.0" min="0.5" step="0.1">
                             <small class="form-text text-muted">Time between messages</small>
                         </div>
@@ -155,12 +155,12 @@
                     <!-- Output Format Row -->
                     <div class="row mb-3">
                         <div class="col-md-8">
-                            <label class="form-label">
-                                Output Format
-                                <button type="button" class="btn btn-sm btn-link p-0 ms-2" data-bs-toggle="collapse" data-bs-target="#formatHelp" aria-expanded="false">
-                                    <i class="fas fa-question-circle"></i> Help
+                            <div class="d-flex align-items-baseline form-label">
+                                <label class="mb-0" for="outputFormat">Output Format</label>
+                                <button type="button" class="btn btn-sm btn-link p-0 ms-2" data-bs-toggle="collapse" data-bs-target="#formatHelp" aria-expanded="false" aria-controls="formatHelp">
+                                    <i class="fas fa-question-circle" aria-hidden="true"></i> Help
                                 </button>
-                            </label>
+                            </div>
                             <textarea class="form-control font-monospace" id="outputFormat" name="output_format" rows="5" placeholder="{emoji} {body|truncate:100} - {date}\n{link|truncate:50}"></textarea>
                             <div class="collapse mt-2" id="formatHelp">
                                 <div class="card card-body bg-light small" style="background-color: var(--bg-secondary) !important; color: var(--text-color) !important;">
@@ -175,7 +175,7 @@
                             </div>
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label">&nbsp;</label>
+                            <div class="form-label" aria-hidden="true">&nbsp;</div>
                             <div class="d-grid">
                                 <button type="button" class="btn btn-outline-primary" id="previewBtn" title="Preview format with live feed">
                                     <i class="fas fa-eye"></i> Preview Format
@@ -200,13 +200,13 @@
                     <div class="accordion mb-3" id="advancedOptions">
                         <div class="accordion-item" id="apiConfigGroup" style="display: none;">
                             <h2 class="accordion-header">
-                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#apiConfigCollapse">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#apiConfigCollapse" aria-expanded="false" aria-controls="apiConfigCollapse">
                                     <i class="fas fa-cog me-2"></i> API Configuration
                                 </button>
                             </h2>
                             <div id="apiConfigCollapse" class="accordion-collapse collapse" data-bs-parent="#advancedOptions">
                                 <div class="accordion-body">
-                                    <textarea class="form-control font-monospace" id="apiConfig" name="api_config" rows="8" placeholder="{
+                                    <textarea class="form-control font-monospace" id="apiConfig" aria-label="API configuration (JSON)" name="api_config" rows="8" placeholder="{
   &quot;method&quot;: &quot;GET&quot;,
   &quot;headers&quot;: {},
   &quot;params&quot;: {
@@ -230,13 +230,13 @@
                         
                         <div class="accordion-item">
                             <h2 class="accordion-header">
-                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#filterConfigCollapse">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#filterConfigCollapse" aria-expanded="false" aria-controls="filterConfigCollapse">
                                     <i class="fas fa-filter me-2"></i> Filter Configuration <small class="text-muted ms-2">(Optional)</small>
                                 </button>
                             </h2>
                             <div id="filterConfigCollapse" class="accordion-collapse collapse" data-bs-parent="#advancedOptions">
                                 <div class="accordion-body">
-                                    <textarea class="form-control font-monospace" id="filterConfig" name="filter_config" rows="8" placeholder="{
+                                    <textarea class="form-control font-monospace" id="filterConfig" aria-label="Filter configuration (JSON)" name="filter_config" rows="8" placeholder="{
   &quot;conditions&quot;: [
     {
       &quot;field&quot;: &quot;raw.Priority&quot;,
@@ -263,13 +263,13 @@
                         
                         <div class="accordion-item">
                             <h2 class="accordion-header">
-                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#sortConfigCollapse">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#sortConfigCollapse" aria-expanded="false" aria-controls="sortConfigCollapse">
                                     <i class="fas fa-sort me-2"></i> Sort Configuration <small class="text-muted ms-2">(Optional)</small>
                                 </button>
                             </h2>
                             <div id="sortConfigCollapse" class="accordion-collapse collapse" data-bs-parent="#advancedOptions">
                                 <div class="accordion-body">
-                                    <textarea class="form-control font-monospace" id="sortConfig" name="sort_config" rows="4" placeholder="{
+                                    <textarea class="form-control font-monospace" id="sortConfig" aria-label="Sort configuration (JSON)" name="sort_config" rows="4" placeholder="{
   &quot;field&quot;: &quot;raw.LastUpdatedTime&quot;,
   &quot;order&quot;: &quot;desc&quot;
 }"></textarea>
