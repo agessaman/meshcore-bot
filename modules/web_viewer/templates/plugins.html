@@ -34,8 +34,23 @@
     }
     .plugin-header .form-switch { cursor: pointer; }
     .plugin-title { font-weight: 600; }
-    .plugin-headtext { min-width: 0; }                 /* allow truncation */
+    .plugin-headtext {                                 /* button reset */
+        min-width: 0;                                  /* allow truncation */
+        background: none;
+        border: 0;
+        padding: 0;
+        color: inherit;
+        font: inherit;
+        text-align: start;
+        cursor: pointer;
+    }
+    .plugin-headtext:focus-visible {
+        outline: 2px solid var(--bs-primary, #0d6efd);
+        outline-offset: 3px;
+        border-radius: 2px;
+    }
     .plugin-desc {
+        display: block;
         color: var(--text-muted, #6c757d);
         font-size: 0.8rem;
         overflow: hidden;
@@ -297,9 +312,9 @@ class PluginsManager {
             // collapse clears everything so nothing stays open while hidden.
             if (expand) {
                 if (c.el.classList.contains('d-none')) return;
-                c.collapse.show(); c.el.classList.add('expanded');
+                c.setOpen(true);
             } else {
-                c.collapse.hide(); c.el.classList.remove('expanded');
+                c.setOpen(false);
             }
         });
     }
@@ -339,21 +354,28 @@ class PluginsManager {
         toggle.role = 'switch';
         toggle.id = toggleId;
         toggle.checked = Boolean(plugin.enabled);
+        toggle.setAttribute('aria-label', `Enable ${String(plugin.label ?? plugin.name)}`);
         switchWrapper.appendChild(toggle);
-        const headText = document.createElement('div');
+        // The title area is a real button so the card opens from the keyboard;
+        // the enable switch stays outside it.
+        const headText = document.createElement('button');
+        headText.type = 'button';
         headText.className = 'flex-grow-1 plugin-headtext';
+        headText.setAttribute('aria-expanded', 'false');
+        headText.setAttribute('aria-controls', bodyId);
         const title = document.createElement('span');
         title.className = 'plugin-title';
         title.textContent = String(plugin.label ?? '');
         const section = document.createElement('span');
         section.className = 'plugin-section-label';
         section.textContent = `[${String(plugin.section ?? '')}]`;
-        const description = document.createElement('div');
+        const description = document.createElement('span');
         description.className = 'plugin-desc';
         description.textContent = String(plugin.description ?? '');
         headText.append(title, section, description);
         const chevron = document.createElement('i');
         chevron.className = 'fas fa-chevron-down plugin-chevron';
+        chevron.setAttribute('aria-hidden', 'true');
         header.append(switchWrapper, headText, chevron);
         card.appendChild(header);
 
@@ -488,11 +510,17 @@ class PluginsManager {
 
         const collapse = new bootstrap.Collapse(body, { toggle: false });
 
+        const setOpen = (open) => {
+            card.classList.toggle('expanded', open);
+            headText.setAttribute('aria-expanded', String(open));
+            if (open) collapse.show(); else collapse.hide();
+        };
         // Header click expands/collapses; clicking the enable switch must not.
+        // Clicks on the title button bubble here too, so keyboard activation
+        // goes through the same path.
         header.addEventListener('click', (e) => {
             if (e.target.closest('.form-switch')) return;
-            const isOpen = card.classList.toggle('expanded');
-            if (isOpen) collapse.show(); else collapse.hide();
+            setOpen(!card.classList.contains('expanded'));
         });
         // The enable switch only changes enabled state + dim style.
         toggle.addEventListener('change', () => {
@@ -503,7 +531,7 @@ class PluginsManager {
             this.save(plugin, toggle, inputs, saveBtn, status, dynamicEditors, blockEditors));
 
         const searchText = `${plugin.label} ${plugin.section} ${plugin.description || ''}`.toLowerCase();
-        this.cards.push({ el: card, collapse, kind: plugin.kind, enabled: plugin.enabled, searchText,
+        this.cards.push({ el: card, setOpen, kind: plugin.kind, enabled: plugin.enabled, searchText,
                           setEnabled: (v) => { card.classList.toggle('disabled', !v); } });
 
         return card;
