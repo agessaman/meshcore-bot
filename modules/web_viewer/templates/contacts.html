@@ -502,23 +502,23 @@
                             </th>
                             {% endif %}
                             <th class="sortable" data-sort="username">
-                                Name <i class="fas fa-sort sort-icon" aria-hidden="true"></i>
+                                <button type="button" class="sort-btn">Name <i class="fas fa-sort sort-icon" aria-hidden="true"></i></button>
                             </th>
                             <th class="sortable" data-sort="device_type">
-                                Device Type <i class="fas fa-sort sort-icon" aria-hidden="true"></i>
+                                <button type="button" class="sort-btn">Device Type <i class="fas fa-sort sort-icon" aria-hidden="true"></i></button>
                             </th>
                             <th class="sortable" data-sort="location">
-                                Location <i class="fas fa-sort sort-icon" aria-hidden="true"></i>
+                                <button type="button" class="sort-btn">Location <i class="fas fa-sort sort-icon" aria-hidden="true"></i></button>
                             </th>
                             <th class="sortable" data-sort="distance">
-                                Distance <i class="fas fa-sort sort-icon" aria-hidden="true"></i>
+                                <button type="button" class="sort-btn">Distance <i class="fas fa-sort sort-icon" aria-hidden="true"></i></button>
                             </th>
                             <th class="sortable" data-sort="snr">
-                                SNR <i class="fas fa-sort sort-icon" aria-hidden="true"></i>
+                                <button type="button" class="sort-btn">SNR <i class="fas fa-sort sort-icon" aria-hidden="true"></i></button>
                             </th>
                             <th class="sortable" data-sort="hop_count">
                                 <span class="d-inline-flex align-items-center gap-1">
-                                    Hops <i class="fas fa-sort sort-icon" aria-hidden="true"></i>
+                                    <button type="button" class="sort-btn">Hops <i class="fas fa-sort sort-icon" aria-hidden="true"></i></button>
                                     <button type="button" class="btn btn-link p-0 border-0 align-baseline text-muted path-encoding-info-btn"
                                             id="contacts-list-multibyte-badge-info"
                                             aria-label="How Multibyte and 1-byte only badges are determined"
@@ -528,16 +528,16 @@
                                 </span>
                             </th>
                             <th class="sortable" data-sort="path_bytes">
-                                Bytes/hop <i class="fas fa-sort sort-icon" aria-hidden="true"></i>
+                                <button type="button" class="sort-btn">Bytes/hop <i class="fas fa-sort sort-icon" aria-hidden="true"></i></button>
                             </th>
                             <th class="sortable" data-sort="first_heard">
-                                First Heard <i class="fas fa-sort sort-icon" aria-hidden="true"></i>
+                                <button type="button" class="sort-btn">First Heard <i class="fas fa-sort sort-icon" aria-hidden="true"></i></button>
                             </th>
-                            <th class="sortable sort-active" data-sort="last_seen">
-                                Last Heard <i class="fas fa-sort-down sort-icon" aria-hidden="true"></i>
+                            <th class="sortable sort-active" data-sort="last_seen" aria-sort="descending">
+                                <button type="button" class="sort-btn">Last Heard <i class="fas fa-sort-down sort-icon" aria-hidden="true"></i></button>
                             </th>
                             <th class="sortable" data-sort="advert_count">
-                                Adverts <i class="fas fa-sort sort-icon" aria-hidden="true"></i>
+                                <button type="button" class="sort-btn">Adverts <i class="fas fa-sort sort-icon" aria-hidden="true"></i></button>
                             </th>
                             <th>Actions</th>
                         </tr>
@@ -839,9 +839,9 @@ class ModernContactsManager {
         }
         
         // Add click handlers for sortable columns
-        document.querySelectorAll('.sortable').forEach(header => {
-            header.addEventListener('click', () => {
-                const column = header.dataset.sort;
+        document.querySelectorAll('.sortable .sort-btn').forEach(button => {
+            button.addEventListener('click', () => {
+                const column = button.closest('.sortable').dataset.sort;
                 this.setSort(column);
                 this.updateSortIcons();
                 this.loadContactsData({ resetPage: true, clearSelection: true });
@@ -880,12 +880,14 @@ class ModernContactsManager {
         // Remove active class from all headers
         document.querySelectorAll('.sortable').forEach(header => {
             header.classList.remove('sort-active');
+            header.removeAttribute('aria-sort');
         });
         
         // Add active class and correct icon to current sort column
         const activeHeader = document.querySelector(`[data-sort="${this.sortColumn}"]`);
         if (activeHeader) {
             activeHeader.classList.add('sort-active');
+            activeHeader.setAttribute('aria-sort', this.sortDirection === 'asc' ? 'ascending' : 'descending');
             const icon = activeHeader.querySelector('.sort-icon');
             if (icon) {
                 icon.className = this.sortDirection === 'asc'
@@ -2708,10 +2710,25 @@ document.addEventListener('DOMContentLoaded', () => {
 <style>
 /* Sortable column styling - subtle and clean */
 .sortable {
-    cursor: pointer;
     user-select: none;
     position: relative;
-    transition: all 0.2s ease;
+}
+
+/* The header label is a real button so sorting works from the keyboard */
+.sortable .sort-btn {
+    background: none;
+    border: 0;
+    padding: 0;
+    color: inherit;
+    font: inherit;
+    text-align: inherit;
+    cursor: pointer;
+}
+
+.sortable .sort-btn:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 2px;
+    border-radius: 2px;
 }
 
 .sortable .sort-icon {
@@ -2721,7 +2738,8 @@ document.addEventListener('DOMContentLoaded', () => {
     font-size: 0.8em;
 }
 
-.sortable:hover .sort-icon {
+.sortable .sort-btn:hover .sort-icon,
+.sortable .sort-btn:focus-visible .sort-icon {
     opacity: 0.8;
 }
 
