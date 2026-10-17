@@ -132,9 +132,15 @@
         cursor: pointer;
     }
     
-    .packet-clickable:hover {
+    .packet-clickable:hover,
+    .packet-clickable:focus-visible {
         background-color: var(--bg-tertiary);
         border-left-color: #17a2b8;
+    }
+
+    .packet-clickable:focus-visible {
+        outline: 2px solid var(--bs-primary, #0d6efd);
+        outline-offset: 2px;
     }
     
     .click-hint {
@@ -1561,8 +1567,17 @@
         entry.dataset.packetId = packetId;
         
         if (hasRawHex) {
-            entry.addEventListener('click', () => showPacketDetail(packetId));
-            entry.title = 'Click to view packet details';
+            // Keyboard users reach the details the same way: the row acts as a button.
+            entry.setAttribute('role', 'button');
+            entry.tabIndex = 0;
+            entry.setAttribute('aria-haspopup', 'dialog');
+            entry.addEventListener('click', () => showPacketDetail(packetId, entry));
+            entry.addEventListener('keydown', (e) => {
+                if (e.key !== 'Enter' && e.key !== ' ') return;
+                e.preventDefault();
+                showPacketDetail(packetId, entry);
+            });
+            entry.title = 'View packet details';
         }
         
         // Badge color based on packet type
@@ -1658,7 +1673,7 @@
     }
     
     // Show packet detail modal
-    async function showPacketDetail(packetId) {
+    async function showPacketDetail(packetId, opener = null) {
         const data = packetStore.get(packetId);
         if (!data) {
             console.error('Packet data not found:', packetId);
@@ -1697,8 +1712,15 @@
         // Populate modal with decoded data (prefer decoder output, fallback to server data)
         await populatePacketModal(data, rawHex, decoded, structure, decodeError);
 
-        // Show the modal
-        const modal = new bootstrap.Modal(document.getElementById('packetDetailModal'));
+        // Show the modal. Opened from script, Bootstrap doesn't return focus
+        // on close, so send it back to the row that opened it.
+        const modalEl = document.getElementById('packetDetailModal');
+        if (opener) {
+            modalEl.addEventListener('hidden.bs.modal', () => {
+                if (opener.isConnected) opener.focus();
+            }, { once: true });
+        }
+        const modal = new bootstrap.Modal(modalEl);
         modal.show();
     }
     // Make showPacketDetail accessible globally
