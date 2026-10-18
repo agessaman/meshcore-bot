@@ -48,6 +48,7 @@ semantic versioning.
 
 ### Fixed
 
+- The web viewer no longer shows Radio Offline for good after a restart. The bot wrote the offline flag only when it changed, so a `true` left by an earlier run stayed in the database while the new run sent normally, and the banner never cleared. The bot now records its own state at startup, before the viewer starts.
 - Web viewer keyboard and screen-reader access: contact columns sort from the keyboard and announce their sort order, plugin cards and Realtime packet details open with Enter or Space, and every button and form field on every page has an accessible name (about 300 Plugins settings fields were announced without one).
 - Web viewer text contrast: status colors used as text (amber, cyan, green, red), muted text, outline buttons, code, log levels and badges now pass WCAG AA in both themes. The worst cases were the dashboard's Gone Quiet count and Contacts' 7-day counts at 1.6:1 and 2.0:1.
 - Web viewer text no longer drops below 0.7rem (Realtime timestamps were 9.3px), monospace text uses one font stack, and `/config` no longer scrolls sideways on a phone.

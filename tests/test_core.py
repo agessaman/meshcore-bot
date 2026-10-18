@@ -928,6 +928,32 @@ class TestRadioOfflineState:
         bot = self._make_bot(tmp_path)
         assert bot.is_radio_offline is False
 
+    def test_start_replaces_a_stale_offline_flag_from_an_earlier_run(self, tmp_path):
+        bot = self._make_bot(tmp_path)
+        bot.db_manager.set_metadata('bot.radio_offline', 'true')
+        bot.db_manager.set_metadata('bot.radio_offline_since', '2026-10-15T14:42:58+00:00')
+
+        with patch.object(bot, "connect", return_value=False):
+            asyncio.run(bot.start())
+
+        assert bot.db_manager.get_metadata('bot.radio_offline') == 'false'
+        assert bot.db_manager.get_metadata('bot.radio_offline_since') == ''
+
+    def test_start_publishes_before_the_web_viewer_starts(self, tmp_path):
+        """The early viewer must not render the stale banner from the first request."""
+        bot = self._make_bot(tmp_path)
+        bot.db_manager.set_metadata('bot.radio_offline', 'true')
+        seen = []
+        viewer = MagicMock(enabled=True)
+        viewer.start_viewer.side_effect = lambda: seen.append(
+            bot.db_manager.get_metadata('bot.radio_offline'))
+        bot.web_viewer_integration = viewer
+
+        with patch.object(bot, "connect", return_value=False):
+            asyncio.run(bot.start())
+
+        assert seen == ['false']
+
     def test_record_send_failure_increments_counter(self, tmp_path):
         bot = self._make_bot(tmp_path)
         bot._record_send_failure()
