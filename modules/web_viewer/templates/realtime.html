@@ -22,6 +22,9 @@
         --rt-bot-rule: rgba(124, 58, 237, 0.45);
         --rt-type: #a8a29e;
         --rt-type-mix: black;
+        --rt-lens-all: #0d6efd;
+        --rt-lens-message: #2a78d6;
+        --rt-lens-on: #ffffff;
     }
 
     [data-theme="dark"] {
@@ -36,6 +39,9 @@
         --rt-bot-rule: rgba(167, 139, 250, 0.5);
         --rt-type: #87817c;
         --rt-type-mix: white;
+        --rt-lens-all: #6ea8fe;
+        --rt-lens-message: #3987e5;
+        --rt-lens-on: #1a1a1a;
     }
 
     /* Packet types take the dashboard's packet-type chart colors (SERIES_PALETTE
@@ -147,8 +153,8 @@
     }
 
     .rt-spark rect {
-        fill: currentColor;
-        opacity: 0.55;
+        fill: var(--rt-route-flood);
+        opacity: 0.6;
     }
 
     .rt-spark rect.is-now {
@@ -530,6 +536,41 @@
         white-space: nowrap;
     }
 
+    /* Filter lenses carry the colors of what they show: messages in the
+       message blue, commands in the bot's violet. The chosen lens fills. */
+    .rt-lens {
+        --lens: var(--rt-lens-all);
+        color: color-mix(in oklch, var(--lens) 82%, var(--rt-type-mix));
+        background-color: transparent;
+        border: 1px solid color-mix(in srgb, var(--lens) 55%, transparent);
+    }
+
+    .rt-lens--message { --lens: var(--rt-lens-message); }
+    .rt-lens--command { --lens: var(--rt-bot); }
+
+    .rt-lens:hover {
+        color: color-mix(in oklch, var(--lens) 82%, var(--rt-type-mix));
+        background-color: color-mix(in srgb, var(--lens) 12%, transparent);
+    }
+
+    .btn-check:checked + .rt-lens {
+        color: var(--rt-lens-on);
+        background-color: var(--lens);
+        border-color: var(--lens);
+    }
+
+    .btn-check:focus-visible + .rt-lens {
+        outline: 2px solid var(--lens);
+        outline-offset: 1px;
+        box-shadow: none;
+    }
+
+    #rt-pause[aria-pressed="true"] {
+        color: #fff;
+        background-color: #0d6efd;
+        border-color: #0d6efd;
+    }
+
     /* Phone: a compact sticky strip, filters behind a button, two-line rows. */
     @media (max-width: 767.98px) {
         .rt-strip {
@@ -648,7 +689,7 @@
         --seg-mac: #eb6834;
         --seg-cipher: #4a3aa7;
         --seg-ink-mix: black;
-        --seg-ink-share: 55%;
+        --seg-ink-share: 42%;
     }
 
     [data-theme="dark"] #packetDetailModal {
@@ -661,7 +702,7 @@
         --seg-mac: #d95926;
         --seg-cipher: #9085e9;
         --seg-ink-mix: white;
-        --seg-ink-share: 45%;
+        --seg-ink-share: 30%;
     }
 
     #packetDetailModal .modal-content {
@@ -764,7 +805,7 @@
         border-radius: 2px;
         font-weight: 600;
         color: color-mix(in oklch, var(--seg) var(--seg-ink-share), var(--seg-ink-mix));
-        background-color: color-mix(in srgb, var(--seg) 20%, transparent);
+        background-color: color-mix(in srgb, var(--seg) 34%, transparent);
         -webkit-box-decoration-break: clone;
         box-decoration-break: clone;
     }
@@ -817,8 +858,7 @@
         width: 0.7rem;
         height: 0.7rem;
         border-radius: 2px;
-        background-color: color-mix(in srgb, var(--seg) 20%, transparent);
-        box-shadow: inset 0 0 0 1.5px var(--seg);
+        background-color: var(--seg);
     }
 
     .segment-bytes {
@@ -985,11 +1025,11 @@
     </button>
     <div class="btn-group btn-group-sm" role="group" aria-label="Show">
         <input type="radio" class="btn-check" name="rt-kind" id="rt-kind-all" value="all" checked>
-        <label class="btn btn-outline-secondary" for="rt-kind-all">Everything</label>
+        <label class="btn rt-lens rt-lens--all" for="rt-kind-all"><i class="fas fa-layer-group" aria-hidden="true"></i> Everything</label>
         <input type="radio" class="btn-check" name="rt-kind" id="rt-kind-message" value="message">
-        <label class="btn btn-outline-secondary" for="rt-kind-message">Messages</label>
+        <label class="btn rt-lens rt-lens--message" for="rt-kind-message"><i class="fas fa-comment" aria-hidden="true"></i> Messages</label>
         <input type="radio" class="btn-check" name="rt-kind" id="rt-kind-command" value="command">
-        <label class="btn btn-outline-secondary" for="rt-kind-command">Commands</label>
+        <label class="btn rt-lens rt-lens--command" for="rt-kind-command"><i class="fas fa-robot" aria-hidden="true"></i> Commands</label>
     </div>
     <select class="form-select form-select-sm" id="rt-type" aria-label="Packet type">
         <option value="">All packet types</option>

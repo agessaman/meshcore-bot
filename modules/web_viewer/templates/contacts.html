@@ -235,6 +235,19 @@
         white-space: nowrap;
     }
 
+    /* Each stat card reads in its own color: contacts in the link blue,
+       adverts in teal. */
+    :root {
+        --stat-adverts: #0f7a5f;
+    }
+
+    [data-theme="dark"] {
+        --stat-adverts: #4fd1ae;
+    }
+
+    .contacts-stat--contacts { color: var(--link-color); }
+    .contacts-stat--adverts { color: var(--stat-adverts); }
+
     .contacts-stat-label {
         display: block;
         margin-top: 0.25rem;
@@ -432,20 +445,20 @@
     <div class="col-md-3">
         <div class="card h-100">
             <div class="card-header">
-                <i class="fas fa-users"></i> Active Contacts
+                <i class="fas fa-users contacts-stat--contacts" aria-hidden="true"></i> Active Contacts
             </div>
             <div class="card-body d-flex align-items-center">
                 <div class="row text-center w-100">
                     <div class="col-4">
-                        <div id="contacts-24h" class="contacts-stat">0</div>
+                        <div id="contacts-24h" class="contacts-stat contacts-stat--contacts">0</div>
                         <small class="contacts-stat-label">24h</small>
                     </div>
                     <div class="col-4">
-                        <div id="contacts-7d" class="contacts-stat">0</div>
+                        <div id="contacts-7d" class="contacts-stat contacts-stat--contacts">0</div>
                         <small class="contacts-stat-label">7d</small>
                     </div>
                     <div class="col-4">
-                        <div id="contacts-all" class="contacts-stat">0</div>
+                        <div id="contacts-all" class="contacts-stat contacts-stat--contacts">0</div>
                         <small class="contacts-stat-label">All</small>
                     </div>
                 </div>
@@ -457,20 +470,20 @@
     <div class="col-md-3">
         <div class="card h-100">
             <div class="card-header">
-                <i class="fas fa-broadcast-tower"></i> Advertisements
+                <i class="fas fa-broadcast-tower contacts-stat--adverts" aria-hidden="true"></i> Advertisements
             </div>
             <div class="card-body d-flex align-items-center">
                 <div class="row text-center w-100">
                     <div class="col-4">
-                        <div id="adverts-24h" class="contacts-stat">0</div>
+                        <div id="adverts-24h" class="contacts-stat contacts-stat--adverts">0</div>
                         <small class="contacts-stat-label">24h</small>
                     </div>
                     <div class="col-4">
-                        <div id="adverts-7d" class="contacts-stat">0</div>
+                        <div id="adverts-7d" class="contacts-stat contacts-stat--adverts">0</div>
                         <small class="contacts-stat-label">7d</small>
                     </div>
                     <div class="col-4">
-                        <div id="adverts-all" class="contacts-stat">0</div>
+                        <div id="adverts-all" class="contacts-stat contacts-stat--adverts">0</div>
                         <small class="contacts-stat-label">All</small>
                     </div>
                 </div>
