@@ -70,7 +70,7 @@
         width: 1.5rem;
         height: 1.5rem;
         border-radius: 0.375rem;
-        font-size: 0.75rem;
+        font-size: 0.7rem;
         color: color-mix(in oklch, var(--rt-type) 72%, var(--rt-type-mix));
         background-color: color-mix(in srgb, var(--rt-type) 12%, transparent);
     }
@@ -633,293 +633,312 @@
         }
     }
 
-    /* Packet Detail Modal Styles */
-    .packet-detail-body {
-        background-color: #1a1d21;
-        color: #e9ecef;
-        max-height: 70vh;
-        overflow-y: auto;
+    /* ── Packet byte breakdown ─────────────────────────────────────────────
+       Surfaces and text come from the base.html theme tokens, light first
+       with dark overrides like the rest of the viewer. Byte segments are a
+       data legend, so they use the dashboard's categorical palette as tints,
+       never the lamp colors; each segment card repeats its swatch and name. */
+    #packetDetailModal {
+        --seg-transport: #eb6834;
+        --seg-header: #eda100;
+        --seg-pathlen: #4a3aa7;
+        --seg-path: #1baf7a;
+        --seg-payload: #2a78d6;
+        --seg-channel: #e87ba4;
+        --seg-mac: #eb6834;
+        --seg-cipher: #4a3aa7;
+        --seg-ink-mix: black;
+        --seg-ink-share: 55%;
+    }
+
+    [data-theme="dark"] #packetDetailModal {
+        --seg-transport: #d95926;
+        --seg-header: #c98500;
+        --seg-pathlen: #9085e9;
+        --seg-path: #199e70;
+        --seg-payload: #3987e5;
+        --seg-channel: #d55181;
+        --seg-mac: #d95926;
+        --seg-cipher: #9085e9;
+        --seg-ink-mix: white;
+        --seg-ink-share: 45%;
     }
 
     #packetDetailModal .modal-content {
-        background-color: #1a1d21;
-        border: 1px solid #343a40;
+        color: var(--text-color);
+        background-color: var(--bg-color);
+        border: 1px solid var(--border-color);
     }
 
-    #packetDetailModal .modal-header {
-        background-color: #212529;
-        border-bottom: 1px solid #343a40;
-        color: #e9ecef;
-    }
-
+    #packetDetailModal .modal-header,
     #packetDetailModal .modal-footer {
-        background-color: #212529;
-        border-top: 1px solid #343a40;
+        background-color: var(--card-header-bg);
+        border-color: var(--border-color);
     }
 
-    .packet-info-item {
-        margin-bottom: 0.5rem;
+    #packetDetailModal .modal-title {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 0.25rem 0.6rem;
+        font-size: 1rem;
+        font-weight: 600;
     }
 
-    .packet-info-label {
-        color: #adb5bd;
-        margin-right: 0.5rem;
+    .pkt-total {
+        color: var(--text-muted);
+        font-weight: 400;
+        font-size: 0.875rem;
+        font-variant-numeric: tabular-nums;
     }
 
-    .packet-hash {
-        color: #ffc107;
-        font-size: 1.1em;
+    [data-theme="dark"] #packetDetailModal .btn-close {
+        filter: invert(1) grayscale(1) brightness(1.6);
     }
 
-    .section-title {
-        color: #6edff6;
-        border-bottom: 1px solid #343a40;
-        padding-bottom: 0.5rem;
-        margin-bottom: 1rem;
+    .packet-detail-body {
+        max-height: 70vh;
+        overflow-y: auto;
+        background-color: var(--bg-color);
     }
 
-    /* Hex Breakdown */
-    .hex-breakdown-container {
-        background-color: #212529;
-        border-radius: 0.375rem;
-        padding: 1rem;
+    .pkt-facts {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+        gap: 0.6rem 1.5rem;
+        margin: 0 0 1.25rem;
     }
 
+    .pkt-facts dt,
+    .pkt-label {
+        color: var(--text-muted);
+        text-transform: uppercase;
+        font-size: 0.7rem;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+    }
+
+    .pkt-facts dd {
+        margin: 0.1rem 0 0;
+        overflow-wrap: anywhere;
+    }
+
+    .pkt-facts .pkt-facts-wide {
+        grid-column: 1 / -1;
+    }
+
+    .pkt-mono,
+    .pkt-facts #detail-path {
+        padding: 0;
+        font-family: var(--font-mono);
+        font-size: 0.875rem;
+        color: var(--text-color);
+        background: none;
+    }
+
+    .pkt-section {
+        margin-bottom: 1.25rem;
+    }
+
+    .pkt-label {
+        margin: 0 0 0.5rem;
+    }
+
+    /* Raw bytes: one well, wrapping only between bytes. */
     .hex-breakdown {
         font-family: var(--font-mono);
-        font-size: 0.85rem;
-        line-height: 1.8;
-        word-break: break-all;
-        background-color: #2d3238;
-        padding: 1rem;
-        border-radius: 0.25rem;
-        border-left: 4px solid #ffc107;
+        font-size: 0.875rem;
+        line-height: 2;
+        padding: 0.75rem 1rem;
+        color: var(--text-color);
+        background-color: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 0.375rem;
+        word-break: normal;
+        overflow-wrap: normal;
     }
 
-    /* Hex segment colors - high contrast for dark mode */
-    .hex-header { color: #000; background-color: #ffc107; padding: 2px 4px; border-radius: 2px; font-weight: 600; }
-    .hex-pathlen { color: #000; background-color: #17a2b8; padding: 2px 4px; border-radius: 2px; font-weight: 600; }
-    .hex-path { color: #fff; background-color: #198754; padding: 2px 4px; border-radius: 2px; font-weight: 600; }
-    .hex-payload { color: #fff; background-color: #0d6efd; padding: 2px 4px; border-radius: 2px; font-weight: 600; }
-    .hex-transport { color: #000; background-color: #fd7e14; padding: 2px 4px; border-radius: 2px; font-weight: 600; }
-    .hex-unknown { color: #adb5bd; }
+    .hex-header, .hex-pathlen, .hex-path, .hex-payload, .hex-transport,
+    .hex-channel-hash, .hex-cipher-mac, .hex-ciphertext {
+        padding: 0.1rem 0.2rem;
+        border-radius: 2px;
+        font-weight: 600;
+        color: color-mix(in oklch, var(--seg) var(--seg-ink-share), var(--seg-ink-mix));
+        background-color: color-mix(in srgb, var(--seg) 20%, transparent);
+        -webkit-box-decoration-break: clone;
+        box-decoration-break: clone;
+    }
 
-    /* GroupText hex colors - high contrast for dark mode */
-    .hex-channel-hash { color: #fff; background-color: #dc3545; padding: 2px 4px; border-radius: 2px; font-weight: 600; }
-    .hex-cipher-mac { color: #000; background-color: #ffc107; padding: 2px 4px; border-radius: 2px; font-weight: 600; }
-    .hex-ciphertext { color: #000; background-color: #17a2b8; padding: 2px 4px; border-radius: 2px; font-weight: 600; }
+    .hex-transport, .seg-transport { --seg: var(--seg-transport); }
+    .hex-header, .seg-header { --seg: var(--seg-header); }
+    .hex-pathlen, .seg-pathlen { --seg: var(--seg-pathlen); }
+    .hex-path, .seg-path { --seg: var(--seg-path); }
+    .hex-payload, .seg-payload { --seg: var(--seg-payload); }
+    .hex-channel-hash, .seg-channel { --seg: var(--seg-channel); }
+    .hex-cipher-mac, .seg-mac { --seg: var(--seg-mac); }
+    .hex-ciphertext, .seg-cipher { --seg: var(--seg-cipher); }
 
-    /* Segment Cards */
+    .hex-unknown {
+        color: var(--text-muted);
+    }
+
+    /* Segment cards: one level of cards, each labeled with its swatch. */
+    .pkt-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.75rem;
+        margin-bottom: 1.25rem;
+    }
+
+    .pkt-grid--3 {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
     .segment-card {
-        background-color: #212529;
-        border: 1px solid #343a40;
+        min-width: 0;
+        padding: 0.85rem 1rem;
+        background-color: var(--card-bg);
+        border: 1px solid var(--border-color);
         border-radius: 0.375rem;
-        padding: 1rem;
-        height: 100%;
     }
 
     .segment-title {
-        font-size: 0.9rem;
-        margin-bottom: 0.5rem;
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+        margin: 0 0 0.15rem;
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: var(--text-color);
+    }
+
+    .seg-swatch {
+        flex: 0 0 auto;
+        width: 0.7rem;
+        height: 0.7rem;
+        border-radius: 2px;
+        background-color: color-mix(in srgb, var(--seg) 20%, transparent);
+        box-shadow: inset 0 0 0 1.5px var(--seg);
     }
 
     .segment-bytes {
-        font-size: 0.7rem;
-        color: #adb5bd;
         margin-bottom: 0.5rem;
+        color: var(--text-muted);
+        font-size: 0.7rem;
+        font-variant-numeric: tabular-nums;
     }
 
     .segment-value {
         display: block;
+        padding: 0.45rem 0.6rem;
         font-family: var(--font-mono);
-        font-size: 0.85rem;
-        background-color: #2d3238;
-        padding: 0.5rem;
+        font-size: 0.875rem;
+        color: var(--text-color);
+        background-color: var(--bg-tertiary);
         border-radius: 0.25rem;
-        word-break: break-all;
-        color: #e9ecef;
+        word-break: normal;
+        overflow-wrap: anywhere;
     }
 
     .segment-description {
-        font-size: 0.8rem;
-        color: #adb5bd;
-        margin-top: 0.5rem;
-        margin-bottom: 0;
+        margin: 0.5rem 0 0;
+        color: var(--text-muted);
+        font-size: 0.875rem;
     }
 
-    .text-truncate-multi {
-        max-height: 4.5em;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-
-    /* Header bits table */
     .header-bits-table {
-        font-size: 0.8rem;
-        margin-bottom: 0;
+        --bs-table-bg: transparent;
+        --bs-table-accent-bg: transparent;
+        margin: 0.6rem 0 0;
+        font-size: 0.875rem;
+        color: var(--text-color);
+        font-variant-numeric: tabular-nums;
     }
 
-    .header-bits-table th {
-        color: #adb5bd;
-        font-weight: 500;
-        border-color: #343a40 !important;
+    .header-bits-table > :not(:first-child) {
+        border-top: 1px solid var(--border-color);
     }
 
-    .header-bits-table td {
-        border-color: #343a40 !important;
-        color: #e9ecef;
+    .header-bits-table > :not(caption) > * > * {
+        color: var(--text-color);
+        border-color: var(--border-color);
+        background-color: transparent;
     }
 
-    /* Decrypted message card */
-    .decrypted-card {
-        background-color: rgba(25, 135, 84, 0.1);
-        border-color: #198754;
+    .header-bits-table thead th {
+        color: var(--text-muted);
+        text-transform: uppercase;
+        font-size: 0.7rem;
+        font-weight: 600;
+        letter-spacing: 0.04em;
     }
 
-    .decrypted-field {
-        margin-bottom: 0.25rem;
+    .header-bits-table .bits-binary {
+        font-family: var(--font-mono);
+    }
+
+    /* Decrypted message */
+    .decrypted-card .segment-title {
+        color: var(--text-success);
+    }
+
+    .decrypted-fields {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+        gap: 0.5rem 1.5rem;
+        margin: 0.5rem 0 0.75rem;
     }
 
     .decrypted-label {
-        color: #adb5bd;
-        font-size: 0.85rem;
+        display: block;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        font-size: 0.7rem;
+        font-weight: 600;
+        letter-spacing: 0.04em;
     }
 
     .decrypted-value {
-        color: #e9ecef;
-        font-weight: 500;
+        overflow-wrap: anywhere;
     }
 
     .message-content {
-        background-color: #2d3238;
-        padding: 0.75rem;
-        border-radius: 0.25rem;
-        font-family: inherit;
+        padding: 0.6rem 0.75rem;
+        margin-top: 0.25rem;
         white-space: pre-wrap;
-        word-break: break-word;
-        margin-top: 0.5rem;
+        overflow-wrap: anywhere;
+        background-color: var(--bg-tertiary);
+        border-radius: 0.25rem;
     }
 
-    /* GroupText section */
-    #grouptext-breakdown {
-        display: none;
-        background-color: #212529;
-        border: 1px solid #343a40;
-        border-radius: 0.375rem;
-        padding: 1rem;
-        margin-top: 1rem;
-    }
-
-    #grouptext-breakdown.visible {
-        display: block !important;
-    }
-
-    /* Advert section */
+    #grouptext-breakdown,
     #advert-breakdown {
         display: none;
-        background-color: #212529;
-        border: 1px solid #343a40;
-        border-radius: 0.375rem;
-        padding: 1rem;
-        margin-top: 1rem;
     }
 
+    #grouptext-breakdown.visible,
     #advert-breakdown.show-section {
-        display: block !important;
+        display: block;
     }
 
-    /* Light mode support for modal */
-    [data-theme="light"] .packet-detail-body,
-    [data-theme="light"] #packetDetailModal .modal-content {
-        background-color: var(--bg-secondary);
-        color: var(--text-color);
+    #advert-node-info > div + div {
+        margin-top: 0.2rem;
     }
 
-    [data-theme="light"] #packetDetailModal .modal-header,
-    [data-theme="light"] #packetDetailModal .modal-footer {
-        background-color: var(--bg-tertiary);
-        border-color: var(--border-color);
-        color: var(--text-color);
-    }
-
-    [data-theme="light"] .segment-card {
-        background-color: var(--card-bg);
-        border-color: var(--border-color);
-    }
-
-    [data-theme="light"] .segment-value {
-        background-color: #e9ecef;
-        color: #212529;
-    }
-
-    [data-theme="light"] .hex-breakdown {
-        background-color: var(--bg-tertiary);
-        border-left-color: #ffc107;
-    }
-
-    [data-theme="light"] .hex-breakdown-container {
-        background-color: var(--card-bg);
-    }
-
-    [data-theme="light"] .section-title {
-        color: #0d6efd;
-        border-bottom-color: var(--border-color);
-    }
-
-    [data-theme="light"] .packet-info-label {
+    #advert-node-info strong {
+        font-weight: 400;
         color: var(--text-muted);
     }
 
-    [data-theme="light"] .segment-bytes,
-    [data-theme="light"] .segment-description {
-        color: var(--text-muted);
-    }
+    @media (max-width: 767.98px) {
+        .packet-detail-body {
+            max-height: none;
+        }
 
-    /* Override Bootstrap table-dark in light mode */
-    [data-theme="light"] .header-bits-table,
-    [data-theme="light"] .header-bits-table.table-dark {
-        --bs-table-bg: var(--bg-secondary);
-        --bs-table-color: var(--text-color);
-        color: var(--text-color);
-        background-color: var(--bg-secondary);
-    }
-
-    [data-theme="light"] .header-bits-table th,
-    [data-theme="light"] .header-bits-table.table-dark th {
-        border-color: var(--border-color) !important;
-        color: #495057 !important;
-        background-color: #f8f9fa !important;
-    }
-
-    [data-theme="light"] .header-bits-table td,
-    [data-theme="light"] .header-bits-table.table-dark td {
-        border-color: var(--border-color) !important;
-        color: #212529 !important;
-        background-color: #ffffff !important;
-    }
-
-    [data-theme="light"] .message-content {
-        background-color: var(--bg-tertiary);
-        color: var(--text-color);
-    }
-
-    [data-theme="light"] #grouptext-breakdown,
-    [data-theme="light"] #advert-breakdown {
-        background-color: var(--card-bg);
-        border-color: var(--border-color);
-    }
-
-    [data-theme="light"] .decrypted-label {
-        color: #495057;
-    }
-
-    [data-theme="light"] .decrypted-value {
-        color: var(--text-color);
-    }
-
-    [data-theme="light"] .decrypted-card {
-        background-color: rgba(25, 135, 84, 0.1);
-        border-color: #198754;
+        .pkt-grid,
+        .pkt-grid--3 {
+            grid-template-columns: minmax(0, 1fr);
+        }
     }
 </style>
 {% endblock %}
@@ -999,190 +1018,153 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="packetDetailModalLabel">
-                    <i class="fas fa-microchip"></i> Packet Byte Breakdown
-                    <span id="packet-total-bytes" class="badge bg-secondary ms-2"></span>
+                    <span><i class="fas fa-microchip" aria-hidden="true"></i> Packet byte breakdown</span>
+                    <span id="packet-total-bytes" class="pkt-total"></span>
                 </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body packet-detail-body">
-                <!-- Packet Header Info -->
-                <div class="row mb-3">
-                    <div class="col-md-6">
-                        <div class="packet-info-item">
-                            <span class="packet-info-label">Packet Hash:</span>
-                            <code id="detail-packet-hash" class="packet-hash"></code>
-                        </div>
-                        <div class="packet-info-item">
-                            <span class="packet-info-label">Type:</span>
-                            <span id="detail-payload-type"></span>
-                        </div>
-                        <div class="packet-info-item">
-                            <span class="packet-info-label">Heard at:</span>
-                            <span id="detail-timestamp"></span>
-                        </div>
+                <dl class="pkt-facts">
+                    <div>
+                        <dt>Packet hash</dt>
+                        <dd><code id="detail-packet-hash" class="pkt-mono"></code></dd>
                     </div>
-                    <div class="col-md-6">
-                        <div class="packet-info-item">
-                            <span class="packet-info-label">Route:</span>
-                            <span id="detail-route-type"></span>
-                        </div>
-                        <div class="packet-info-item">
-                            <span class="packet-info-label">Path:</span>
-                            <span id="detail-path"></span>
-                        </div>
+                    <div>
+                        <dt>Type</dt>
+                        <dd id="detail-payload-type"></dd>
                     </div>
+                    <div>
+                        <dt>Route</dt>
+                        <dd id="detail-route-type"></dd>
+                    </div>
+                    <div>
+                        <dt>Heard at</dt>
+                        <dd id="detail-timestamp"></dd>
+                    </div>
+                    <div class="pkt-facts-wide">
+                        <dt>Path</dt>
+                        <dd id="detail-path"></dd>
+                    </div>
+                </dl>
+
+                <!-- Decoder note: shown above the bytes so it frames what follows -->
+                <div id="decoder-error" class="alert alert-warning" role="status" style="display: none;">
+                    <i class="fas fa-exclamation-triangle" aria-hidden="true"></i>
+                    <span id="decoder-error-message"></span>
                 </div>
 
-                <!-- Full Hex Breakdown -->
-                <div class="hex-breakdown-container mb-4">
-                    <h6 class="section-title">Raw Packet Data</h6>
+                <section class="pkt-section" aria-labelledby="pkt-raw-title">
+                    <h6 class="pkt-label" id="pkt-raw-title">Raw packet</h6>
                     <div id="hex-breakdown" class="hex-breakdown"></div>
-                </div>
+                </section>
 
-                <!-- Header Analysis -->
-                <div class="row mb-4">
-                    <div class="col-md-6">
-                        <div class="segment-card">
-                            <h6 class="segment-title text-warning">Header</h6>
-                            <div class="segment-bytes" id="header-bytes">Bytes 0-0</div>
-                            <code id="header-value" class="segment-value"></code>
-                            <table class="table table-sm table-dark header-bits-table mt-2">
-                                <thead>
-                                    <tr>
-                                        <th>BITS</th>
-                                        <th>FIELD</th>
-                                        <th>VALUE</th>
-                                        <th>BINARY</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="header-bits-body">
-                                </tbody>
-                            </table>
-                        </div>
+                <div class="pkt-grid">
+                    <div class="segment-card">
+                        <h6 class="segment-title"><span class="seg-swatch seg-header" aria-hidden="true"></span>Header</h6>
+                        <div class="segment-bytes" id="header-bytes">Byte 0</div>
+                        <code id="header-value" class="segment-value"></code>
+                        <table class="table table-sm header-bits-table">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Bits</th>
+                                    <th scope="col">Field</th>
+                                    <th scope="col">Value</th>
+                                    <th scope="col">Binary</th>
+                                </tr>
+                            </thead>
+                            <tbody id="header-bits-body">
+                            </tbody>
+                        </table>
                     </div>
-                    <div class="col-md-6">
-                        <div class="segment-card">
-                            <h6 class="segment-title text-info">Path Length</h6>
-                            <div class="segment-bytes" id="pathlen-bytes">Bytes 1-1</div>
-                            <code id="pathlen-value" class="segment-value"></code>
-                            <p id="pathlen-description" class="segment-description"></p>
-                        </div>
+                    <div class="segment-card">
+                        <h6 class="segment-title"><span class="seg-swatch seg-pathlen" aria-hidden="true"></span>Path length</h6>
+                        <div class="segment-bytes" id="pathlen-bytes">Byte 1</div>
+                        <code id="pathlen-value" class="segment-value"></code>
+                        <p id="pathlen-description" class="segment-description"></p>
                     </div>
-                </div>
-
-                <!-- Path and Payload -->
-                <div class="row mb-4">
-                    <div class="col-md-6">
-                        <div class="segment-card">
-                            <h6 class="segment-title text-success">Path Data</h6>
-                            <div class="segment-bytes" id="path-bytes">Bytes 2-?</div>
-                            <code id="path-value" class="segment-value"></code>
-                            <p class="segment-description">Historical route taken (bytes are added as packet floods through network)</p>
-                        </div>
+                    <div class="segment-card">
+                        <h6 class="segment-title"><span class="seg-swatch seg-path" aria-hidden="true"></span>Path</h6>
+                        <div class="segment-bytes" id="path-bytes"></div>
+                        <code id="path-value" class="segment-value"></code>
+                        <p id="path-description" class="segment-description"></p>
                     </div>
-                    <div class="col-md-6">
-                        <div class="segment-card">
-                            <h6 class="segment-title text-primary">Payload</h6>
-                            <div class="segment-bytes" id="payload-bytes">Bytes ?-?</div>
-                            <code id="payload-value" class="segment-value text-truncate-multi"></code>
-                            <p id="payload-description" class="segment-description"></p>
-                        </div>
+                    <div class="segment-card">
+                        <h6 class="segment-title"><span class="seg-swatch seg-payload" aria-hidden="true"></span>Payload</h6>
+                        <div class="segment-bytes" id="payload-bytes"></div>
+                        <code id="payload-value" class="segment-value"></code>
+                        <p id="payload-description" class="segment-description"></p>
                     </div>
                 </div>
 
                 <!-- GroupText Payload Breakdown (shown only for GroupText packets) -->
-                <div id="grouptext-breakdown" class="grouptext-section">
-                    <h6 class="section-title">GroupText Payload Byte Breakdown</h6>
+                <section id="grouptext-breakdown" class="pkt-section" aria-labelledby="pkt-grouptext-title">
+                    <h6 class="pkt-label" id="pkt-grouptext-title">Group text payload</h6>
                     <div id="grouptext-hex" class="hex-breakdown mb-3"></div>
-
-                    <div class="row">
-                        <div class="col-md-4">
-                            <div class="segment-card">
-                                <h6 class="segment-title text-danger">Channel Hash</h6>
-                                <div class="segment-bytes">Bytes 0-0</div>
-                                <code id="channel-hash-value" class="segment-value"></code>
-                                <p class="segment-description">First byte of SHA256 of channel's shared key</p>
-                            </div>
+                    <div class="pkt-grid pkt-grid--3">
+                        <div class="segment-card">
+                            <h6 class="segment-title"><span class="seg-swatch seg-channel" aria-hidden="true"></span>Channel hash</h6>
+                            <div class="segment-bytes">Payload byte 0</div>
+                            <code id="channel-hash-value" class="segment-value"></code>
+                            <p class="segment-description">First byte of the SHA-256 of the channel's shared key</p>
                         </div>
-                        <div class="col-md-4">
-                            <div class="segment-card">
-                                <h6 class="segment-title text-warning">Cipher MAC</h6>
-                                <div class="segment-bytes">Bytes 1-2</div>
-                                <code id="cipher-mac-value" class="segment-value"></code>
-                                <p class="segment-description">MAC for encrypted data</p>
-                            </div>
+                        <div class="segment-card">
+                            <h6 class="segment-title"><span class="seg-swatch seg-mac" aria-hidden="true"></span>Cipher MAC</h6>
+                            <div class="segment-bytes">Payload bytes 1–2</div>
+                            <code id="cipher-mac-value" class="segment-value"></code>
+                            <p class="segment-description">Message authentication code for the encrypted data</p>
                         </div>
-                        <div class="col-md-4">
-                            <div class="segment-card">
-                                <h6 class="segment-title text-info">Ciphertext</h6>
-                                <div class="segment-bytes" id="ciphertext-bytes">Bytes 3-?</div>
-                                <code id="ciphertext-value" class="segment-value text-truncate-multi"></code>
-                                <p class="segment-description">Encrypted message content (timestamp + flags + message)</p>
-                            </div>
+                        <div class="segment-card">
+                            <h6 class="segment-title"><span class="seg-swatch seg-cipher" aria-hidden="true"></span>Ciphertext</h6>
+                            <div class="segment-bytes" id="ciphertext-bytes"></div>
+                            <code id="ciphertext-value" class="segment-value"></code>
+                            <p class="segment-description">Encrypted timestamp, flags and message</p>
                         </div>
                     </div>
 
                     <!-- Decrypted Message (if available) -->
-                    <div id="decrypted-section" class="mt-3" style="display: none;">
+                    <div id="decrypted-section" style="display: none;">
                         <div class="segment-card decrypted-card">
-                            <h6 class="segment-title text-success"><i class="fas fa-unlock"></i> Decrypted Message</h6>
-                            <div class="row">
-                                <div class="col-md-4">
-                                    <div class="decrypted-field">
-                                        <span class="decrypted-label">Sender:</span>
-                                        <span id="decrypted-sender" class="decrypted-value"></span>
-                                    </div>
+                            <h6 class="segment-title"><i class="fas fa-unlock" aria-hidden="true"></i> Decrypted message</h6>
+                            <div class="decrypted-fields">
+                                <div>
+                                    <span class="decrypted-label">Sender</span>
+                                    <span id="decrypted-sender" class="decrypted-value"></span>
                                 </div>
-                                <div class="col-md-4">
-                                    <div class="decrypted-field">
-                                        <span class="decrypted-label">Timestamp:</span>
-                                        <span id="decrypted-timestamp" class="decrypted-value"></span>
-                                    </div>
+                                <div>
+                                    <span class="decrypted-label">Sent at</span>
+                                    <span id="decrypted-timestamp" class="decrypted-value"></span>
                                 </div>
-                                <div class="col-md-4">
-                                    <div class="decrypted-field">
-                                        <span class="decrypted-label">Channel:</span>
-                                        <span id="decrypted-channel" class="decrypted-value"></span>
-                                    </div>
+                                <div>
+                                    <span class="decrypted-label">Channel</span>
+                                    <span id="decrypted-channel" class="decrypted-value"></span>
                                 </div>
                             </div>
-                            <div class="decrypted-message mt-2">
-                                <span class="decrypted-label">Message:</span>
-                                <div id="decrypted-message" class="message-content"></div>
-                            </div>
+                            <span class="decrypted-label">Message</span>
+                            <div id="decrypted-message" class="message-content"></div>
                         </div>
                     </div>
-                </div>
+                </section>
 
                 <!-- Advert Payload Breakdown (shown only for Advert packets) -->
-                <div id="advert-breakdown">
-                    <h6 class="section-title">Advertisement Payload Breakdown</h6>
-                    <div class="row">
-                        <div class="col-md-6">
-                            <div class="segment-card">
-                                <h6 class="segment-title text-info">Public Key</h6>
-                                <code id="advert-pubkey" class="segment-value text-truncate-multi"></code>
-                            </div>
+                <section id="advert-breakdown" class="pkt-section" aria-labelledby="pkt-advert-title">
+                    <h6 class="pkt-label" id="pkt-advert-title">Advert payload</h6>
+                    <div class="pkt-grid">
+                        <div class="segment-card">
+                            <h6 class="segment-title">Public key</h6>
+                            <code id="advert-pubkey" class="segment-value"></code>
                         </div>
-                        <div class="col-md-6">
-                            <div class="segment-card">
-                                <h6 class="segment-title text-success">Node Info</h6>
-                                <div id="advert-node-info"></div>
-                            </div>
+                        <div class="segment-card">
+                            <h6 class="segment-title">Node</h6>
+                            <div id="advert-node-info"></div>
                         </div>
                     </div>
-                </div>
+                </section>
 
-                <!-- Decoder Error -->
-                <div id="decoder-error" class="alert alert-warning" style="display: none;">
-                    <i class="fas fa-exclamation-triangle"></i>
-                    <span id="decoder-error-message"></span>
-                </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                <button type="button" class="btn btn-outline-primary" id="copy-raw-packet">
-                    <i class="fas fa-copy"></i> Copy Raw Hex
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" id="copy-raw-packet">
+                    <i class="fas fa-copy" aria-hidden="true"></i> Copy raw hex
                 </button>
             </div>
         </div>
@@ -1409,6 +1391,24 @@
         if (className) element.className = className;
         if (text !== null && text !== undefined) element.textContent = String(text);
         return element;
+    }
+
+    // The Clipboard API exists only on HTTPS and localhost; a LAN viewer over
+    // plain HTTP falls back to a hidden textarea and execCommand.
+    function copyText(text) {
+        if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text);
+        return new Promise((resolve, reject) => {
+            const area = makeElement('textarea');
+            area.value = text;
+            area.setAttribute('readonly', '');
+            area.style.position = 'fixed';
+            area.style.opacity = '0';
+            document.body.appendChild(area);
+            area.select();
+            const ok = document.execCommand('copy');
+            area.remove();
+            ok ? resolve() : reject(new Error('copy refused'));
+        });
     }
 
     function makeIcon(className) {
@@ -1727,6 +1727,11 @@
         if (!raw || (type !== 'ADVERT' && type !== 'GRP_TXT')) return;
         if (type === 'GRP_TXT' && !window.decoderKeyStore) return;
         tx.decodeTried = true;
+        if (Number(tx.packet.bytes_per_hop) > 1) {
+            // The bundled decoder predates multibyte paths and misreads them.
+            tx.multibyteUndecoded = true;
+            return;
+        }
         try {
             const options = window.decoderKeyStore ? { keyStore: window.decoderKeyStore } : {};
             const result = window.meshCoreDecoder.decodePacket(raw, options);
@@ -1851,7 +1856,9 @@
             } else {
                 line.appendChild(makeElement('span', 'rt-who', typeLabel(type)));
                 let extra = null;
-                if (type === 'GRP_TXT') {
+                if (tx.multibyteUndecoded) {
+                    extra = 'multibyte path, not decoded here';
+                } else if (type === 'GRP_TXT') {
                     extra = tx.channelHash ? `channel 0x${tx.channelHash}, no key here` : 'encrypted';
                 } else if (type === 'TXT_MSG') {
                     extra = 'encrypted';
@@ -2023,7 +2030,7 @@
             copy.type = 'button';
             setButtonIconAndLabel(copy, 'fas fa-copy', 'Copy hash');
             copy.addEventListener('click', () => {
-                navigator.clipboard.writeText(tx.hash).then(() => {
+                copyText(tx.hash).then(() => {
                     setButtonIconAndLabel(copy, 'fas fa-check', 'Copied');
                     setTimeout(() => setButtonIconAndLabel(copy, 'fas fa-copy', 'Copy hash'), 1500);
                 }).catch(() => {});
@@ -2629,7 +2636,9 @@
         let decoded = null;
         let decodeError = null;
 
-        if (window.meshCoreDecoder) {
+        if (Number(data.bytes_per_hop) > 1) {
+            decodeError = 'Payload fields aren\'t decoded for multibyte paths: this page\'s decoder predates them and would misread the packet. The header, path and bytes above come from the radio\'s own decode.';
+        } else if (window.meshCoreDecoder) {
             try {
                 const options = window.decoderKeyStore ? { keyStore: window.decoderKeyStore } : {};
                 decoded = window.meshCoreDecoder.decodePacket(rawHex, options);
@@ -2725,9 +2734,7 @@
         // Payload
         const payloadStart = offset + 2 + pathLen;
         if (payloadStart < totalBytes) {
-            const payloadTypeName = decoded?.payloadType !== undefined
-                ? getPayloadTypeName(decoded.payloadType)
-                : (serverData.payload_type_name || 'Unknown');
+            const payloadTypeName = getPayloadTypeName(headerFields(rawHex, decoded, serverData).payloadType);
             segments.push({
                 name: 'Payload',
                 startByte: payloadStart,
@@ -2744,14 +2751,16 @@
     async function populatePacketModal(serverData, rawHex, decoded, structure, decodeError) {
         // Total bytes
         document.getElementById('packet-total-bytes').textContent = `${rawHex.length / 2} bytes`;
+        modalSegmentOffsets = segmentOffsets(decoded, serverData);
 
         // Packet hash - prefer decoder, then server, then compute
-        let packetHash = decoded?.messageHash || serverData.packet_hash;
+        // The server's hash is the one rows, search and Copy hash use.
+        let packetHash = serverData.packet_hash || decoded?.messageHash;
         if (!packetHash && rawHex && typeof sha256 !== 'undefined') {
             const fullHash = sha256(rawHex);
             packetHash = fullHash.slice(0, 8).toUpperCase();
         }
-        document.getElementById('detail-packet-hash').textContent = packetHash || 'N/A';
+        document.getElementById('detail-packet-hash').textContent = packetHash || '—';
 
         // Timestamp
         const timestamp = serverData.datetime
@@ -2759,24 +2768,21 @@
             : new Date().toLocaleString();
         document.getElementById('detail-timestamp').textContent = timestamp;
 
-        // Type and Route - prefer decoder output
-        const payloadTypeNum = decoded?.payloadType ?? serverData.payload_type;
-        const payloadType = decoded?.payloadType !== undefined
-            ? getPayloadTypeName(decoded.payloadType)
-            : (serverData.payload_type_name || getPayloadTypeName(serverData.payload_type));
+        // Type and route from the header byte itself
+        const header = headerFields(rawHex, decoded, serverData);
+        const payloadTypeNum = header.payloadType;
+        const payloadType = getPayloadTypeName(header.payloadType);
         document.getElementById('detail-payload-type').textContent = payloadType;
-
-        const routeType = decoded?.routeType !== undefined
-            ? getRouteTypeName(decoded.routeType)
-            : (serverData.route_type_name || getRouteTypeName(serverData.route_type));
-        document.getElementById('detail-route-type').textContent = routeType;
+        document.getElementById('detail-route-type').textContent = getRouteTypeName(header.routeType);
 
         // Path - prefer decoder output
-        let pathDisplay = 'Direct';
-        if (decoded?.path && decoded.path.length > 0) {
-            pathDisplay = decoded.path.join(' → ');
-        } else if (serverData.path && serverData.path.length > 0) {
-            pathDisplay = serverData.path.join(' → ');
+        // The server's path first: the browser decoder reads a multibyte
+        // path-length byte as a byte count and splits the path into single bytes.
+        let pathDisplay = 'None (heard first-hand)';
+        if (Array.isArray(serverData.path) && serverData.path.length > 0) {
+            pathDisplay = serverData.path.join(' › ');
+        } else if (decoded?.path && decoded.path.length > 0) {
+            pathDisplay = decoded.path.join(' › ');
         }
         document.getElementById('detail-path').textContent = pathDisplay;
 
@@ -2784,7 +2790,7 @@
         renderHexBreakdown(rawHex, structure);
 
         // Header analysis
-        populateHeaderAnalysis(decoded, serverData);
+        populateHeaderAnalysis(decoded, serverData, rawHex);
 
         // Path and Payload
         populatePathAndPayload(decoded, serverData, structure);
@@ -2863,6 +2869,8 @@
                 );
             }
 
+            if (container.childNodes.length) container.appendChild(document.createTextNode(' '));
+
             // Add the segment with color
             const colorClass = colorMap[segment.name] || 'hex-unknown';
             const segmentHex = hexUpper.slice(startHex, endHex);
@@ -2891,15 +2899,13 @@
     }
 
     // Populate header analysis using decoded data
-    function populateHeaderAnalysis(decoded, serverData) {
-        // Get route type, payload type, version - prefer decoder output
-        const routeType = decoded?.routeType ?? serverData.route_type;
-        const payloadType = decoded?.payloadType ?? serverData.payload_type;
-        const version = decoded?.payloadVersion ?? serverData.payload_version;
+    function populateHeaderAnalysis(decoded, serverData, rawHex) {
+        const { byte, routeType, payloadType, version } = headerFields(rawHex, decoded, serverData);
 
-        // Compute header byte from components for display
-        let headerByte;
-        if (routeType !== undefined && payloadType !== undefined) {
+        let headerByte = byte;
+        if (headerByte !== undefined) {
+            // read from the wire
+        } else if (routeType !== undefined && payloadType !== undefined) {
             headerByte = (routeType & 0x03) | ((payloadType & 0x0F) << 2) | (((version ?? 0) & 0x03) << 6);
         } else if (serverData.header !== undefined) {
             headerByte = typeof serverData.header === 'string'
@@ -2926,7 +2932,7 @@
                     makeElement('td', '', bits),
                     makeElement('td', '', field),
                     makeElement('td', '', value),
-                    makeElement('td', 'text-danger', binary)
+                    makeElement('td', 'bits-binary', binary)
                 );
                 tbody.appendChild(row);
             };
@@ -2950,55 +2956,110 @@
     }
 
     // Populate path and payload sections
+    let modalSegmentOffsets = null;
+
+    // Route, payload type and version straight from the header byte on the
+    // wire. The bundled browser decoder predates multibyte paths and misreads
+    // those packets, so it isn't trusted for these.
+    function headerFields(rawHex, decoded, serverData) {
+        const offsets = segmentOffsets(decoded, serverData);
+        const byte = parseInt(String(rawHex || '').slice(offsets.header * 2, offsets.header * 2 + 2), 16);
+        if (Number.isFinite(byte)) {
+            return { byte, routeType: byte & 0x03, payloadType: (byte >> 2) & 0x0f, version: (byte >> 6) & 0x03 };
+        }
+        return {
+            byte: undefined,
+            routeType: serverData.route_type ?? decoded?.routeType,
+            payloadType: serverData.payload_type ?? decoded?.payloadType,
+            version: serverData.payload_version ?? decoded?.payloadVersion
+        };
+    }
+
+    function byteRange(first, last, prefix = '') {
+        const word = prefix ? `${prefix} byte` : 'Byte';
+        return first === last ? `${word} ${first}` : `${word}s ${first}–${last}`;
+    }
+
+    // Where the header, path-length byte and path start: transport codes, when
+    // present, take the first four bytes.
+    function segmentOffsets(decoded, serverData) {
+        const hasTransport = decoded?.hasTransport ?? serverData.has_transport_codes ?? false;
+        const header = hasTransport ? 4 : 0;
+        return { header, pathLen: header + 1, path: header + 2 };
+    }
+
+    function hexBytesSpaced(hex, maxBytes) {
+        const bytes = String(hex || '').toUpperCase().match(/.{1,2}/g) || [];
+        const shown = maxBytes && bytes.length > maxBytes ? bytes.slice(0, maxBytes) : bytes;
+        const more = bytes.length - shown.length;
+        return shown.join(' ') + (more > 0 ? ` … (+${more} bytes)` : '');
+    }
+
+    // Populate path and payload sections
     function populatePathAndPayload(decoded, serverData, structure) {
+        const offsets = modalSegmentOffsets || segmentOffsets(decoded, serverData);
+        document.getElementById('header-bytes').textContent = byteRange(offsets.header, offsets.header);
+        document.getElementById('pathlen-bytes').textContent = byteRange(offsets.pathLen, offsets.pathLen);
+
         // Path length: the raw wire byte, and what it encodes
         const pathLen = pathByteLength(decoded, serverData);
         const hops = Number(serverData.path_len ?? decoded?.pathLength ?? 0) || 0;
         const bytesPerHop = Number(serverData.bytes_per_hop) || 1;
-        const wireByte = serverData.path_len_byte !== null && Number.isFinite(Number(serverData.path_len_byte))
-            ? Number(serverData.path_len_byte)
-            : pathLen;
+        const hasWireByte = serverData.path_len_byte !== null && serverData.path_len_byte !== undefined
+            && Number.isFinite(Number(serverData.path_len_byte));
+        const wireByte = hasWireByte ? Number(serverData.path_len_byte) : pathLen;
         document.getElementById('pathlen-value').textContent = `0x${wireByte.toString(16).padStart(2, '0').toUpperCase()}`;
-        document.getElementById('pathlen-description').textContent =
-            pathLen > 0
-                ? `${hops} hop${hops === 1 ? '' : 's'} × ${bytesPerHop} byte${bytesPerHop === 1 ? '' : 's'} = ${pathLen} bytes of route taken (grows as the packet floods)`
-                : 'No path bytes (heard first-hand, or a direct route)';
-
-        // Path data - prefer decoder output
-        let pathHex = '';
-        if (decoded?.path && decoded.path.length > 0) {
-            pathHex = decoded.path.join('');
-        } else if (serverData.path_hex) {
-            pathHex = serverData.path_hex;
-        } else if (serverData.path) {
-            pathHex = serverData.path.join('');
+        const hopWord = `${hops} hop${hops === 1 ? '' : 's'}`;
+        const sizeWord = `${bytesPerHop}-byte hash${bytesPerHop === 1 ? '' : 'es'}`;
+        // MeshCore packs the hop count into bits 0–5 and the hash size minus
+        // one into bits 6–7; say so only when the byte agrees with the decode.
+        const bitsAgree = hasWireByte && (wireByte & 0x3f) === hops && ((wireByte >> 6) + 1) === bytesPerHop;
+        let pathLenText;
+        if (pathLen === 0) {
+            pathLenText = 'No path bytes: heard first-hand, or sent on a direct route';
+        } else if (bitsAgree && bytesPerHop > 1) {
+            pathLenText = `${hopWord} (bits 0–5) of ${sizeWord} (bits 6–7) = ${pathLen} bytes of path`;
+        } else {
+            pathLenText = `${hopWord} × ${sizeWord} = ${pathLen} bytes of path`;
         }
-        document.getElementById('path-value').textContent = pathHex.toUpperCase() || 'None';
+        document.getElementById('pathlen-description').textContent = pathLenText;
 
-        // Calculate byte positions
-        const hasTransport = decoded?.hasTransport ?? serverData.has_transport_codes ?? false;
-        const pathStart = hasTransport ? 6 : 2;
-        const pathEnd = pathStart + pathLen - 1;
+        // Path data, one hop per group
+        let hopsList = [];
+        if (Array.isArray(serverData.path) && serverData.path.length > 0) {
+            hopsList = serverData.path.map(String);
+        } else if (decoded?.path && decoded.path.length > 0) {
+            hopsList = decoded.path.map(String);
+        } else if (serverData.path_hex) {
+            hopsList = String(serverData.path_hex).match(new RegExp(`.{1,${bytesPerHop * 2}}`, 'g')) || [];
+        }
+        document.getElementById('path-value').textContent = hopsList.length ? hopsList.join(' ').toUpperCase() : 'None';
         document.getElementById('path-bytes').textContent = pathLen > 0
-            ? `Bytes ${pathStart}-${pathEnd}`
-            : 'N/A';
+            ? byteRange(offsets.path, offsets.path + pathLen - 1)
+            : 'No bytes';
+        const route = String(serverData.route_type_name || '').toUpperCase();
+        document.getElementById('path-description').textContent = pathLen === 0
+            ? ''
+            : route.includes('DIRECT')
+                ? 'The route this packet is still to follow, one hash per hop'
+                : 'Repeaters it passed through, one hash prefix added per hop as it flooded';
 
-        // Payload - prefer decoder output
-        const payloadHex = decoded?.payload?.raw || serverData.payload_hex || '';
-        const payloadStart = pathStart + pathLen;
+        // Payload
+        const payloadHex = serverData.payload_hex || decoded?.payload?.raw || '';
+        const payloadStart = offsets.path + pathLen;
         const totalBytes = window.currentPacketHex ? window.currentPacketHex.length / 2 : 0;
-        document.getElementById('payload-bytes').textContent = `Bytes ${payloadStart}-${totalBytes - 1}`;
-        document.getElementById('payload-value').textContent = payloadHex.toUpperCase().slice(0, 100) + (payloadHex.length > 100 ? '...' : '');
+        document.getElementById('payload-bytes').textContent = totalBytes > payloadStart
+            ? byteRange(payloadStart, totalBytes - 1)
+            : 'No bytes';
+        document.getElementById('payload-value').textContent = hexBytesSpaced(payloadHex, 48) || 'None';
 
-        const payloadTypeName = decoded?.payloadType !== undefined
-            ? getPayloadTypeName(decoded.payloadType)
-            : (serverData.payload_type_name || getPayloadTypeName(serverData.payload_type));
-        document.getElementById('payload-description').textContent = `${payloadTypeName} payload data`;
+        const payloadTypeName = getPayloadTypeName(headerFields(window.currentPacketHex, decoded, serverData).payloadType);
+        document.getElementById('payload-description').textContent = `${payloadTypeName} payload`;
     }
 
     // Populate GroupText breakdown using decoded data
     async function populateGroupTextBreakdown(decoded, serverData, structure, fullPacketHex) {
-        const payloadHex = decoded?.payload?.raw || serverData.payload_hex || '';
+        const payloadHex = serverData.payload_hex || decoded?.payload?.raw || '';
         const decodedPayload = decoded?.payload?.decoded;
 
         if (payloadHex.length < 6) {
@@ -3026,11 +3087,11 @@
         document.getElementById('channel-hash-value').textContent = channelHashDisplay;
 
         // Cipher MAC
-        document.getElementById('cipher-mac-value').textContent = cipherMAC;
+        document.getElementById('cipher-mac-value').textContent = hexBytesSpaced(cipherMAC);
 
         // Ciphertext
-        document.getElementById('ciphertext-value').textContent = ciphertext.slice(0, 80) + (ciphertext.length > 80 ? '...' : '');
-        document.getElementById('ciphertext-bytes').textContent = `Bytes 3-${2 + (ciphertext.length / 2)}`;
+        document.getElementById('ciphertext-value').textContent = hexBytesSpaced(ciphertext, 40);
+        document.getElementById('ciphertext-bytes').textContent = byteRange(3, 2 + (ciphertext.length / 2), 'Payload');
 
         // Render GroupText hex with color coding
         renderGroupTextHex(payloadHex);
@@ -3217,15 +3278,21 @@
     function copyRawPacket() {
         const hex = window.currentPacketHex || currentPacketHex;
         if (hex) {
-            navigator.clipboard.writeText(hex).then(() => {
+            copyText(hex).then(() => {
                 // Show brief feedback
                 const btn = document.getElementById('copy-raw-packet');
-                setButtonIconAndLabel(btn, 'fas fa-check', 'Copied!');
+                setButtonIconAndLabel(btn, 'fas fa-check', 'Copied');
                 setTimeout(() => {
-                    setButtonIconAndLabel(btn, 'fas fa-copy', 'Copy Raw Hex');
+                    setButtonIconAndLabel(btn, 'fas fa-copy', 'Copy raw hex');
                 }, 1500);
             }).catch(err => {
+                // Say so instead of failing silently.
                 console.error('Failed to copy:', err);
+                const btn = document.getElementById('copy-raw-packet');
+                setButtonIconAndLabel(btn, 'fas fa-triangle-exclamation', 'Copy blocked by the browser');
+                setTimeout(() => {
+                    setButtonIconAndLabel(btn, 'fas fa-copy', 'Copy raw hex');
+                }, 2500);
             });
         }
     }
