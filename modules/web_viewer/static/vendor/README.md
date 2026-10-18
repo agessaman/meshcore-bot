@@ -13,3 +13,5 @@ Served from here instead of a CDN so the web viewer works on a LAN with no inter
 The login page's fonts live in `../fonts/`: DM Sans and Outfit variable fonts, Latin subset, from `@fontsource-variable/dm-sans` and `@fontsource-variable/outfit` 5.3.0 (SIL Open Font License 1.1).
 
 To upgrade, replace the files from the same package paths at the new version, strip the source-map comment, and update the version here and in the templates' comments.
+
+`../js/meshcore-browser.mjs` is a browser bundle of `@michaelhart/meshcore-decoder` 0.3.0 (MIT) with its crypto-js and @noble/ed25519 dependencies, built by `scripts/meshcore-decoder-browser/build.sh` from the published package plus the browser entry in that directory. To upgrade, run the script with the new version and check the Real-time byte breakdown on a multibyte packet.

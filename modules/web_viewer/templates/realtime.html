@@ -1727,11 +1727,6 @@
         if (!raw || (type !== 'ADVERT' && type !== 'GRP_TXT')) return;
         if (type === 'GRP_TXT' && !window.decoderKeyStore) return;
         tx.decodeTried = true;
-        if (Number(tx.packet.bytes_per_hop) > 1) {
-            // The bundled decoder predates multibyte paths and misreads them.
-            tx.multibyteUndecoded = true;
-            return;
-        }
         try {
             const options = window.decoderKeyStore ? { keyStore: window.decoderKeyStore } : {};
             const result = window.meshCoreDecoder.decodePacket(raw, options);
@@ -1856,9 +1851,7 @@
             } else {
                 line.appendChild(makeElement('span', 'rt-who', typeLabel(type)));
                 let extra = null;
-                if (tx.multibyteUndecoded) {
-                    extra = 'multibyte path, not decoded here';
-                } else if (type === 'GRP_TXT') {
+                if (type === 'GRP_TXT') {
                     extra = tx.channelHash ? `channel 0x${tx.channelHash}, no key here` : 'encrypted';
                 } else if (type === 'TXT_MSG') {
                     extra = 'encrypted';
@@ -2636,9 +2629,7 @@
         let decoded = null;
         let decodeError = null;
 
-        if (Number(data.bytes_per_hop) > 1) {
-            decodeError = 'Payload fields aren\'t decoded for multibyte paths: this page\'s decoder predates them and would misread the packet. The header, path and bytes above come from the radio\'s own decode.';
-        } else if (window.meshCoreDecoder) {
+        if (window.meshCoreDecoder) {
             try {
                 const options = window.decoderKeyStore ? { keyStore: window.decoderKeyStore } : {};
                 decoded = window.meshCoreDecoder.decodePacket(rawHex, options);
@@ -2776,8 +2767,7 @@
         document.getElementById('detail-route-type').textContent = getRouteTypeName(header.routeType);
 
         // Path - prefer decoder output
-        // The server's path first: the browser decoder reads a multibyte
-        // path-length byte as a byte count and splits the path into single bytes.
+        // The bot's own decode of the path first; the browser decode is the fallback.
         let pathDisplay = 'None (heard first-hand)';
         if (Array.isArray(serverData.path) && serverData.path.length > 0) {
             pathDisplay = serverData.path.join(' › ');
@@ -2959,8 +2949,7 @@
     let modalSegmentOffsets = null;
 
     // Route, payload type and version straight from the header byte on the
-    // wire. The bundled browser decoder predates multibyte paths and misreads
-    // those packets, so it isn't trusted for these.
+    // wire, so the breakdown always matches the bytes shown above it.
     function headerFields(rawHex, decoded, serverData) {
         const offsets = segmentOffsets(decoded, serverData);
         const byte = parseInt(String(rawHex || '').slice(offsets.header * 2, offsets.header * 2 + 2), 16);

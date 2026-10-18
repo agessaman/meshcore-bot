@@ -4,6 +4,7 @@ var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
 var __require = /* @__PURE__ */ ((x) => typeof require !== "undefined" ? require : typeof Proxy !== "undefined" ? new Proxy(x, {
   get: (a, b) => (typeof require !== "undefined" ? require : a)[b]
 }) : x)(function(x) {
@@ -33,6 +34,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
   mod
 ));
+var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
 
 // (disabled):crypto
 var require_crypto = __commonJS({
@@ -52,7 +54,7 @@ var require_core = __commonJS({
         root.CryptoJS = factory();
       }
     })(exports, function() {
-      var CryptoJS2 = CryptoJS2 || (function(Math2, undefined2) {
+      var CryptoJS2 = CryptoJS2 || function(Math2, undefined2) {
         var crypto;
         if (typeof window !== "undefined" && window.crypto) {
           crypto = window.crypto;
@@ -92,7 +94,7 @@ var require_core = __commonJS({
           }
           throw new Error("Native crypto module could not be used to get secure random number.");
         };
-        var create = Object.create || /* @__PURE__ */ (function() {
+        var create = Object.create || /* @__PURE__ */ function() {
           function F() {
           }
           return function(obj) {
@@ -102,10 +104,10 @@ var require_core = __commonJS({
             F.prototype = null;
             return subtype;
           };
-        })();
+        }();
         var C2 = {};
         var C_lib = C2.lib = {};
-        var Base = C_lib.Base = /* @__PURE__ */ (function() {
+        var Base = C_lib.Base = /* @__PURE__ */ function() {
           return {
             /**
              * Creates a new object that inherits from this object.
@@ -204,7 +206,7 @@ var require_core = __commonJS({
               return this.init.prototype.extend(this);
             }
           };
-        })();
+        }();
         var WordArray = C_lib.WordArray = Base.extend({
           /**
            * Initializes a newly created word array.
@@ -642,7 +644,7 @@ var require_core = __commonJS({
         });
         var C_algo = C2.algo = {};
         return C2;
-      })(Math);
+      }(Math);
       return CryptoJS2;
     });
   }
@@ -3040,7 +3042,7 @@ var require_cipher_core = __commonJS({
         factory(root.CryptoJS);
       }
     })(exports, function(CryptoJS2) {
-      CryptoJS2.lib.Cipher || (function(undefined2) {
+      CryptoJS2.lib.Cipher || function(undefined2) {
         var C2 = CryptoJS2;
         var C_lib = C2.lib;
         var Base = C_lib.Base;
@@ -3174,7 +3176,7 @@ var require_cipher_core = __commonJS({
            *
            *     var AES = CryptoJS.lib.Cipher._createHelper(CryptoJS.algo.AES);
            */
-          _createHelper: /* @__PURE__ */ (function() {
+          _createHelper: /* @__PURE__ */ function() {
             function selectCipherStrategy(key) {
               if (typeof key == "string") {
                 return PasswordBasedCipher;
@@ -3192,7 +3194,7 @@ var require_cipher_core = __commonJS({
                 }
               };
             };
-          })()
+          }()
         });
         var StreamCipher = C_lib.StreamCipher = Cipher.extend({
           _doFinalize: function() {
@@ -3248,7 +3250,7 @@ var require_cipher_core = __commonJS({
             this._iv = iv;
           }
         });
-        var CBC = C_mode.CBC = (function() {
+        var CBC = C_mode.CBC = function() {
           var CBC2 = BlockCipherMode.extend();
           CBC2.Encryptor = CBC2.extend({
             /**
@@ -3303,7 +3305,7 @@ var require_cipher_core = __commonJS({
             }
           }
           return CBC2;
-        })();
+        }();
         var C_pad = C2.pad = {};
         var Pkcs7 = C_pad.Pkcs7 = {
           /**
@@ -3667,7 +3669,7 @@ var require_cipher_core = __commonJS({
             return plaintext;
           }
         });
-      })();
+      }();
     });
   }
 });
@@ -3684,7 +3686,7 @@ var require_mode_cfb = __commonJS({
         factory(root.CryptoJS);
       }
     })(exports, function(CryptoJS2) {
-      CryptoJS2.mode.CFB = (function() {
+      CryptoJS2.mode.CFB = function() {
         var CFB = CryptoJS2.lib.BlockCipherMode.extend();
         CFB.Encryptor = CFB.extend({
           processBlock: function(words, offset) {
@@ -3718,7 +3720,7 @@ var require_mode_cfb = __commonJS({
           }
         }
         return CFB;
-      })();
+      }();
       return CryptoJS2.mode.CFB;
     });
   }
@@ -3736,7 +3738,7 @@ var require_mode_ctr = __commonJS({
         factory(root.CryptoJS);
       }
     })(exports, function(CryptoJS2) {
-      CryptoJS2.mode.CTR = (function() {
+      CryptoJS2.mode.CTR = function() {
         var CTR = CryptoJS2.lib.BlockCipherMode.extend();
         var Encryptor = CTR.Encryptor = CTR.extend({
           processBlock: function(words, offset) {
@@ -3758,7 +3760,7 @@ var require_mode_ctr = __commonJS({
         });
         CTR.Decryptor = Encryptor;
         return CTR;
-      })();
+      }();
       return CryptoJS2.mode.CTR;
     });
   }
@@ -3776,7 +3778,7 @@ var require_mode_ctr_gladman = __commonJS({
         factory(root.CryptoJS);
       }
     })(exports, function(CryptoJS2) {
-      CryptoJS2.mode.CTRGladman = (function() {
+      CryptoJS2.mode.CTRGladman = function() {
         var CTRGladman = CryptoJS2.lib.BlockCipherMode.extend();
         function incWord(word) {
           if ((word >> 24 & 255) === 255) {
@@ -3833,7 +3835,7 @@ var require_mode_ctr_gladman = __commonJS({
         });
         CTRGladman.Decryptor = Encryptor;
         return CTRGladman;
-      })();
+      }();
       return CryptoJS2.mode.CTRGladman;
     });
   }
@@ -3851,7 +3853,7 @@ var require_mode_ofb = __commonJS({
         factory(root.CryptoJS);
       }
     })(exports, function(CryptoJS2) {
-      CryptoJS2.mode.OFB = (function() {
+      CryptoJS2.mode.OFB = function() {
         var OFB = CryptoJS2.lib.BlockCipherMode.extend();
         var Encryptor = OFB.Encryptor = OFB.extend({
           processBlock: function(words, offset) {
@@ -3871,7 +3873,7 @@ var require_mode_ofb = __commonJS({
         });
         OFB.Decryptor = Encryptor;
         return OFB;
-      })();
+      }();
       return CryptoJS2.mode.OFB;
     });
   }
@@ -3889,7 +3891,7 @@ var require_mode_ecb = __commonJS({
         factory(root.CryptoJS);
       }
     })(exports, function(CryptoJS2) {
-      CryptoJS2.mode.ECB = (function() {
+      CryptoJS2.mode.ECB = function() {
         var ECB = CryptoJS2.lib.BlockCipherMode.extend();
         ECB.Encryptor = ECB.extend({
           processBlock: function(words, offset) {
@@ -3902,7 +3904,7 @@ var require_mode_ecb = __commonJS({
           }
         });
         return ECB;
-      })();
+      }();
       return CryptoJS2.mode.ECB;
     });
   }
@@ -6603,7 +6605,7 @@ var require_orlp_ed25519 = __commonJS({
     "use strict";
     var OrlpEd255192 = (() => {
       var _scriptName = typeof document != "undefined" ? document.currentScript?.src : void 0;
-      return (async function(moduleArg = {}) {
+      return async function(moduleArg = {}) {
         var moduleRtn;
         var Module = moduleArg;
         var ENVIRONMENT_IS_WEB = typeof window == "object";
@@ -6831,14 +6833,14 @@ var require_orlp_ed25519 = __commonJS({
               });
             });
           }
-          wasmBinaryFile ??= findWasmBinary();
+          wasmBinaryFile ?? (wasmBinaryFile = findWasmBinary());
           var result = await instantiateAsync(wasmBinary, wasmBinaryFile, info);
           var exports2 = receiveInstantiationResult(result);
           return exports2;
         }
         class ExitStatus {
-          name = "ExitStatus";
           constructor(status) {
+            __publicField(this, "name", "ExitStatus");
             this.message = `Program terminated with exit(${status})`;
             this.status = status;
           }
@@ -7071,7 +7073,7 @@ var require_orlp_ed25519 = __commonJS({
           });
         }
         return moduleRtn;
-      });
+      };
     })();
     if (typeof exports === "object" && typeof module === "object") {
       module.exports = OrlpEd255192;
@@ -7080,6 +7082,9 @@ var require_orlp_ed25519 = __commonJS({
       define([], () => OrlpEd255192);
   }
 });
+
+// src/browser/index.ts
+var import_crypto_js2 = __toESM(require_crypto_js());
 
 // node_modules/@noble/ed25519/index.js
 var ed25519_exports = {};
@@ -7190,14 +7195,12 @@ var callHash = (name) => {
 };
 var apoint = (p) => p instanceof Point ? p : err("Point expected");
 var B256 = 2n ** 256n;
-var Point = class _Point {
-  static BASE;
-  static ZERO;
-  ex;
-  ey;
-  ez;
-  et;
+var _Point = class _Point {
   constructor(ex, ey, ez, et) {
+    __publicField(this, "ex");
+    __publicField(this, "ey");
+    __publicField(this, "ez");
+    __publicField(this, "et");
     const max = B256;
     this.ex = arange(ex, 0n, max);
     this.ey = arange(ey, 0n, max);
@@ -7380,6 +7383,9 @@ var Point = class _Point {
     return this.toBytes();
   }
 };
+__publicField(_Point, "BASE");
+__publicField(_Point, "ZERO");
+var Point = _Point;
 var G = new Point(Gx, Gy, 1n, M(Gx * Gy));
 var I = new Point(0n, 1n, 1n, 0n);
 Point.BASE = G;
@@ -7582,9 +7588,6 @@ var wNAF = (n) => {
   return { p, f };
 };
 
-// src/browser/index.ts
-var import_crypto_js2 = __toESM(require_crypto_js());
-
 // src/types/enums.ts
 var RouteType = /* @__PURE__ */ ((RouteType2) => {
   RouteType2[RouteType2["TransportFlood"] = 0] = "TransportFlood";
@@ -7645,9 +7648,6 @@ var RequestType = /* @__PURE__ */ ((RequestType2) => {
   return RequestType2;
 })(RequestType || {});
 
-// src/crypto/channel-crypto.ts
-var import_crypto_js = __toESM(require_crypto_js());
-
 // src/utils/hex.ts
 function byteToHex(byte) {
   return byte.toString(16).padStart(2, "0").toUpperCase();
@@ -7673,7 +7673,112 @@ function hexToBytes2(hex) {
   return bytes;
 }
 
+// src/utils/enum-names.ts
+function getRouteTypeName(routeType) {
+  switch (routeType) {
+    case 1 /* Flood */:
+      return "Flood";
+    case 2 /* Direct */:
+      return "Direct";
+    case 0 /* TransportFlood */:
+      return "TransportFlood";
+    case 3 /* TransportDirect */:
+      return "TransportDirect";
+    default:
+      return `Unknown (${routeType})`;
+  }
+}
+function getPayloadTypeName(payloadType) {
+  switch (payloadType) {
+    case 15 /* RawCustom */:
+      return "RawCustom";
+    case 9 /* Trace */:
+      return "Trace";
+    case 4 /* Advert */:
+      return "Advert";
+    case 5 /* GroupText */:
+      return "GroupText";
+    case 6 /* GroupData */:
+      return "GroupData";
+    case 0 /* Request */:
+      return "Request";
+    case 1 /* Response */:
+      return "Response";
+    case 2 /* TextMessage */:
+      return "TextMessage";
+    case 7 /* AnonRequest */:
+      return "AnonRequest";
+    case 3 /* Ack */:
+      return "Ack";
+    case 8 /* Path */:
+      return "Path";
+    case 10 /* Multipart */:
+      return "Multipart";
+    case 11 /* Control */:
+      return "Control";
+    default:
+      return `Unknown (0x${payloadType.toString(16)})`;
+  }
+}
+function getPayloadVersionName(version) {
+  switch (version) {
+    case 0 /* Version1 */:
+      return "Version 1";
+    case 1 /* Version2 */:
+      return "Version 2";
+    case 2 /* Version3 */:
+      return "Version 3";
+    case 3 /* Version4 */:
+      return "Version 4";
+    default:
+      return `Unknown (${version})`;
+  }
+}
+function getDeviceRoleName(role) {
+  switch (role) {
+    case 0 /* Unknown */:
+      return "Unknown";
+    case 1 /* ChatNode */:
+      return "Chat Node";
+    case 2 /* Repeater */:
+      return "Repeater";
+    case 3 /* RoomServer */:
+      return "Room Server";
+    case 4 /* Sensor */:
+      return "Sensor";
+    default:
+      return `Unknown (${role})`;
+  }
+}
+function getRequestTypeName(requestType) {
+  switch (requestType) {
+    case 1 /* GetStats */:
+      return "Get Stats";
+    case 2 /* Keepalive */:
+      return "Keepalive (deprecated)";
+    case 3 /* GetTelemetryData */:
+      return "Get Telemetry Data";
+    case 4 /* GetMinMaxAvgData */:
+      return "Get Min/Max/Avg Data";
+    case 5 /* GetAccessList */:
+      return "Get Access List";
+    default:
+      return `Unknown (${requestType})`;
+  }
+}
+function getControlSubTypeName(subType) {
+  switch (subType) {
+    case 128 /* NodeDiscoverReq */:
+      return "Node Discover Request";
+    case 144 /* NodeDiscoverResp */:
+      return "Node Discover Response";
+    default:
+      return `Unknown (0x${subType.toString(16)})`;
+  }
+}
+
 // src/crypto/channel-crypto.ts
+var import_crypto_js = __toESM(require_crypto_js());
 var ChannelCrypto = class {
   /**
    * Decrypt GroupText message using MeshCore algorithm:
@@ -7802,110 +7907,6 @@ var MeshCoreKeyStore = class {
     }
   }
 };
-
-// src/utils/enum-names.ts
-function getRouteTypeName(routeType) {
-  switch (routeType) {
-    case 1 /* Flood */:
-      return "Flood";
-    case 2 /* Direct */:
-      return "Direct";
-    case 0 /* TransportFlood */:
-      return "TransportFlood";
-    case 3 /* TransportDirect */:
-      return "TransportDirect";
-    default:
-      return `Unknown (${routeType})`;
-  }
-}
-function getPayloadTypeName(payloadType) {
-  switch (payloadType) {
-    case 15 /* RawCustom */:
-      return "RawCustom";
-    case 9 /* Trace */:
-      return "Trace";
-    case 4 /* Advert */:
-      return "Advert";
-    case 5 /* GroupText */:
-      return "GroupText";
-    case 6 /* GroupData */:
-      return "GroupData";
-    case 0 /* Request */:
-      return "Request";
-    case 1 /* Response */:
-      return "Response";
-    case 2 /* TextMessage */:
-      return "TextMessage";
-    case 7 /* AnonRequest */:
-      return "AnonRequest";
-    case 3 /* Ack */:
-      return "Ack";
-    case 8 /* Path */:
-      return "Path";
-    case 10 /* Multipart */:
-      return "Multipart";
-    case 11 /* Control */:
-      return "Control";
-    default:
-      return `Unknown (0x${payloadType.toString(16)})`;
-  }
-}
-function getPayloadVersionName(version) {
-  switch (version) {
-    case 0 /* Version1 */:
-      return "Version 1";
-    case 1 /* Version2 */:
-      return "Version 2";
-    case 2 /* Version3 */:
-      return "Version 3";
-    case 3 /* Version4 */:
-      return "Version 4";
-    default:
-      return `Unknown (${version})`;
-  }
-}
-function getDeviceRoleName(role) {
-  switch (role) {
-    case 0 /* Unknown */:
-      return "Unknown";
-    case 1 /* ChatNode */:
-      return "Chat Node";
-    case 2 /* Repeater */:
-      return "Repeater";
-    case 3 /* RoomServer */:
-      return "Room Server";
-    case 4 /* Sensor */:
-      return "Sensor";
-    default:
-      return `Unknown (${role})`;
-  }
-}
-function getRequestTypeName(requestType) {
-  switch (requestType) {
-    case 1 /* GetStats */:
-      return "Get Stats";
-    case 2 /* Keepalive */:
-      return "Keepalive (deprecated)";
-    case 3 /* GetTelemetryData */:
-      return "Get Telemetry Data";
-    case 4 /* GetMinMaxAvgData */:
-      return "Get Min/Max/Avg Data";
-    case 5 /* GetAccessList */:
-      return "Get Access List";
-    default:
-      return `Unknown (${requestType})`;
-  }
-}
-function getControlSubTypeName(subType) {
-  switch (subType) {
-    case 128 /* NodeDiscoverReq */:
-      return "Node Discover Request";
-    case 144 /* NodeDiscoverResp */:
-      return "Node Discover Response";
-    default:
-      return `Unknown (0x${subType.toString(16)})`;
-  }
-}
 
 // src/crypto/orlp-ed25519-wasm.ts
 var OrlpEd25519 = require_orlp_ed25519();
@@ -8352,6 +8353,7 @@ var TracePayloadDecoder = class {
           traceTag: "00000000",
           authCode: 0,
           flags: 0,
+          pathHashSize: 1,
           pathHashes: []
         };
         if (options?.includeSegments) {
@@ -8402,11 +8404,27 @@ var TracePayloadDecoder = class {
         });
       }
       offset += 1;
+      const pathHashSize = 1 << (flags & 3);
+      if (payload.length < offset || (payload.length - offset) % pathHashSize !== 0) {
+        return {
+          type: 9 /* Trace */,
+          version: 0 /* Version1 */,
+          isValid: false,
+          errors: [
+            `Trace payload path bytes (${payload.length - offset}) do not align to ${pathHashSize}-byte hashes`
+          ],
+          traceTag,
+          authCode,
+          flags,
+          pathHashSize,
+          pathHashes: []
+        };
+      }
       const pathHashes = [];
       const pathHashesStart = offset;
-      while (offset < payload.length) {
-        pathHashes.push(byteToHex(payload[offset]));
-        offset++;
+      while (offset + pathHashSize <= payload.length) {
+        pathHashes.push(bytesToHex2(payload.subarray(offset, offset + pathHashSize)));
+        offset += pathHashSize;
       }
       if (options?.includeSegments && pathHashes.length > 0) {
         const pathHashesDisplay = pathHashes.join(" ");
@@ -8433,6 +8451,7 @@ var TracePayloadDecoder = class {
         traceTag,
         authCode,
         flags,
+        pathHashSize,
         pathHashes,
         snrValues
       };
@@ -8449,6 +8468,7 @@ var TracePayloadDecoder = class {
         traceTag: "00000000",
         authCode: 0,
         flags: 0,
+        pathHashSize: 1,
         pathHashes: []
       };
     }
@@ -8966,38 +8986,59 @@ var PathPayloadDecoder = class {
           isValid: false,
           errors: ["Path payload too short (minimum 2 bytes: path length + extra type)"],
           pathLength: 0,
+          pathHashSize: 1,
           pathHashes: [],
           extraType: 0,
           extraData: ""
         };
       }
-      const pathLength = payload[0];
-      if (payload.length < 1 + pathLength + 1) {
+      const pathLenByte = payload[0];
+      const pathHashSize = (pathLenByte >> 6) + 1;
+      const pathHopCount = pathLenByte & 63;
+      const pathByteLength = pathHopCount * pathHashSize;
+      if (pathHashSize === 4) {
         return {
           type: 8 /* Path */,
           version: 0 /* Version1 */,
           isValid: false,
-          errors: [`Path payload too short (need ${1 + pathLength + 1} bytes for path length + path + extra type)`],
-          pathLength,
+          errors: ["Invalid path length byte: reserved hash size (bits 7:6 = 11)"],
+          pathLength: 0,
+          pathHashSize,
+          pathHashes: [],
+          extraType: 0,
+          extraData: ""
+        };
+      }
+      if (payload.length < 1 + pathByteLength + 1) {
+        return {
+          type: 8 /* Path */,
+          version: 0 /* Version1 */,
+          isValid: false,
+          errors: [`Path payload too short (need ${1 + pathByteLength + 1} bytes for path length + path + extra type)`],
+          pathLength: pathHopCount,
+          pathHashSize,
           pathHashes: [],
           extraType: 0,
           extraData: ""
         };
       }
       const pathHashes = [];
-      for (let i = 0; i < pathLength; i++) {
-        pathHashes.push(byteToHex(payload[1 + i]));
+      for (let i = 0; i < pathHopCount; i++) {
+        const hashStart = 1 + i * pathHashSize;
+        const hashBytes = payload.subarray(hashStart, hashStart + pathHashSize);
+        pathHashes.push(bytesToHex2(hashBytes));
       }
-      const extraType = payload[1 + pathLength];
+      const extraType = payload[1 + pathByteLength];
       let extraData = "";
-      if (payload.length > 1 + pathLength + 1) {
-        extraData = bytesToHex2(payload.subarray(1 + pathLength + 1));
+      if (payload.length > 1 + pathByteLength + 1) {
+        extraData = bytesToHex2(payload.subarray(1 + pathByteLength + 1));
       }
       return {
         type: 8 /* Path */,
         version: 0 /* Version1 */,
         isValid: true,
-        pathLength,
+        pathLength: pathHopCount,
+        pathHashSize,
         pathHashes,
         extraType,
         extraData
@@ -9009,6 +9050,7 @@ var PathPayloadDecoder = class {
         isValid: false,
         errors: [error instanceof Error ? error.message : "Failed to decode Path payload"],
         pathLength: 0,
+        pathHashSize: 1,
         pathHashes: [],
         extraType: 0,
         extraData: ""
@@ -9416,6 +9458,7 @@ var MeshCorePacketDecoder = class {
         payloadType: 15 /* RawCustom */,
         payloadVersion: 0 /* Version1 */,
         pathLength: 0,
+        pathHashSize: 1,
         path: null,
         payload: { raw: "", decoded: null },
         totalBytes: bytes.length,
@@ -9484,13 +9527,19 @@ var MeshCorePacketDecoder = class {
         const code2 = bytes[offset + 2] | bytes[offset + 3] << 8;
         transportCodes = [code1, code2];
         if (includeStructure) {
-          const transportCode = bytes[offset] | bytes[offset + 1] << 8 | bytes[offset + 2] << 16 | bytes[offset + 3] << 24;
           segments.push({
-            name: "Transport Code",
-            description: "Used for Direct/Response routing",
+            name: "Region/Scope (transport code 0)",
+            description: "Region scope for this packet (repeaters match this to named regions, e.g. #Europe)",
             startByte: offset,
+            endByte: offset + 1,
+            value: `0x${(bytes[offset] | bytes[offset + 1] << 8).toString(16).padStart(4, "0")} (${code1})`
+          });
+          segments.push({
+            name: "Return region (transport code 1)",
+            description: "Sender's home/return region (used for replies)",
+            startByte: offset + 2,
             endByte: offset + 3,
-            value: `0x${transportCode.toString(16).padStart(8, "0")}`
+            value: `0x${(bytes[offset + 2] | bytes[offset + 3] << 8).toString(16).padStart(4, "0")} (${code2})`
           });
         }
         offset += 4;
@@ -9498,32 +9547,65 @@ var MeshCorePacketDecoder = class {
       if (bytes.length < offset + 1) {
         throw new Error("Packet too short for path length");
       }
-      const pathLength = bytes[offset];
+      const pathLenByte = bytes[offset];
+      const { hashSize: pathHashSize, hopCount: pathHopCount, byteLength: pathByteLength } = this.decodePathLenByte(pathLenByte);
+      if (pathHashSize === 4) {
+        throw new Error("Invalid path length byte: reserved hash size (bits 7:6 = 11)");
+      }
       if (includeStructure) {
-        let pathLengthDescription = `Path contains ${pathLength} bytes`;
-        if (routeType === 2 /* Direct */ || routeType === 3 /* TransportDirect */) {
-          pathLengthDescription = `For "Direct" packets, this contains routing instructions. ${pathLength} bytes of routing instructions (decreases as packet travels)`;
+        const hashDesc = pathHashSize > 1 ? ` \xD7 ${pathHashSize}-byte hashes (${pathByteLength} bytes)` : "";
+        let pathLengthDescription;
+        if (pathHopCount === 0) {
+          pathLengthDescription = pathHashSize > 1 ? `No path data (${pathHashSize}-byte hash mode)` : "No path data";
+        } else if (routeType === 2 /* Direct */ || routeType === 3 /* TransportDirect */) {
+          pathLengthDescription = `${pathHopCount} hops${hashDesc} of routing instructions (decreases as packet travels)`;
         } else if (routeType === 1 /* Flood */ || routeType === 0 /* TransportFlood */) {
-          pathLengthDescription = `${pathLength} bytes showing route taken (increases as packet floods)`;
+          pathLengthDescription = `${pathHopCount} hops${hashDesc} showing route taken (increases as packet floods)`;
+        } else {
+          pathLengthDescription = `Path contains ${pathHopCount} hops${hashDesc}`;
         }
         segments.push({
           name: "Path Length",
           description: pathLengthDescription,
           startByte: offset,
           endByte: offset,
-          value: `0x${pathLength.toString(16).padStart(2, "0")}`
+          value: `0x${pathLenByte.toString(16).padStart(2, "0")}`,
+          headerBreakdown: {
+            fullBinary: pathLenByte.toString(2).padStart(8, "0"),
+            fields: [
+              {
+                bits: "6-7",
+                field: "Hash Size",
+                value: `${pathHashSize} byte${pathHashSize > 1 ? "s" : ""} per hop`,
+                binary: (pathLenByte >> 6 & 3).toString(2).padStart(2, "0")
+              },
+              {
+                bits: "0-5",
+                field: "Hop Count",
+                value: `${pathHopCount} hop${pathHopCount !== 1 ? "s" : ""}`,
+                binary: (pathLenByte & 63).toString(2).padStart(6, "0")
+              }
+            ]
+          }
         });
       }
       offset += 1;
-      if (bytes.length < offset + pathLength) {
+      if (bytes.length < offset + pathByteLength) {
         throw new Error("Packet too short for path data");
       }
-      const pathBytes = bytes.subarray(offset, offset + pathLength);
-      const path = pathLength > 0 ? Array.from(pathBytes).map(byteToHex) : null;
-      if (includeStructure && pathLength > 0) {
+      const pathBytes = bytes.subarray(offset, offset + pathByteLength);
+      let path = null;
+      if (pathHopCount > 0) {
+        path = [];
+        for (let i = 0; i < pathHopCount; i++) {
+          const hopBytes = pathBytes.subarray(i * pathHashSize, (i + 1) * pathHashSize);
+          path.push(bytesToHex2(hopBytes));
+        }
+      }
+      if (includeStructure && pathHopCount > 0) {
         if (payloadType === 9 /* Trace */) {
           const snrValues = [];
-          for (let i = 0; i < pathLength; i++) {
+          for (let i = 0; i < pathByteLength; i++) {
             const snrRaw = bytes[offset + i];
             const snrSigned = snrRaw > 127 ? snrRaw - 256 : snrRaw;
             const snrDb = snrSigned / 4;
@@ -9533,26 +9615,26 @@ var MeshCorePacketDecoder = class {
             name: "Path SNR Data",
             description: `SNR values collected during trace: ${snrValues.join(", ")}`,
             startByte: offset,
-            endByte: offset + pathLength - 1,
-            value: bytesToHex2(bytes.slice(offset, offset + pathLength))
+            endByte: offset + pathByteLength - 1,
+            value: bytesToHex2(bytes.slice(offset, offset + pathByteLength))
           });
         } else {
           let pathDescription = "Routing path information";
           if (routeType === 2 /* Direct */ || routeType === 3 /* TransportDirect */) {
-            pathDescription = "Routing instructions (bytes are stripped at each hop as packet travels to destination)";
+            pathDescription = `Routing instructions (${pathHashSize}-byte hashes stripped at each hop as packet travels to destination)`;
           } else if (routeType === 1 /* Flood */ || routeType === 0 /* TransportFlood */) {
-            pathDescription = "Historical route taken (bytes are added as packet floods through network)";
+            pathDescription = `Historical route taken (${pathHashSize}-byte hashes added as packet floods through network)`;
           }
           segments.push({
             name: "Path Data",
             description: pathDescription,
             startByte: offset,
-            endByte: offset + pathLength - 1,
-            value: bytesToHex2(bytes.slice(offset, offset + pathLength))
+            endByte: offset + pathByteLength - 1,
+            value: bytesToHex2(bytes.slice(offset, offset + pathByteLength))
           });
         }
       }
-      offset += pathLength;
+      offset += pathByteLength;
       const payloadBytes = bytes.subarray(offset);
       const payloadHex = bytesToHex2(payloadBytes);
       if (includeStructure && bytes.length > offset) {
@@ -9679,7 +9761,8 @@ var MeshCorePacketDecoder = class {
         payloadType,
         payloadVersion,
         transportCodes,
-        pathLength,
+        pathLength: pathHopCount,
+        pathHashSize,
         path,
         payload: {
           raw: payloadHex,
@@ -9708,6 +9791,7 @@ var MeshCorePacketDecoder = class {
         payloadType: 15 /* RawCustom */,
         payloadVersion: 0 /* Version1 */,
         pathLength: 0,
+        pathHashSize: 1,
         path: null,
         payload: { raw: "", decoded: null },
         totalBytes: bytes.length,
@@ -9784,12 +9868,16 @@ var MeshCorePacketDecoder = class {
       if (bytes.length < offset + 1) {
         errors.push("Packet too short for path length");
       } else {
-        const pathLength = bytes[offset];
+        const pathLenByte = bytes[offset];
+        const { hashSize, byteLength } = this.decodePathLenByte(pathLenByte);
         offset += 1;
-        if (bytes.length < offset + pathLength) {
+        if (hashSize === 4) {
+          errors.push("Invalid path length byte: reserved hash size (bits 7:6 = 11)");
+        }
+        if (bytes.length < offset + byteLength) {
           errors.push("Packet too short for path data");
         }
-        offset += pathLength;
+        offset += byteLength;
       }
       if (offset >= bytes.length) {
         errors.push("No payload data found");
@@ -9809,8 +9897,8 @@ var MeshCorePacketDecoder = class {
         offset2 += 4;
       }
       if (bytes.length > offset2) {
-        const pathLen = bytes[offset2];
-        offset2 += 1 + pathLen;
+        const { byteLength } = this.decodePathLenByte(bytes[offset2]);
+        offset2 += 1 + byteLength;
       }
       if (bytes.length >= offset2 + 4) {
         const traceTag = bytes[offset2] | bytes[offset2 + 1] << 8 | bytes[offset2 + 2] << 16 | bytes[offset2 + 3] << 24;
@@ -9823,8 +9911,8 @@ var MeshCorePacketDecoder = class {
       offset += 4;
     }
     if (bytes.length > offset) {
-      const pathLen = bytes[offset];
-      offset += 1 + pathLen;
+      const { byteLength } = this.decodePathLenByte(bytes[offset]);
+      offset += 1 + byteLength;
     }
     const payloadData = bytes.slice(offset);
     const hashInput = [constantHeader, ...Array.from(payloadData)];
@@ -9839,6 +9927,17 @@ var MeshCorePacketDecoder = class {
    */
   static createKeyStore(initialKeys) {
     return new MeshCoreKeyStore(initialKeys);
+  }
+  /**
+   * Decode a path_len byte into hash size, hop count, and total byte length.
+   * Firmware reference: Packet.h lines 79-83
+   *   Bits 7:6 = hash size selector: (path_len >> 6) + 1 = 1, 2, or 3 bytes per hop
+   *   Bits 5:0 = hop count (0-63)
+   */
+  static decodePathLenByte(pathLenByte) {
+    const hashSize = (pathLenByte >> 6) + 1;
+    const hopCount = pathLenByte & 63;
+    return { hashSize, hopCount, byteLength: hopCount * hashSize };
   }
 };
 
@@ -9856,8 +9955,8 @@ function sha512Pure(data) {
   }
   return hashBytes;
 }
-etc.sha512Sync = sha512Pure;
-etc.sha512Async = async (data) => sha512Pure(data);
+etc.sha512Sync = (...messages) => sha512Pure(etc.concatBytes(...messages));
+etc.sha512Async = async (...messages) => sha512Pure(etc.concatBytes(...messages));
 var Ed25519SignatureVerifier2 = class {
   /**
    * Verify an Ed25519 signature for MeshCore advertisement packets
@@ -9869,7 +9968,7 @@ var Ed25519SignatureVerifier2 = class {
       const signature = hexToBytes2(signatureHex);
       const appData = hexToBytes2(appDataHex);
       const message = this.constructAdvertSignedMessage(publicKeyHex, timestamp, appData);
-      return await verify(signature, message, publicKey);
+      return verify(signature, message, publicKey);
     } catch (error) {
       console.error("Ed25519 signature verification failed:", error);
       return false;
@@ -9890,8 +9989,7 @@ var Ed25519SignatureVerifier2 = class {
   }
   static getSignedMessageHex(publicKeyHex, timestamp, appDataHex) {
     const appData = hexToBytes2(appDataHex);
-    const message = this.constructAdvertSignedMessage(publicKeyHex, timestamp, appData);
-    return bytesToHex2(message);
+    return bytesToHex2(this.constructAdvertSignedMessage(publicKeyHex, timestamp, appData));
   }
 };
 function decodePacket(hexData, options) {
