@@ -11,7 +11,7 @@
         display: inline-block;
         margin-right: 8px;
     }
-    .status-connected { background-color: #28a745; }
+    .status-connected { background-color: #198754; }
     .status-disconnected { background-color: #dc3545; }
     .status-warning { background-color: #ffc107; }
     
@@ -70,8 +70,7 @@
     
     .stream-entry {
         background-color: var(--card-bg);
-        transition: all 0.3s ease;
-        border-left: 3px solid #6c757d;
+        transition: background-color 0.3s ease;
         color: var(--text-color);
     }
 
@@ -110,21 +109,8 @@
     }
     
     .stream-entry:first-child {
-        box-shadow: 0 2px 8px rgba(40, 167, 69, 0.2);
+        box-shadow: 0 2px 8px rgba(25, 135, 84, 0.2);
     }
-    
-    /* Packet type color-coding */
-    .packet-advert { border-left-color: #fd7e14; }      /* Orange for Adverts */
-    .packet-grouptext { border-left-color: #0dcaf0; }   /* Cyan for GroupText */
-    .packet-txt { border-left-color: #198754; }         /* Green for direct Text */
-    .packet-ack { border-left-color: #6c757d; }         /* Gray for ACK */
-    .packet-ping { border-left-color: #ffc107; }        /* Yellow for Ping */
-    .packet-pong { border-left-color: #ffc107; }        /* Yellow for Pong */
-    .packet-req { border-left-color: #0d6efd; }         /* Blue for Request */
-    .packet-resp { border-left-color: #0d6efd; }        /* Blue for Response */
-    .packet-trace { border-left-color: #6f42c1; }       /* Purple for Trace */
-    .packet-cmd { border-left-color: #d63384; }         /* Pink for Command */
-    .packet-unknown { border-left-color: #6c757d; }     /* Gray for Unknown */
     
     /* Clickable packet entries */
     .packet-clickable {
@@ -134,7 +120,6 @@
     .packet-clickable:hover,
     .packet-clickable:focus-visible {
         background-color: var(--bg-tertiary);
-        border-left-color: #17a2b8;
     }
 
     .packet-clickable:focus-visible {
@@ -162,7 +147,7 @@
     }
     
     .conversation-entry {
-        border-left: 3px solid #007bff;
+        border-left: 3px solid var(--text-primary);
         padding-left: 10px;
         margin-left: 5px;
     }
@@ -290,7 +275,7 @@
     /* Hex segment colors - high contrast for dark mode */
     .hex-header { color: #000; background-color: #ffc107; padding: 2px 4px; border-radius: 2px; font-weight: 600; }
     .hex-pathlen { color: #000; background-color: #17a2b8; padding: 2px 4px; border-radius: 2px; font-weight: 600; }
-    .hex-path { color: #fff; background-color: #28a745; padding: 2px 4px; border-radius: 2px; font-weight: 600; }
+    .hex-path { color: #fff; background-color: #198754; padding: 2px 4px; border-radius: 2px; font-weight: 600; }
     .hex-payload { color: #fff; background-color: #0d6efd; padding: 2px 4px; border-radius: 2px; font-weight: 600; }
     .hex-transport { color: #000; background-color: #fd7e14; padding: 2px 4px; border-radius: 2px; font-weight: 600; }
     .hex-unknown { color: #adb5bd; }
@@ -363,8 +348,8 @@
     
     /* Decrypted message card */
     .decrypted-card {
-        background-color: rgba(40, 167, 69, 0.1);
-        border-color: #28a745;
+        background-color: rgba(25, 135, 84, 0.1);
+        border-color: #198754;
     }
     
     .decrypted-field {

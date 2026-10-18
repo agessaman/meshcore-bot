@@ -65,10 +65,12 @@ typography:
     fontWeight: 400
     lineHeight: 1.5
 rounded:
+  hair: "2px"
   sm: "0.25rem"
   md: "0.375rem"
   lg: "8px"
   xl: "10px"
+  meter: "5px"
   pill: "999px"
 spacing:
   "1": "0.25rem"
@@ -161,13 +163,13 @@ The console has two lighting conditions, light and dark, and both are first-clas
 A neutral Bootstrap-gray desk with one blue signal and a set of lamp colors that only ever mean state.
 
 ### Primary
-- **Signal Blue** (`signal-blue`): the single accent. Primary buttons, links, focus outlines, the navbar brand, the active refresh affordance, flood-route data, and the info log level in light theme. The older `#007bff` still appears on the navbar brand, form focus in dark mode, and the log-entry rule; it is drift and should converge on Signal Blue.
+- **Signal Blue** (`signal-blue`): the single accent. Primary buttons, links, focus outlines, the navbar brand, the active refresh affordance, flood-route data, and the info log level in light theme.
 
 ### Secondary
 - **Route Teal** (`route-direct`): the partner to Signal Blue in route data. Direct routes in charts and route-mix bars, so flood versus direct reads as blue versus teal everywhere.
 
 ### Tertiary
-- **Lamp Green** (`lamp-green`): connected, up, success, positive deltas. The legacy `#28a745` on `.status-connected` is the same role and should converge here.
+- **Lamp Green** (`lamp-green`): connected, up, success, positive deltas.
 - **Lamp Amber** (`lamp-amber`): warning and degraded states, and the packet-entry rule in the activity log.
 - **Lamp Red** (`lamp-red`): disconnected, error, negative deltas, destructive actions.
 
@@ -222,7 +224,7 @@ Full-width Bootstrap `container-fluid` pages under a collapsing `navbar-expand-l
 
 The dashboard sets the house rhythm for monitoring pages: a single health strip first, then uppercase section titles with a trailing hairline, then equal-height rows of stat tiles and cards whose charts fill the slack instead of leaving dead space. Rows inside cards (neighbors, leaderboards, mixes) are separated by 1px rules rather than gaps, and use a fixed three-column grid of name, meter, and value.
 
-Responsive behavior follows Bootstrap breakpoints (576, 768, 992px). Below 576px the dashboard tightens its strip and tiles; tables scroll inside `.table-responsive`. Phone use is a real operator workflow, so new layouts are checked at phone width, not just desktop.
+Responsive behavior follows Bootstrap breakpoints (576, 768, 992px). Below 576px the dashboard tightens its strip and tiles; tables scroll inside `.table-responsive`. Phone use is a real operator workflow, so new layouts are checked at phone width, not just desktop. On a coarse pointer, `base.html` grows standard controls to 44px, small (`-sm`) controls to 36px and checkboxes, radios and switches to 24px; desktop density is untouched. Card headers that pair a title with controls wrap the controls onto a second row rather than squeeze the title.
 
 ### Named Rules
 **The Fixed Scale Rule.** A meter means the same thing on every refresh: SNR bars use a fixed -12 to +14 dB scale, and a missing reading is drawn hatched, never as an empty bar that reads as zero.
@@ -241,7 +243,7 @@ Soft lift, as now. Cards and tiles sit on a faint ambient shadow and a 1px rule;
 
 ## Shapes
 
-Gently rounded, never pill-shaped except where the shape is the signal. Bootstrap's own radii (0.25rem small, 0.375rem standard) cover buttons, inputs, and cards; dashboard tiles and the health strip soften to 10px; panels and responsive tables use 8px. Pills are reserved for delta chips and badges, circles for status lamps, and 2px corners for legend swatches. Meter tracks and fills round to half their height (5px on a 10px bar).
+Gently rounded, never pill-shaped except where the shape is the signal. Bootstrap's own radii (0.25rem small, 0.375rem standard) cover buttons, inputs, and cards; dashboard tiles and the health strip soften to 10px; panels and responsive tables use 8px. Pills are reserved for delta chips and badges, circles for status lamps, and `hair` (2px) corners for legend swatches and focus rings. Meter tracks and fills use `meter` (5px), half the height of their 10px bar.
 
 ## Components
 
@@ -282,7 +284,7 @@ A terminal-dark well (Scope Black, Scope Rule border, 0.375rem corners) of monos
 ### Do:
 - **Do** take every surface, text, and border color from the `base.html` theme variables (`--bg-*`, `--text-*`, `--border-color`, `--card-*`, `--shadow-color`).
 - **Do** ship the dark-theme counterpart of any hard-coded color in the same change (The Twin Token Rule).
-- **Do** use Signal Blue (`#0d6efd`) as the only accent, and converge the remaining `#007bff` and `#28a745` uses onto Signal Blue and Lamp Green.
+- **Do** use Signal Blue (`#0d6efd`) as the only accent; the older `#007bff` and `#28a745` are retired.
 - **Do** use tabular numerals for live numbers and fixed scales for meters.
 - **Do** pair every status lamp and chart series with a text label or legend.
 - **Do** vendor any new font, script, or stylesheet under `static/` so the viewer works without internet.
