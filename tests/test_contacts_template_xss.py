@@ -272,8 +272,8 @@ def test_realtime_untrusted_fields_never_reach_html_parsers(realtime_source):
 
 def test_realtime_known_safe_sinks(realtime_source: str) -> None:
     """Lock in DOM text sinks for advert name, sender, body, and channel."""
-    assert "makeElement('strong', '', data.sender || '?')" in realtime_source
-    assert "entry.append(header, makeElement('div', 'text-break', bodyRaw))" in realtime_source
-    assert "data.channel\n            )" in realtime_source
-    assert "document.createTextNode(` ${String(data.advert_name)}" in realtime_source
+    assert "makeElement('span', 'rt-who', msg.sender || '?')" in realtime_source
+    assert "makeElement('span', 'rt-text', stripLeadingChannelBracketTag(msg.content || '', isDm))" in realtime_source
+    assert "chip.appendChild(document.createTextNode(String(channel)))" in realtime_source
+    assert "makeElement('span', 'rt-who', tx.advert.name)" in realtime_source
     assert "appendNodeInfo('Name', name)" in realtime_source

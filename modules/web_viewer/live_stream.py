@@ -224,6 +224,8 @@ class LiveStreamMixin:
                                     data_json = row[1]
                                     data_type = row[2]
                                     data = json.loads(data_json)
+                                    if isinstance(data, dict):
+                                        data['stream_ts'] = row[0]
 
                                     # Broadcast based on type
                                     if data_type == 'command':

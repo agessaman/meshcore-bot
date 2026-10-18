@@ -850,9 +850,10 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
             '/api/stream_data',
         ])
 
-        # Issue #240 public HTML surface (Realtime page renders; live socket stays admin).
+        # Issue #240 public HTML surface. Realtime is admin-only: its live socket
+        # is, so an anonymous visit would only ever show an empty page.
         _PUBLIC_PAGE_PATHS = frozenset([
-            '/', '/realtime', '/contacts', '/mesh',
+            '/', '/contacts', '/mesh',
         ])
 
         # Anonymous-safe GET APIs: mesh-visible / aggregate data only. No channel

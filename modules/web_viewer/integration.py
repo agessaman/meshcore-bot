@@ -546,6 +546,7 @@ class BotIntegration:
             repeat_count = 0
             repeater_prefixes = []
             repeater_counts = {}
+            reply_packet_hash = None
             if (hasattr(self.bot, 'transmission_tracker') and
                 self.bot.transmission_tracker and
                 command_id):
@@ -553,6 +554,7 @@ class BotIntegration:
                 repeat_count = repeat_info.get('repeat_count', 0)
                 repeater_prefixes = repeat_info.get('repeater_prefixes', [])
                 repeater_counts = repeat_info.get('repeater_counts', {})
+                reply_packet_hash = repeat_info.get('packet_hash')
 
             # Construct command data structure
             command_data = {
@@ -568,6 +570,13 @@ class BotIntegration:
                 'repeater_counts': repeater_counts,  # Count per repeater prefix
                 'command_id': command_id  # Store command_id for later updates
             }
+            # Packet hashes tie the command to the packets the radio heard: the
+            # message that triggered it and, once a repeater echoes it, the reply.
+            trigger_packet_hash = self._message_packet_hash(message)
+            if trigger_packet_hash:
+                command_data['trigger_packet_hash'] = trigger_packet_hash
+            if reply_packet_hash:
+                command_data['reply_packet_hash'] = reply_packet_hash
 
             # Convert non-serializable objects to strings
             serializable_data = self._make_json_serializable(command_data)
@@ -594,15 +603,23 @@ class BotIntegration:
                 'path': getattr(message, 'path', ''),
                 'is_dm': bool(getattr(message, 'is_dm', False)),
             }
-            routing_info = getattr(message, 'routing_info', None) or {}
-            if not isinstance(routing_info, dict):
-                routing_info = {}
-            packet_hash = routing_info.get('packet_hash')
-            if packet_hash and str(packet_hash).strip('0'):
+            packet_hash = self._message_packet_hash(message)
+            if packet_hash:
                 data['packet_hash'] = packet_hash
             self._insert_packet_stream_row(json.dumps(data), 'message', "channel message")
         except Exception as e:
             self.bot.logger.debug(f"Error storing channel message for web viewer: {e}")
+
+    @staticmethod
+    def _message_packet_hash(message) -> Optional[str]:
+        """Hash of the RF packet correlated with *message*, or None when there wasn't one."""
+        routing_info = getattr(message, 'routing_info', None) or {}
+        if not isinstance(routing_info, dict):
+            return None
+        packet_hash = routing_info.get('packet_hash')
+        if packet_hash and str(packet_hash).strip('0'):
+            return packet_hash
+        return None
 
     def capture_packet_routing(self, routing_data):
         """Capture packet routing data and store in database for web viewer"""

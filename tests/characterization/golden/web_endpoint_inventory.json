@@ -1810,8 +1810,8 @@
   "GET locked anon": {
    "content_type": "text/html",
    "csp_script_src": "script-src 'self' 'nonce-X' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
-   "location": "",
-   "status": 200,
+   "location": "/login?next=/realtime",
+   "status": 302,
    "x_content_type_options": "nosniff",
    "x_frame_options": "SAMEORIGIN"
   },

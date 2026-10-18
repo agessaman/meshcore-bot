@@ -215,31 +215,24 @@ class TestPageRoutes:
         resp = client.get("/realtime")
         assert resp.status_code == 200
 
-    def test_realtime_scroll_controls(self, client):
-        """Realtime page has scroll buttons, type filters, and channel labels in messages."""
-        resp = client.get("/realtime")
-        assert resp.status_code == 200
-        html = resp.data.decode()
-        # Scroll buttons present for all three streams
-        assert 'id="cmd-scroll-top"' in html
-        assert 'id="cmd-scroll-bottom"' in html
-        assert 'id="pkt-scroll-top"' in html
-        assert 'id="pkt-scroll-bottom"' in html
-        assert 'id="msg-scroll-top"' in html
-        assert 'id="msg-scroll-bottom"' in html
-        # scrollStream JS function present
-        assert 'scrollStream' in html
-        # Type filter checkboxes for each stream panel
-        assert 'rt-filter-cb' in html
-        assert 'id="rt-filter-command"' in html
-        assert 'id="rt-filter-packet"' in html
-        assert 'id="rt-filter-message"' in html
-        assert 'id="command-card"' in html
-        assert 'id="packet-card"' in html
-        assert 'id="message-card"' in html
-        # Live message helpers: strip duplicate bracket tags, per-channel accent
-        assert 'stripLeadingChannelBracketTag' in html
-        assert 'channelAccentStyles' in html
+    def test_realtime_is_one_tape(self, client):
+        """Realtime is one receiver tape: strip, filters, keep tray, no three-panel grid."""
+        html = client.get("/realtime").data.decode()
+        for marker in ('id="rt-tape"', 'id="rt-lamp"', 'id="rt-last"', 'id="rt-rate"',
+                       'id="rt-pause"', 'id="rt-pending"', 'id="rt-search"', 'id="rt-kept-list"',
+                       'name="rt-kind"', 'id="packetDetailModal"'):
+            assert marker in html, marker
+        for retired in ('id="command-card"', 'id="packet-card"', 'id="message-card"', 'rt-filter-cb'):
+            assert retired not in html, retired
+        # Rows join packet, message and command by hash; replies fold their echoes in
+        for helper in ('replyOwner', 'trigger_packet_hash', 'reply_packet_hash',
+                       'stripLeadingChannelBracketTag', 'function pathByteLength('):
+            assert helper in html, helper
+
+    def test_realtime_loads_no_cdn_script_of_its_own(self, client):
+        html = client.get("/realtime").data.decode()
+        assert "vendor/js-sha256/sha256.min.js" in html
+        assert "cdnjs.cloudflare.com/ajax/libs/js-sha256" not in html
 
     def test_logs(self, client):
         resp = client.get("/logs")
@@ -1234,10 +1227,20 @@ class TestRoleBasedAccess:
     """Public allowlist vs fail-closed admin when web_viewer_password is set."""
 
     def test_public_pages_accessible_without_auth(self, auth_client):
-        public_pages = ["/", "/realtime", "/mesh", "/contacts"]
+        public_pages = ["/", "/mesh", "/contacts"]
         for page in public_pages:
             resp = auth_client.get(page)
             assert resp.status_code == 200, f"{page} should be accessible without auth"
+
+    def test_realtime_is_admin_only(self, auth_client):
+        """The live socket is admin-only, so the page is too; the nav hides it."""
+        resp = auth_client.get("/realtime", follow_redirects=False)
+        assert resp.status_code == 302
+        assert "login" in resp.headers["Location"]
+        assert 'href="/realtime"' not in auth_client.get("/").get_data(as_text=True)
+        auth_client.post("/login", data={"password": "secret123"})
+        assert auth_client.get("/realtime").status_code == 200
+        assert 'href="/realtime"' in auth_client.get("/").get_data(as_text=True)
 
     def test_admin_pages_require_auth(self, auth_client):
         admin_pages = ["/logs", "/config", "/plugins", "/radio", "/greeter", "/feeds", "/schedule"]
@@ -1332,7 +1335,7 @@ class TestRoleBasedAccess:
     def test_is_admin_declared_once_per_page(self, auth_client, client):
         """base.html declares IS_ADMIN; a second top-level const is a SyntaxError."""
         for c in (auth_client, client):
-            for page in ("/", "/realtime", "/mesh", "/contacts"):
+            for page in ("/", "/mesh", "/contacts"):
                 html = c.get(page).get_data(as_text=True)
                 assert html.count("const IS_ADMIN") == 1, f"{page} redeclares IS_ADMIN"
 
@@ -2510,6 +2513,21 @@ class TestSubscribeCommandsHistoryReplay:
         assert len(command_events) == 5
         seq_values = [e["args"][0]["seq"] for e in command_events]
         assert seq_values == list(range(5))  # replayed in chronological order
+
+    def test_replayed_rows_are_marked_as_history(self, socketio_viewer):
+        """Replayed rows carry their stream time and a replayed flag, so the page can file them as history."""
+        import json as _json
+        import time as _time
+
+        from flask_socketio import SocketIOTestClient
+
+        ts = _time.time() - 30
+        _insert_packet_stream_rows(socketio_viewer.db_path, [(ts, _json.dumps({"cmd": "ping"}), "command")])
+        sio_client = SocketIOTestClient(socketio_viewer.app, socketio_viewer.socketio)
+        sio_client.emit("subscribe_commands")
+        event = next(e for e in sio_client.get_received() if e["name"] == "command_data")
+        assert event["args"][0]["replayed"] is True
+        assert event["args"][0]["stream_ts"] == pytest.approx(ts)
 
     def test_subscribe_commands_sets_subscription_flag(self, socketio_viewer):
         """subscribed_commands flag is set to True after subscribe event."""

@@ -10,7 +10,7 @@ web
 
 - **Bot operators at a desk.** The person who runs a meshcore-bot instance, usually a self-hoster on their own LAN, checking health, digging into the mesh, and changing settings from a laptop.
 - **Bot operators on a phone.** The same operators checking in away from the desk. Phone use is a real workflow, not an afterthought; every page an operator needs has to work properly at phone width.
-- **Mesh community, read-only.** Neighbors on the local mesh who are given the URL. When a `web_viewer_password` is set, anonymous visitors can still reach the public pages (dashboard, realtime, contacts, mesh graph) and the anonymous-safe APIs behind them; everything else redirects to login. With no password the whole viewer is open (legacy mode).
+- **Mesh community, read-only.** Neighbors on the local mesh who are given the URL. When a `web_viewer_password` is set, anonymous visitors can still reach the public pages (dashboard, contacts, mesh graph) and the anonymous-safe APIs behind them; everything else redirects to login. With no password the whole viewer is open (legacy mode).
 
 ## Product Purpose
 

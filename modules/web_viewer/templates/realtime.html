@@ -1,214 +1,623 @@
 {% extends "base.html" %}
 
-{% block title %}Real-time Monitoring - MeshCore Bot Data Viewer{% endblock %}
+{% block title %}Real-time - MeshCore Bot Data Viewer{% endblock %}
 
 {% block extra_css %}
 <style>
-    .status-indicator {
-        width: 12px;
-        height: 12px;
-        border-radius: 50%;
-        display: inline-block;
-        margin-right: 8px;
+    /* ── Receiver tape ──────────────────────────────────────────────────────
+       One row per transmission the radio heard. Colors come from the
+       base.html tokens; the only page-local tokens are the route data colors
+       (DESIGN.md: flood blue, direct teal) and the fresh-row wash. */
+    :root {
+        --rt-route-flood: #0d6efd;
+        --rt-route-direct: #20c997;
+        --rt-fresh: rgba(13, 110, 253, 0.1);
+        --rt-row-hover: var(--bg-secondary);
+        /* The bot's own voice: one violet, kept clear of the packet-type hues.
+           Fill and text are separate (Fill-Is-Not-Text). */
+        --rt-bot: #7c3aed;
+        --rt-bot-on: #ffffff;
+        --rt-bot-text: #6d28d9;
+        --rt-bot-wash: rgba(124, 58, 237, 0.07);
+        --rt-bot-rule: rgba(124, 58, 237, 0.45);
+        --rt-type: #a8a29e;
+        --rt-type-mix: black;
     }
-    .status-connected { background-color: #198754; }
-    .status-disconnected { background-color: #dc3545; }
-    .status-warning { background-color: #ffc107; }
-    
-    .stream-container {
-        height: calc(100vh - 300px);
-        min-height: 400px;
-        overflow-y: auto;
-        background-color: var(--bg-secondary);
-        border: 1px solid var(--border-color);
+
+    [data-theme="dark"] {
+        --rt-route-flood: #6ea8fe;
+        --rt-route-direct: #3dd5b0;
+        --rt-fresh: rgba(110, 168, 254, 0.16);
+        --rt-row-hover: var(--bg-tertiary);
+        --rt-bot: #a78bfa;
+        --rt-bot-on: #1a1a1a;
+        --rt-bot-text: #c4b5fd;
+        --rt-bot-wash: rgba(167, 139, 250, 0.1);
+        --rt-bot-rule: rgba(167, 139, 250, 0.5);
+        --rt-type: #87817c;
+        --rt-type-mix: white;
+    }
+
+    /* Packet types take the dashboard's packet-type chart colors (SERIES_PALETTE
+       in dashboard.js, PACKET_ENCODING_TYPES order), so a type reads the same on
+       both pages. Each type also has its own icon; color is never the only cue. */
+    .rt-t-grp_txt { --rt-type: #2a78d6; }
+    .rt-t-response { --rt-type: #eb6834; }
+    .rt-t-req { --rt-type: #1baf7a; }
+    .rt-t-path { --rt-type: #eda100; }
+    .rt-t-txt_msg { --rt-type: #e87ba4; }
+    .rt-t-anon_req { --rt-type: #008300; }
+    .rt-t-grp_data { --rt-type: #4a3aa7; }
+    .rt-t-advert { --rt-type: #e34948; }
+    .rt-t-other { --rt-type: #a8a29e; }
+
+    [data-theme="dark"] .rt-t-grp_txt { --rt-type: #3987e5; }
+    [data-theme="dark"] .rt-t-response { --rt-type: #d95926; }
+    [data-theme="dark"] .rt-t-req { --rt-type: #199e70; }
+    [data-theme="dark"] .rt-t-path { --rt-type: #c98500; }
+    [data-theme="dark"] .rt-t-txt_msg { --rt-type: #d55181; }
+    [data-theme="dark"] .rt-t-anon_req { --rt-type: #008300; }
+    [data-theme="dark"] .rt-t-grp_data { --rt-type: #9085e9; }
+    [data-theme="dark"] .rt-t-advert { --rt-type: #e66767; }
+    [data-theme="dark"] .rt-t-other { --rt-type: #87817c; }
+
+    /* Glyph chips: packets are a tinted icon, decoded messages a stronger
+       tint, and the bot's commands a solid violet chip, loudest of the three. */
+    .rt-glyph-chip {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 1.5rem;
+        height: 1.5rem;
         border-radius: 0.375rem;
-        padding: 0.5rem;
+        font-size: 0.75rem;
+        color: color-mix(in oklch, var(--rt-type) 72%, var(--rt-type-mix));
+        background-color: color-mix(in srgb, var(--rt-type) 12%, transparent);
     }
 
-    /* Dark mode: scrollbars for Command / Channel Messages / Packet streams (Firefox + WebKit) */
-    [data-theme="dark"] .stream-container {
-        scrollbar-width: thin;
-        scrollbar-color: rgba(255, 255, 255, 0.28) var(--bg-tertiary);
+    .rt-glyph-chip.is-message {
+        background-color: color-mix(in srgb, var(--rt-type) 24%, transparent);
     }
 
-    [data-theme="dark"] .stream-container::-webkit-scrollbar {
-        width: 10px;
+    .rt-glyph-chip.is-bot {
+        color: var(--rt-bot-on);
+        background-color: var(--rt-bot);
     }
 
-    [data-theme="dark"] .stream-container::-webkit-scrollbar-track {
-        background: var(--bg-tertiary);
-        border-radius: 0.25rem;
-    }
-
-    [data-theme="dark"] .stream-container::-webkit-scrollbar-thumb {
-        background: rgba(255, 255, 255, 0.22);
-        border-radius: 0.25rem;
-        border: 2px solid var(--bg-tertiary);
-    }
-
-    [data-theme="dark"] .stream-container::-webkit-scrollbar-thumb:hover {
-        background: rgba(255, 255, 255, 0.35);
-    }
-
-    /* Packet stream: no horizontal scroll; long paths wrap within the card */
-    #packet-stream {
-        overflow-x: hidden;
-    }
-
-    #packet-stream .stream-entry > .d-flex {
-        min-width: 0;
-    }
-
-    #packet-stream .stream-entry .flex-grow-1 {
-        min-width: 0;
-    }
-
-    #packet-stream .packet-stream-path {
-        overflow-wrap: anywhere;
-        word-break: break-word;
-    }
-    
-    .stream-entry {
-        background-color: var(--card-bg);
-        transition: background-color 0.3s ease;
-        color: var(--text-color);
-    }
-
-    /* SNR / hops: compact chips; colors match Packet Stream (bg-primary / bg-info). */
-    .live-msg-meta-badge {
-        font-size: 0.7rem;
-        font-weight: 500;
-        line-height: 1.15;
-        padding: 0.18em 0.42em;
-        vertical-align: middle;
-    }
-
-    .live-msg-meta-stack {
+    .rt-head {
         display: flex;
-        flex-direction: column;
-        align-items: flex-end;
-        gap: 0.2rem;
-        max-width: 100%;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        margin-bottom: 1rem;
     }
 
-    .live-msg-meta-badges-row {
+    .rt-head h1 {
+        margin: 0;
+    }
+
+    /* Receiver strip: the dashboard health strip, pinned while the tape scrolls. */
+    .rt-strip {
+        position: sticky;
+        top: 0;
+        z-index: 20;
         display: flex;
         flex-wrap: wrap;
-        justify-content: flex-end;
-        gap: 0.25rem;
+        align-items: center;
+        gap: 0.25rem 1.5rem;
+        min-height: 56px;
+        padding: 0.5rem 1rem;
+        margin-bottom: 0.75rem;
+        background-color: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 10px;
+        box-shadow: 0 1px 3px var(--shadow-color);
     }
 
-    .live-msg-time {
+    .rt-strip__item {
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+        font-size: 0.875rem;
+        color: var(--text-color);
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .rt-strip__item .status-indicator {
+        margin-right: 0;
+    }
+
+    .rt-strip__label {
+        color: var(--text-muted);
+        text-transform: uppercase;
         font-size: 0.7rem;
-        line-height: 1.2;
+        letter-spacing: 0.04em;
     }
-    
-    .stream-entry:hover {
-        box-shadow: 0 2px 8px var(--shadow-color);
-        transform: translateY(-1px);
+
+    .rt-strip__spacer {
+        flex: 1 1 auto;
     }
-    
-    .stream-entry:first-child {
-        box-shadow: 0 2px 8px rgba(25, 135, 84, 0.2);
+
+    .rt-spark {
+        display: block;
+        width: 120px;
+        height: 24px;
+        color: var(--text-muted);
     }
-    
-    /* Clickable packet entries */
-    .packet-clickable {
+
+    .rt-spark rect {
+        fill: currentColor;
+        opacity: 0.55;
+    }
+
+    .rt-spark rect.is-now {
+        opacity: 1;
+    }
+
+    .rt-spark rect.is-unknown {
+        opacity: 0.25;
+    }
+
+    .rt-pending {
+        font-variant-numeric: tabular-nums;
+    }
+
+    /* Filter bar */
+    .rt-filters {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.5rem 0.75rem;
+        margin-bottom: 0.75rem;
+    }
+
+    .rt-filters .form-select,
+    .rt-filters .form-control {
+        width: auto;
+        min-width: 9rem;
+    }
+
+    .rt-filters .rt-search {
+        flex: 1 1 14rem;
+        max-width: 22rem;
+    }
+
+    .rt-filter-count {
+        color: var(--text-muted);
+        font-size: 0.875rem;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .rt-filters-toggle {
+        display: none;
+    }
+
+    /* Tape */
+    .rt-tape,
+    .rt-kept-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        background-color: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 0.375rem;
+        box-shadow: 0 2px 4px var(--shadow-color);
+        overflow: hidden;
+    }
+
+    .rt-kept {
+        margin-bottom: 0.75rem;
+    }
+
+    .rt-kept-title,
+    .rt-subhead,
+    .rt-divider {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        font-size: 0.7rem;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+    }
+
+    .rt-kept-title {
+        margin: 0 0 0.35rem;
+    }
+
+    .rt-subhead {
+        margin: 0.5rem 0 0.25rem;
+    }
+
+    .rt-divider {
+        padding: 0.45rem 0.75rem;
+        background-color: var(--bg-secondary);
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .rt-row {
+        position: relative;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .rt-row:last-child {
+        border-bottom: 0;
+    }
+
+    .rt-row.is-fresh {
+        animation: rt-fresh 1.6s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    @keyframes rt-fresh {
+        from { background-color: var(--rt-fresh); }
+        to { background-color: transparent; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .rt-row.is-fresh {
+            animation: none;
+        }
+    }
+
+    .rt-line {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: start;
+    }
+
+    .rt-main {
+        display: grid;
+        grid-template-columns: 5.25rem 1.5rem minmax(0, 1fr);
+        column-gap: 0.6rem;
+        width: 100%;
+        min-width: 0;
+        padding: 0.45rem 0.25rem 0.45rem 0.75rem;
+        text-align: left;
+        color: inherit;
+        background: none;
+        border: 0;
+        border-radius: 0;
         cursor: pointer;
     }
-    
-    .packet-clickable:hover,
-    .packet-clickable:focus-visible {
-        background-color: var(--bg-tertiary);
+
+    .rt-line:hover {
+        background-color: var(--rt-row-hover);
     }
 
-    .packet-clickable:focus-visible {
-        outline: 2px solid var(--bs-primary, #0d6efd);
-        outline-offset: 2px;
+    .rt-main:focus-visible,
+    .rt-keep:focus-visible {
+        outline: 2px solid var(--text-primary);
+        outline-offset: -2px;
     }
-    
-    .click-hint {
-        margin-left: 8px;
+
+    .rt-time {
+        grid-row: span 2;
+        padding-top: 0.1rem;
         color: var(--text-muted);
-        font-size: 0.8em;
+        font-size: 0.875rem;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
     }
-    
-    .packet-clickable:hover .click-hint {
-        color: #17a2b8;
+
+    .rt-glyph {
+        grid-row: span 2;
+        padding-top: 0.05rem;
+        text-align: center;
     }
-    
-    .badge {
-        font-size: 0.75em;
+
+    .rt-l1,
+    .rt-l2 {
+        display: block;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
-    
-    .bg-purple {
-        background-color: #6f42c1 !important;
-        color: #fff;
-    }
-    
-    .conversation-entry {
-        border-left: 3px solid var(--text-primary);
-        padding-left: 10px;
-        margin-left: 5px;
-    }
-    
-    .user-message {
-        background-color: #e3f2fd;
-        border: 1px solid #bbdefb;
-        box-shadow: 0 1px 3px var(--shadow-color);
+
+    .rt-l1 {
         color: var(--text-color);
     }
 
-    /* Dark bubbles are light tints of the lamp and signal hues over the
-       card, like the dashboard delta chips, so body text and the theme's
-       status text colors keep their contrast inside them. */
-    [data-theme="dark"] .user-message {
-        background-color: rgba(13, 110, 253, 0.18);
-        border-color: rgba(110, 168, 254, 0.35);
-        color: var(--text-color);
+    .rt-l1 .rt-who {
+        font-weight: 600;
     }
 
-    /* Sender names on the light blue bubble need a deeper blue than the
-       page's link blue. */
-    .user-message .text-primary {
-        color: #0a58ca !important;
+    .rt-l1 .rt-text {
+        margin-left: 0.4rem;
     }
 
-    [data-theme="dark"] .user-message .text-primary {
-        color: #8bb9fe !important;
-    }
-    
-    .bot-message-success {
-        background-color: #e8f5e8;
-        border: 1px solid #c8e6c9;
-        box-shadow: 0 1px 3px var(--shadow-color);
-        color: var(--text-color);
+    .rt-l2 {
+        color: var(--text-muted);
+        font-size: 0.875rem;
+        font-variant-numeric: tabular-nums;
     }
 
-    [data-theme="dark"] .bot-message-success {
-        background-color: rgba(25, 135, 84, 0.2);
-        border-color: rgba(117, 183, 152, 0.35);
-        color: var(--text-color);
+    .rt-sep::before {
+        content: "·";
+        margin: 0 0.35rem;
     }
 
-    .bot-message-danger {
-        background-color: #ffebee;
-        border: 1px solid #ffcdd2;
-        box-shadow: 0 1px 3px var(--shadow-color);
-        color: var(--text-color);
+    .rt-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        margin-left: 0.4rem;
+        padding: 0 0.4rem;
+        font-size: 0.875rem;
+        color: var(--text-muted);
+        background-color: var(--bg-tertiary);
+        border-radius: 999px;
+        vertical-align: baseline;
     }
 
-    [data-theme="dark"] .bot-message-danger {
-        background-color: rgba(220, 53, 69, 0.18);
-        border-color: rgba(234, 134, 143, 0.35);
-        color: var(--text-color);
+    .rt-dot {
+        display: inline-block;
+        width: 0.5rem;
+        height: 0.5rem;
+        border-radius: 50%;
+        flex: 0 0 auto;
     }
-    
-    .response-text {
+
+    .rt-route-dot--flood { background-color: var(--rt-route-flood); }
+    .rt-route-dot--direct { background-color: var(--rt-route-direct); }
+
+    .rt-route {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+    }
+
+    .rt-path,
+    .rt-mono {
+        font-family: var(--font-mono);
+        font-size: 0.875em;
+    }
+
+    .rt-keep {
+        align-self: start;
+        margin: 0.3rem 0.4rem 0 0;
+        padding: 0.2rem 0.45rem;
+        color: var(--text-muted);
+        background: none;
+        border: 0;
+        border-radius: 0.25rem;
+        opacity: 0;
+    }
+
+    .rt-row:hover .rt-keep,
+    .rt-row:focus-within .rt-keep,
+    .rt-keep[aria-pressed="true"] {
+        opacity: 1;
+    }
+
+    .rt-keep[aria-pressed="true"] {
+        color: var(--text-primary);
+    }
+
+    .rt-keep:hover {
+        color: var(--text-primary);
+    }
+
+    /* A command's reply hangs under the message that triggered it. */
+    .rt-reply {
+        margin: -0.1rem 0.75rem 0.5rem calc(0.75rem + 5.25rem + 1.5rem + 1.2rem);
+        padding: 0.35rem 0.75rem 0.4rem;
+        background-color: var(--rt-bot-wash);
+        border-left: 1px solid var(--rt-bot-rule);
+        border-radius: 0 0.375rem 0.375rem 0;
+    }
+
+    .rt-reply-head {
+        display: flex;
+        align-items: baseline;
+        gap: 0.45rem;
+        color: var(--rt-bot-text);
+        font-size: 0.875rem;
+        font-weight: 600;
+    }
+
+    .rt-reply-head .rt-mono {
+        font-weight: 400;
+    }
+
+    .rt-reply-text {
+        margin: 0.1rem 0;
+        color: var(--text-color);
         white-space: pre-wrap;
-        word-break: break-word;
+        overflow-wrap: anywhere;
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
     }
-    
+
+    .rt-row.is-open .rt-reply-text {
+        display: block;
+    }
+
+    .rt-reply-status {
+        font-size: 0.875rem;
+        color: var(--text-muted);
+        font-variant-numeric: tabular-nums;
+    }
+
+    .rt-reply-status.is-failed {
+        color: var(--text-danger);
+    }
+
+    /* Expanded detail */
+    .rt-detail {
+        margin: 0 0.75rem 0.75rem calc(0.75rem + 5.25rem + 1.5rem + 1.2rem);
+        font-size: 0.875rem;
+    }
+
+    .rt-detail[hidden] {
+        display: none;
+    }
+
+    .rt-detail-text {
+        margin: 0 0 0.5rem;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        font-size: 1rem;
+    }
+
+    .rt-facts {
+        display: grid;
+        grid-template-columns: max-content minmax(0, 1fr);
+        gap: 0.15rem 0.75rem;
+        margin: 0 0 0.5rem;
+    }
+
+    .rt-facts dt {
+        color: var(--text-muted);
+        font-weight: 400;
+    }
+
+    .rt-facts dd {
+        margin: 0;
+        min-width: 0;
+        overflow-wrap: anywhere;
+    }
+
+    .rt-receptions {
+        width: 100%;
+        margin: 0 0 0.5rem;
+        font-variant-numeric: tabular-nums;
+        border-collapse: collapse;
+    }
+
+    .rt-receptions th {
+        color: var(--text-muted);
+        font-weight: 400;
+        text-align: left;
+        border-bottom: 1px solid var(--border-color);
+        padding: 0.15rem 0.75rem 0.15rem 0;
+    }
+
+    .rt-receptions td {
+        padding: 0.15rem 0.75rem 0.15rem 0;
+        vertical-align: top;
+    }
+
+    .rt-receptions td.rt-path {
+        overflow-wrap: anywhere;
+    }
+
+    .rt-detail-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    .rt-empty {
+        padding: 2rem 1rem;
+        color: var(--text-muted);
+        text-align: center;
+    }
+
+    .rt-empty .btn {
+        margin-top: 0.75rem;
+    }
+
+    ::selection {
+        background-color: var(--rt-fresh);
+    }
+
+    /* Phone: one sticky line, filters behind a button, two-line rows. */
+    @media (max-width: 767.98px) {
+        .rt-strip {
+            gap: 0.25rem 0.9rem;
+            min-height: 48px;
+            padding: 0.4rem 0.75rem;
+        }
+
+        .rt-strip__wide,
+        .rt-strip .rt-pause-label,
+        .rt-strip__label--rate {
+            display: none !important;
+        }
+
+        .rt-strip__label--last {
+            display: none !important;
+        }
+
+        #rt-last::before {
+            content: "heard ";
+            color: var(--text-muted);
+        }
+
+        .rt-strip {
+            flex-wrap: nowrap;
+            gap: 0.25rem 0.75rem;
+        }
+
+        .rt-strip__item {
+            min-width: 0;
+        }
+
+        .rt-filters-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+        }
+
+        .rt-filters > :not(.rt-filters-toggle):not(.rt-filter-count) {
+            display: none;
+        }
+
+        .rt-filters.is-open > :not(.rt-filters-toggle):not(.rt-filter-count) {
+            display: flex;
+        }
+
+        .rt-filters.is-open .form-select,
+        .rt-filters.is-open .form-control,
+        .rt-filters.is-open .rt-search {
+            flex: 1 1 100%;
+            max-width: none;
+        }
+
+        .rt-main {
+            grid-template-columns: 1.5rem minmax(0, 1fr);
+            column-gap: 0.5rem;
+            padding-left: 0.6rem;
+        }
+
+        .rt-time {
+            display: none;
+        }
+
+        .rt-l2 .rt-time-inline {
+            display: inline;
+        }
+
+        .rt-reply,
+        .rt-detail {
+            margin-left: calc(0.6rem + 1.5rem + 0.5rem);
+            margin-right: 0.6rem;
+        }
+
+        .rt-keep {
+            opacity: 1;
+        }
+    }
+
+    @media (min-width: 768px) {
+        .rt-l2 .rt-time-inline {
+            display: none;
+        }
+    }
+
+    @media (pointer: coarse) {
+        .rt-keep {
+            opacity: 1;
+            padding: 0.55rem 0.6rem;
+            margin: 0;
+        }
+    }
+
     /* Packet Detail Modal Styles */
     .packet-detail-body {
         background-color: #1a1d21;
@@ -216,51 +625,51 @@
         max-height: 70vh;
         overflow-y: auto;
     }
-    
+
     #packetDetailModal .modal-content {
         background-color: #1a1d21;
         border: 1px solid #343a40;
     }
-    
+
     #packetDetailModal .modal-header {
         background-color: #212529;
         border-bottom: 1px solid #343a40;
         color: #e9ecef;
     }
-    
+
     #packetDetailModal .modal-footer {
         background-color: #212529;
         border-top: 1px solid #343a40;
     }
-    
+
     .packet-info-item {
         margin-bottom: 0.5rem;
     }
-    
+
     .packet-info-label {
         color: #adb5bd;
         margin-right: 0.5rem;
     }
-    
+
     .packet-hash {
         color: #ffc107;
         font-size: 1.1em;
     }
-    
+
     .section-title {
-        color: #17a2b8;
+        color: #6edff6;
         border-bottom: 1px solid #343a40;
         padding-bottom: 0.5rem;
         margin-bottom: 1rem;
     }
-    
+
     /* Hex Breakdown */
     .hex-breakdown-container {
         background-color: #212529;
         border-radius: 0.375rem;
         padding: 1rem;
     }
-    
+
     .hex-breakdown {
         font-family: var(--font-mono);
         font-size: 0.85rem;
@@ -271,7 +680,7 @@
         border-radius: 0.25rem;
         border-left: 4px solid #ffc107;
     }
-    
+
     /* Hex segment colors - high contrast for dark mode */
     .hex-header { color: #000; background-color: #ffc107; padding: 2px 4px; border-radius: 2px; font-weight: 600; }
     .hex-pathlen { color: #000; background-color: #17a2b8; padding: 2px 4px; border-radius: 2px; font-weight: 600; }
@@ -279,12 +688,12 @@
     .hex-payload { color: #fff; background-color: #0d6efd; padding: 2px 4px; border-radius: 2px; font-weight: 600; }
     .hex-transport { color: #000; background-color: #fd7e14; padding: 2px 4px; border-radius: 2px; font-weight: 600; }
     .hex-unknown { color: #adb5bd; }
-    
+
     /* GroupText hex colors - high contrast for dark mode */
     .hex-channel-hash { color: #fff; background-color: #dc3545; padding: 2px 4px; border-radius: 2px; font-weight: 600; }
     .hex-cipher-mac { color: #000; background-color: #ffc107; padding: 2px 4px; border-radius: 2px; font-weight: 600; }
     .hex-ciphertext { color: #000; background-color: #17a2b8; padding: 2px 4px; border-radius: 2px; font-weight: 600; }
-    
+
     /* Segment Cards */
     .segment-card {
         background-color: #212529;
@@ -293,18 +702,18 @@
         padding: 1rem;
         height: 100%;
     }
-    
+
     .segment-title {
         font-size: 0.9rem;
         margin-bottom: 0.5rem;
     }
-    
+
     .segment-bytes {
-        font-size: 0.75rem;
-        color: #6c757d;
+        font-size: 0.7rem;
+        color: #adb5bd;
         margin-bottom: 0.5rem;
     }
-    
+
     .segment-value {
         display: block;
         font-family: var(--font-mono);
@@ -315,57 +724,57 @@
         word-break: break-all;
         color: #e9ecef;
     }
-    
+
     .segment-description {
         font-size: 0.8rem;
         color: #adb5bd;
         margin-top: 0.5rem;
         margin-bottom: 0;
     }
-    
+
     .text-truncate-multi {
         max-height: 4.5em;
         overflow: hidden;
         text-overflow: ellipsis;
     }
-    
+
     /* Header bits table */
     .header-bits-table {
         font-size: 0.8rem;
         margin-bottom: 0;
     }
-    
+
     .header-bits-table th {
         color: #adb5bd;
         font-weight: 500;
         border-color: #343a40 !important;
     }
-    
+
     .header-bits-table td {
         border-color: #343a40 !important;
         color: #e9ecef;
     }
-    
+
     /* Decrypted message card */
     .decrypted-card {
         background-color: rgba(25, 135, 84, 0.1);
         border-color: #198754;
     }
-    
+
     .decrypted-field {
         margin-bottom: 0.25rem;
     }
-    
+
     .decrypted-label {
         color: #adb5bd;
         font-size: 0.85rem;
     }
-    
+
     .decrypted-value {
         color: #e9ecef;
         font-weight: 500;
     }
-    
+
     .message-content {
         background-color: #2d3238;
         padding: 0.75rem;
@@ -375,7 +784,7 @@
         word-break: break-word;
         margin-top: 0.5rem;
     }
-    
+
     /* GroupText section */
     #grouptext-breakdown {
         display: none;
@@ -385,11 +794,11 @@
         padding: 1rem;
         margin-top: 1rem;
     }
-    
+
     #grouptext-breakdown.visible {
         display: block !important;
     }
-    
+
     /* Advert section */
     #advert-breakdown {
         display: none;
@@ -399,11 +808,11 @@
         padding: 1rem;
         margin-top: 1rem;
     }
-    
+
     #advert-breakdown.show-section {
         display: block !important;
     }
-    
+
     /* Light mode support for modal */
     [data-theme="light"] .packet-detail-body,
     [data-theme="light"] #packetDetailModal .modal-content {
@@ -417,40 +826,40 @@
         border-color: var(--border-color);
         color: var(--text-color);
     }
-    
+
     [data-theme="light"] .segment-card {
         background-color: var(--card-bg);
         border-color: var(--border-color);
     }
-    
+
     [data-theme="light"] .segment-value {
         background-color: #e9ecef;
         color: #212529;
     }
-    
+
     [data-theme="light"] .hex-breakdown {
         background-color: var(--bg-tertiary);
         border-left-color: #ffc107;
     }
-    
+
     [data-theme="light"] .hex-breakdown-container {
         background-color: var(--card-bg);
     }
-    
+
     [data-theme="light"] .section-title {
         color: #0d6efd;
         border-bottom-color: var(--border-color);
     }
-    
+
     [data-theme="light"] .packet-info-label {
         color: var(--text-muted);
     }
-    
+
     [data-theme="light"] .segment-bytes,
     [data-theme="light"] .segment-description {
         color: var(--text-muted);
     }
-    
+
     /* Override Bootstrap table-dark in light mode */
     [data-theme="light"] .header-bits-table,
     [data-theme="light"] .header-bits-table.table-dark {
@@ -459,40 +868,40 @@
         color: var(--text-color);
         background-color: var(--bg-secondary);
     }
-    
+
     [data-theme="light"] .header-bits-table th,
     [data-theme="light"] .header-bits-table.table-dark th {
         border-color: var(--border-color) !important;
         color: #495057 !important;
         background-color: #f8f9fa !important;
     }
-    
+
     [data-theme="light"] .header-bits-table td,
     [data-theme="light"] .header-bits-table.table-dark td {
         border-color: var(--border-color) !important;
         color: #212529 !important;
         background-color: #ffffff !important;
     }
-    
+
     [data-theme="light"] .message-content {
         background-color: var(--bg-tertiary);
         color: var(--text-color);
     }
-    
+
     [data-theme="light"] #grouptext-breakdown,
     [data-theme="light"] #advert-breakdown {
         background-color: var(--card-bg);
         border-color: var(--border-color);
     }
-    
+
     [data-theme="light"] .decrypted-label {
         color: #495057;
     }
-    
+
     [data-theme="light"] .decrypted-value {
         color: var(--text-color);
     }
-    
+
     [data-theme="light"] .decrypted-card {
         background-color: rgba(25, 135, 84, 0.1);
         border-color: #198754;
@@ -501,110 +910,77 @@
 {% endblock %}
 
 {% block content %}
-<div class="row">
-    <div class="col-12 d-flex justify-content-between align-items-center mb-4">
-        <h1 class="mb-0">
-            <i class="fas fa-broadcast-tower"></i> Real-time Monitoring
-        </h1>
-        <a href="/logs" class="btn btn-outline-secondary">
-            <i class="fas fa-file-alt"></i> Live Log Viewer
-        </a>
-    </div>
+<div class="rt-head">
+    <h1 class="h3"><i class="fas fa-broadcast-tower" aria-hidden="true"></i> Real-time</h1>
+    <a href="/logs" class="btn btn-sm btn-outline-secondary">
+        <i class="fas fa-file-alt" aria-hidden="true"></i> Logs
+    </a>
 </div>
 
-<!-- Stream Filters -->
-<div class="row mb-3">
-    <div class="col-12">
-        <div class="d-flex align-items-center flex-wrap gap-2">
-            <small class="text-muted me-1">Show:</small>
-            <div class="form-check form-check-inline mb-0">
-                <input class="form-check-input rt-filter-cb" type="checkbox" id="rt-filter-command" data-target="command-card" checked>
-                <label class="form-check-label text-muted" for="rt-filter-command" style="font-size:0.8rem">Commands</label>
-            </div>
-            <div class="form-check form-check-inline mb-0">
-                <input class="form-check-input rt-filter-cb" type="checkbox" id="rt-filter-packet" data-target="packet-card" checked>
-                <label class="form-check-label text-info" for="rt-filter-packet" style="font-size:0.8rem">Packets</label>
-            </div>
-            <div class="form-check form-check-inline mb-0">
-                <input class="form-check-input rt-filter-cb" type="checkbox" id="rt-filter-message" data-target="message-card" checked>
-                <label class="form-check-label text-primary" for="rt-filter-message" style="font-size:0.8rem">Messages</label>
-            </div>
-        </div>
+<!-- Receiver strip: is the radio hearing things right now? -->
+<section class="rt-strip" aria-label="Receiver status">
+    <span class="rt-strip__item">
+        <span class="status-indicator status-warning" id="rt-lamp" aria-hidden="true"></span>
+        <strong id="rt-state" role="status">Connecting…</strong>
+    </span>
+    <span class="rt-strip__item">
+        <span class="rt-strip__label rt-strip__label--last">Last heard</span>
+        <span id="rt-last">—</span>
+    </span>
+    <span class="rt-strip__item">
+        <span class="rt-strip__label rt-strip__label--rate">Rate</span>
+        <span id="rt-rate">—</span>
+    </span>
+    <span class="rt-strip__item rt-strip__wide" title="Packets heard per 30 seconds over the last 10 minutes">
+        <span class="rt-strip__label">10 min</span>
+        <svg id="rt-spark" class="rt-spark" viewBox="0 0 120 24" preserveAspectRatio="none" role="img" aria-label="Packets heard per 30 seconds, last 10 minutes"></svg>
+    </span>
+    <span class="rt-strip__spacer"></span>
+    <span class="rt-strip__item">
+        <button type="button" class="btn btn-sm btn-outline-primary rt-pending" id="rt-pending" hidden></button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="rt-pause" aria-pressed="false" aria-label="Pause the tape" title="Pause the tape (P)">
+            <i class="fas fa-pause" aria-hidden="true"></i> <span class="rt-pause-label">Pause</span>
+        </button>
+    </span>
+</section>
+
+<!-- Filters: lenses on the same rows, never a split into more rows -->
+<div class="rt-filters" id="rt-filters" role="search" aria-label="Filter the tape">
+    <button type="button" class="btn btn-sm btn-outline-secondary rt-filters-toggle" id="rt-filters-toggle" aria-expanded="false" aria-controls="rt-filters">
+        <i class="fas fa-filter" aria-hidden="true"></i> Filters <span id="rt-filters-active"></span>
+    </button>
+    <div class="btn-group btn-group-sm" role="group" aria-label="Show">
+        <input type="radio" class="btn-check" name="rt-kind" id="rt-kind-all" value="all" checked>
+        <label class="btn btn-outline-secondary" for="rt-kind-all">Everything</label>
+        <input type="radio" class="btn-check" name="rt-kind" id="rt-kind-message" value="message">
+        <label class="btn btn-outline-secondary" for="rt-kind-message">Messages</label>
+        <input type="radio" class="btn-check" name="rt-kind" id="rt-kind-command" value="command">
+        <label class="btn btn-outline-secondary" for="rt-kind-command">Commands</label>
     </div>
+    <select class="form-select form-select-sm" id="rt-type" aria-label="Packet type">
+        <option value="">All packet types</option>
+    </select>
+    <select class="form-select form-select-sm" id="rt-channel" aria-label="Channel">
+        <option value="">All channels</option>
+    </select>
+    <input type="search" class="form-control form-control-sm rt-search" id="rt-search" placeholder="Search sender, text, prefix or hash" aria-label="Search the tape" title="Search (/)">
+    <button type="button" class="btn btn-sm btn-link" id="rt-clear-filters" hidden>Clear filters</button>
+    <span class="rt-filter-count" id="rt-filter-count" aria-live="polite"></span>
+    <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" id="rt-clear" title="Remove every row except the ones you kept">Clear tape</button>
 </div>
 
-<!-- Stream panels: XL = 3 columns; MD–LG = Command + Messages, then Packet; XS = Command, Packet, Messages -->
-<div class="row realtime-streams align-items-stretch g-3 mb-4">
-    <div class="col-12 col-md-6 col-xl-4 order-1 order-md-1 order-xl-1">
-        <div class="card h-100" id="command-card">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <h6><i class="fas fa-comments"></i> Command Stream</h6>
-                <div class="d-flex align-items-center gap-1">
-                    <span class="badge bg-warning" id="command-status">Connecting…</span>
-                    <button class="btn btn-sm btn-outline-secondary ms-2" type="button" id="cmd-scroll-top" title="Scroll to newest" aria-label="Scroll commands to newest"><i class="fas fa-arrow-up" aria-hidden="true"></i></button>
-                    <button class="btn btn-sm btn-outline-secondary" type="button" id="cmd-scroll-bottom" title="Scroll to oldest" aria-label="Scroll commands to oldest"><i class="fas fa-arrow-down" aria-hidden="true"></i></button>
-                    <button class="btn btn-sm btn-outline-secondary ms-1" id="cmd-clear">Clear</button>
-                </div>
-            </div>
-            <div class="card-body">
-                <div id="command-stream" class="stream-container">
-                    <div class="text-muted text-center py-3">
-                        <i class="fas fa-hourglass-half"></i> Waiting for command data...
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
+<section class="rt-kept" id="rt-kept" hidden aria-labelledby="rt-kept-title">
+    <h2 class="rt-kept-title" id="rt-kept-title"><i class="fas fa-star" aria-hidden="true"></i> Kept <span id="rt-kept-count"></span></h2>
+    <ol class="rt-kept-list" id="rt-kept-list"></ol>
+</section>
 
-    <div class="col-12 col-md-6 col-xl-4 order-3 order-md-2 order-xl-3">
-        <div class="card h-100" id="message-card">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <h6><i class="fas fa-comment-dots"></i> Live Channel Messages</h6>
-                <div class="d-flex align-items-center gap-1">
-                    <span class="badge bg-warning" id="message-status">Connecting…</span>
-                    <button class="btn btn-sm btn-outline-secondary ms-2" type="button" id="msg-scroll-top" title="Scroll to newest" aria-label="Scroll messages to newest"><i class="fas fa-arrow-up" aria-hidden="true"></i></button>
-                    <button class="btn btn-sm btn-outline-secondary" type="button" id="msg-scroll-bottom" title="Scroll to oldest" aria-label="Scroll messages to oldest"><i class="fas fa-arrow-down" aria-hidden="true"></i></button>
-                    <button class="btn btn-sm btn-outline-secondary ms-1" id="msg-clear">Clear</button>
-                    <button class="btn btn-sm btn-outline-secondary ms-1" id="msg-pause-btn">
-                        <i class="fas fa-pause" id="msg-pause-icon"></i> Pause
-                    </button>
-                </div>
-            </div>
-            <div class="card-body">
-                <div id="message-stream" class="stream-container">
-                    <div class="text-muted text-center py-3">
-                        <i class="fas fa-hourglass-half"></i> Waiting for channel messages…
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="col-12 col-md-12 col-xl-4 order-2 order-md-3 order-xl-2">
-        <div class="card h-100" id="packet-card">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <h6><i class="fas fa-route"></i> Packet Stream</h6>
-                <div class="d-flex align-items-center gap-1">
-                    <span class="badge bg-warning" id="packet-status">Connecting…</span>
-                    <button class="btn btn-sm btn-outline-secondary ms-2" type="button" id="pkt-scroll-top" title="Scroll to newest" aria-label="Scroll packets to newest"><i class="fas fa-arrow-up" aria-hidden="true"></i></button>
-                    <button class="btn btn-sm btn-outline-secondary" type="button" id="pkt-scroll-bottom" title="Scroll to oldest" aria-label="Scroll packets to oldest"><i class="fas fa-arrow-down" aria-hidden="true"></i></button>
-                    <button class="btn btn-sm btn-outline-secondary ms-1" id="pkt-clear">Clear</button>
-                </div>
-            </div>
-            <div class="card-body">
-                <div id="packet-stream" class="stream-container">
-                    <div class="text-muted text-center py-3">
-                        <i class="fas fa-hourglass-half"></i> Waiting for packet data...
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+<ol class="rt-tape" id="rt-tape" aria-label="Transmissions heard, newest first">
+    <li class="rt-empty" id="rt-empty">Connecting to the bot…</li>
+</ol>
 
 <!-- Packet Detail Modal -->
 <div class="modal fade" id="packetDetailModal" tabindex="-1" aria-labelledby="packetDetailModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable modal-fullscreen-md-down">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="packetDetailModalLabel">
@@ -703,7 +1079,7 @@
                 <div id="grouptext-breakdown" class="grouptext-section">
                     <h6 class="section-title">GroupText Payload Byte Breakdown</h6>
                     <div id="grouptext-hex" class="hex-breakdown mb-3"></div>
-                    
+
                     <div class="row">
                         <div class="col-md-4">
                             <div class="segment-card">
@@ -800,8 +1176,8 @@
 {% endblock %}
 
 {% block page_libs %}
-<!-- SHA-256 for channel key derivation (works in non-HTTPS contexts) -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/js-sha256/0.11.0/sha256.min.js"></script>
+<!-- SHA-256 for channel key derivation (works in non-HTTPS contexts); vendored, see static/vendor/README.md -->
+<script src="{{ url_for('static', filename='vendor/js-sha256/sha256.min.js') }}"></script>
 {% endblock %}
 
 {% block extra_js %}
@@ -812,88 +1188,72 @@
     // socket.on('connect') from firing (the module deferred execution caused a
     // race between two Socket.IO managers, with the module's socket never
     // receiving its connect event).
-    import('/static/js/meshcore-browser.mjs').then(function(m) {
+    const decoderReady = import('/static/js/meshcore-browser.mjs').then(function(m) {
         window.meshCoreDecoder = m;
         window._MeshCoreKeyStore = m.MeshCoreKeyStore;
+        return m;
     }).catch(function(e) {
         console.warn('MeshCore decoder unavailable:', e);
+        return null;
     });
 
     // Reuse the shared socket from base.html's ModernConnectionManager.
-    // When auth is enabled, anonymous users have no socket (live streams stay admin-only).
     const socket = window.connectionManager && window.connectionManager.socket;
 
-    // Connection status
-    let commandConnected = false;
-    let packetConnected = false;
-    
-    // Storage for packet data (for click-to-detail feature)
+    // Raw packet payloads by reception id, for the byte breakdown modal.
     const packetStore = new Map();
-    window.packetStore = packetStore; // Make accessible globally
+    window.packetStore = packetStore;
     let packetCounter = 0;
-    
+
     // Public channel secret (well-known, publicly documented)
     const PUBLIC_CHANNEL_SECRET = '8b3387e9c5cdea6ac9e5edbaa115cd72';
-    
+
     // Channel secrets storage (Public + derived hashtag keys)
     let channelSecrets = [PUBLIC_CHANNEL_SECRET];
-    
+
     // Channel hash to name mapping (for displaying friendly channel names)
     // Maps hash -> array of {name, secret} since multiple channels can share a hash
     const channelHashMap = new Map();
     window.channelHashMap = channelHashMap;
-    
+
     // MeshCore decoder key store
     let decoderKeyStore = null;
-    
+
     // Current packet being viewed in modal
     let currentPacketHex = null;
-    window.currentPacketHex = null; // Make accessible globally
-    
+    window.currentPacketHex = null;
+
     // Identify which channel a message belongs to by trying decryption with each candidate key
     async function identifyChannelByDecryption(channelEntries, fullPacketHex) {
         if (!window.meshCoreDecoder || !channelEntries || channelEntries.length === 0) {
             return channelEntries?.map(e => e.name).join(' or ') || 'Unknown';
         }
-        
-        // Try decryption with each candidate key individually
+
         for (const entry of channelEntries) {
             try {
-                // Create a key store with just this one secret
                 const testKeyStore = new (window._MeshCoreKeyStore || class { addChannelSecrets(){} })({
                     channelSecrets: [entry.secret]
                 });
-                
-                // Try to decode the full packet with just this key
                 const testResult = window.meshCoreDecoder.decodePacket(fullPacketHex, { keyStore: testKeyStore });
-                
-                // If decryption succeeded (has decrypted content), this is the right key
                 if (testResult?.payload?.decoded?.decrypted) {
                     return entry.name;
                 }
             } catch (e) {
-                // This key didn't work, try next
                 continue;
             }
         }
-        
-        // Couldn't determine - show all possibilities
+
         return channelEntries.map(e => e.name).join(' or ');
     }
-    
+
     // Compute channel hash from secret (first byte of SHA256 of the secret)
     async function computeChannelHash(secretHex) {
         try {
-            // Convert hex secret to bytes
             const secretBytes = new Uint8Array(secretHex.match(/.{1,2}/g).map(b => parseInt(b, 16)));
-            
-            // Use js-sha256 library
             if (typeof sha256 !== 'undefined') {
                 const hashHex = sha256(secretBytes);
-                return hashHex.slice(0, 2).toUpperCase(); // First byte as hex
+                return hashHex.slice(0, 2).toUpperCase();
             }
-            
-            // Fallback to Web Crypto API
             if (window.crypto && window.crypto.subtle) {
                 const hashBuffer = await crypto.subtle.digest('SHA-256', secretBytes);
                 const hashArray = new Uint8Array(hashBuffer);
@@ -904,42 +1264,39 @@
         }
         return null;
     }
-    
-    // Initialize decoder with channel secrets
+
+    // Build the decoder key store from the configured channels. It waits for
+    // the decoder module, which used to lose the race and leave the page with
+    // no key store at all.
+    let keyStoreStarted = false;
     async function initializeKeyStore() {
+        if (keyStoreStarted) return;
+        keyStoreStarted = true;
         try {
-            // Fetch configured channels
             const response = await fetch('/api/channels');
             const data = await response.json();
 
             let radioChannels = 0;
             let decodeOnlyChannels = 0;
-            
-            // Add Public channel to maps
+
             const publicHash = await computeChannelHash(PUBLIC_CHANNEL_SECRET);
             if (publicHash) {
                 channelHashMap.set(publicHash, [{ name: 'Public', secret: PUBLIC_CHANNEL_SECRET }]);
             }
 
             if (data.channels && data.channels.length > 0) {
-                // Derive keys for hashtag channels
                 for (const channel of data.channels) {
                     if (channel.type === 'hashtag' && channel.name) {
                         const derivedKey = await deriveHashtagKey(channel.name);
                         if (derivedKey && !channelSecrets.includes(derivedKey)) {
                             channelSecrets.push(derivedKey);
-                            
-                            // Store with # prefix for display
                             const displayName = channel.name.startsWith('#') ? channel.name : `#${channel.name}`;
-                            
-                            // Add to hash map (handles collisions by storing array)
                             const channelHash = await computeChannelHash(derivedKey);
                             if (channelHash) {
                                 const existing = channelHashMap.get(channelHash) || [];
                                 existing.push({ name: displayName, secret: derivedKey });
                                 channelHashMap.set(channelHash, existing);
                             }
-                            
                             if (channel.decode_only) {
                                 decodeOnlyChannels++;
                             } else {
@@ -950,7 +1307,7 @@
                 }
             }
 
-            // Create the decoder key store with all channel secrets
+            await decoderReady;
             decoderKeyStore = window._MeshCoreKeyStore ? new window._MeshCoreKeyStore({
                 channelSecrets: channelSecrets
             }) : null;
@@ -964,24 +1321,20 @@
         } catch (error) {
             console.warn('Could not initialize decoder key store:', error);
         }
+        decodePendingRows();
     }
-    
+
     // Derive hashtag channel key: first 16 bytes of SHA256(lowercase_channel_name)
     async function deriveHashtagKey(channelName) {
         try {
-            // Ensure channel name starts with # and is lowercase
             let name = channelName.toLowerCase();
             if (!name.startsWith('#')) {
                 name = '#' + name;
             }
-            
-            // Use js-sha256 library (works in non-HTTPS contexts)
             if (typeof sha256 !== 'undefined') {
                 const hashHex = sha256(name);
-                return hashHex.slice(0, 32); // First 16 bytes as hex
+                return hashHex.slice(0, 32);
             }
-            
-            // Fallback to Web Crypto API (only works in secure contexts)
             if (window.crypto && window.crypto.subtle) {
                 const encoder = new TextEncoder();
                 const data = encoder.encode(name);
@@ -989,7 +1342,6 @@
                 const hashArray = new Uint8Array(hashBuffer);
                 return Array.from(hashArray.slice(0, 16)).map(b => b.toString(16).padStart(2, '0')).join('');
             }
-            
             console.warn('No SHA-256 implementation available');
             return null;
         } catch (error) {
@@ -997,96 +1349,45 @@
             return null;
         }
     }
-    
-    // Load recent commands on page load
-    function loadRecentCommands() {
-        fetch('/api/recent_commands')
-            .then(response => response.json())
-            .then(data => {
-                if (data.commands && data.commands.length > 0) {
-                    // Clear the waiting message
-                    const container = document.getElementById('command-stream');
-                    const waiting = container.querySelector('.text-muted.text-center');
-                    if (waiting) {
-                        waiting.remove();
-                    }
-                    
-                    // Add each command (in reverse order since they come newest first)
-                    data.commands.reverse().forEach(commandData => {
-                        addCommandEntry(commandData);
-                    });
-                    
-                    updateStatus('command-status', 'Loaded Recent', 'info');
-                }
-            })
-            .catch(error => {
-                console.error('Error loading recent commands:', error);
-            });
-    }
-    
-    // Socket event handlers (admin session only — anonymous has no live firehose)
-    if (!socket) {
-        updateStatus('command-status', 'Admin login required', 'warning');
-        updateStatus('packet-status', 'Admin login required', 'warning');
-        updateStatus('message-status', 'Admin login required', 'warning');
-    } else {
-    socket.on('connect', function() {
-        updateStatus('command-status', 'Connected', 'success');
-        updateStatus('packet-status', 'Connected', 'success');
-        updateStatus('message-status', 'Connected', 'success');
-        socket.emit('subscribe_commands');
-        socket.emit('subscribe_packets');
-        socket.emit('subscribe_messages');
 
-        // Load recent commands when connected
-        loadRecentCommands();
-        
-        // Initialize key store for decryption
-        initializeKeyStore();
-        
-        // Start ping interval to keep connection alive
-        startPingInterval();
-    });
-    
-    socket.on('disconnect', function() {
-        updateStatus('command-status', 'Disconnected', 'danger');
-        updateStatus('packet-status', 'Disconnected', 'danger');
-        updateStatus('message-status', 'Disconnected', 'danger');
-        
-        // Stop ping interval on disconnect
-        stopPingInterval();
-    });
-    
-    socket.on('force_disconnect', function() {
-        updateStatus('command-status', 'Disconnected by server', 'warning');
-        updateStatus('packet-status', 'Disconnected by server', 'warning');
-        // Disconnect the socket
-        socket.disconnect();
-    });
-    
-    socket.on('error', function(data) {
-        console.error('Socket error:', data.message);
-        updateStatus('command-status', 'Error', 'danger');
-        updateStatus('packet-status', 'Error', 'danger');
-    });
-    
-    socket.on('command_data', function(data) {
-        addCommandEntry(data);
-    });
-    
-    socket.on('packet_data', function(data) {
-        addPacketEntry(data);
-    });
+    // ── Receiver tape ─────────────────────────────────────────────────────
+    // One row per transmission. A packet, the message decrypted from it and a
+    // command it triggered are one row, joined by packet hash; a command's
+    // reply hangs under that row, and the reply's own echoes fold into it.
 
-    socket.on('message_data', function(data) {
-        addMessageEntry(data);
-    });
-    } // end admin-only socket handlers
+    const MAX_ROWS = 300;          // tape rows kept on the page (kept rows don't count)
+    const MAX_PENDING = 500;       // events held while the tape is paused or being read
+    const POINTER_IDLE_MS = 5000;  // a resting pointer stops holding the tape after this
+    const RATE_WINDOW_S = 300;
+    const SPARK_BUCKETS = 20;
+    const SPARK_BUCKET_S = 30;
 
-    // ── Live Channel Messages ──────────────────────────────────────────────
+    const txs = new Map();          // row key -> transmission
+    const replyOwner = new Map();   // reply packet hash -> key of the row whose command sent it
+    const commandIndex = new Map(); // command_id -> row key
+    const heardTimes = [];          // server epoch seconds of every reception, newest last
+    const seenTypes = new Set();
+    const seenChannels = new Set();
+    const pending = [];
+    const view = { kind: 'all', type: '', channel: '', q: '' };
+    const hold = { paused: false, scrolled: false, pointer: false };
+    const link = { socket: socket ? 'connecting' : 'none', offline: false, offlineSince: null, zombie: false };
 
-    let messagePaused = false;
-    const MAX_MESSAGES = 200;
+    let synthetic = 0;
+    let connectCount = 0;
+    let clockOffset = null;    // browser clock minus server clock, from live deliveries
+    let coverageStart = null;  // earliest server time the rate and sparkline can speak for
+    let lastHeard = null;
+    let lastPointerMove = 0;
+    let pendingDropped = 0;
+    let clearedAt = null;
+    let divider = null;
+
+    const tape = document.getElementById('rt-tape');
+    const emptyRow = document.getElementById('rt-empty');
+    const keptSection = document.getElementById('rt-kept');
+    const keptList = document.getElementById('rt-kept-list');
+    const strip = document.querySelector('.rt-strip');
 
     function makeElement(tagName, className = '', text = null) {
         const element = document.createElement(tagName);
@@ -1096,7 +1397,9 @@
     }
 
     function makeIcon(className) {
-        return makeElement('i', className);
+        const icon = makeElement('i', className);
+        icon.setAttribute('aria-hidden', 'true');
+        return icon;
     }
 
     function setButtonIconAndLabel(button, iconClass, label) {
@@ -1104,39 +1407,89 @@
         button.replaceChildren(icon, document.createTextNode(` ${String(label)}`));
     }
 
-    function renderWaitingState(container, message) {
-        const placeholder = makeElement('div', 'text-muted text-center py-3');
-        placeholder.append(
-            makeIcon('fas fa-hourglass-half'),
-            document.createTextNode(` ${String(message)}`)
-        );
-        container.replaceChildren(placeholder);
+    // ── Time ──
+
+    function nowServer() {
+        return Date.now() / 1000 - (clockOffset || 0);
     }
 
-    function toggleMessagePause() {
-        messagePaused = !messagePaused;
-        const btn  = document.getElementById('msg-pause-btn');
-        if (messagePaused) {
-            setButtonIconAndLabel(btn, 'fas fa-play', 'Resume');
-            updateStatus('message-status', 'Paused', 'warning');
-        } else {
-            setButtonIconAndLabel(btn, 'fas fa-pause', 'Pause');
-            updateStatus('message-status', 'Active', 'success');
-        }
+    function eventTime(data) {
+        // Commands and messages carry their own capture time; a command's
+        // stream_ts moves forward each time its repeat count is updated.
+        if (typeof data.timestamp === 'number') return data.timestamp;
+        if (typeof data.stream_ts === 'number') return data.stream_ts;
+        const parsed = data.datetime ? Date.parse(data.datetime) : NaN;
+        return Number.isFinite(parsed) ? parsed / 1000 : nowServer();
     }
 
-    function clearMessages() {
-        renderWaitingState(
-            document.getElementById('message-stream'),
-            'Waiting for channel messages…'
-        );
+    function noteDelivery(data) {
+        // Live rows reach the browser within a poll of being written, so the
+        // smallest gap seen is the clock difference plus a little delivery time.
+        if (data.replayed || typeof data.stream_ts !== 'number') return;
+        const gap = Date.now() / 1000 - data.stream_ts;
+        if (clockOffset === null || gap < clockOffset) clockOffset = gap;
     }
 
-    function normalizeChannelKeyForColor(channel) {
-        if (!channel) return '';
-        let s = String(channel).trim().toLowerCase();
-        if (s.startsWith('#')) s = s.slice(1);
-        return s;
+    function clockText(t) {
+        return new Date(t * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    }
+
+    function agoText(t) {
+        const s = Math.max(0, Math.round(nowServer() - t));
+        if (s < 5) return 'just now';
+        if (s < 60) return `${s} s ago`;
+        if (s < 3600) return `${Math.floor(s / 60)} min ago`;
+        return `at ${clockText(t)}`;
+    }
+
+    // ── Labels ──
+
+    const TYPE_LABELS = {
+        REQ: 'Request', RESPONSE: 'Response', TXT_MSG: 'Direct message', ACK: 'Ack',
+        ADVERT: 'Advert', GRP_TXT: 'Group text', GRP_DATA: 'Group data',
+        ANON_REQ: 'Anonymous request', PATH: 'Returned path', TRACE: 'Trace',
+        MULTIPART: 'Multipart', RAW_CUSTOM: 'Custom'
+    };
+
+    function typeLabel(name) {
+        return TYPE_LABELS[name] || String(name || 'Unknown');
+    }
+
+    function routeInfo(name) {
+        const n = String(name || '').toUpperCase();
+        if (n.includes('DIRECT')) return { label: n.startsWith('TRANSPORT') ? 'Direct (transport)' : 'Direct', kind: 'direct' };
+        if (n.includes('FLOOD')) return { label: n.startsWith('TRANSPORT') ? 'Flood (transport)' : 'Flood', kind: 'flood' };
+        return null;
+    }
+
+    function hopsText(h) {
+        if (h === null || h === undefined || h === '' || Number(h) === 255) return '? hops';
+        const n = Number(h);
+        if (!Number.isFinite(n)) return '? hops';
+        return `${n} hop${n === 1 ? '' : 's'}`;
+    }
+
+    function snrText(snr) {
+        const n = Number(snr);
+        return snr !== null && snr !== undefined && snr !== '' && Number.isFinite(n) ? `SNR ${n.toFixed(1)} dB` : null;
+    }
+
+    function pathList(path) {
+        if (!path) return [];
+        if (Array.isArray(path)) return path.map(p => String(p));
+        return String(path).split(/[,\s]+/).filter(Boolean);
+    }
+
+    function normHash(value) {
+        if (!value) return null;
+        const s = String(value).trim().toUpperCase();
+        return s && !/^0+$/.test(s) ? s : null;
+    }
+
+    /** Remove redundant leading [#chan] / [##chan] already shown in the channel chip. */
+    function stripLeadingChannelBracketTag(content, isDm) {
+        if (isDm || content == null || content === '') return content;
+        return String(content).replace(/^\s*\[[#]+[^\]]*\]\s*/u, '');
     }
 
     function hashStringToUint(str) {
@@ -1148,525 +1501,1093 @@
         return h >>> 0;
     }
 
-    /** Hue 0–359: mix normalized + raw label so e.g. Public vs #testing rarely collide or look identical. */
-    function channelHueFromRaw(channelRaw) {
-        if (!channelRaw) return 200;
-        const s = String(channelRaw).trim();
-        const norm = normalizeChannelKeyForColor(s);
-        const mixed = norm + '\x1e' + s;
-        let h = hashStringToUint(mixed);
-        h ^= h >>> 16;
-        h = Math.imul(h, 2246822519);
-        h ^= h >>> 13;
-        h = Math.imul(h, 3266489917);
-        h ^= h >>> 16;
-        return (h >>> 0) % 360;
+    /** A stable data hue per channel, so a channel is recognizable at a glance; its name is always beside it. */
+    function channelDotColor(channel) {
+        const s = String(channel || '').trim().toLowerCase().replace(/^#/, '');
+        return `hsl(${hashStringToUint(s) % 360}, 55%, 50%)`;
     }
 
-    function isLightThemeActive() {
-        return document.documentElement.getAttribute('data-theme') === 'light';
-    }
+    // ── Transmissions ──
 
-    /** Stable HSL per channel — saturated enough to feel lively, not maxed-out neon (DM uses fixed purple). */
-    function channelAccentStyles(channelRaw) {
-        const hue = channelHueFromRaw(channelRaw);
-        const h32 = hashStringToUint(normalizeChannelKeyForColor(String(channelRaw || '')) + '\x1e' + String(channelRaw || ''));
-        const t = (h32 >>> 8) % 11;
-        if (isLightThemeActive()) {
-            const borderSat = 42 + (t % 10);
-            const badgeSat = 34 + (t % 12);
-            return {
-                border: 'hsl(' + hue + ', ' + borderSat + '%, 42%)',
-                badgeBg: 'hsl(' + hue + ', ' + badgeSat + '%, 91%)',
-                badgeFg: 'hsl(' + hue + ', 45%, 20%)'
-            };
-        }
-        const borderSat = 48 + (t % 14);
-        const badgeSat = 42 + (t % 14);
-        return {
-            border: 'hsl(' + hue + ', ' + borderSat + '%, 56%)',
-            badgeBg: 'hsl(' + hue + ', ' + badgeSat + '%, 32%)',
-            badgeFg: 'hsl(' + hue + ', 15%, 97%)'
+    function createTx(key, hash, t, history) {
+        const tx = {
+            key, hash, t, history,
+            packet: null, receptions: [],
+            message: null, decoded: null, advert: null, channelHash: null, decodeTried: false,
+            command: null, echoes: [],
+            kept: false, open: false, el: null
         };
+        txs.set(key, tx);
+        return tx;
     }
 
-    /** Remove redundant leading [#chan] / [##chan] already shown in the header badge. */
-    function stripLeadingChannelBracketTag(content, isDm) {
-        if (isDm || content == null || content === '') return content;
-        return String(content).replace(/^\s*\[[#]+[^\]]*\]\s*/u, '');
+    function isHistory(data) {
+        // The replay that answers the first subscribe is what was heard before
+        // the page opened; a replay after a reconnect fills the gap and is live.
+        return !!data.replayed && connectCount <= 1;
     }
 
-    function addMessageEntry(data) {
-        if (messagePaused) return;
-        const container = document.getElementById('message-stream');
-
-        // Remove placeholder
-        const placeholder = container.querySelector('.text-muted.text-center');
-        if (placeholder) placeholder.remove();
-
-        const ts  = new Date(data.timestamp * 1000).toLocaleTimeString();
-        const isDm = !!data.is_dm;
-        const accent = isDm
-            ? { border: '#6f42c1', badgeBg: '#6f42c1', badgeFg: '#fff' }
-            : channelAccentStyles(data.channel || '');
-
-        let channelBadge = null;
-        if (data.channel) {
-            channelBadge = makeElement(
-                'span',
-                'badge live-msg-channel-badge me-1',
-                data.channel
-            );
-            channelBadge.style.backgroundColor = accent.badgeBg;
-            channelBadge.style.color = accent.badgeFg;
-        }
-
-        const snrBadge = (data.snr && data.snr !== 'unknown')
-            ? makeElement(
-                'span',
-                'badge rounded-pill bg-primary live-msg-meta-badge',
-                `SNR ${String(data.snr)}`
-            )
-            : null;
-
-        // 255 = unknown hop count from radio; omit badge (same as before).
-        let hopsBadge = null;
-        const h = data.hops;
-        if (h != null && h !== '' && h !== 255) {
-            const hopsText = h === 0 ? 'Direct' : `${String(h)} hop${h !== 1 ? 's' : ''}`;
-            hopsBadge = makeElement(
-                'span',
-                'badge rounded-pill bg-info text-dark live-msg-meta-badge',
-                hopsText
-            );
-        }
-
-        const bodyRaw = stripLeadingChannelBracketTag(data.content || '', isDm);
-
-        const entry = document.createElement('div');
-        entry.className = 'stream-entry p-2 mb-1 rounded';
-        entry.style.borderLeftColor = accent.border;
-        entry.style.borderLeftWidth = '3px';
-        entry.style.borderLeftStyle = 'solid';
-
-        const header = makeElement(
-            'div',
-            'd-flex justify-content-between align-items-start mb-1 flex-wrap gap-2 w-100'
-        );
-        const sender = makeElement('span', 'd-flex flex-wrap align-items-center gap-1 min-w-0');
-        if (channelBadge) sender.appendChild(channelBadge);
-        if (isDm) sender.appendChild(makeElement('span', 'badge bg-secondary me-1', 'DM'));
-        sender.appendChild(makeElement('strong', '', data.sender || '?'));
-
-        const metadata = makeElement('div', 'live-msg-meta-stack ms-auto flex-shrink-0 text-end');
-        if (snrBadge || hopsBadge) {
-            const badges = makeElement('div', 'live-msg-meta-badges-row');
-            if (snrBadge) badges.appendChild(snrBadge);
-            if (hopsBadge) badges.appendChild(hopsBadge);
-            metadata.appendChild(badges);
-        }
-        metadata.appendChild(makeElement('small', 'text-muted live-msg-time', ts));
-        header.append(sender, metadata);
-        entry.append(header, makeElement('div', 'text-break', bodyRaw));
-
-        container.insertBefore(entry, container.firstChild);
-
-        // Trim old entries
-        const entries = container.querySelectorAll('.stream-entry');
-        if (entries.length > MAX_MESSAGES) {
-            entries[entries.length - 1].remove();
-        }
+    function addReception(list, data, t) {
+        const path = pathList(data.path);
+        const key = `${t.toFixed(3)}|${data.snr}|${path.join(',')}`;
+        if (list.some(r => r.key === key)) return false;
+        const id = ++packetCounter;
+        packetStore.set(id, data);
+        list.push({ key, id, t, snr: data.snr, rssi: data.rssi, hops: data.hops ?? data.path_len, path, data });
+        list.sort((a, b) => a.t - b.t);
+        return true;
     }
 
-    function scrollStream(containerId, dir) {
-        const c = document.getElementById(containerId);
-        if (!c) return;
-        if (dir === 'top') {
-            c.scrollTop = 0;
+    function noteHeard(t, replayed) {
+        heardTimes.push(t);
+        if (heardTimes.length > 1 && heardTimes[heardTimes.length - 2] > t) heardTimes.sort((a, b) => a - b);
+        if (lastHeard === null || t > lastHeard) lastHeard = t;
+        if (replayed && (coverageStart === null || t < coverageStart)) coverageStart = t;
+    }
+
+    function noteType(name) {
+        if (!name || seenTypes.has(name)) return;
+        seenTypes.add(name);
+        addSortedOption(document.getElementById('rt-type'), name, typeLabel(name));
+    }
+
+    function noteChannel(name) {
+        if (!name || seenChannels.has(name)) return;
+        seenChannels.add(name);
+        addSortedOption(document.getElementById('rt-channel'), name, name);
+    }
+
+    function addSortedOption(select, value, label) {
+        const option = makeElement('option', '', label);
+        option.value = value;
+        const after = Array.from(select.options).slice(1).find(o => o.textContent.localeCompare(label) > 0);
+        select.insertBefore(option, after || null);
+    }
+
+    function applyPacket(data) {
+        const hash = normHash(data.packet_hash);
+        const t = eventTime(data);
+        noteDelivery(data);
+
+        // An echo of the bot's own reply belongs to the command that sent it.
+        if (hash && replyOwner.has(hash)) {
+            const host = txs.get(replyOwner.get(hash));
+            if (host && addReception(host.echoes, data, t)) {
+                noteHeard(t, data.replayed);
+                renderTx(host);
+            }
+            return;
+        }
+
+        let tx = hash ? txs.get('h:' + hash) : null;
+        const isNew = !tx;
+        if (!tx) tx = createTx(hash ? 'h:' + hash : 'p:' + (++synthetic), hash, t, isHistory(data));
+        if (!addReception(tx.receptions, data, t)) return;
+        noteHeard(t, data.replayed);
+        if (!tx.packet) tx.packet = data;
+        if (t < tx.t) tx.t = t;
+        noteType(data.payload_type_name);
+        decodeRow(tx);
+        renderTx(tx, isNew ? 'new' : 'update');
+    }
+
+    // Commands stored before trigger hashes existed (or without a correlated
+    // packet) still pair with their message when sender, channel and text match
+    // exactly within a few seconds; anything looser stays on its own row.
+    const EXACT_MATCH_WINDOW_S = 20;
+
+    function sameWords(a, b) {
+        return String(a || '').trim() === String(b || '').trim();
+    }
+
+    function findMessageFor(cmd, t) {
+        for (const tx of txs.values()) {
+            const m = tx.message;
+            if (!m || tx.command || Math.abs(tx.t - t) > EXACT_MATCH_WINDOW_S) continue;
+            if (sameWords(m.sender, cmd.user) && sameWords(m.channel, cmd.channel) && sameWords(m.content, cmd.user_input)) return tx;
+        }
+        return null;
+    }
+
+    function findCommandFor(msg, t) {
+        for (const tx of txs.values()) {
+            const c = tx.command;
+            if (!c || tx.message || normHash(c.trigger_packet_hash) || Math.abs(tx.t - t) > EXACT_MATCH_WINDOW_S) continue;
+            if (sameWords(msg.sender, c.user) && sameWords(msg.channel, c.channel) && sameWords(msg.content, c.user_input)) return tx;
+        }
+        return null;
+    }
+
+    function rekey(tx, key, hash) {
+        txs.delete(tx.key);
+        commandIndex.forEach((k, id) => { if (k === tx.key) commandIndex.set(id, key); });
+        replyOwner.forEach((k, h) => { if (k === tx.key) replyOwner.set(h, key); });
+        tx.key = key;
+        tx.hash = hash;
+        txs.set(key, tx);
+        if (tx.el) tx.el.dataset.key = key;
+    }
+
+    // Move a command (and its reply's echoes) from its own row onto the row of
+    // the packet that carried its trigger.
+    function absorbCommand(tx, orphan) {
+        tx.command = orphan.command;
+        tx.echoes = tx.echoes.concat(orphan.echoes).sort((a, b) => a.t - b.t);
+        commandIndex.forEach((k, id) => { if (k === orphan.key) commandIndex.set(id, tx.key); });
+        replyOwner.forEach((k, h) => { if (k === orphan.key) replyOwner.set(h, tx.key); });
+        orphan.echoes = [];
+        removeTx(orphan);
+    }
+
+    function applyMessage(data) {
+        const hash = normHash(data.packet_hash);
+        const t = eventTime(data);
+        noteDelivery(data);
+        let tx;
+        if (hash) {
+            tx = txs.get('h:' + hash);
+            const orphan = findCommandFor(data, t);
+            if (!tx && orphan) {
+                rekey(orphan, 'h:' + hash, hash);
+                tx = orphan;
+            } else {
+                if (!tx) tx = createTx('h:' + hash, hash, t, isHistory(data));
+                if (orphan) absorbCommand(tx, orphan);
+            }
+        } else if ((tx = findCommandFor(data, t))) {
+            // joined to the command it triggered
         } else {
-            c.scrollTop = c.scrollHeight;
+            const key = 'm:' + [t.toFixed(1), data.sender, data.content].join('|');
+            if (txs.has(key)) return;
+            tx = createTx(key, null, t, isHistory(data));
+        }
+        if (tx.message) return;
+        const isNew = !tx.el;
+        tx.message = data;
+        noteChannel(data.is_dm ? 'DM' : data.channel);
+        renderTx(tx, isNew ? 'new' : 'update');
+    }
+
+    function applyCommand(data) {
+        const id = data.command_id ? String(data.command_id) : null;
+        const t = eventTime(data);
+        noteDelivery(data);
+        let tx = id && commandIndex.has(id) ? txs.get(commandIndex.get(id)) : null;
+        if (!tx) {
+            const trigger = normHash(data.trigger_packet_hash);
+            if (trigger) {
+                tx = txs.get('h:' + trigger) || createTx('h:' + trigger, trigger, t, isHistory(data));
+            } else {
+                const key = 'c:' + (id || [data.timestamp, data.user, data.user_input].join('|'));
+                tx = txs.get(key) || findMessageFor(data, t) || createTx(key, null, t, isHistory(data));
+            }
+            if (id) commandIndex.set(id, tx.key);
+        }
+        const isNew = !tx.el;
+        tx.command = Object.assign({}, tx.command || {}, data);
+        noteChannel(data.channel);
+
+        const reply = normHash(tx.command.reply_packet_hash);
+        if (reply && !replyOwner.has(reply)) {
+            replyOwner.set(reply, tx.key);
+            const echoRow = txs.get('h:' + reply);
+            if (echoRow && echoRow !== tx) {
+                echoRow.receptions.forEach(r => {
+                    if (!tx.echoes.some(e => e.key === r.key)) tx.echoes.push(r);
+                });
+                tx.echoes.sort((a, b) => a.t - b.t);
+                echoRow.receptions = [];  // now owned by the reply; don't free their bytes
+                removeTx(echoRow);
+            }
+        }
+        renderTx(tx, isNew ? 'new' : 'update');
+    }
+
+    // Adverts carry their name and group text its message only inside the
+    // payload, so the browser decodes them where it can (no key, no text).
+    function decodeRow(tx) {
+        if (tx.decodeTried || tx.message || !tx.packet || !window.meshCoreDecoder) return;
+        const type = tx.packet.payload_type_name;
+        const raw = tx.packet.raw_packet_hex;
+        if (!raw || (type !== 'ADVERT' && type !== 'GRP_TXT')) return;
+        if (type === 'GRP_TXT' && !window.decoderKeyStore) return;
+        tx.decodeTried = true;
+        try {
+            const options = window.decoderKeyStore ? { keyStore: window.decoderKeyStore } : {};
+            const result = window.meshCoreDecoder.decodePacket(raw, options);
+            const payload = result?.payload?.decoded;
+            if (type === 'ADVERT' && payload?.appData) {
+                tx.advert = {
+                    name: payload.appData.name || null,
+                    role: payload.appData.deviceRole !== undefined ? getDeviceRoleName(payload.appData.deviceRole) : null
+                };
+            }
+            if (type === 'GRP_TXT' && payload) {
+                const ch = payload.channelHash;
+                tx.channelHash = ch === undefined || ch === null ? null
+                    : (typeof ch === 'string' ? ch : ch.toString(16).padStart(2, '0')).toUpperCase();
+                if (payload.decrypted) {
+                    const entries = channelHashMap.get(tx.channelHash) || [];
+                    const channel = payload.decrypted.channelName
+                        || (entries.length ? entries.map(e => e.name).join(' or ') : null);
+                    tx.decoded = {
+                        sender: payload.decrypted.sender || null,
+                        content: payload.decrypted.message || payload.decrypted.text || '',
+                        channel
+                    };
+                    noteChannel(channel);
+                }
+            }
+        } catch (e) {
+            // Undecodable here; the row keeps the server's reading.
         }
     }
 
-    // Stream panel visibility filters
-    document.querySelectorAll('.rt-filter-cb').forEach(function(cb) {
-        cb.addEventListener('change', function() {
-            const card = document.getElementById(this.dataset.target);
-            if (card) {
-                card.style.display = this.checked ? '' : 'none';
-            }
+    function decodePendingRows() {
+        txs.forEach(tx => {
+            if (tx.decodeTried || tx.message) return;
+            decodeRow(tx);
+            if (tx.decodeTried) renderTx(tx);
         });
-    });
-
-    // Ping mechanism to keep connection alive
-    let pingInterval = null;
-    
-    function startPingInterval() {
-        if (!socket) return;
-        if (pingInterval) clearInterval(pingInterval);
-        pingInterval = setInterval(function() {
-            if (socket.connected) {
-                socket.emit('ping');
-            }
-        }, 25000); // Ping every 25 seconds (less than 30s timeout)
     }
-    
-    function stopPingInterval() {
-        if (pingInterval) {
-            clearInterval(pingInterval);
-            pingInterval = null;
+
+    function removeTx(tx) {
+        if (tx.el) tx.el.remove();
+        txs.delete(tx.key);
+        tx.receptions.concat(tx.echoes).forEach(r => packetStore.delete(r.id));
+        replyOwner.forEach((key, hash) => { if (key === tx.key) replyOwner.delete(hash); });
+        commandIndex.forEach((key, id) => { if (key === tx.key) commandIndex.delete(id); });
+        if (divider && !divider.nextElementSibling) {
+            divider.remove();
+            divider = null;
         }
     }
-    
-    if (socket) {
-    socket.on('pong', function() {
-        // Connection is alive, update status
-        updateStatus('command-status', 'Connected', 'success');
-        updateStatus('packet-status', 'Connected', 'success');
-    });
+
+    function enforceCap() {
+        let rows = tape.querySelectorAll('.rt-row');
+        let excess = rows.length - MAX_ROWS;
+        for (let i = rows.length - 1; i >= 0 && excess > 0; i--) {
+            const tx = txs.get(rows[i].dataset.key);
+            if (tx) {
+                removeTx(tx);
+                excess--;
+            }
+        }
     }
 
-    // Helper functions
-    function updateStatus(elementId, text, type) {
-        const element = document.getElementById(elementId);
-        element.textContent = text;
-        element.className = `badge bg-${type}`;
+    // ── Rendering ──
+
+    function readingOf(tx) {
+        if (tx.command) return 'command';
+        if (tx.message || tx.decoded) return 'message';
+        return 'packet';
     }
 
-    function buildRepeatInfo(data) {
-        const repeatCount = Number(data.repeat_count) || 0;
-        if (repeatCount <= 0) return null;
+    function channelOf(tx) {
+        if (tx.message) return tx.message.is_dm ? 'DM' : (tx.message.channel || '');
+        if (tx.command) return tx.command.channel || '';
+        if (tx.decoded) return tx.decoded.channel || '';
+        return '';
+    }
 
-        const repeaterPrefixes = Array.isArray(data.repeater_prefixes)
-            ? data.repeater_prefixes.map(prefix => String(prefix))
-            : [];
-        const repeaterCounts = data.repeater_counts || {};
-        let tooltipText;
-        if (repeaterPrefixes.length > 0) {
-            const prefixDetails = repeaterPrefixes.map(prefix => {
-                const count = Number(repeaterCounts[prefix]) || 1;
-                return count > 1 ? `${prefix} (${count}x)` : prefix;
+    function bestReception(tx) {
+        if (!tx.receptions.length) return null;
+        return tx.receptions.reduce((best, r) => (Number(r.snr) > Number(best.snr) ? r : best), tx.receptions[0]);
+    }
+
+    function appendChannelChip(parent, channel) {
+        if (!channel) return;
+        const chip = makeElement('span', 'rt-chip');
+        if (channel !== 'DM') {
+            const dot = makeElement('span', 'rt-dot');
+            dot.style.backgroundColor = channelDotColor(channel);
+            chip.appendChild(dot);
+        }
+        chip.appendChild(document.createTextNode(String(channel)));
+        parent.appendChild(chip);
+    }
+
+    function appendFact(parent, node) {
+        if (!node) return;
+        if (parent.childNodes.length) parent.appendChild(makeElement('span', 'rt-sep'));
+        parent.appendChild(typeof node === 'string' ? document.createTextNode(node) : node);
+    }
+
+    function buildFirstLine(tx) {
+        const line = makeElement('span', 'rt-l1');
+        const reading = readingOf(tx);
+        if (reading === 'command') {
+            const cmd = tx.command;
+            line.appendChild(makeElement('span', 'rt-who', cmd.user || 'Unknown'));
+            appendChannelChip(line, cmd.channel);
+            line.appendChild(makeElement('span', 'rt-text', stripLeadingChannelBracketTag(cmd.user_input || `${cmd.command || ''}`, false)));
+        } else if (reading === 'message') {
+            const msg = tx.message || tx.decoded;
+            const isDm = !!(tx.message && tx.message.is_dm);
+            line.appendChild(makeElement('span', 'rt-who', msg.sender || '?'));
+            appendChannelChip(line, channelOf(tx));
+            line.appendChild(makeElement('span', 'rt-text', stripLeadingChannelBracketTag(msg.content || '', isDm)));
+        } else {
+            const p = tx.packet || {};
+            const type = p.payload_type_name;
+            if (type === 'ADVERT' && tx.advert && tx.advert.name) {
+                line.appendChild(makeElement('span', 'rt-who', tx.advert.name));
+                if (tx.advert.role) line.appendChild(makeElement('span', 'rt-text text-muted', tx.advert.role));
+            } else {
+                line.appendChild(makeElement('span', 'rt-who', typeLabel(type)));
+                let extra = null;
+                if (type === 'GRP_TXT') {
+                    extra = tx.channelHash ? `channel 0x${tx.channelHash}, no key here` : 'encrypted';
+                } else if (type === 'TXT_MSG') {
+                    extra = 'encrypted';
+                } else if (type === 'ADVERT') {
+                    extra = window.meshCoreDecoder ? 'name not decoded' : null;
+                }
+                if (extra) line.appendChild(makeElement('span', 'rt-text text-muted', extra));
+            }
+        }
+        return line;
+    }
+
+    function buildSecondLine(tx) {
+        const line = makeElement('span', 'rt-l2');
+        const inlineTime = makeElement('span', 'rt-time-inline', clockText(tx.t));
+        line.appendChild(inlineTime);
+        const p = tx.packet;
+        if (p) {
+            // A bare packet row already names its type on the first line.
+            const typeOnFirstLine = readingOf(tx) === 'packet' && !(tx.advert && tx.advert.name);
+            if (!typeOnFirstLine) appendFact(line, typeLabel(p.payload_type_name));
+            const route = routeInfo(p.route_type_name);
+            if (route) {
+                const r = makeElement('span', 'rt-route');
+                r.append(makeElement('span', `rt-dot rt-route-dot--${route.kind}`), document.createTextNode(route.label));
+                appendFact(line, r);
+            }
+            appendFact(line, hopsText(p.hops ?? p.path_len));
+            const best = bestReception(tx);
+            appendFact(line, snrText(best ? best.snr : p.snr));
+            if (tx.receptions.length > 1) appendFact(line, `heard ×${tx.receptions.length}`);
+            const path = pathList(p.path);
+            if (path.length) appendFact(line, makeElement('span', 'rt-path', path.join(' › ')));
+            if (tx.decoded && !tx.message) appendFact(line, 'decoded in this browser');
+        } else {
+            const src = tx.message || {};
+            if (tx.message) {
+                appendFact(line, hopsText(src.hops));
+                appendFact(line, snrText(src.snr));
+            }
+            appendFact(line, tx.hash ? 'packet not on the tape' : 'packet not captured');
+        }
+        if (line.firstChild === inlineTime && line.childNodes.length > 1) {
+            // The separator after the phone-only time is hidden with it on desktop.
+            line.childNodes[1].classList.add('rt-time-inline');
+        }
+        return line;
+    }
+
+    function repeatSummary(cmd, echoes) {
+        const count = Number(cmd.repeat_count) || 0;
+        if (count > 0) {
+            const prefixes = Array.isArray(cmd.repeater_prefixes) ? cmd.repeater_prefixes.map(String) : [];
+            const counts = cmd.repeater_counts || {};
+            const via = prefixes.map(prefix => {
+                const n = Number(counts[prefix]) || 1;
+                return n > 1 ? `${prefix} ×${n}` : prefix;
             }).join(', ');
-            tooltipText = `Repeater prefixes: ${prefixDetails}`;
-            if (repeatCount > repeaterPrefixes.length) {
-                tooltipText += `\n\nTotal: ${repeatCount} repeats from ${repeaterPrefixes.length} unique repeater${repeaterPrefixes.length !== 1 ? 's' : ''}`;
-            }
+            return `Heard back ×${count}${via ? ` via ${via}` : ''}`;
+        }
+        if (echoes.length) return `Heard back ×${echoes.length}`;
+        return 'Sent · not heard back yet';
+    }
+
+    function buildReply(tx) {
+        const cmd = tx.command;
+        const reply = makeElement('div', 'rt-reply');
+        const head = makeElement('div', 'rt-reply-head');
+        head.append(makeIcon('fas fa-robot'), makeElement('span', '', 'Bot reply'));
+        if (cmd.command) head.appendChild(makeElement('span', 'rt-mono', cmd.command));
+        reply.appendChild(head);
+        reply.appendChild(makeElement('p', 'rt-reply-text', cmd.response || 'No response'));
+        const failed = cmd.success === false;
+        const status = makeElement('div', `rt-reply-status${failed ? ' is-failed' : ''}`);
+        if (failed) {
+            status.append(makeIcon('fas fa-circle-exclamation'), document.createTextNode(' Didn\'t send'));
         } else {
-            tooltipText = 'Heard by radio (no repeater prefixes identified)';
+            status.textContent = repeatSummary(cmd, tx.echoes);
         }
-
-        const info = makeElement('div', 'small text-info mt-1');
-        info.append(makeIcon('fas fa-broadcast-tower'), document.createTextNode(' Heard '));
-        const count = makeElement(
-            'span',
-            'text-decoration-underline',
-            `${repeatCount} repeat${repeatCount !== 1 ? 's' : ''}`
-        );
-        count.style.cursor = 'help';
-        count.dataset.bsToggle = 'tooltip';
-        count.dataset.bsPlacement = 'top';
-        count.title = tooltipText;
-        info.appendChild(count);
-        return info;
+        reply.appendChild(status);
+        return reply;
     }
 
-    function populateBotCard(card, data) {
-        const responseClass = data.success ? 'success' : 'danger';
-        const botMessageClass = data.success ? 'bot-message-success' : 'bot-message-danger';
-        card.className = `bot-message p-2 rounded ${botMessageClass}`;
-        card.style.maxWidth = '80%';
-
-        const header = makeElement('div', 'd-flex align-items-center mb-1');
-        header.append(
-            makeElement('strong', 'text-success me-2', '🤖 Bot'),
-            makeElement(
-                'span',
-                `badge bg-${responseClass} small me-2`,
-                data.success ? 'Success' : 'Failed'
-            ),
-            makeElement(
-                'small',
-                'text-muted ms-auto',
-                data.timestamp
-                    ? new Date(data.timestamp * 1000).toLocaleTimeString()
-                    : new Date().toLocaleTimeString()
-            )
-        );
-        const response = makeElement('div', 'response-text', data.response || 'No response');
-        const repeatInfo = buildRepeatInfo(data);
-        card.replaceChildren(header, response);
-        if (repeatInfo) card.appendChild(repeatInfo);
-    }
-
-    function initializeEntryTooltips(entry) {
-        if (typeof bootstrap === 'undefined' || !bootstrap.Tooltip) return;
-        entry.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(element => {
-            const existingTooltip = bootstrap.Tooltip.getInstance(element);
-            if (existingTooltip) existingTooltip.dispose();
-            new bootstrap.Tooltip(element);
+    function receptionTable(caption, list) {
+        const table = makeElement('table', 'rt-receptions');
+        table.appendChild(makeElement('caption', 'visually-hidden', caption));
+        const head = makeElement('tr');
+        ['Time', 'SNR', 'RSSI', 'Hops', 'Path'].forEach(h => {
+            const th = makeElement('th', '', h);
+            th.scope = 'col';
+            head.appendChild(th);
         });
+        const thead = makeElement('thead');
+        thead.appendChild(head);
+        const tbody = makeElement('tbody');
+        list.forEach(r => {
+            const row = makeElement('tr');
+            const snr = Number(r.snr);
+            const rssi = Number(r.rssi);
+            row.append(
+                makeElement('td', '', clockText(r.t)),
+                makeElement('td', '', Number.isFinite(snr) && r.snr !== null && r.snr !== '' ? `${snr.toFixed(1)} dB` : '—'),
+                makeElement('td', '', Number.isFinite(rssi) && r.rssi !== null && r.rssi !== '' ? `${rssi} dBm` : '—'),
+                makeElement('td', '', hopsText(r.hops).replace(/ hops?$/, '')),
+                makeElement('td', 'rt-path', r.path.length ? r.path.join(' › ') : '—')
+            );
+            tbody.appendChild(row);
+        });
+        table.append(thead, tbody);
+        return table;
     }
-    
-    function addCommandEntry(data) {
-        const container = document.getElementById('command-stream');
-        
-        // Remove waiting message if present
-        const waiting = container.querySelector('.text-muted.text-center');
-        if (waiting) {
-            waiting.remove();
-        }
-        
-        // Check if we already have this command (by command_id) and update it instead
-        if (data.command_id) {
-            const commandId = String(data.command_id);
-            const existingEntry = Array.from(container.querySelectorAll('[data-command-id]'))
-                .find(entry => entry.dataset.commandId === commandId);
-            if (existingEntry) {
-                // Update existing entry with new repeat information
-                const botMessage = existingEntry.querySelector('.bot-message');
-                if (botMessage) {
-                    populateBotCard(botMessage, data);
-                    initializeEntryTooltips(botMessage);
-                }
-                return; // Don't create a new entry
-            }
-        }
-        
-        // Create conversation-style entry
-        const entry = document.createElement('div');
-        entry.className = 'conversation-entry mb-3';
-        if (data.command_id) {
-            entry.dataset.commandId = String(data.command_id);
-        }
-        
-        // User command message
-        const userMessage = document.createElement('div');
-        userMessage.className = 'd-flex justify-content-start mb-2';
-        const userCard = makeElement('div', 'user-message p-2 rounded');
-        userCard.style.maxWidth = '80%';
-        const userHeader = makeElement('div', 'd-flex align-items-center mb-1');
-        userHeader.append(
-            makeElement('strong', 'text-primary me-2', data.user || 'Unknown'),
-            makeElement('small', 'text-muted me-2', data.channel || 'Unknown'),
-            makeElement(
-                'small',
-                'text-muted ms-auto',
-                data.timestamp
-                    ? new Date(data.timestamp * 1000).toLocaleTimeString()
-                    : new Date().toLocaleTimeString()
-            )
-        );
-        userCard.append(
-            userHeader,
-            makeElement('div', 'fw-bold', data.user_input || `/${data.command || 'Unknown Command'}`)
-        );
-        userMessage.appendChild(userCard);
-        
-        // Bot response message
-        const botMessage = document.createElement('div');
-        botMessage.className = 'd-flex justify-content-end mb-2';
-        const botCard = document.createElement('div');
-        populateBotCard(botCard, data);
-        botMessage.appendChild(botCard);
-        
-        entry.appendChild(userMessage);
-        entry.appendChild(botMessage);
-        container.insertBefore(entry, container.firstChild);
-        
-        initializeEntryTooltips(entry);
-        
-        // Limit to 25 conversation pairs (50 total messages)
-        while (container.children.length > 25) {
-            container.removeChild(container.lastChild);
-        }
-        
-        updateStatus('command-status', 'Active', 'success');
-    }
-    
-    function addPacketEntry(data) {
-        const container = document.getElementById('packet-stream');
-        
-        // Remove waiting message if present
-        const waiting = container.querySelector('.text-muted.text-center');
-        if (waiting) {
-            waiting.remove();
-        }
-        
-        // Store packet data for later access
-        const packetId = ++packetCounter;
-        packetStore.set(packetId, data);
-        
-        // Format timestamp
-        const timestamp = data.datetime ? new Date(data.datetime).toLocaleTimeString() : new Date().toLocaleTimeString();
-        
-        // Format path display as comma-separated list (path may be array or string)
-        const pathDisplay = data.path
-            ? (Array.isArray(data.path) ? data.path.join(',') : String(data.path))
-            : 'No path';
-        
-        // Format header with resolved components (human-readable with names and numbers)
-        let headerText = null;
-        if (data.header) {
-            const routeName = data.route_type_name || 'Unknown';
-            const routeValue = data.route_type !== undefined ? `0x${data.route_type.toString(16).padStart(2, '0')}` : 'Unknown';
-            const payloadName = data.payload_type_name || 'Unknown';
-            const payloadValue = data.payload_type !== undefined ? `0x${data.payload_type.toString(16).padStart(2, '0')}` : 'Unknown';
-            const version = data.payload_version !== undefined ? `v${data.payload_version}` : 'v?';
-            headerText = `Header: ${data.header} (${routeName} (${routeValue}) | ${payloadName} (${payloadValue}) | ${version})`;
-        }
-        
-        // Format transport info (only show if present)
-        const transportText = data.has_transport_codes && data.transport_codes
-            ? `Transport: ${data.transport_codes.hex || 'Unknown'}`
-            : null;
-        
-        // Format payload info (only show if present)
-        const payloadText = data.payload_bytes > 0
-            ? `Payload: ${data.payload_bytes} bytes`
-            : null;
-        
-        // Format advert info (only show if this is an ADVERT packet with advert data)
-        const hasAdvertInfo = data.advert_name && data.payload_type_name === 'ADVERT';
-        
-        // Check if raw packet hex is available for detailed view
-        const hasRawHex = !!(data.raw_packet_hex || data.payload_hex);
-        const clickableClass = hasRawHex ? 'packet-clickable' : '';
-        
-        // Determine packet type class for color-coding
-        const payloadTypeName = (data.payload_type_name || data.payload_type || '').toString().toUpperCase();
-        let packetTypeClass = 'packet-unknown';
-        if (payloadTypeName.includes('ADVERT')) {
-            packetTypeClass = 'packet-advert';
-        } else if (payloadTypeName.includes('GRP') || payloadTypeName.includes('GROUP')) {
-            packetTypeClass = 'packet-grouptext';
-        } else if (payloadTypeName === 'TXT' || payloadTypeName === 'TEXT') {
-            packetTypeClass = 'packet-txt';
-        } else if (payloadTypeName.includes('ACK')) {
-            packetTypeClass = 'packet-ack';
-        } else if (payloadTypeName.includes('PING')) {
-            packetTypeClass = 'packet-ping';
-        } else if (payloadTypeName.includes('PONG')) {
-            packetTypeClass = 'packet-pong';
-        } else if (payloadTypeName.includes('REQ')) {
-            packetTypeClass = 'packet-req';
-        } else if (payloadTypeName.includes('RESP') || payloadTypeName.includes('RSP')) {
-            packetTypeClass = 'packet-resp';
-        } else if (payloadTypeName.includes('TRACE')) {
-            packetTypeClass = 'packet-trace';
-        } else if (payloadTypeName.includes('CMD') || payloadTypeName.includes('COMMAND')) {
-            packetTypeClass = 'packet-cmd';
-        }
 
-        const entry = document.createElement('div');
-        entry.className = `stream-entry mb-2 p-3 border rounded ${clickableClass} ${packetTypeClass}`;
-        entry.dataset.packetId = packetId;
-        
-        if (hasRawHex) {
-            // Keyboard users reach the details the same way: the row acts as a button.
-            entry.setAttribute('role', 'button');
-            entry.tabIndex = 0;
-            entry.setAttribute('aria-haspopup', 'dialog');
-            entry.addEventListener('click', () => showPacketDetail(packetId, entry));
-            entry.addEventListener('keydown', (e) => {
-                if (e.key !== 'Enter' && e.key !== ' ') return;
-                e.preventDefault();
-                showPacketDetail(packetId, entry);
-            });
-            entry.title = 'View packet details';
-        }
-        
-        // Badge color based on packet type
-        const badgeColorMap = {
-            'packet-advert': 'bg-warning text-dark',
-            'packet-grouptext': 'bg-info',
-            'packet-txt': 'bg-success',
-            'packet-ack': 'bg-secondary',
-            'packet-ping': 'bg-warning text-dark',
-            'packet-pong': 'bg-warning text-dark',
-            'packet-req': 'bg-primary',
-            'packet-resp': 'bg-primary',
-            'packet-trace': 'bg-purple',
-            'packet-cmd': 'bg-danger',
-            'packet-unknown': 'bg-secondary'
+    function buildDetail(tx) {
+        const detail = makeElement('div', 'rt-detail');
+        detail.id = `rt-detail-${cssId(tx.key)}`;
+        detail.hidden = !tx.open;
+        if (!tx.open) return detail;
+
+        const reading = readingOf(tx);
+        // The first line truncates; the full text is only worth repeating when long.
+        const fullText = reading === 'command' ? tx.command.user_input
+            : reading === 'message' ? (tx.message || tx.decoded).content : null;
+        if (fullText && String(fullText).length > 60) detail.appendChild(makeElement('p', 'rt-detail-text', fullText));
+
+        const facts = makeElement('dl', 'rt-facts');
+        const fact = (label, value, mono) => {
+            if (value === null || value === undefined || value === '') return;
+            facts.append(makeElement('dt', '', label), makeElement('dd', mono ? 'rt-mono' : '', value));
         };
-        const badgeColor = badgeColorMap[packetTypeClass] || 'bg-secondary';
-        
-        const layout = makeElement('div', 'd-flex justify-content-between align-items-start');
-        const main = makeElement('div', 'flex-grow-1');
-        const heading = makeElement('div', 'd-flex align-items-center mb-2');
-        heading.append(
-            makeElement(
-                'div',
-                'fw-bold text-info me-2',
-                data.route_type_name || data.route_type || 'Unknown Route'
-            ),
-            makeElement(
-                'span',
-                `badge ${badgeColor}`,
-                data.payload_type_name || data.payload_type || 'Unknown'
-            )
-        );
-        if (data.payload_version !== undefined) {
-            heading.appendChild(
-                makeElement('span', 'badge bg-light text-dark ms-1', `v${data.payload_version}`)
-            );
-        }
-        if (hasRawHex) {
-            const hint = makeElement('span', 'click-hint');
-            hint.appendChild(makeIcon('fas fa-search-plus'));
-            heading.appendChild(hint);
-        }
-        main.appendChild(heading);
-
-        const path = makeElement('div', 'small text-muted mb-1 packet-stream-path');
-        path.append(
-            makeElement('strong', '', 'Path:'),
-            document.createTextNode(` ${String(pathDisplay)}${data.path_len > 0 ? ` (${data.path_len} bytes)` : ''}`)
-        );
-        main.appendChild(path);
-
-        if (hasAdvertInfo) {
-            const advert = makeElement('div', 'small text-success');
-            advert.append(
-                makeElement('strong', '', 'Advertised:'),
-                document.createTextNode(` ${String(data.advert_name)} (${String(data.advert_mode || 'Unknown')})`)
-            );
-            main.appendChild(advert);
-        }
-        if (headerText) main.appendChild(makeElement('div', 'small text-muted', headerText));
-        if (transportText) main.appendChild(makeElement('div', 'small text-warning', transportText));
-        if (payloadText) main.appendChild(makeElement('div', 'small text-muted', payloadText));
-
-        const right = makeElement('div', 'text-end');
-        right.appendChild(makeElement('div', 'small text-muted mb-1', timestamp));
-        const packetBadges = makeElement('div', 'd-flex flex-column align-items-end');
-        packetBadges.appendChild(
-            makeElement('span', 'badge bg-info mb-1', `${data.hops || data.path_len || 0} hops`)
-        );
-        if (data.has_transport_codes) {
-            packetBadges.appendChild(makeElement('span', 'badge bg-warning small', 'Transport'));
-        }
-        right.appendChild(packetBadges);
-        layout.append(main, right);
-        entry.appendChild(layout);
-        
-        container.insertBefore(entry, container.firstChild);
-        
-        // Limit to 50 entries and clean up old packet data
-        while (container.children.length > 50) {
-            const lastChild = container.lastChild;
-            if (lastChild && lastChild.dataset && lastChild.dataset.packetId) {
-                const oldPacketId = parseInt(lastChild.dataset.packetId);
-                if (oldPacketId) {
-                    packetStore.delete(oldPacketId);
-                }
+        const p = tx.packet;
+        fact('Packet hash', tx.hash, true);
+        if (p) {
+            fact('Type', typeLabel(p.payload_type_name));
+            const route = routeInfo(p.route_type_name);
+            fact('Route', route ? route.label : p.route_type_name);
+            const hops = p.hops ?? p.path_len;
+            if (p.path_byte_length) {
+                const bph = Number(p.bytes_per_hop) || 1;
+                fact('Path', `${hopsText(hops)} × ${bph} byte${bph === 1 ? '' : 's'} per hop`);
             }
-            container.removeChild(lastChild);
         }
-        
-        updateStatus('packet-status', 'Active', 'success');
+        if (tx.message && tx.message.is_dm) fact('Channel', 'Direct message');
+        if (tx.decoded && !tx.message) fact('Source', 'Decrypted in this browser with a configured channel key');
+        else if (tx.message) fact('Source', 'Captured by the bot');
+        if (tx.command) fact('Command', tx.command.command, true);
+        detail.appendChild(facts);
+
+        if (tx.receptions.length) {
+            detail.appendChild(makeElement('div', 'rt-subhead', `Heard ${tx.receptions.length} time${tx.receptions.length === 1 ? '' : 's'}`));
+            detail.appendChild(receptionTable('Receptions of this packet', tx.receptions));
+        }
+        if (tx.echoes.length) {
+            detail.appendChild(makeElement('div', 'rt-subhead', `Reply heard back ${tx.echoes.length} time${tx.echoes.length === 1 ? '' : 's'}`));
+            detail.appendChild(receptionTable('Receptions of the bot\'s reply', tx.echoes));
+        }
+
+        const actions = makeElement('div', 'rt-detail-actions');
+        const withBytes = tx.receptions.find(r => r.data.raw_packet_hex || r.data.payload_hex);
+        if (withBytes) {
+            const inspect = makeElement('button', 'btn btn-sm btn-outline-primary');
+            inspect.type = 'button';
+            inspect.setAttribute('aria-haspopup', 'dialog');
+            setButtonIconAndLabel(inspect, 'fas fa-microchip', 'Inspect bytes');
+            inspect.addEventListener('click', () => showPacketDetail(withBytes.id, inspect));
+            actions.appendChild(inspect);
+        }
+        if (tx.hash) {
+            const copy = makeElement('button', 'btn btn-sm btn-outline-secondary');
+            copy.type = 'button';
+            setButtonIconAndLabel(copy, 'fas fa-copy', 'Copy hash');
+            copy.addEventListener('click', () => {
+                navigator.clipboard.writeText(tx.hash).then(() => {
+                    setButtonIconAndLabel(copy, 'fas fa-check', 'Copied');
+                    setTimeout(() => setButtonIconAndLabel(copy, 'fas fa-copy', 'Copy hash'), 1500);
+                }).catch(() => {});
+            });
+            actions.appendChild(copy);
+        }
+        if (actions.childNodes.length) detail.appendChild(actions);
+        return detail;
     }
-    
+
+    function cssId(key) {
+        return String(key).replace(/[^A-Za-z0-9_-]/g, '_');
+    }
+
+    const TYPE_ICONS = {
+        GRP_TXT: 'fas fa-hashtag', TXT_MSG: 'fas fa-envelope', ADVERT: 'fas fa-bullhorn',
+        ACK: 'fas fa-check', PATH: 'fas fa-route', TRACE: 'fas fa-shoe-prints',
+        REQ: 'fas fa-arrow-right', RESPONSE: 'fas fa-reply', ANON_REQ: 'fas fa-user-secret',
+        GRP_DATA: 'fas fa-database', MULTIPART: 'fas fa-layer-group'
+    };
+    const TYPE_COLOR_KEYS = new Set(['GRP_TXT', 'RESPONSE', 'REQ', 'PATH', 'TXT_MSG', 'ANON_REQ', 'GRP_DATA', 'ADVERT']);
+
+    function rowType(tx) {
+        if (tx.packet && tx.packet.payload_type_name) return tx.packet.payload_type_name;
+        // A captured message without its packet is still a known type: channel
+        // messages travel as group text, DMs as direct messages.
+        if (tx.message) return tx.message.is_dm ? 'TXT_MSG' : 'GRP_TXT';
+        if (tx.command) return 'GRP_TXT';
+        return null;
+    }
+
+    function buildGlyph(tx) {
+        const reading = readingOf(tx);
+        const type = rowType(tx);
+        const colorKey = TYPE_COLOR_KEYS.has(type) ? type.toLowerCase() : 'other';
+        const chip = makeElement('span', `rt-glyph-chip rt-t-${colorKey}`);
+        let icon;
+        let label;
+        if (reading === 'command') {
+            chip.classList.add('is-bot');
+            icon = 'fas fa-robot';
+            label = 'Bot command';
+        } else if (reading === 'message') {
+            chip.classList.add('is-message');
+            icon = 'fas fa-comment';
+            label = type === 'TXT_MSG' ? 'Direct message' : 'Channel message';
+        } else {
+            icon = TYPE_ICONS[type] || 'fas fa-tower-broadcast';
+            label = `${typeLabel(type)} packet`;
+        }
+        chip.appendChild(makeIcon(icon));
+        chip.title = label;
+        const cell = makeElement('span', 'rt-glyph');
+        cell.append(chip, makeElement('span', 'visually-hidden', label));
+        return cell;
+    }
+
+    function renderTx(tx, change = 'update') {
+        let li = tx.el;
+        let refocus = null;
+        if (!li) {
+            li = makeElement('li', 'rt-row');
+            li.dataset.key = tx.key;
+            tx.el = li;
+        } else if (li.contains(document.activeElement)) {
+            refocus = document.activeElement.classList.contains('rt-keep') ? '.rt-keep' : '.rt-main';
+        }
+        li.classList.toggle('is-open', tx.open);
+
+        const detail = buildDetail(tx);
+
+        const main = makeElement('button', 'rt-main');
+        main.type = 'button';
+        main.setAttribute('aria-expanded', tx.open ? 'true' : 'false');
+        main.setAttribute('aria-controls', detail.id);
+        main.append(makeElement('span', 'rt-time', clockText(tx.t)), buildGlyph(tx), buildFirstLine(tx), buildSecondLine(tx));
+        main.addEventListener('click', () => {
+            tx.open = !tx.open;
+            renderTx(tx);
+        });
+
+        const keep = makeElement('button', 'rt-keep');
+        keep.type = 'button';
+        keep.setAttribute('aria-pressed', tx.kept ? 'true' : 'false');
+        keep.setAttribute('aria-label', tx.kept ? 'Stop keeping this transmission' : 'Keep this transmission');
+        keep.title = tx.kept ? 'Kept: safe from the row limit and from Clear' : 'Keep it: safe from the row limit and from Clear';
+        keep.appendChild(makeIcon(tx.kept ? 'fas fa-star' : 'far fa-star'));
+        keep.addEventListener('click', () => toggleKeep(tx));
+
+        const line = makeElement('div', 'rt-line');
+        line.append(main, keep);
+        li.replaceChildren(line);
+        if (tx.command) li.appendChild(buildReply(tx));
+        li.appendChild(detail);
+
+        if (!li.isConnected) {
+            if (tx.kept) keptList.prepend(li);
+            else insertRow(tx);
+        }
+        li.hidden = !tx.kept && !matches(tx);
+        if (change === 'new' || change === 'update') flash(li);
+        if (refocus) li.querySelector(refocus)?.focus({ preventScroll: true });
+        if (change === 'new') enforceCap();
+        updateCounts();
+    }
+
+    function flash(li) {
+        if (li.hidden) return;
+        li.classList.remove('is-fresh');
+        void li.offsetWidth;
+        li.classList.add('is-fresh');
+    }
+
+    function insertRow(tx) {
+        emptyRow.hidden = true;
+        if (tx.history && !divider) {
+            divider = makeElement('li', 'rt-divider', 'Heard before you opened this page');
+            tape.appendChild(divider);
+        }
+        let ref = null;
+        let inZone = !tx.history;
+        for (const child of tape.children) {
+            if (child === divider) {
+                if (!tx.history) {
+                    ref = divider;
+                    break;
+                }
+                inZone = true;
+                continue;
+            }
+            if (!inZone || !child.dataset.key) continue;
+            const other = txs.get(child.dataset.key);
+            if (other && other.t < tx.t) {
+                ref = child;
+                break;
+            }
+        }
+        tape.insertBefore(tx.el, ref);
+    }
+
+    function toggleKeep(tx) {
+        tx.kept = !tx.kept;
+        tx.el.remove();
+        renderTx(tx, 'none');
+        keptSection.hidden = keptList.children.length === 0;
+        document.getElementById('rt-kept-count').textContent = keptList.children.length ? `(${keptList.children.length})` : '';
+        tx.el.querySelector('.rt-keep')?.focus({ preventScroll: true });
+    }
+
+    // ── Filters ──
+
+    function searchText(tx) {
+        const parts = [tx.hash, channelOf(tx)];
+        if (tx.packet) parts.push(typeLabel(tx.packet.payload_type_name), pathList(tx.packet.path).join(' '));
+        if (tx.message) parts.push(tx.message.sender, tx.message.content);
+        if (tx.decoded) parts.push(tx.decoded.sender, tx.decoded.content);
+        if (tx.advert) parts.push(tx.advert.name);
+        if (tx.command) parts.push(tx.command.user, tx.command.user_input, tx.command.command, tx.command.response,
+            (tx.command.repeater_prefixes || []).join(' '));
+        tx.receptions.forEach(r => parts.push(r.path.join(' ')));
+        return parts.filter(Boolean).join(' ').toLowerCase();
+    }
+
+    function matches(tx) {
+        if (view.kind === 'message' && readingOf(tx) === 'packet') return false;
+        if (view.kind === 'command' && !tx.command) return false;
+        if (view.type && (!tx.packet || tx.packet.payload_type_name !== view.type)) return false;
+        if (view.channel && channelOf(tx) !== view.channel) return false;
+        if (view.q && !searchText(tx).includes(view.q)) return false;
+        return true;
+    }
+
+    function filtersActive() {
+        return view.kind !== 'all' || !!view.type || !!view.channel || !!view.q;
+    }
+
+    function applyFilters() {
+        tape.querySelectorAll('.rt-row').forEach(li => {
+            const tx = txs.get(li.dataset.key);
+            li.hidden = !tx || !matches(tx);
+        });
+        const active = filtersActive();
+        document.getElementById('rt-clear-filters').hidden = !active;
+        const n = [view.kind !== 'all', view.type, view.channel, view.q].filter(Boolean).length;
+        document.getElementById('rt-filters-active').textContent = n ? `(${n})` : '';
+        updateCounts();
+    }
+
+    function clearFilters() {
+        view.kind = 'all';
+        view.type = '';
+        view.channel = '';
+        view.q = '';
+        document.getElementById('rt-kind-all').checked = true;
+        document.getElementById('rt-type').value = '';
+        document.getElementById('rt-channel').value = '';
+        document.getElementById('rt-search').value = '';
+        applyFilters();
+    }
+
+    function updateCounts() {
+        const rows = tape.querySelectorAll('.rt-row');
+        let shown = 0;
+        rows.forEach(li => { if (!li.hidden) shown++; });
+        document.getElementById('rt-filter-count').textContent =
+            filtersActive() && rows.length ? `${shown} of ${rows.length} shown` : '';
+        if (divider) {
+            let anyHistory = false;
+            for (let el = divider.nextElementSibling; el; el = el.nextElementSibling) {
+                if (!el.hidden) { anyHistory = true; break; }
+            }
+            divider.hidden = !anyHistory;
+        }
+        updateEmpty(rows.length, shown);
+    }
+
+    function updateEmpty(total, shown) {
+        if (total > 0 && shown > 0) {
+            emptyRow.hidden = true;
+            return;
+        }
+        emptyRow.hidden = false;
+        if (emptyRow !== tape.firstElementChild) tape.prepend(emptyRow);
+        if (total > 0) {
+            const button = makeElement('button', 'btn btn-sm btn-outline-secondary', 'Clear filters');
+            button.type = 'button';
+            button.addEventListener('click', clearFilters);
+            emptyRow.replaceChildren(makeElement('div', '', 'No transmissions match these filters.'), button);
+        } else if (link.socket === 'none') {
+            emptyRow.textContent = 'Live updates aren\'t available here. Reload the page, or check that real-time is enabled in the Web Viewer settings.';
+        } else if (link.socket !== 'up' && !connectCount) {
+            emptyRow.textContent = 'Connecting to the bot…';
+        } else if (clearedAt !== null) {
+            emptyRow.textContent = `Tape cleared at ${clockText(clearedAt)}. New transmissions show up here as the radio hears them.`;
+        } else {
+            emptyRow.textContent = 'Nothing heard yet. Transmissions show up here as the radio hears them.';
+        }
+    }
+
+    function clearTape() {
+        Array.from(txs.values()).forEach(tx => { if (!tx.kept) removeTx(tx); });
+        clearedAt = nowServer();
+        updateCounts();
+    }
+
+    // ── Holding still while someone reads ──
+
+    function pointerHolds() {
+        return hold.pointer && Date.now() - lastPointerMove < POINTER_IDLE_MS;
+    }
+
+    function keyboardHolds() {
+        try {
+            return !!tape.querySelector(':focus-visible');
+        } catch (e) {
+            return false;  // browsers without :focus-visible
+        }
+    }
+
+    function isHeld() {
+        return hold.paused || hold.scrolled || pointerHolds() || keyboardHolds();
+    }
+
+    function ingest(kind, data) {
+        if (!data || typeof data !== 'object') return;
+        if (isHeld()) {
+            pending.push({ kind, data });
+            if (pending.length > MAX_PENDING) {
+                pending.shift();
+                pendingDropped++;
+            }
+            renderPending();
+            return;
+        }
+        applyEvent(kind, data);
+    }
+
+    function applyEvent(kind, data) {
+        try {
+            if (kind === 'packet') applyPacket(data);
+            else if (kind === 'message') applyMessage(data);
+            else if (kind === 'command') applyCommand(data);
+        } catch (e) {
+            console.warn('Realtime: could not show an event', e);
+        }
+    }
+
+    function flush(force) {
+        if (!pending.length || (!force && isHeld())) return;
+        const batch = pending.splice(0, pending.length);
+        batch.forEach(item => applyEvent(item.kind, item.data));
+        pendingDropped = 0;
+        renderPending();
+        renderStrip();
+    }
+
+    function pendingRows() {
+        const keys = new Set();
+        pending.forEach(({ kind, data }) => {
+            const hash = normHash(kind === 'command' ? data.trigger_packet_hash : data.packet_hash);
+            if (kind === 'command' && data.command_id && commandIndex.has(String(data.command_id))) return;
+            if (hash && (txs.has('h:' + hash) || replyOwner.has(hash))) return;
+            keys.add(hash || `${kind}:${keys.size}`);
+        });
+        return keys.size;
+    }
+
+    function renderPending() {
+        const button = document.getElementById('rt-pending');
+        const n = pending.length ? pendingRows() : 0;
+        if (!pending.length) {
+            button.hidden = true;
+            return;
+        }
+        button.hidden = false;
+        const label = n ? `${n} new` : 'Updates';
+        button.textContent = hold.paused ? `${label} waiting` : `${label} · show`;
+        button.title = pendingDropped
+            ? `${pendingDropped} older updates were dropped to keep the page light`
+            : 'Show what arrived while the tape was held';
+    }
+
+    function setPaused(paused) {
+        hold.paused = paused;
+        const button = document.getElementById('rt-pause');
+        button.setAttribute('aria-pressed', paused ? 'true' : 'false');
+        button.replaceChildren(
+            makeIcon(paused ? 'fas fa-play' : 'fas fa-pause'),
+            document.createTextNode(' '),
+            makeElement('span', 'rt-pause-label', paused ? 'Resume' : 'Pause')
+        );
+        button.title = paused ? 'Resume the tape (P)' : 'Pause the tape (P)';
+        button.setAttribute('aria-label', paused ? 'Resume the tape' : 'Pause the tape');
+        if (!paused) flush(false);
+        renderPending();
+        renderStrip();
+    }
+
+    function measureScroll() {
+        const stripBottom = strip.getBoundingClientRect().bottom;
+        hold.scrolled = tape.getBoundingClientRect().top < stripBottom - 4;
+    }
+
+    // ── Strip ──
+
+    function renderStrip() {
+        const lamp = document.getElementById('rt-lamp');
+        const state = document.getElementById('rt-state');
+        let lampClass = 'status-connected';
+        let text = 'Listening';
+        let title = '';
+        if (link.socket === 'none') {
+            lampClass = 'status-disconnected';
+            text = 'Live updates unavailable';
+        } else if (link.socket === 'connecting') {
+            lampClass = 'status-warning';
+            text = 'Connecting…';
+        } else if (link.socket === 'down') {
+            lampClass = 'status-warning';
+            text = 'Reconnecting to the bot…';
+        } else if (link.socket === 'kicked') {
+            lampClass = 'status-disconnected';
+            text = 'Disconnected by the server';
+            title = 'Your session ended. Reload the page to sign in again.';
+        } else if (link.zombie) {
+            lampClass = 'status-disconnected';
+            text = 'Radio not responding';
+        } else if (link.offline) {
+            lampClass = 'status-disconnected';
+            text = 'Radio can\'t transmit';
+            title = 'Sends are failing. Packets may still be arriving.' + (link.offlineSince ? ` Since ${link.offlineSince}.` : '');
+        } else if (hold.paused) {
+            text = 'Listening · paused';
+        }
+        lamp.className = `status-indicator ${lampClass}`;
+        if (state.textContent !== text) state.textContent = text;
+        state.title = title;
+
+        document.getElementById('rt-last').textContent = lastHeard === null ? 'nothing yet' : agoText(lastHeard);
+        renderRate();
+        renderSpark();
+    }
+
+    function renderRate() {
+        const now = nowServer();
+        const start = Math.max(now - RATE_WINDOW_S, coverageStart ?? now);
+        const span = now - start;
+        const el = document.getElementById('rt-rate');
+        if (span < 20) {
+            el.textContent = '—';
+            el.title = 'Not enough time on the tape yet';
+            return;
+        }
+        let count = 0;
+        for (let i = heardTimes.length - 1; i >= 0 && heardTimes[i] >= start; i--) count++;
+        const perMin = count / (span / 60);
+        el.textContent = `${perMin < 10 ? perMin.toFixed(1) : Math.round(perMin)}/min`;
+        el.title = `Packets heard per minute over the last ${Math.round(span / 60) || 1} min`;
+    }
+
+    function renderSpark() {
+        const svg = document.getElementById('rt-spark');
+        const now = nowServer();
+        const counts = new Array(SPARK_BUCKETS).fill(0);
+        const start = now - SPARK_BUCKETS * SPARK_BUCKET_S;
+        while (heardTimes.length && heardTimes[0] < start - RATE_WINDOW_S) heardTimes.shift();
+        for (let i = heardTimes.length - 1; i >= 0 && heardTimes[i] >= start; i--) {
+            const b = Math.min(SPARK_BUCKETS - 1, Math.floor((heardTimes[i] - start) / SPARK_BUCKET_S));
+            counts[b]++;
+        }
+        const max = Math.max(1, ...counts);
+        const known = coverageStart ?? now;
+        const width = 120 / SPARK_BUCKETS;
+        const rects = [];
+        counts.forEach((c, i) => {
+            // Time before the page's first packet is unknown, not quiet: it
+            // gets a hairline instead of a bar.
+            const unknown = start + (i + 1) * SPARK_BUCKET_S < known;
+            const h = unknown ? 1 : (c ? Math.max(2, Math.round((c / max) * 22)) : 1);
+            const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            rect.setAttribute('x', (i * width + 0.5).toFixed(2));
+            rect.setAttribute('y', String(24 - h));
+            rect.setAttribute('width', (width - 1).toFixed(2));
+            rect.setAttribute('height', String(h));
+            if (unknown) rect.setAttribute('class', 'is-unknown');
+            else if (i === SPARK_BUCKETS - 1) rect.setAttribute('class', 'is-now');
+            rects.push(rect);
+        });
+        svg.replaceChildren(...rects);
+    }
+
+    function readBannerState(detail) {
+        if (detail) {
+            link.offline = !!detail.radio_offline;
+            link.offlineSince = detail.radio_offline_since || null;
+            link.zombie = !!detail.radio_zombie;
+        } else {
+            const offline = document.getElementById('offline-banner');
+            const zombie = document.getElementById('zombie-banner');
+            link.offline = !!offline && !offline.classList.contains('d-none');
+            link.zombie = !!zombie && !zombie.classList.contains('d-none');
+            const since = document.getElementById('offline-since-text');
+            link.offlineSince = since && since.getAttribute('datetime') ? since.textContent.trim() : null;
+        }
+        renderStrip();
+    }
+
+    // ── Wiring ──
+
+    window.addEventListener('banner-status', e => readBannerState(e.detail));
+    readBannerState(null);
+
+    document.getElementById('rt-pause').addEventListener('click', () => setPaused(!hold.paused));
+    document.getElementById('rt-pending').addEventListener('click', () => {
+        if (hold.scrolled) {
+            const top = tape.getBoundingClientRect().top + window.scrollY - strip.offsetHeight - 16;
+            window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+            hold.scrolled = false;
+        }
+        if (hold.paused) setPaused(false);
+        flush(true);
+    });
+    document.getElementById('rt-clear').addEventListener('click', clearTape);
+    document.getElementById('rt-clear-filters').addEventListener('click', clearFilters);
+    document.getElementById('rt-filters-toggle').addEventListener('click', function() {
+        const bar = document.getElementById('rt-filters');
+        const open = !bar.classList.contains('is-open');
+        bar.classList.toggle('is-open', open);
+        this.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+    document.querySelectorAll('input[name="rt-kind"]').forEach(radio => {
+        radio.addEventListener('change', () => {
+            view.kind = radio.value;
+            applyFilters();
+        });
+    });
+    document.getElementById('rt-type').addEventListener('change', e => {
+        view.type = e.target.value;
+        applyFilters();
+    });
+    document.getElementById('rt-channel').addEventListener('change', e => {
+        view.channel = e.target.value;
+        applyFilters();
+    });
+    let searchTimer = null;
+    const search = document.getElementById('rt-search');
+    search.addEventListener('input', () => {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => {
+            view.q = search.value.trim().toLowerCase();
+            applyFilters();
+        }, 150);
+    });
+    search.addEventListener('keydown', e => {
+        if (e.key === 'Escape' && search.value) {
+            search.value = '';
+            view.q = '';
+            applyFilters();
+        }
+    });
+
+    document.addEventListener('keydown', e => {
+        if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
+        const t = e.target;
+        const typing = t && (t.isContentEditable || /^(SELECT|TEXTAREA)$/.test(t.tagName)
+            || (t.tagName === 'INPUT' && !/^(radio|checkbox|button|submit|reset)$/.test(t.type)));
+        if (typing) return;
+        if (document.querySelector('.modal.show')) return;
+        if (e.key === '/') {
+            e.preventDefault();
+            search.focus();
+        } else if (e.key === 'p' || e.key === 'P') {
+            e.preventDefault();
+            setPaused(!hold.paused);
+        }
+    });
+
+    [tape, keptList].forEach(list => {
+        list.addEventListener('pointermove', e => {
+            if (e.pointerType !== 'mouse') return;
+            hold.pointer = true;
+            lastPointerMove = Date.now();
+        });
+        list.addEventListener('pointerleave', () => {
+            hold.pointer = false;
+            flush(false);
+        });
+    });
+    tape.addEventListener('focusout', () => setTimeout(() => flush(false), 0));
+
+    let scrollQueued = false;
+    window.addEventListener('scroll', () => {
+        if (scrollQueued) return;
+        scrollQueued = true;
+        requestAnimationFrame(() => {
+            scrollQueued = false;
+            measureScroll();
+            if (!hold.scrolled) flush(false);
+        });
+    }, { passive: true });
+
+    setInterval(() => {
+        flush(false);
+        renderStrip();
+    }, 1000);
+
+    if (socket) {
+        const onConnect = () => {
+            if (link.socket === 'up') return;
+            link.socket = 'up';
+            connectCount++;
+            if (connectCount === 1 && coverageStart === null) coverageStart = nowServer();
+            socket.emit('subscribe_commands');
+            socket.emit('subscribe_packets');
+            socket.emit('subscribe_messages');
+            initializeKeyStore();
+            renderStrip();
+            updateCounts();
+        };
+        socket.on('connect', onConnect);
+        if (socket.connected) onConnect();
+        socket.on('disconnect', () => {
+            if (link.socket !== 'kicked') link.socket = 'down';
+            renderStrip();
+        });
+        socket.on('force_disconnect', () => {
+            link.socket = 'kicked';
+            renderStrip();
+            socket.disconnect();
+        });
+        socket.on('error', data => console.error('Socket error:', data && data.message));
+        socket.on('packet_data', data => ingest('packet', data));
+        socket.on('message_data', data => ingest('message', data));
+        socket.on('command_data', data => ingest('command', data));
+    }
+    decoderReady.then(() => decodePendingRows());
+    renderStrip();
+    updateCounts();
+
     // Show packet detail modal
     async function showPacketDetail(packetId, opener = null) {
         const data = packetStore.get(packetId);
@@ -1674,21 +2595,21 @@
             console.error('Packet data not found:', packetId);
             return;
         }
-        
+
         // Get the raw packet hex
         const rawHex = data.raw_packet_hex || data.payload_hex;
         if (!rawHex) {
             console.error('No raw packet hex available');
             return;
         }
-        
+
         currentPacketHex = rawHex;
         window.currentPacketHex = rawHex;
-        
+
         // Try to decode with meshcore-decoder
         let decoded = null;
         let decodeError = null;
-        
+
         if (window.meshCoreDecoder) {
             try {
                 const options = window.decoderKeyStore ? { keyStore: window.decoderKeyStore } : {};
@@ -1700,10 +2621,10 @@
         } else {
             decodeError = 'MeshCore decoder not loaded';
         }
-        
+
         // Build structure for hex breakdown
         const structure = buildStructureFromDecodedData(decoded, data, rawHex);
-        
+
         // Populate modal with decoded data (prefer decoder output, fallback to server data)
         await populatePacketModal(data, rawHex, decoded, structure, decodeError);
 
@@ -1720,16 +2641,26 @@
     }
     // Make showPacketDetail accessible globally
     window.showPacketDetail = showPacketDetail;
-    
+
+    // Path bytes on the wire: the server's count first, since the hop count
+    // and the byte count differ for multibyte paths.
+    function pathByteLength(decoded, serverData) {
+        if (serverData.path_byte_length !== null && Number.isFinite(Number(serverData.path_byte_length))) {
+            return Number(serverData.path_byte_length);
+        }
+        const hops = Number(serverData.path_len ?? decoded?.pathLength ?? 0) || 0;
+        return hops * (Number(serverData.bytes_per_hop) || 1);
+    }
+
     // Build packet structure from decoded data
     function buildStructureFromDecodedData(decoded, serverData, rawHex) {
         const segments = [];
         const totalBytes = rawHex.length / 2;
-        
+
         // Check for transport codes
         const hasTransport = decoded?.hasTransport ?? serverData.has_transport_codes ?? false;
         let offset = 0;
-        
+
         if (hasTransport) {
             segments.push({
                 name: 'Transport',
@@ -1740,7 +2671,7 @@
             });
             offset = 4;
         }
-        
+
         // Header byte
         segments.push({
             name: 'Header',
@@ -1749,9 +2680,10 @@
             value: '0x' + rawHex.slice(offset * 2, offset * 2 + 2).toUpperCase(),
             description: 'Route type, payload type, version'
         });
-        
-        // Path length byte
-        const pathLen = decoded?.pathLength ?? serverData.path_len ?? 0;
+
+        // Path length byte. Multibyte paths pack 2 or 3 bytes per hop, so the
+        // byte count, not the hop count, says where the payload starts.
+        const pathLen = pathByteLength(decoded, serverData);
         segments.push({
             name: 'Path Length',
             startByte: offset + 1,
@@ -1759,7 +2691,7 @@
             value: '0x' + rawHex.slice((offset + 1) * 2, (offset + 1) * 2 + 2).toUpperCase(),
             description: `${pathLen} bytes of path data`
         });
-        
+
         // Path data (if present)
         if (pathLen > 0) {
             segments.push({
@@ -1770,12 +2702,12 @@
                 description: 'Route taken through mesh'
             });
         }
-        
+
         // Payload
         const payloadStart = offset + 2 + pathLen;
         if (payloadStart < totalBytes) {
-            const payloadTypeName = decoded?.payloadType !== undefined 
-                ? getPayloadTypeName(decoded.payloadType) 
+            const payloadTypeName = decoded?.payloadType !== undefined
+                ? getPayloadTypeName(decoded.payloadType)
                 : (serverData.payload_type_name || 'Unknown');
             segments.push({
                 name: 'Payload',
@@ -1785,15 +2717,15 @@
                 description: `${payloadTypeName} payload data`
             });
         }
-        
+
         return { segments };
     }
-    
+
     // Populate packet detail modal using decoded data (from meshcore-decoder or server)
     async function populatePacketModal(serverData, rawHex, decoded, structure, decodeError) {
         // Total bytes
         document.getElementById('packet-total-bytes').textContent = `${rawHex.length / 2} bytes`;
-        
+
         // Packet hash - prefer decoder, then server, then compute
         let packetHash = decoded?.messageHash || serverData.packet_hash;
         if (!packetHash && rawHex && typeof sha256 !== 'undefined') {
@@ -1801,25 +2733,25 @@
             packetHash = fullHash.slice(0, 8).toUpperCase();
         }
         document.getElementById('detail-packet-hash').textContent = packetHash || 'N/A';
-        
+
         // Timestamp
-        const timestamp = serverData.datetime 
+        const timestamp = serverData.datetime
             ? new Date(serverData.datetime).toLocaleString()
             : new Date().toLocaleString();
         document.getElementById('detail-timestamp').textContent = timestamp;
-        
+
         // Type and Route - prefer decoder output
         const payloadTypeNum = decoded?.payloadType ?? serverData.payload_type;
-        const payloadType = decoded?.payloadType !== undefined 
+        const payloadType = decoded?.payloadType !== undefined
             ? getPayloadTypeName(decoded.payloadType)
             : (serverData.payload_type_name || getPayloadTypeName(serverData.payload_type));
         document.getElementById('detail-payload-type').textContent = payloadType;
-        
+
         const routeType = decoded?.routeType !== undefined
             ? getRouteTypeName(decoded.routeType)
             : (serverData.route_type_name || getRouteTypeName(serverData.route_type));
         document.getElementById('detail-route-type').textContent = routeType;
-        
+
         // Path - prefer decoder output
         let pathDisplay = 'Direct';
         if (decoded?.path && decoded.path.length > 0) {
@@ -1828,25 +2760,25 @@
             pathDisplay = serverData.path.join(' → ');
         }
         document.getElementById('detail-path').textContent = pathDisplay;
-        
+
         // Hex breakdown with color coding
         renderHexBreakdown(rawHex, structure);
-        
+
         // Header analysis
         populateHeaderAnalysis(decoded, serverData);
-        
+
         // Path and Payload
         populatePathAndPayload(decoded, serverData, structure);
-        
+
         // GroupText breakdown (if applicable)
         const grouptextSection = document.getElementById('grouptext-breakdown');
         const advertSection = document.getElementById('advert-breakdown');
-        
+
         // Handle payload type as number or string (server may send number or string)
         const ptNum = typeof payloadTypeNum === 'string' ? parseInt(payloadTypeNum, 10) : payloadTypeNum;
         const isGroupText = ptNum === 5 || payloadTypeNum === 'GRP_TXT' || payloadType === 'GRP_TXT' || payloadType === 'GroupText';
         const isAdvert = ptNum === 4 || payloadTypeNum === 'ADVERT' || payloadType === 'Advert' || payloadType === 'ADVERT';
-        
+
         if (isGroupText) {
             if (grouptextSection) grouptextSection.classList.add('visible');
             if (advertSection) advertSection.classList.remove('show-section');
@@ -1861,7 +2793,7 @@
             if (grouptextSection) grouptextSection.classList.remove('visible');
             if (advertSection) advertSection.classList.remove('show-section');
         }
-        
+
         // Show decoder error if any
         const errorDiv = document.getElementById('decoder-error');
         if (decodeError) {
@@ -1871,12 +2803,12 @@
             errorDiv.style.display = 'none';
         }
     }
-    
+
     // Render color-coded hex breakdown
     function renderHexBreakdown(rawHex, structure) {
         const container = document.getElementById('hex-breakdown');
         container.replaceChildren();
-        
+
         if (!structure || !structure.segments) {
             // Simple hex display without structure
             container.appendChild(
@@ -1884,11 +2816,11 @@
             );
             return;
         }
-        
+
         // Build color-coded hex display from segments
         const hexUpper = rawHex.toUpperCase();
         const segments = structure.segments;
-        
+
         // Color mapping for segments
         const colorMap = {
             'Header': 'hex-header',
@@ -1897,21 +2829,21 @@
             'Payload': 'hex-payload',
             'Transport': 'hex-transport'
         };
-        
+
         let currentPos = 0;
         for (const segment of segments) {
             const startByte = segment.startByte;
             const endByte = segment.endByte;
             const startHex = startByte * 2;
             const endHex = (endByte + 1) * 2;
-            
+
             // Add any gap before this segment
             if (currentPos < startHex) {
                 container.appendChild(
                     makeElement('span', 'hex-unknown', hexUpper.slice(currentPos, startHex))
                 );
             }
-            
+
             // Add the segment with color
             const colorClass = colorMap[segment.name] || 'hex-unknown';
             const segmentHex = hexUpper.slice(startHex, endHex);
@@ -1922,10 +2854,10 @@
             );
             segmentElement.title = `${String(segment.name)}: ${String(segment.description || '')}`;
             container.appendChild(segmentElement);
-            
+
             currentPos = endHex;
         }
-        
+
         // Add any remaining bytes
         if (currentPos < hexUpper.length) {
             container.appendChild(
@@ -1933,39 +2865,39 @@
             );
         }
     }
-    
+
     // Format hex with spaces every 2 characters
     function formatHexSpaced(hex) {
         return hex.match(/.{1,2}/g)?.join(' ') || hex;
     }
-    
+
     // Populate header analysis using decoded data
     function populateHeaderAnalysis(decoded, serverData) {
         // Get route type, payload type, version - prefer decoder output
         const routeType = decoded?.routeType ?? serverData.route_type;
         const payloadType = decoded?.payloadType ?? serverData.payload_type;
         const version = decoded?.payloadVersion ?? serverData.payload_version;
-        
+
         // Compute header byte from components for display
         let headerByte;
         if (routeType !== undefined && payloadType !== undefined) {
             headerByte = (routeType & 0x03) | ((payloadType & 0x0F) << 2) | (((version ?? 0) & 0x03) << 6);
         } else if (serverData.header !== undefined) {
-            headerByte = typeof serverData.header === 'string' 
-                ? parseInt(serverData.header, 16) 
+            headerByte = typeof serverData.header === 'string'
+                ? parseInt(serverData.header, 16)
                 : serverData.header;
         }
-        
+
         const headerHex = headerByte !== undefined && !isNaN(headerByte)
-            ? `0x${headerByte.toString(16).padStart(2, '0').toUpperCase()}` 
+            ? `0x${headerByte.toString(16).padStart(2, '0').toUpperCase()}`
             : 'Unknown';
-        
+
         document.getElementById('header-value').textContent = headerHex;
-        
+
         // Parse header bits
         const tbody = document.getElementById('header-bits-body');
         tbody.replaceChildren();
-        
+
         if (routeType !== undefined && payloadType !== undefined) {
             const routeTypeName = getRouteTypeName(routeType);
             const payloadTypeName = getPayloadTypeName(payloadType);
@@ -1997,17 +2929,22 @@
             tbody.appendChild(row);
         }
     }
-    
+
     // Populate path and payload sections
     function populatePathAndPayload(decoded, serverData, structure) {
-        // Path length - prefer decoder output
-        const pathLen = decoded?.pathLength ?? serverData.path_len ?? 0;
-        document.getElementById('pathlen-value').textContent = `0x${pathLen.toString(16).padStart(2, '0').toUpperCase()}`;
-        document.getElementById('pathlen-description').textContent = 
-            pathLen > 0 
-                ? `${pathLen} bytes showing route taken (increases as packet floods)`
-                : 'Direct message (no hops)';
-        
+        // Path length: the raw wire byte, and what it encodes
+        const pathLen = pathByteLength(decoded, serverData);
+        const hops = Number(serverData.path_len ?? decoded?.pathLength ?? 0) || 0;
+        const bytesPerHop = Number(serverData.bytes_per_hop) || 1;
+        const wireByte = serverData.path_len_byte !== null && Number.isFinite(Number(serverData.path_len_byte))
+            ? Number(serverData.path_len_byte)
+            : pathLen;
+        document.getElementById('pathlen-value').textContent = `0x${wireByte.toString(16).padStart(2, '0').toUpperCase()}`;
+        document.getElementById('pathlen-description').textContent =
+            pathLen > 0
+                ? `${hops} hop${hops === 1 ? '' : 's'} × ${bytesPerHop} byte${bytesPerHop === 1 ? '' : 's'} = ${pathLen} bytes of route taken (grows as the packet floods)`
+                : 'No path bytes (heard first-hand, or a direct route)';
+
         // Path data - prefer decoder output
         let pathHex = '';
         if (decoded?.path && decoded.path.length > 0) {
@@ -2018,44 +2955,44 @@
             pathHex = serverData.path.join('');
         }
         document.getElementById('path-value').textContent = pathHex.toUpperCase() || 'None';
-        
+
         // Calculate byte positions
         const hasTransport = decoded?.hasTransport ?? serverData.has_transport_codes ?? false;
         const pathStart = hasTransport ? 6 : 2;
         const pathEnd = pathStart + pathLen - 1;
-        document.getElementById('path-bytes').textContent = pathLen > 0 
+        document.getElementById('path-bytes').textContent = pathLen > 0
             ? `Bytes ${pathStart}-${pathEnd}`
             : 'N/A';
-        
+
         // Payload - prefer decoder output
         const payloadHex = decoded?.payload?.raw || serverData.payload_hex || '';
         const payloadStart = pathStart + pathLen;
         const totalBytes = window.currentPacketHex ? window.currentPacketHex.length / 2 : 0;
         document.getElementById('payload-bytes').textContent = `Bytes ${payloadStart}-${totalBytes - 1}`;
         document.getElementById('payload-value').textContent = payloadHex.toUpperCase().slice(0, 100) + (payloadHex.length > 100 ? '...' : '');
-        
-        const payloadTypeName = decoded?.payloadType !== undefined 
+
+        const payloadTypeName = decoded?.payloadType !== undefined
             ? getPayloadTypeName(decoded.payloadType)
             : (serverData.payload_type_name || getPayloadTypeName(serverData.payload_type));
         document.getElementById('payload-description').textContent = `${payloadTypeName} payload data`;
     }
-    
+
     // Populate GroupText breakdown using decoded data
     async function populateGroupTextBreakdown(decoded, serverData, structure, fullPacketHex) {
         const payloadHex = decoded?.payload?.raw || serverData.payload_hex || '';
         const decodedPayload = decoded?.payload?.decoded;
-        
+
         if (payloadHex.length < 6) {
             document.getElementById('grouptext-hex').textContent = 'Payload too short for GroupText';
             return;
         }
-        
+
         // Parse GroupText structure - prefer decoded data
         // GroupText format: [channel_hash(1)] [cipher_mac(2)] [ciphertext(N)]
         const channelHash = decodedPayload?.channelHash || payloadHex.slice(0, 2).toUpperCase();
         const cipherMAC = decodedPayload?.cipherMAC || payloadHex.slice(2, 6).toUpperCase();
         const ciphertext = decodedPayload?.ciphertext || payloadHex.slice(6).toUpperCase();
-        
+
         // Channel hash - show name(s) if known
         const hashKey = typeof channelHash === 'string' ? channelHash.toUpperCase() : channelHash.toString(16).padStart(2, '0').toUpperCase();
         const channelEntries = channelHashMap.get(hashKey) || [];
@@ -2068,30 +3005,30 @@
             channelHashDisplay += ` (${names})`;
         }
         document.getElementById('channel-hash-value').textContent = channelHashDisplay;
-        
+
         // Cipher MAC
         document.getElementById('cipher-mac-value').textContent = cipherMAC;
-        
+
         // Ciphertext
         document.getElementById('ciphertext-value').textContent = ciphertext.slice(0, 80) + (ciphertext.length > 80 ? '...' : '');
         document.getElementById('ciphertext-bytes').textContent = `Bytes 3-${2 + (ciphertext.length / 2)}`;
-        
+
         // Render GroupText hex with color coding
         renderGroupTextHex(payloadHex);
-        
+
         // Decrypted message - check if decoder decrypted it
         const decryptedSection = document.getElementById('decrypted-section');
         if (decodedPayload?.decrypted) {
             decryptedSection.style.display = 'block';
             const decrypted = decodedPayload.decrypted;
             document.getElementById('decrypted-sender').textContent = decrypted.sender || decrypted.senderPubKeyPrefix || 'Unknown';
-            document.getElementById('decrypted-timestamp').textContent = decrypted.timestamp 
+            document.getElementById('decrypted-timestamp').textContent = decrypted.timestamp
                 ? new Date(decrypted.timestamp * 1000).toLocaleString()
                 : 'Unknown';
             // Look up channel name - prefer decoder's key info, then verify by trying decryption
             const hashKey = typeof channelHash === 'string' ? channelHash.toUpperCase() : channelHash.toString(16).padStart(2, '0').toUpperCase();
             let resolvedChannelName = decrypted.channelName;
-            
+
             if (!resolvedChannelName) {
                 // Look up by hash, try decryption if multiple candidates
                 const channelEntries = channelHashMap.get(hashKey) || [];
@@ -2112,7 +3049,7 @@
             // Fallback to server-provided decryption
             decryptedSection.style.display = 'block';
             document.getElementById('decrypted-sender').textContent = serverData.decrypted_sender || 'Unknown';
-            document.getElementById('decrypted-timestamp').textContent = serverData.decrypted_timestamp 
+            document.getElementById('decrypted-timestamp').textContent = serverData.decrypted_timestamp
                 ? new Date(serverData.decrypted_timestamp * 1000).toLocaleString()
                 : 'Unknown';
             document.getElementById('decrypted-channel').textContent = serverData.decrypted_channel || 'Unknown';
@@ -2121,22 +3058,22 @@
             decryptedSection.style.display = 'none';
         }
     }
-    
+
     // Render GroupText hex with color coding
     function renderGroupTextHex(payloadHex) {
         const container = document.getElementById('grouptext-hex');
         const hex = payloadHex.toUpperCase();
-        
+
         if (hex.length < 6) {
             container.textContent = hex;
             return;
         }
-        
+
         // Color-code: Channel Hash (0-1), MAC (2-5), Ciphertext (6+)
         const channelHash = hex.slice(0, 2);
         const mac = hex.slice(2, 6);
         const ciphertext = hex.slice(6);
-        
+
         const channelElement = makeElement('span', 'hex-channel-hash', channelHash);
         channelElement.title = 'Channel Hash';
         const macElement = makeElement('span', 'hex-cipher-mac', formatHexSpaced(mac));
@@ -2155,28 +3092,28 @@
             ciphertextElement
         );
     }
-    
+
     // Populate Advert breakdown using decoded data
     function populateAdvertBreakdown(decoded, serverData) {
         const decodedPayload = decoded?.payload?.decoded;
         const payloadHex = decoded?.payload?.raw || serverData.payload_hex || '';
-        
+
         // Public key - prefer decoded data
-        const pubkey = decodedPayload?.publicKey || 
+        const pubkey = decodedPayload?.publicKey ||
             (payloadHex.length >= 64 ? payloadHex.slice(0, 64).toUpperCase() : null) ||
-            serverData.advert_public_key || 
+            serverData.advert_public_key ||
             'Unknown';
         document.getElementById('advert-pubkey').textContent = pubkey;
-        
+
         // Node info - prefer decoded data
         const nodeInfo = document.getElementById('advert-node-info');
         const appData = decodedPayload?.appData;
-        
+
         const name = appData?.name || serverData.advert_name || 'Unknown';
-        const role = appData?.deviceRole !== undefined 
+        const role = appData?.deviceRole !== undefined
             ? getDeviceRoleName(appData.deviceRole)
             : (serverData.advert_mode || 'Unknown');
-        
+
         const appendNodeInfo = (label, value) => {
             const line = document.createElement('div');
             line.append(
@@ -2201,7 +3138,7 @@
                 `${serverData.advert_latitude.toFixed(4)}, ${serverData.advert_longitude.toFixed(4)}`
             );
         }
-        
+
         // Timestamp from decoded advert or server
         if (decodedPayload?.timestamp) {
             appendNodeInfo(
@@ -2215,7 +3152,7 @@
             );
         }
     }
-    
+
     // Helper: Get payload type name
     function getPayloadTypeName(type) {
         const names = {
@@ -2234,18 +3171,18 @@
         };
         return names[type] || `Type${type}`;
     }
-    
+
     // Helper: Get route type name
     function getRouteTypeName(type) {
         const names = {
-            0: 'Direct',
+            0: 'TransportFlood',
             1: 'Flood',
-            2: 'TransportFlood',
+            2: 'Direct',
             3: 'TransportDirect'
         };
         return names[type] || `Route${type}`;
     }
-    
+
     // Helper: Get device role name
     function getDeviceRoleName(role) {
         const names = {
@@ -2256,7 +3193,7 @@
         };
         return names[role] || `Role${role}`;
     }
-    
+
     // Copy raw packet hex to clipboard
     function copyRawPacket() {
         const hex = window.currentPacketHex || currentPacketHex;
@@ -2273,45 +3210,7 @@
             });
         }
     }
-    
-    function clearCommands() {
-        renderWaitingState(
-            document.getElementById('command-stream'),
-            'Waiting for command data...'
-        );
-    }
-    
-    function clearPackets() {
-        renderWaitingState(
-            document.getElementById('packet-stream'),
-            'Waiting for packet data...'
-        );
-        packetStore.clear();
-        packetCounter = 0;
-    }
 
-    document.getElementById('cmd-scroll-top').addEventListener(
-        'click', () => scrollStream('command-stream', 'top')
-    );
-    document.getElementById('cmd-scroll-bottom').addEventListener(
-        'click', () => scrollStream('command-stream', 'bottom')
-    );
-    document.getElementById('cmd-clear').addEventListener('click', clearCommands);
-    document.getElementById('msg-scroll-top').addEventListener(
-        'click', () => scrollStream('message-stream', 'top')
-    );
-    document.getElementById('msg-scroll-bottom').addEventListener(
-        'click', () => scrollStream('message-stream', 'bottom')
-    );
-    document.getElementById('msg-clear').addEventListener('click', clearMessages);
-    document.getElementById('msg-pause-btn').addEventListener('click', toggleMessagePause);
-    document.getElementById('pkt-scroll-top').addEventListener(
-        'click', () => scrollStream('packet-stream', 'top')
-    );
-    document.getElementById('pkt-scroll-bottom').addEventListener(
-        'click', () => scrollStream('packet-stream', 'bottom')
-    );
-    document.getElementById('pkt-clear').addEventListener('click', clearPackets);
     document.getElementById('copy-raw-packet').addEventListener('click', copyRawPacket);
 </script>
 {% endblock %}

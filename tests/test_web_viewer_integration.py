@@ -300,6 +300,33 @@ class TestCaptureCommand:
         assert parsed["user_input"] == "@[AlphaBot👾] hi"
         assert parsed["command"] == "hello"
 
+    def test_carries_trigger_and_reply_packet_hashes(self):
+        """The realtime tape joins a command to the packet that triggered it and to its heard-back reply."""
+        bi = _make_bot_integration()
+        bi.bot.transmission_tracker = Mock()
+        bi.bot.transmission_tracker.get_repeat_info.return_value = {
+            "repeat_count": 2, "repeater_prefixes": ["7e"], "repeater_counts": {"7e": 2},
+            "packet_hash": "FEEDFACE00112233",
+        }
+        msg = MeshMessage(
+            content="wx", sender_id="Kim", channel="#bot",
+            routing_info={"packet_hash": "ABCDEF0123456789"},
+        )
+        bi.capture_command(msg, "wx", "54F", True, command_id="cmd-1")
+        parsed = json.loads(bi._write_queue.get_nowait()[1])
+        assert parsed["trigger_packet_hash"] == "ABCDEF0123456789"
+        assert parsed["reply_packet_hash"] == "FEEDFACE00112233"
+
+    def test_omits_packet_hashes_it_does_not_have(self):
+        bi = _make_bot_integration()
+        bi.bot.transmission_tracker = None
+        msg = MeshMessage(content="wx", sender_id="Kim", channel="#bot",
+                          routing_info={"packet_hash": "0000000000000000"})
+        bi.capture_command(msg, "wx", "54F", True)
+        parsed = json.loads(bi._write_queue.get_nowait()[1])
+        assert "trigger_packet_hash" not in parsed
+        assert "reply_packet_hash" not in parsed
+
     def test_no_transmission_tracker(self):
         bi = _make_bot_integration()
         bi.bot.transmission_tracker = None

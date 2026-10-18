@@ -386,6 +386,10 @@ class TransmissionTracker:
                             command_data['repeat_count'] = record.repeat_count
                             command_data['repeater_prefixes'] = sorted(record.repeater_prefixes)
                             command_data['repeater_counts'] = record.repeater_counts.copy()
+                            # The heard-back hash lets the realtime page fold the reply's
+                            # echoes into the command instead of listing them as packets.
+                            if record.packet_hash:
+                                command_data['reply_packet_hash'] = record.packet_hash
 
                             # Update the database entry
                             cursor.execute('''
@@ -442,10 +446,11 @@ class TransmissionTracker:
             return {
                 'repeat_count': record.repeat_count,
                 'repeater_prefixes': sorted(record.repeater_prefixes),
-                'repeater_counts': record.repeater_counts.copy()  # Include counts per repeater
+                'repeater_counts': record.repeater_counts.copy(),  # Include counts per repeater
+                'packet_hash': record.packet_hash,
             }
 
-        return {'repeat_count': 0, 'repeater_prefixes': [], 'repeater_counts': {}}
+        return {'repeat_count': 0, 'repeater_prefixes': [], 'repeater_counts': {}, 'packet_hash': None}
 
     def extract_repeater_prefixes_from_path(self, path: Optional[str],
                                            path_nodes: Optional[list[str]] = None) -> list[str]:
