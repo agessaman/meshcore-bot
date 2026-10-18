@@ -568,6 +568,45 @@
                 line-height: 40px;
             }
         }
+
+        /* Toasts float over the page in one stack, so a message never pushes
+           the content down and several messages don't pile on each other. */
+        .viewer-toasts {
+            position: fixed;
+            top: 4.5rem;
+            right: 1rem;
+            z-index: 1090;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            width: min(24rem, calc(100vw - 2rem));
+            pointer-events: none;
+        }
+
+        .viewer-toasts .alert {
+            margin: 0;
+            pointer-events: auto;
+            box-shadow: 0 0.5rem 1rem var(--shadow-color);
+            animation: viewer-toast-in 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        @keyframes viewer-toast-in {
+            from { opacity: 0; transform: translateY(-4px); }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .viewer-toasts .alert { animation: none; }
+        }
+
+        @media (max-width: 575.98px) {
+            .viewer-toasts {
+                top: auto;
+                right: 1rem;
+                bottom: 1rem;
+                left: 1rem;
+                width: auto;
+            }
+        }
     </style>
 
     {% block extra_css %}{% endblock %}
@@ -575,6 +614,8 @@
 
 <body data-is-admin="{{ 'true' if (not auth_enabled or is_admin) else 'false' }}">
     <!-- Navigation -->
+    <div class="viewer-toasts" id="viewer-toasts" aria-live="polite"></div>
+
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
         <div class="container-fluid">
             <a class="navbar-brand" href="/">
@@ -779,6 +820,31 @@
     </div>
 
     <script nonce="{{ g.csp_nonce }}">
+        // One toast stack for every page. `message` is a string or a node the
+        // caller has already filled with text; nothing is parsed as HTML.
+        window.viewerToast = function (message, kind, timeout) {
+            var host = document.getElementById('viewer-toasts');
+            if (!host) return;
+            var safeKind = ['info', 'success', 'warning', 'danger'].indexOf(kind) >= 0 ? kind : 'info';
+            var toast = document.createElement('div');
+            toast.className = 'alert alert-' + safeKind + ' alert-dismissible fade show';
+            if (safeKind === 'danger') toast.setAttribute('role', 'alert');
+            var body = message;
+            if (!(message instanceof Node)) {
+                body = document.createElement('span');
+                body.textContent = String(message === undefined || message === null ? '' : message);
+            }
+            var close = document.createElement('button');
+            close.type = 'button';
+            close.className = 'btn-close';
+            close.setAttribute('data-bs-dismiss', 'alert');
+            close.setAttribute('aria-label', 'Close');
+            toast.append(body, close);
+            host.appendChild(toast);
+            while (host.children.length > 4) host.firstElementChild.remove();
+            setTimeout(function () { toast.remove(); }, timeout || (safeKind === 'danger' ? 6000 : 3500));
+        };
+
         // Global 401 interceptor: redirect to login when session expires mid-page.
         // Wraps window.fetch so all AJAX calls in every template are covered.
         (function () {
@@ -1056,30 +1122,9 @@
 
             showNotification(message, type = 'info') {
                 // Create notification element
-                const notification = document.createElement('div');
-                const safeType = ['info', 'success', 'warning', 'danger'].includes(type)
-                    ? type
-                    : 'info';
-                notification.className = `alert alert-${safeType} alert-dismissible fade show position-fixed`;
-                notification.style.cssText = 'top: 20px; right: 20px; z-index: 9999; max-width: 300px;';
-
                 const notificationText = document.createElement('span');
                 notificationText.textContent = String(message ?? '');
-                const closeButton = document.createElement('button');
-                closeButton.type = 'button';
-                closeButton.className = 'btn-close';
-                closeButton.setAttribute('data-bs-dismiss', 'alert');
-                closeButton.setAttribute('aria-label', 'Close');
-                notification.append(notificationText, closeButton);
-
-                document.body.appendChild(notification);
-
-                // Auto-remove after 3 seconds
-                setTimeout(() => {
-                    if (notification.parentNode) {
-                        notification.parentNode.removeChild(notification);
-                    }
-                }, 3000);
+                window.viewerToast(notificationText, type, 3000);
             }
         }
 

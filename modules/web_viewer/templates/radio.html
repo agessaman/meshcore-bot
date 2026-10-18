@@ -1901,33 +1901,15 @@ class RadioManager {
     }
 
     showError(message) {
-        const alert = document.createElement('div');
-        alert.className = 'alert alert-danger alert-dismissible fade show position-fixed';
-        alert.style.cssText = 'top: 20px; right: 20px; z-index: 9999; max-width: 300px;';
         const messageNode = document.createElement('span');
         messageNode.textContent = String(message ?? '');
-        const closeButton = document.createElement('button');
-        closeButton.type = 'button';
-        closeButton.className = 'btn-close';
-        closeButton.dataset.bsDismiss = 'alert';
-        alert.append(messageNode, closeButton);
-        document.body.appendChild(alert);
-        setTimeout(() => alert.remove(), 5000);
+        window.viewerToast(messageNode, 'danger', 5000);
     }
-    
+
     showSuccess(message) {
-        const alert = document.createElement('div');
-        alert.className = 'alert alert-success alert-dismissible fade show position-fixed';
-        alert.style.cssText = 'top: 20px; right: 20px; z-index: 9999; max-width: 300px;';
         const messageNode = document.createElement('span');
         messageNode.textContent = String(message ?? '');
-        const closeButton = document.createElement('button');
-        closeButton.type = 'button';
-        closeButton.className = 'btn-close';
-        closeButton.dataset.bsDismiss = 'alert';
-        alert.append(messageNode, closeButton);
-        document.body.appendChild(alert);
-        setTimeout(() => alert.remove(), 3000);
+        window.viewerToast(messageNode, 'success', 3000);
     }
 }
 

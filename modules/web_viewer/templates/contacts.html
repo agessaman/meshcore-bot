@@ -305,44 +305,66 @@
         font-weight: 400;
     }
 
-    /* Row actions: bare icons that take their color on hover or when on */
+    /* Row actions: each action keeps its own color and a visible button
+       shape, so the four are told apart at a glance. Icon colors use the
+       theme's text tokens for contrast; the tints sit behind them. */
+    :root {
+        --action-star: #a36b00;
+        --action-info: var(--link-color);
+        --action-geo: #0f7a5f;
+        --action-delete: var(--text-danger);
+    }
+
+    [data-theme="dark"] {
+        --action-star: #ffd65a;
+        --action-geo: #4fd1ae;
+    }
+
     .contact-actions {
         display: inline-flex;
-        gap: 0.15rem;
+        gap: 0.25rem;
     }
 
     .contact-action {
+        --action: var(--text-muted);
         display: inline-flex;
         align-items: center;
         justify-content: center;
         width: 2rem;
         height: 2rem;
         padding: 0;
-        color: var(--text-muted);
-        background: none;
-        border: 0;
+        color: var(--action);
+        background-color: color-mix(in srgb, var(--action) 8%, transparent);
+        border: 1px solid color-mix(in srgb, var(--action) 35%, transparent);
         border-radius: 0.25rem;
+        transition: background-color 0.12s ease-out, border-color 0.12s ease-out;
     }
+
+    .contact-action[data-contact-action="star"] { --action: var(--action-star); }
+    .contact-action[data-contact-action="advert"] { --action: var(--action-info); }
+    .contact-action[data-contact-action="geocode"] { --action: var(--action-geo); }
+    .contact-action[data-contact-action="delete"] { --action: var(--action-delete); }
 
     .contact-action:hover,
     .contact-action:focus-visible {
-        color: var(--link-color);
-        background-color: var(--bg-tertiary);
+        background-color: color-mix(in srgb, var(--action) 18%, transparent);
+        border-color: color-mix(in srgb, var(--action) 60%, transparent);
     }
 
     .contact-action:focus-visible {
-        outline: 2px solid var(--link-color);
-        outline-offset: -2px;
+        outline: 2px solid var(--action);
+        outline-offset: 1px;
     }
 
     .contact-action.is-on {
-        color: var(--link-color);
+        background-color: color-mix(in srgb, var(--action) 22%, transparent);
+        border-color: color-mix(in srgb, var(--action) 60%, transparent);
     }
 
-    .contact-action--danger:hover,
-    .contact-action--danger:focus-visible {
-        color: var(--text-danger);
-    }
+    /* New-device counts read in their role's color, matching chips and chart */
+    #new-companions { color: color-mix(in oklch, var(--role-companion) 75%, var(--role-ink-mix)); }
+    #new-repeaters { color: color-mix(in oklch, var(--role-repeater) 75%, var(--role-ink-mix)); }
+    #new-room-servers { color: color-mix(in oklch, var(--role-roomserver) 75%, var(--role-ink-mix)); }
 
     /* Paths modal */
     .path-hex-code {
@@ -1244,7 +1266,7 @@ class ModernContactsManager {
                             </button>` :
                             ''
                         }
-                        ${IS_ADMIN ? `<button type="button" class="contact-action contact-action--danger" data-contact-action="delete" data-contact-index="${contactIndex}" title="Delete contact" aria-label="Delete contact">
+                        ${IS_ADMIN ? `<button type="button" class="contact-action" data-contact-action="delete" data-contact-index="${contactIndex}" title="Delete contact" aria-label="Delete contact">
                             <i class="fas fa-trash" aria-hidden="true"></i>
                         </button>` : ''}
                     </div>
@@ -2722,54 +2744,17 @@ class ModernContactsManager {
             .replace(/>/g, '&gt;');
     }
     
+    // Toasts float in base.html's stack instead of pushing the page down.
     showError(message) {
-        const errorDiv = document.createElement('div');
-        errorDiv.className = 'alert alert-danger alert-dismissible fade show';
-        errorDiv.setAttribute('role', 'alert');
         const text = document.createElement('span');
         text.textContent = `Error: ${String(message ?? '')}`;
-        const close = document.createElement('button');
-        close.type = 'button';
-        close.className = 'btn-close';
-        close.dataset.bsDismiss = 'alert';
-        close.setAttribute('aria-label', 'Close');
-        errorDiv.append(text, close);
-        
-        const content = document.querySelector('.container-fluid');
-        if (content) {
-            content.insertBefore(errorDiv, content.firstChild);
-            
-            setTimeout(() => {
-                if (errorDiv.parentNode) {
-                    errorDiv.parentNode.removeChild(errorDiv);
-                }
-            }, 5000);
-        }
+        window.viewerToast(text, 'danger', 6000);
     }
-    
+
     showSuccess(message) {
-        const successDiv = document.createElement('div');
-        successDiv.className = 'alert alert-success alert-dismissible fade show';
-        successDiv.setAttribute('role', 'alert');
         const text = document.createElement('span');
-        text.textContent = `Success: ${String(message ?? '')}`;
-        const close = document.createElement('button');
-        close.type = 'button';
-        close.className = 'btn-close';
-        close.dataset.bsDismiss = 'alert';
-        close.setAttribute('aria-label', 'Close');
-        successDiv.append(text, close);
-        
-        const content = document.querySelector('.container-fluid');
-        if (content) {
-            content.insertBefore(successDiv, content.firstChild);
-            
-            setTimeout(() => {
-                if (successDiv.parentNode) {
-                    successDiv.parentNode.removeChild(successDiv);
-                }
-            }, 5000);
-        }
+        text.textContent = String(message ?? '');
+        window.viewerToast(text, 'success', 4000);
     }
 
     // ── Purge Inactive Contacts ──────────────────────────────────────────────
