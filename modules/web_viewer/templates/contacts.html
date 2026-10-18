@@ -35,13 +35,6 @@
         max-width: 65%;
     }
 
-    .contact-mobile-card .contact-mobile-device .badge {
-        font-size: 0.75rem;
-        white-space: normal;
-        text-align: right;
-        line-height: 1.2;
-    }
-
     .contact-mobile-card .contact-mobile-hops-adverts {
         min-width: 0;
     }
@@ -211,6 +204,185 @@
         border-color: #a8a29e;
     }
 
+    /* ── Polish: stat readouts, role chips, plain readings, quiet actions ── */
+    /* Device roles use the dashboard's categorical data palette (SERIES_PALETTE),
+       never the lamp colors; chips are tints with ink text, and the activity
+       chart reads the same tokens. */
+    :root {
+        --role-repeater: #2a78d6;
+        --role-companion: #eb6834;
+        --role-roomserver: #4a3aa7;
+        --role-sensor: #1baf7a;
+        --role-other: #a8a29e;
+        --role-ink-mix: black;
+    }
+
+    [data-theme="dark"] {
+        --role-repeater: #3987e5;
+        --role-companion: #d95926;
+        --role-roomserver: #9085e9;
+        --role-sensor: #199e70;
+        --role-other: #87817c;
+        --role-ink-mix: white;
+    }
+
+    .contacts-stat {
+        font-size: 1.6rem;
+        font-weight: 700;
+        line-height: 1.1;
+        color: var(--text-color);
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+    }
+
+    .contacts-stat-label {
+        display: block;
+        margin-top: 0.25rem;
+        color: var(--text-muted);
+        overflow-wrap: normal;
+        word-break: normal;
+        hyphens: none;
+    }
+
+    .contacts-stat-window {
+        color: var(--text-muted);
+        font-size: 0.875rem;
+        font-weight: 400;
+    }
+
+    .contacts-num {
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+    }
+
+    .contacts-location-cell {
+        min-width: 10rem;
+    }
+
+    .role-chip {
+        --role: var(--role-other);
+        display: inline-block;
+        padding: 0.1rem 0.5rem;
+        font-size: 0.875rem;
+        font-weight: 600;
+        line-height: 1.4;
+        white-space: nowrap;
+        border-radius: 999px;
+        color: color-mix(in oklch, var(--role) 58%, var(--role-ink-mix));
+        background-color: color-mix(in srgb, var(--role) 16%, transparent);
+    }
+
+    .role-repeater { --role: var(--role-repeater); }
+    .role-companion { --role: var(--role-companion); }
+    .role-roomserver { --role: var(--role-roomserver); }
+    .role-sensor { --role: var(--role-sensor); }
+
+    /* Hop count that opens the paths: a link-weight button, not a filled badge */
+    .path-badge {
+        padding: 0.1rem 0.45rem;
+        font-size: 0.875rem;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+        color: var(--link-color);
+        background: none;
+        border: 1px solid color-mix(in srgb, var(--link-color) 45%, transparent);
+        border-radius: 0.25rem;
+        cursor: pointer;
+    }
+
+    .path-badge:hover,
+    .path-badge:focus-visible {
+        background-color: color-mix(in srgb, var(--link-color) 10%, transparent);
+    }
+
+    .path-badge:focus-visible {
+        outline: 2px solid var(--link-color);
+        outline-offset: 1px;
+    }
+
+    .path-badge-count {
+        font-weight: 400;
+    }
+
+    /* Row actions: bare icons that take their color on hover or when on */
+    .contact-actions {
+        display: inline-flex;
+        gap: 0.15rem;
+    }
+
+    .contact-action {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 2rem;
+        height: 2rem;
+        padding: 0;
+        color: var(--text-muted);
+        background: none;
+        border: 0;
+        border-radius: 0.25rem;
+    }
+
+    .contact-action:hover,
+    .contact-action:focus-visible {
+        color: var(--link-color);
+        background-color: var(--bg-tertiary);
+    }
+
+    .contact-action:focus-visible {
+        outline: 2px solid var(--link-color);
+        outline-offset: -2px;
+    }
+
+    .contact-action.is-on {
+        color: var(--link-color);
+    }
+
+    .contact-action--danger:hover,
+    .contact-action--danger:focus-visible {
+        color: var(--text-danger);
+    }
+
+    /* Paths modal */
+    .path-hex-code {
+        padding: 0.15rem 0.45rem;
+        font-family: var(--font-mono);
+        font-size: 0.875rem;
+        color: var(--text-color);
+        background-color: var(--bg-tertiary);
+        border-radius: 0.25rem;
+        overflow-wrap: anywhere;
+    }
+
+    .path-primary-chip {
+        display: inline-block;
+        padding: 0 0.45rem;
+        font-size: 0.7rem;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        vertical-align: middle;
+        color: var(--link-color);
+        border: 1px solid color-mix(in srgb, var(--link-color) 45%, transparent);
+        border-radius: 999px;
+    }
+
+    /* Advert modal: raw JSON wraps instead of running off the edge */
+    .advert-json {
+        max-height: 60vh;
+        overflow: auto;
+        padding: 0.85rem 1rem;
+        font-family: var(--font-mono);
+        font-size: 0.875rem;
+        color: var(--text-color);
+        background-color: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 0.375rem;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+    }
+
     .tooltip.multibyte-capable-hint .tooltip-inner {
         max-width: min(22rem, 92vw);
         text-align: left;
@@ -218,7 +390,7 @@
     .path-encoding-info-btn:hover,
     .path-encoding-info-btn:focus {
         text-decoration: none;
-        color: var(--bs-info, #0dcaf0) !important;
+        color: var(--link-color) !important;
     }
 </style>
 {% endblock %}
@@ -243,16 +415,16 @@
             <div class="card-body d-flex align-items-center">
                 <div class="row text-center w-100">
                     <div class="col-4">
-                        <h4 id="contacts-24h" class="text-primary">0</h4>
-                        <small class="text-muted">24h</small>
+                        <div id="contacts-24h" class="contacts-stat">0</div>
+                        <small class="contacts-stat-label">24h</small>
                     </div>
                     <div class="col-4">
-                        <h4 id="contacts-7d" class="text-info">0</h4>
-                        <small class="text-muted">7d</small>
+                        <div id="contacts-7d" class="contacts-stat">0</div>
+                        <small class="contacts-stat-label">7d</small>
                     </div>
                     <div class="col-4">
-                        <h4 id="contacts-all" class="text-success">0</h4>
-                        <small class="text-muted">All</small>
+                        <div id="contacts-all" class="contacts-stat">0</div>
+                        <small class="contacts-stat-label">All</small>
                     </div>
                 </div>
             </div>
@@ -268,16 +440,16 @@
             <div class="card-body d-flex align-items-center">
                 <div class="row text-center w-100">
                     <div class="col-4">
-                        <h4 id="adverts-24h" class="text-primary">0</h4>
-                        <small class="text-muted">24h</small>
+                        <div id="adverts-24h" class="contacts-stat">0</div>
+                        <small class="contacts-stat-label">24h</small>
                     </div>
                     <div class="col-4">
-                        <h4 id="adverts-7d" class="text-info">0</h4>
-                        <small class="text-muted">7d</small>
+                        <div id="adverts-7d" class="contacts-stat">0</div>
+                        <small class="contacts-stat-label">7d</small>
                     </div>
                     <div class="col-4">
-                        <h4 id="adverts-all" class="text-success">0</h4>
-                        <small class="text-muted">All</small>
+                        <div id="adverts-all" class="contacts-stat">0</div>
+                        <small class="contacts-stat-label">All</small>
                     </div>
                 </div>
             </div>
@@ -291,21 +463,21 @@
                 <span>
                     <i class="fas fa-plus-circle"></i> New Devices
                 </span>
-                <small class="text-muted" style="font-size: 0.75em; font-weight: normal;">Last 7 days</small>
+                <small class="contacts-stat-window">Last 7 days</small>
             </div>
             <div class="card-body d-flex align-items-center">
                 <div class="row text-center w-100">
                     <div class="col-4">
-                        <h4 id="new-companions" class="text-primary">0</h4>
-                        <small class="text-muted">Companions</small>
+                        <div id="new-companions" class="contacts-stat">0</div>
+                        <small class="contacts-stat-label">Companions</small>
                     </div>
                     <div class="col-4">
-                        <h4 id="new-repeaters" class="text-info">0</h4>
-                        <small class="text-muted">Repeaters</small>
+                        <div id="new-repeaters" class="contacts-stat">0</div>
+                        <small class="contacts-stat-label">Repeaters</small>
                     </div>
                     <div class="col-4">
-                        <h4 id="new-room-servers" class="text-success">0</h4>
-                        <small class="text-muted">Room Servers</small>
+                        <div id="new-room-servers" class="contacts-stat">0</div>
+                        <small class="contacts-stat-label">Room servers</small>
                     </div>
                 </div>
             </div>
@@ -459,7 +631,7 @@
                         </div>
                     </div>
                 </div>
-                <div class="d-md-none w-100 d-flex flex-nowrap align-items-center gap-2 mb-3 contacts-mobile-sort-row">
+                <div class="d-md-none w-100 d-flex flex-wrap align-items-center gap-2 mb-3 contacts-mobile-sort-row">
                     {% if not auth_enabled or is_admin %}
                     <div class="form-check mb-0">
                         <input type="checkbox" class="form-check-input" id="contacts-select-all-mobile" title="Select all on page">
@@ -502,23 +674,23 @@
                             </th>
                             {% endif %}
                             <th class="sortable" data-sort="username">
-                                <button type="button" class="sort-btn">Name <i class="fas fa-sort sort-icon" aria-hidden="true"></i></button>
+                                <button type="button" class="sort-btn">Name&nbsp;<i class="fas fa-sort sort-icon" aria-hidden="true"></i></button>
                             </th>
                             <th class="sortable" data-sort="device_type">
-                                <button type="button" class="sort-btn">Device Type <i class="fas fa-sort sort-icon" aria-hidden="true"></i></button>
+                                <button type="button" class="sort-btn">Device Type&nbsp;<i class="fas fa-sort sort-icon" aria-hidden="true"></i></button>
                             </th>
                             <th class="sortable" data-sort="location">
-                                <button type="button" class="sort-btn">Location <i class="fas fa-sort sort-icon" aria-hidden="true"></i></button>
+                                <button type="button" class="sort-btn">Location&nbsp;<i class="fas fa-sort sort-icon" aria-hidden="true"></i></button>
                             </th>
                             <th class="sortable" data-sort="distance">
-                                <button type="button" class="sort-btn">Distance <i class="fas fa-sort sort-icon" aria-hidden="true"></i></button>
+                                <button type="button" class="sort-btn">Distance&nbsp;<i class="fas fa-sort sort-icon" aria-hidden="true"></i></button>
                             </th>
                             <th class="sortable" data-sort="snr">
-                                <button type="button" class="sort-btn">SNR <i class="fas fa-sort sort-icon" aria-hidden="true"></i></button>
+                                <button type="button" class="sort-btn">SNR&nbsp;<i class="fas fa-sort sort-icon" aria-hidden="true"></i></button>
                             </th>
                             <th class="sortable" data-sort="hop_count">
                                 <span class="d-inline-flex align-items-center gap-1">
-                                    <button type="button" class="sort-btn">Hops <i class="fas fa-sort sort-icon" aria-hidden="true"></i></button>
+                                    <button type="button" class="sort-btn">Hops&nbsp;<i class="fas fa-sort sort-icon" aria-hidden="true"></i></button>
                                     <button type="button" class="btn btn-link p-0 border-0 align-baseline text-muted path-encoding-info-btn"
                                             id="contacts-list-multibyte-badge-info"
                                             aria-label="How Multibyte and 1-byte only badges are determined"
@@ -528,16 +700,16 @@
                                 </span>
                             </th>
                             <th class="sortable" data-sort="path_bytes">
-                                <button type="button" class="sort-btn">Bytes/hop <i class="fas fa-sort sort-icon" aria-hidden="true"></i></button>
+                                <button type="button" class="sort-btn">Bytes/hop&nbsp;<i class="fas fa-sort sort-icon" aria-hidden="true"></i></button>
                             </th>
                             <th class="sortable" data-sort="first_heard">
-                                <button type="button" class="sort-btn">First Heard <i class="fas fa-sort sort-icon" aria-hidden="true"></i></button>
+                                <button type="button" class="sort-btn">First Heard&nbsp;<i class="fas fa-sort sort-icon" aria-hidden="true"></i></button>
                             </th>
                             <th class="sortable sort-active" data-sort="last_seen" aria-sort="descending">
-                                <button type="button" class="sort-btn">Last Heard <i class="fas fa-sort-down sort-icon" aria-hidden="true"></i></button>
+                                <button type="button" class="sort-btn">Last Heard&nbsp;<i class="fas fa-sort-down sort-icon" aria-hidden="true"></i></button>
                             </th>
                             <th class="sortable" data-sort="advert_count">
-                                <button type="button" class="sort-btn">Adverts <i class="fas fa-sort sort-icon" aria-hidden="true"></i></button>
+                                <button type="button" class="sort-btn">Adverts&nbsp;<i class="fas fa-sort sort-icon" aria-hidden="true"></i></button>
                             </th>
                             <th>Actions</th>
                         </tr>
@@ -942,19 +1114,28 @@ class ModernContactsManager {
         });
     }
     
+    // Distance and SNR on a phone card, labeled, leaving out what isn't known.
+    formatCardReadings(contact) {
+        const parts = [];
+        if (contact.distance !== undefined && contact.distance !== null) parts.push(this.formatDistance(contact));
+        const snr = parseFloat(contact.snr);
+        if (contact.snr !== null && contact.snr !== undefined && Number.isFinite(snr)) parts.push(`SNR ${this.formatSignal(contact)}`);
+        return parts.length ? `<div class="small">${parts.join(' · ')}</div>` : '';
+    }
+
     renderContactCardHtml(contact, contactIndex) {
         const checked = this.selectedContactIds.has(contact.user_id) ? 'checked' : '';
         const hasGeo = !!(contact.latitude && contact.longitude && contact.latitude !== 0 && contact.longitude !== 0);
         const starLabel = contact.is_starred ? 'Unstar contact' : 'Star contact';
         const geoMenuItem = IS_ADMIN && hasGeo
-            ? `<li><button type="button" class="dropdown-item" data-contact-action="geocode" data-contact-index="${contactIndex}"><i class="fas fa-map-marker-alt me-2 text-primary"></i>Geocode location</button></li>`
+            ? `<li><button type="button" class="dropdown-item" data-contact-action="geocode" data-contact-index="${contactIndex}"><i class="fas fa-map-marker-alt me-2" aria-hidden="true"></i>Geocode location</button></li>`
             : '';
         const deleteMenuItem = IS_ADMIN
             ? `<li><hr class="dropdown-divider"></li>
                                     <li><button type="button" class="dropdown-item text-danger" data-contact-action="delete" data-contact-index="${contactIndex}"><i class="fas fa-trash me-2"></i>Delete contact</button></li>`
             : '';
         const starMenuItem = IS_ADMIN
-            ? `<li><button type="button" class="dropdown-item" data-contact-action="star" data-contact-index="${contactIndex}"><i class="fas fa-star me-2 text-warning"></i>${starLabel}</button></li>`
+            ? `<li><button type="button" class="dropdown-item" data-contact-action="star" data-contact-index="${contactIndex}"><i class="${contact.is_starred ? 'fas' : 'far'} fa-star me-2" aria-hidden="true"></i>${starLabel}</button></li>`
             : '';
         const checkboxHtml = IS_ADMIN
             ? `<input type="checkbox" class="form-check-input contact-row-checkbox mt-1 flex-shrink-0" data-contact-index="${contactIndex}" aria-label="Select ${this.escapeAttribute(contact.username || 'Unknown')}" ${checked}>`
@@ -972,8 +1153,8 @@ class ModernContactsManager {
                             <div class="contact-mobile-device text-end flex-shrink-0">${this.formatDeviceType(contact)}</div>
                         </div>
                         <div class="small text-muted mt-1">${this.formatLocation(contact)}</div>
-                        <div class="small">${this.formatDistance(contact)} · ${this.formatSignal(contact)}</div>
-                        <div class="small text-muted">${this.formatTimestamp(contact.first_heard)} · ${this.formatTimeAgo(contact.last_seen)}</div>
+                        ${this.formatCardReadings(contact)}
+                        <div class="small text-muted">Heard ${this.formatTimeAgo(contact.last_seen)} · first ${this.formatTimestamp(contact.first_heard)}</div>
                         <div class="contact-mobile-hops-adverts d-flex align-items-center justify-content-between flex-wrap gap-2 mt-2">
                             <div class="d-flex align-items-center flex-wrap gap-2 min-w-0">
                                 <div class="d-flex flex-column align-items-start gap-1 min-w-0">
@@ -981,10 +1162,7 @@ class ModernContactsManager {
                                 <div class="d-flex align-items-center gap-1"><span class="text-muted small">Bytes/hop:</span>${this.formatPathBytes(contact)}</div>
                                 ${this.formatPathEncodingBadge(contact)}
                                 </div>
-                                <div class="d-flex align-items-center gap-1">
-                                    <span class="badge bg-success">${Number(contact.advert_count) || 0}</span>
-                                    <span class="text-muted small">adverts</span>
-                                </div>
+                                <div class="small"><span class="contacts-num">${(Number(contact.advert_count) || 0).toLocaleString()}</span> <span class="text-muted">adverts</span></div>
                             </div>
                             <div class="dropdown flex-shrink-0">
                                 <button type="button" class="btn btn-sm btn-outline-secondary contacts-overflow-btn"
@@ -994,7 +1172,7 @@ class ModernContactsManager {
                                 </button>
                                 <ul class="dropdown-menu dropdown-menu-end">
                                     ${starMenuItem}
-                                    <li><button type="button" class="dropdown-item" data-contact-action="advert" data-contact-index="${contactIndex}"><i class="fas fa-info-circle me-2 text-info"></i>View advertisement data</button></li>
+                                    <li><button type="button" class="dropdown-item" data-contact-action="advert" data-contact-index="${contactIndex}"><i class="fas fa-circle-info me-2" aria-hidden="true"></i>View advertisement data</button></li>
                                     ${geoMenuItem}
                                     ${deleteMenuItem}
                                 </ul>
@@ -1044,29 +1222,29 @@ class ModernContactsManager {
                     <small class="text-muted">${this.escapeHtml(contact.user_id ? contact.user_id.substring(0, 16) + '...' : 'Unknown')}</small>
                 </td>
                 <td>${this.formatDeviceType(contact)}</td>
-                <td>${this.formatLocation(contact)}</td>
+                <td class="contacts-location-cell">${this.formatLocation(contact)}</td>
                 <td>${this.formatDistance(contact)}</td>
                 <td>${this.formatSignal(contact)}</td>
                 <td><div class="d-flex flex-column align-items-start gap-1">${this.formatHops(contact)}${this.formatPathEncodingBadge(contact)}</div></td>
                 <td>${this.formatPathBytes(contact)}</td>
                 <td>${this.formatTimestamp(contact.first_heard)}</td>
                 <td>${this.formatTimeAgo(contact.last_seen)}</td>
-                <td><span class="badge bg-success">${Number(contact.advert_count) || 0}</span></td>
+                <td><span class="contacts-num">${(Number(contact.advert_count) || 0).toLocaleString()}</span></td>
                 <td>
-                    <div class="btn-group" role="group">
-                        ${IS_ADMIN ? `<button class="btn btn-sm ${contact.is_starred ? 'btn-warning' : 'btn-outline-warning'}" data-contact-action="star" data-contact-index="${contactIndex}" title="${contact.is_starred ? 'Unstar contact' : 'Star contact'}" aria-label="${contact.is_starred ? 'Unstar contact' : 'Star contact'}">
-                            <i class="fas fa-star" aria-hidden="true"></i>
+                    <div class="contact-actions" role="group" aria-label="Actions for ${this.escapeAttribute(contact.username || 'Unknown')}">
+                        ${IS_ADMIN ? `<button type="button" class="contact-action ${contact.is_starred ? 'is-on' : ''}" data-contact-action="star" data-contact-index="${contactIndex}" title="${contact.is_starred ? 'Unstar contact' : 'Star contact'}" aria-label="${contact.is_starred ? 'Unstar contact' : 'Star contact'}" aria-pressed="${contact.is_starred ? 'true' : 'false'}">
+                            <i class="${contact.is_starred ? 'fas' : 'far'} fa-star" aria-hidden="true"></i>
                         </button>` : ''}
-                        <button class="btn btn-sm btn-outline-info" data-contact-action="advert" data-contact-index="${contactIndex}" title="View Advertisement Data" aria-label="View Advertisement Data">
-                            <i class="fas fa-info-circle" aria-hidden="true"></i>
+                        <button type="button" class="contact-action" data-contact-action="advert" data-contact-index="${contactIndex}" title="View advertisement data" aria-label="View advertisement data">
+                            <i class="fas fa-circle-info" aria-hidden="true"></i>
                         </button>
                         ${IS_ADMIN && contact.latitude && contact.longitude && contact.latitude !== 0 && contact.longitude !== 0 ?
-                            `<button class="btn btn-sm btn-outline-primary" data-contact-action="geocode" data-contact-index="${contactIndex}" title="Geocode Location" aria-label="Geocode Location">
+                            `<button type="button" class="contact-action" data-contact-action="geocode" data-contact-index="${contactIndex}" title="Geocode location" aria-label="Geocode location">
                                 <i class="fas fa-map-marker-alt" aria-hidden="true"></i>
                             </button>` :
                             ''
                         }
-                        ${IS_ADMIN ? `<button class="btn btn-sm btn-outline-danger" data-contact-action="delete" data-contact-index="${contactIndex}" title="Delete Contact" aria-label="Delete Contact">
+                        ${IS_ADMIN ? `<button type="button" class="contact-action contact-action--danger" data-contact-action="delete" data-contact-index="${contactIndex}" title="Delete contact" aria-label="Delete contact">
                             <i class="fas fa-trash" aria-hidden="true"></i>
                         </button>` : ''}
                     </div>
@@ -1209,20 +1387,21 @@ class ModernContactsManager {
             );
         }).length;
         
-        // Update contact metrics
-        document.getElementById('contacts-24h').textContent = contacts24h;
-        document.getElementById('contacts-7d').textContent = contacts7d;
-        document.getElementById('contacts-all').textContent = contactsAll;
+        // Update contact metrics (grouped digits keep big counts on one line)
+        const fmt = (n) => (Number(n) || 0).toLocaleString();
+        document.getElementById('contacts-24h').textContent = fmt(contacts24h);
+        document.getElementById('contacts-7d').textContent = fmt(contacts7d);
+        document.getElementById('contacts-all').textContent = fmt(contactsAll);
         
         // Update advertisement metrics
-        document.getElementById('adverts-24h').textContent = adverts24h;
-        document.getElementById('adverts-7d').textContent = adverts7d;
-        document.getElementById('adverts-all').textContent = advertsAll;
+        document.getElementById('adverts-24h').textContent = fmt(adverts24h);
+        document.getElementById('adverts-7d').textContent = fmt(adverts7d);
+        document.getElementById('adverts-all').textContent = fmt(advertsAll);
         
         // Update new device metrics
-        document.getElementById('new-companions').textContent = newCompanions;
-        document.getElementById('new-repeaters').textContent = newRepeaters;
-        document.getElementById('new-room-servers').textContent = newRoomServers;
+        document.getElementById('new-companions').textContent = fmt(newCompanions);
+        document.getElementById('new-repeaters').textContent = fmt(newRepeaters);
+        document.getElementById('new-room-servers').textContent = fmt(newRoomServers);
         
         // Update activity trends chart
         this.updateActivityTrendsChart();
@@ -1290,6 +1469,16 @@ class ModernContactsManager {
         const ctx = document.getElementById('activityTrendsChart');
         if (!ctx) return;
         
+        // Role colors come from the --role-* tokens, so the chart and the
+        // device-type chips agree in both themes.
+        const roleStyles = getComputedStyle(document.documentElement);
+        const roleColor = (key, alpha = 1) => {
+            const hex = roleStyles.getPropertyValue(`--role-${key}`).trim() || '#a8a29e';
+            if (alpha === 1) return hex;
+            const n = parseInt(hex.slice(1), 16);
+            return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+        };
+
         // Create the stacked chart
         this.activityChart = new Chart(ctx, {
             type: 'line',
@@ -1299,8 +1488,8 @@ class ModernContactsManager {
                     {
                         label: 'Companions',
                         data: companionData,
-                        borderColor: 'rgb(255, 193, 7)', // Yellow/warning color
-                        backgroundColor: 'rgba(255, 193, 7, 0.6)',
+                        borderColor: roleColor('companion'),
+                        backgroundColor: roleColor('companion', 0.55),
                         tension: 0.4,
                         fill: true,
                         pointRadius: 0,
@@ -1309,8 +1498,8 @@ class ModernContactsManager {
                     {
                         label: 'Repeaters',
                         data: repeaterData,
-                        borderColor: 'rgb(13, 110, 253)', // Blue/primary color
-                        backgroundColor: 'rgba(13, 110, 253, 0.6)',
+                        borderColor: roleColor('repeater'),
+                        backgroundColor: roleColor('repeater', 0.55),
                         tension: 0.4,
                         fill: true,
                         pointRadius: 0,
@@ -1319,8 +1508,8 @@ class ModernContactsManager {
                     {
                         label: 'Room Servers',
                         data: roomserverData,
-                        borderColor: 'rgb(25, 135, 84)', // Green/success color
-                        backgroundColor: 'rgba(25, 135, 84, 0.6)',
+                        borderColor: roleColor('roomserver'),
+                        backgroundColor: roleColor('roomserver', 0.55),
                         tension: 0.4,
                         fill: true,
                         pointRadius: 0,
@@ -1329,8 +1518,8 @@ class ModernContactsManager {
                     {
                         label: 'Sensors',
                         data: sensorData,
-                        borderColor: 'rgb(13, 202, 240)', // Light blue/info color
-                        backgroundColor: 'rgba(13, 202, 240, 0.6)',
+                        borderColor: roleColor('sensor'),
+                        backgroundColor: roleColor('sensor', 0.55),
                         tension: 0.4,
                         fill: true,
                         pointRadius: 0,
@@ -1339,8 +1528,8 @@ class ModernContactsManager {
                     {
                         label: 'Other',
                         data: otherData,
-                        borderColor: 'rgb(108, 117, 125)', // Gray/secondary color
-                        backgroundColor: 'rgba(108, 117, 125, 0.6)',
+                        borderColor: roleColor('other'),
+                        backgroundColor: roleColor('other', 0.55),
                         tension: 0.4,
                         fill: true,
                         pointRadius: 0,
@@ -1496,12 +1685,12 @@ class ModernContactsManager {
     formatDistance(contact) {
         if (contact.distance !== undefined && contact.distance !== null) {
             if (contact.distance < 1) {
-                return `${(contact.distance * 1000).toFixed(0)}m`;
+                return `<span class="contacts-num">${(contact.distance * 1000).toFixed(0)} m</span>`;
             } else {
-                return `${contact.distance.toFixed(1)}km`;
+                return `<span class="contacts-num">${contact.distance.toFixed(1)} km</span>`;
             }
         } else {
-            return '<span class="text-muted">N/A</span>';
+            return '<span class="text-muted">—</span>';
         }
     }
     
@@ -1509,33 +1698,20 @@ class ModernContactsManager {
         const deviceType = contact.device_type || 'Unknown';
         const role = contact.role || '';
         
-        // Color code based on role
-        let badgeClass = 'bg-secondary'; // Default for unknown
-        let displayText = deviceType;
-        
-        if (role.toLowerCase() === 'repeater') {
-            badgeClass = 'bg-primary'; // Blue for Repeater
-        } else if (role.toLowerCase() === 'roomserver') {
-            badgeClass = 'bg-success'; // Green for RoomServer
-        } else if (role.toLowerCase() === 'companion') {
-            badgeClass = 'bg-warning'; // Yellow for Companion
-        } else if (role.toLowerCase() === 'sensor') {
-            badgeClass = 'bg-info'; // Light blue for Sensor
-        }
-        
-        return `<span class="badge ${badgeClass}">${this.escapeHtml(displayText)}</span>`;
+        // Role colors are data colors shared with the activity chart, as tints
+        // with readable text; the lamp colors stay reserved for state.
+        const displayText = deviceType;
+        const roleKey = { repeater: 'repeater', roomserver: 'roomserver', companion: 'companion', sensor: 'sensor' }[role.toLowerCase()] || 'other';
+
+        return `<span class="role-chip role-${roleKey}">${this.escapeHtml(displayText)}</span>`;
     }
     
     formatSignal(contact) {
         if (contact.snr !== null && contact.snr !== undefined) {
             const snr = parseFloat(contact.snr);
-            if (snr > 0) {
-                return `<span class="badge bg-success">${snr.toFixed(1)} dB</span>`;
-            } else {
-                return `<span class="badge bg-warning">${snr.toFixed(1)} dB</span>`;
-            }
+            return Number.isFinite(snr) ? `<span class="contacts-num">${snr.toFixed(1)} dB</span>` : '<span class="text-muted">—</span>';
         } else {
-            return '<span class="text-muted">N/A</span>';
+            return '<span class="text-muted">—</span>';
         }
     }
     
@@ -1555,29 +1731,23 @@ class ModernContactsManager {
         if (outPath && outPathLen > 0) {
             // Create a unique ID for this tooltip
             const tooltipId = `hops-tooltip-${contact.user_id.substring(0, 16).replace(/[^a-zA-Z0-9]/g, '_')}`;
-            const pathCountText = hasMultiplePaths ? ` <span class="fw-normal">(${pathsCount} paths)</span>` : '';
+            const pathCountText = hasMultiplePaths ? ` <span class="path-badge-count">· ${pathsCount} paths</span>` : '';
             const bytesPerHop = contact.out_bytes_per_hop != null && [1, 2, 3].includes(Number(contact.out_bytes_per_hop)) ? Number(contact.out_bytes_per_hop) : '';
-            return `<span class="badge bg-primary path-badge" 
-                          id="${tooltipId}" 
+            return `<button type="button" class="path-badge"
+                          id="${tooltipId}"
                           data-path-hex="${escapedPath}"
                           data-path-len="${outPathLen}"
                           data-bytes-per-hop="${bytesPerHop}"
                           data-user-id="${escapedUserId}"
-                          style="cursor: pointer; position: relative;" 
-                          title="${hasMultiplePaths ? 'Click to view all paths' : 'Click to view path'}">
+                          aria-label="${hopCount} hop${hopCount === 1 ? '' : 's'}${hasMultiplePaths ? `, ${pathsCount} paths` : ''}: show paths">
                       ${hopCount}${pathCountText}
-                    </span>`;
+                    </button>`;
         } else if (outPathLen === 0) {
             // Direct connection
-            return `<span class="badge bg-primary" 
-                          data-bs-toggle="tooltip" 
-                          data-bs-placement="top"
-                          title="Direct connection (0 hops)">
-                      ${hopCount}
-                    </span>`;
+            return `<span class="contacts-num" title="Heard directly (0 hops)">${hopCount}</span>`;
         } else {
             // No path data
-            return `<span class="badge bg-primary">${hopCount}</span>`;
+            return `<span class="contacts-num">${hopCount}</span>`;
         }
     }
 
@@ -1606,7 +1776,7 @@ class ModernContactsManager {
     formatPathBytes(contact) {
         const bytes = Number(contact.path_bytes_per_hop);
         return [1, 2, 3].includes(bytes)
-            ? `<span class="badge bg-primary">${bytes}</span>`
+            ? `<span class="contacts-num">${bytes}</span>`
             : '<span class="text-muted">—</span>';
     }
     
@@ -1809,25 +1979,28 @@ class ModernContactsManager {
         for (let i = 0; i < paths.length; i++) {
             const path = paths[i];
             const isPrimary = path.path_hex === primaryPath;
-            const primaryBadge = isPrimary ? '<span class="badge bg-success ms-2">Primary</span>' : '';
+            const primaryBadge = isPrimary ? '<span class="path-primary-chip ms-2" title="The path the radio currently uses to reach this contact">Primary</span>' : '';
             const bph = path.bytes_per_hop != null && [1, 2, 3].includes(Number(path.bytes_per_hop)) ? Number(path.bytes_per_hop) : null;
             const formattedPathHex = this.formatPathHex(path.path_hex, bph);
-            const hopLabel = bph && path.path_length > 0 ? `${Math.floor(path.path_length / bph)} hops, ` : '';
+            const hops = bph && path.path_length > 0 ? Math.floor(path.path_length / bph) : null;
+            const hopLabel = hops !== null ? `${hops} hop${hops === 1 ? '' : 's'}, ` : '';
+            const byteCount = Number(path.path_length) || 0;
+            const seenCount = Number(path.observation_count) || 0;
             const bytesPerHopAttr = bph != null ? ` data-path-bph="${bph}"` : '';
             
             pathsHtml += `
-                <div class="list-group-item path-list-item ${isPrimary ? 'border-success' : ''}" id="path-item-${i}"${bytesPerHopAttr}>
+                <div class="list-group-item path-list-item ${isPrimary ? 'is-primary' : ''}" id="path-item-${i}"${bytesPerHopAttr}>
                     <div class="d-flex justify-content-between align-items-start">
                         <div class="flex-grow-1">
                             <h6 class="mb-1">
                                 Path ${i + 1} ${primaryBadge}
-                                <small class="text-muted">(${hopLabel}${Number(path.path_length) || 0} bytes, ${Number(path.observation_count) || 0} observations)</small>
+                                <small class="text-muted">(${hopLabel}${byteCount} byte${byteCount === 1 ? '' : 's'}, heard ${seenCount} time${seenCount === 1 ? '' : 's'})</small>
                             </h6>
                             <p class="mb-1"><code class="path-hex-code">${this.escapeHtml(formattedPathHex)}</code></p>
                             <small class="text-muted">Last seen: ${this.formatTimeAgo(path.last_seen)}</small>
                         </div>
-                        <button class="btn btn-sm btn-outline-primary" data-decode-path-index="${i}">
-                            <i class="fas fa-code"></i> Decode
+                        <button type="button" class="btn btn-sm btn-outline-primary flex-shrink-0" data-decode-path-index="${i}" title="Look up the repeaters on this path">
+                            <i class="fas fa-code" aria-hidden="true"></i> Decode
                         </button>
                     </div>
                     <div id="decoded-path-${i}" class="mt-2" style="display: none;"></div>
@@ -1879,17 +2052,17 @@ class ModernContactsManager {
         // Create modal HTML with dark mode support
         const modalHtml = `
             <div class="modal fade" id="pathsModal" tabindex="-1">
-                <div class="modal-dialog modal-lg">
+                <div class="modal-dialog modal-lg modal-dialog-scrollable modal-fullscreen-sm-down">
                     <div class="modal-content paths-modal-content">
                         <div class="modal-header paths-modal-header">
                             <h5 class="modal-title">
-                                <i class="fas fa-route"></i> Paths for ${this.escapeHtml(contact.username || 'Unknown')}
+                                <i class="fas fa-route" aria-hidden="true"></i> Paths for ${this.escapeHtml(contact.username || 'Unknown')}
                             </h5>
                             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                         </div>
                         <div class="modal-body paths-modal-body">
-                            <div class="d-flex justify-content-between align-items-center mb-3">
-                                <p class="text-muted mb-0">Showing ${sortedPaths.length} path${sortedPaths.length !== 1 ? 's' : ''} from observed_paths table.</p>
+                            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                                <p class="text-muted mb-0">${sortedPaths.length} path${sortedPaths.length !== 1 ? 's' : ''} this radio has heard to ${this.escapeHtml(contact.username || 'this contact')}</p>
                                 <div class="d-flex align-items-center gap-2">
                                     <label for="pathSortOrder" class="mb-0 small text-muted">Sort by:</label>
                                     <select class="form-select form-select-sm" id="pathSortOrder" style="width: auto;">
@@ -1904,7 +2077,7 @@ class ModernContactsManager {
                             </div>
                         </div>
                         <div class="modal-footer paths-modal-footer">
-                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
                         </div>
                     </div>
                 </div>
@@ -2046,7 +2219,7 @@ class ModernContactsManager {
         if (!timestamp) return '<span class="text-muted">Never</span>';
         
         const date = new Date(timestamp);
-        return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+        return `${date.toLocaleDateString()} <span class="contacts-num">${date.toLocaleTimeString()}</span>`;
     }
     
     formatTimeAgo(timestamp) {
@@ -2072,7 +2245,7 @@ class ModernContactsManager {
         } else if (diffMinutes > 0) {
             return `${diffMinutes}m ago`;
         } else {
-            return '<span class="text-success">Just now</span>';
+            return 'just now';
         }
     }
     
@@ -2080,7 +2253,7 @@ class ModernContactsManager {
         // Find the contact data (for the title); the advert payload is loaded on demand below.
         const contact = this.filteredData.find(c => c.user_id === userId);
         if (!contact) {
-            alert('Contact data not found');
+            this.showError('Contact data not found');
             return;
         }
 
@@ -2105,18 +2278,18 @@ class ModernContactsManager {
                 <div class="modal-dialog modal-lg">
                     <div class="modal-content">
                         <div class="modal-header">
-                            <h5 class="modal-title">Advertisement Data - ${this.escapeHtml(contact.username || 'Unknown')}</h5>
+                            <h5 class="modal-title">Advert data · ${this.escapeHtml(contact.username || 'Unknown')}</h5>
                             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                         </div>
                         <div class="modal-body">
-                            <pre class="bg-light p-3 rounded" style="background-color: var(--bg-secondary); color: var(--text-color);">${this.escapeHtml(JSON.stringify(advertData, null, 2))}</pre>
+                            <pre class="advert-json mb-0">${this.escapeHtml(JSON.stringify(advertData, null, 2))}</pre>
                         </div>
                         <div class="modal-footer">
-                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
                         </div>
                     </div>
                 </div>
-                                    </div>
+            </div>
         `;
         
         // Remove existing modal if any
@@ -2862,14 +3035,6 @@ document.addEventListener('DOMContentLoaded', () => {
     background-color: var(--bg-tertiary);
 }
 
-[data-theme="dark"] .path-hex-code {
-    background-color: var(--bg-tertiary);
-    color: var(--text-color);
-    padding: 0.25rem 0.5rem;
-    border-radius: 0.25rem;
-    font-family: var(--font-mono);
-    font-size: 0.9em;
-}
 
 [data-theme="dark"] .decoded-path-alert {
     background-color: rgba(13, 110, 253, 0.2) !important;
