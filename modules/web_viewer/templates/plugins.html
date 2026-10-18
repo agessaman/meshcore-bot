@@ -646,6 +646,33 @@ class PluginsManager {
 
 // `plugin` ({kind, name}) is only needed by template fields, for their preview.
 function renderField(field, overrideValue, plugin) {
+    const rendered = renderFieldControl(field, overrideValue, plugin);
+    linkFieldLabel(rendered.wrapper, rendered.input);
+    return rendered;
+}
+
+// Tie the field's visible label and help text to its control, so screen
+// readers announce the setting's name instead of a bare "edit text".
+function linkFieldLabel(wrapper, input) {
+    const label = wrapper.querySelector(':scope > label.form-label');
+    if (label && !label.htmlFor) {
+        if (!input.id) input.id = 'fld-' + Math.random().toString(36).slice(2, 9);
+        if (input.labels !== undefined) {
+            label.htmlFor = input.id;
+        } else {
+            label.id = input.id + '-label';
+            input.setAttribute('aria-labelledby', label.id);
+        }
+    }
+    const help = wrapper.querySelector(':scope > .form-text');
+    if (help && !input.hasAttribute('aria-describedby')) {
+        if (!input.id) input.id = 'fld-' + Math.random().toString(36).slice(2, 9);
+        help.id = input.id + '-help';
+        input.setAttribute('aria-describedby', help.id);
+    }
+}
+
+function renderFieldControl(field, overrideValue, plugin) {
     const wrapper = document.createElement('div');
     wrapper.className = 'mb-1';
     const value = overrideValue !== undefined ? overrideValue : field.value;

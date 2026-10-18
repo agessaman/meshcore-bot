@@ -502,7 +502,7 @@
             <div class="modal-body">
                 <form id="createChannelForm">
                     <div class="mb-3">
-                        <label class="form-label">Channel Name</label>
+                        <label class="form-label" for="channelName">Channel Name</label>
                         <input type="text" class="form-control" id="channelName" name="channel_name" required placeholder="#channelname or channelname">
                         <small class="form-text text-muted">
                             <strong>Hashtag channel:</strong> Start with # (e.g., #emergency) - key auto-generated<br>
@@ -510,7 +510,7 @@
                         </small>
                     </div>
                     <div class="mb-3" id="channelKeyGroup" style="display: none;">
-                        <label class="form-label">Channel Key (32 hex characters) <span class="text-danger">*</span></label>
+                        <label class="form-label" for="channelKey">Channel Key (32 hex characters) <span class="text-danger">*</span></label>
                         <input type="text" class="form-control" id="channelKey" name="channel_key" placeholder="00000000000000000000000000000000" pattern="[0-9a-fA-F]{32}" maxlength="32">
                         <small class="form-text text-muted">Required for custom channels. Must be exactly 32 hexadecimal characters (16 bytes).</small>
                     </div>
