@@ -750,8 +750,7 @@
                     Disconnect/reconnect will <em>not</em> fix this.
                     <span id="zombie-since-span"
                         class="banner-since text-danger-emphasis small{% if not radio_zombie_since %} d-none{% endif %}">
-                        <i class="fas fa-clock me-1"></i>Since: <span id="zombie-since-text">{{ radio_zombie_since or ''
-                            }}</span>
+                        <i class="fas fa-clock me-1"></i>Since: <time id="zombie-since-text" class="js-since" datetime="{{ radio_zombie_since or '' }}">{{ radio_zombie_since or '' }}</time>
                     </span>
                 </div>
                 {% if not auth_enabled or is_admin %}
@@ -779,8 +778,7 @@
                     <span class="d-none d-sm-inline">Check radio power and connection. Inbound packets may still be arriving normally.</span>
                     <span id="offline-since-span"
                         class="banner-since text-warning-emphasis small{% if not radio_offline_since %} d-none{% endif %}">
-                        <i class="fas fa-clock me-1"></i>Since: <span id="offline-since-text">{{ radio_offline_since or
-                            '' }}</span>
+                        <i class="fas fa-clock me-1"></i>Since: <time id="offline-since-text" class="js-since" datetime="{{ radio_offline_since or '' }}">{{ radio_offline_since or '' }}</time>
                     </span>
                 </div>
                 {% if not auth_enabled or is_admin %}
@@ -867,18 +865,47 @@
         document.getElementById('zombie-recover-btn')?.addEventListener('click', zombieRecover);
         document.getElementById('offline-clear-btn')?.addEventListener('click', radioOfflineClear);
 
+        // Banner "Since" times arrive as UTC ISO strings. Show them in the
+        // viewer's own time zone with a relative age ("Oct 15, 7:42 AM · 2 days
+        // ago"), keeping the exact value in datetime= and the tooltip.
+        function formatSince(el, iso) {
+            if (!el) return;
+            el.setAttribute('datetime', iso || '');
+            var d = iso ? new Date(iso) : null;
+            if (!d || isNaN(d.getTime())) { el.textContent = iso || ''; el.removeAttribute('title'); return; }
+            var now = new Date();
+            var sameDay = d.toDateString() === now.toDateString();
+            var abs = d.toLocaleString(undefined, sameDay
+                ? { hour: 'numeric', minute: '2-digit' }
+                : { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+            var secs = Math.round((d.getTime() - now.getTime()) / 1000);
+            var units = [['day', 86400], ['hour', 3600], ['minute', 60]];
+            var rel = 'just now';
+            for (var i = 0; i < units.length; i++) {
+                if (Math.abs(secs) >= units[i][1]) {
+                    rel = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' })
+                        .format(Math.round(secs / units[i][1]), units[i][0]);
+                    break;
+                }
+            }
+            el.textContent = abs + ' \u00b7 ' + rel;
+            el.title = d.toLocaleString(undefined, { dateStyle: 'full', timeStyle: 'long' });
+        }
+        document.querySelectorAll('.js-since').forEach(function (el) {
+            formatSince(el, el.getAttribute('datetime'));
+        });
+
         // Live banner polling — updates all banners every 10s without a page reload
         (function () {
             function applyBannerStatus(d) {
                 var show = function (id) { var el = document.getElementById(id); if (el) el.classList.remove('d-none'); };
                 var hide = function (id) { var el = document.getElementById(id); if (el) el.classList.add('d-none'); };
-                var setText = function (id, v) { var el = document.getElementById(id); if (el) el.textContent = v || ''; };
 
                 d.bot_initializing ? show('init-banner') : hide('init-banner');
 
                 if (d.radio_zombie) {
                     show('zombie-banner');
-                    if (d.radio_zombie_since) { setText('zombie-since-text', d.radio_zombie_since); show('zombie-since-span'); }
+                    if (d.radio_zombie_since) { formatSince(document.getElementById('zombie-since-text'), d.radio_zombie_since); show('zombie-since-span'); }
                     else { hide('zombie-since-span'); }
                 } else {
                     hide('zombie-banner');
@@ -886,7 +913,7 @@
 
                 if (d.radio_offline) {
                     show('offline-banner');
-                    if (d.radio_offline_since) { setText('offline-since-text', d.radio_offline_since); show('offline-since-span'); }
+                    if (d.radio_offline_since) { formatSince(document.getElementById('offline-since-text'), d.radio_offline_since); show('offline-since-span'); }
                     else { hide('offline-since-span'); }
                 } else {
                     hide('offline-banner');
