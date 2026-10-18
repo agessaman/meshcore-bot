@@ -33,7 +33,7 @@
             --bg-secondary: #f8f9fa;
             --bg-tertiary: #e9ecef;
             --text-color: #212529;
-            --text-muted: #6c757d;
+            --text-muted: #5f666d;
             --border-color: #dee2e6;
             --card-bg: #ffffff;
             --card-header-bg: #f8f9fa;
@@ -41,6 +41,16 @@
             --log-entry-bg: #f8f9fa;
             --connection-info-bg: #e9ecef;
             --shadow-color: rgba(0, 0, 0, 0.1);
+            /* Status and accent colors used as text. Bootstrap's own text-*
+               colors are background tones and fail contrast as text; these
+               pass 4.5:1 on paper, paper-raised and paper-sunk. */
+            --text-success: #146c43;
+            --text-warning: #7a5d02;
+            --text-danger: #b02a37;
+            --text-info: #0a6c80;
+            --text-primary: #0d6efd;
+            --link-color: #0d6efd;
+            --code-color: #ab296a;
         }
 
         /* CSS Variables for Dark Mode */
@@ -57,6 +67,14 @@
             --log-entry-bg: #2d2d2d;
             --connection-info-bg: #3d3d3d;
             --shadow-color: rgba(0, 0, 0, 0.3);
+            /* Pass 4.5:1 on night, night-raised and night-sunk. */
+            --text-success: #75b798;
+            --text-warning: #ffda6a;
+            --text-danger: #f1aeb5;
+            --text-info: #6edff6;
+            --text-primary: #6ea8fe;
+            --link-color: #6ea8fe;
+            --code-color: #e685b5;
         }
 
         /* Apply theme variables */
@@ -255,9 +273,72 @@
             color: var(--text-muted);
         }
 
-        /* Dark mode text muted */
-        [data-theme="dark"] .text-muted {
+        /* Muted and status text follow the theme in both themes */
+        .text-muted,
+        .form-text {
             color: var(--text-muted) !important;
+        }
+
+        /* On the console-black table headers and navbar, muted text uses the
+           night tone in either theme. */
+        .table-dark .text-muted,
+        .navbar-dark .text-muted {
+            color: #adb5bd !important;
+        }
+
+        .alert code { color: inherit; }
+
+        .text-success { color: var(--text-success) !important; }
+        .text-warning { color: var(--text-warning) !important; }
+        .text-danger { color: var(--text-danger) !important; }
+        .text-info { color: var(--text-info) !important; }
+        .text-primary { color: var(--text-primary) !important; }
+        code { color: var(--code-color); }
+
+        /* Solid info and warning fills are light, so they carry dark text
+           (Bootstrap 5.1 gives every badge white text). */
+        .badge.bg-info,
+        .badge.bg-warning {
+            color: #212529 !important;
+        }
+
+        [data-theme="dark"] a:not(.btn):not(.nav-link):not(.navbar-brand):not(.dropdown-item) {
+            color: var(--link-color);
+        }
+
+        /* Outline buttons: Bootstrap's outline text colors are its fill tones,
+           which fail as text on raised surfaces and on the dark theme. */
+        .btn-outline-secondary {
+            color: var(--text-muted);
+        }
+        .btn-outline-secondary:hover,
+        .btn-outline-secondary.active {
+            color: #fff;
+            background-color: #6c757d;
+        }
+        .btn-outline-danger {
+            color: var(--text-danger);
+        }
+        .btn-outline-danger:hover,
+        .btn-outline-danger.active {
+            color: #fff;
+        }
+        [data-theme="dark"] .btn-outline-primary {
+            color: var(--text-primary);
+        }
+        [data-theme="dark"] .btn-outline-primary:hover,
+        [data-theme="dark"] .btn-outline-primary.active {
+            color: #fff;
+        }
+        .btn-outline-warning {
+            color: var(--text-warning);
+        }
+        .btn-outline-warning:hover,
+        .btn-outline-warning.active {
+            color: #212529;
+        }
+        [data-theme="dark"] .btn-link {
+            color: var(--link-color);
         }
 
         /* Dark mode borders. The directional utilities need naming too — the

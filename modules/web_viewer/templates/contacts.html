@@ -2777,9 +2777,9 @@ document.addEventListener('DOMContentLoaded', () => {
     color: var(--text-color);
 }
 
-/* Ensure all text in table cells is light in dark mode */
-[data-theme="dark"] .table td,
-[data-theme="dark"] .table td * {
+/* Table cells take the light text color in dark mode; children with their
+   own color (badges, buttons, status text) keep it. */
+[data-theme="dark"] .table td {
     color: var(--text-color) !important;
 }
 

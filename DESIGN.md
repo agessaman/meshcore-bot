@@ -8,7 +8,7 @@ colors:
   paper-raised: "#f8f9fa"
   paper-sunk: "#e9ecef"
   ink: "#212529"
-  ink-muted: "#6c757d"
+  ink-muted: "#5f666d"
   rule: "#dee2e6"
   night: "#1a1a1a"
   night-raised: "#2d2d2d"
@@ -19,6 +19,15 @@ colors:
   lamp-green: "#198754"
   lamp-red: "#dc3545"
   lamp-amber: "#ffc107"
+  status-text-success: "#146c43"
+  status-text-warning: "#7a5d02"
+  status-text-danger: "#b02a37"
+  status-text-info: "#0a6c80"
+  night-status-text-success: "#75b798"
+  night-status-text-warning: "#ffda6a"
+  night-status-text-danger: "#f1aeb5"
+  night-status-text-info: "#6edff6"
+  night-signal-blue-text: "#6ea8fe"
   route-direct: "#20c997"
   scope-black: "#0d1117"
   scope-rule: "#30363d"
@@ -162,12 +171,15 @@ A neutral Bootstrap-gray desk with one blue signal and a set of lamp colors that
 - **Lamp Amber** (`lamp-amber`): warning and degraded states, and the packet-entry rule in the activity log.
 - **Lamp Red** (`lamp-red`): disconnected, error, negative deltas, destructive actions.
 
+### Status text
+The lamp hues are fill tones. As text they fail contrast (amber on white is 1.6:1), so text that carries state uses a separate per-theme set, exposed in `base.html` as `--text-success`, `--text-warning`, `--text-danger`, `--text-info`, `--text-primary`, `--link-color` and `--code-color`. Bootstrap's `.text-*` utilities, `.text-muted`, `.form-text`, and the outline buttons all resolve through these, so a page gets the right tone in both themes by using the utility. Light values pass 4.5:1 on paper, paper-raised and paper-sunk; dark values pass on night, night-raised and night-sunk. Solid `bg-info` and `bg-warning` badges carry dark text.
+
 ### Neutral
 - **Paper** (`paper`) / **Night** (`night`): page background in light and dark.
 - **Paper Raised** (`paper-raised`) / **Night Raised** (`night-raised`): card headers, footer, log-entry blocks in light; cards themselves in dark.
 - **Paper Sunk** (`paper-sunk`) / **Night Sunk** (`night-sunk`): meter tracks, empty chip fills, connection-info panels, striped and hovered table rows in dark.
 - **Ink** (`ink`) / **Night Ink** (`night-ink`): body text.
-- **Ink Muted** (`ink-muted`) / **Night Ink Muted** (`night-ink-muted`): labels, secondary values, empty states, inactive icons.
+- **Ink Muted** (`ink-muted`) / **Night Ink Muted** (`night-ink-muted`): labels, secondary values, empty states, inactive icons. Ink Muted is a step darker than Bootstrap's `#6c757d` so it holds 4.5:1 on paper-sunk too. On the console-black rail and table headers, muted text uses the night tone in either theme.
 - **Rule** (`rule`) / **Night Rule** (`night-rule`): 1px borders, dividers, the hairline after section titles.
 - **Console Black** (`console-black`): the navbar rail in both themes.
 - **Scope Black**, **Scope Rule**, **Scope Ink** (`scope-black`, `scope-rule`, `scope-ink`): the log console's own dark surface, border, and default line color, borrowed from a terminal rather than from the page theme.
@@ -177,6 +189,8 @@ Charts use their own validated palettes in `static/js/dashboard.js`, not the lam
 
 ### Named Rules
 **The Lamp Rule.** Green, amber, and red mean connected, degraded, and failed. They never decorate a heading, an icon, or a button that isn't about state.
+
+**The Fill-Is-Not-Text Rule.** A lamp or accent hue used as text goes through its status-text token, never the raw fill hex. Tinted surfaces (message bubbles, delta chips) are a low-alpha wash of the hue over the card, so body text and the status-text tokens keep their contrast on them.
 
 **The Twin Token Rule.** A color that is hard-coded for one theme ships with its `[data-theme="dark"]` (or light) counterpart in the same change. Bootstrap 5.1.3 has no dark theme of its own here; nothing inherits one for free.
 
