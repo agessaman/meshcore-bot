@@ -411,6 +411,10 @@
 
 {% endblock %}
 
+{% block page_libs %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+{% endblock %}
+
 {% block extra_js %}
 {# Data, not code: a JSON block needs no CSP nonce and cannot execute. #}
 <script type="application/json" id="dashboard-boot">{{ dashboard_boot|tojson }}</script>

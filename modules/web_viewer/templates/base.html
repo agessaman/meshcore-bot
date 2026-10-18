@@ -932,14 +932,9 @@
     <!-- Socket.IO Client -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
 
-    <!-- Moment.js for date formatting -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.4/moment.min.js"></script>
-
-    <!-- Chart.js for graphs -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-
-    <!-- SHA-256 for channel key derivation (works in non-HTTPS contexts) -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/js-sha256/0.11.0/sha256.min.js"></script>
+    <!-- Page-specific libraries (Chart.js, js-sha256) load from the pages that
+         use them, through the page_libs block. -->
+    {% block page_libs %}{% endblock %}
 
     <!-- Base JavaScript -->
     <script nonce="{{ g.csp_nonce }}">
@@ -1037,7 +1032,9 @@
                 if (this.lastActivity) {
                     const lastUpdateElement = document.getElementById('last-update');
                     if (lastUpdateElement) {
-                        lastUpdateElement.textContent = moment(this.lastActivity).format('YYYY-MM-DD HH:mm:ss');
+                        const d = new Date(this.lastActivity);
+                        const pad = (n) => String(n).padStart(2, '0');
+                        lastUpdateElement.textContent = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
                     }
                 }
             }

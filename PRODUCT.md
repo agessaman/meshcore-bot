@@ -38,7 +38,7 @@ The viewer sees the mesh from the bot's own radio. Its data is what this node ac
 ## Capabilities and Constraints
 
 - **Low-power hosts.** The bot often runs on a Raspberry Pi, down to a Pi 2. Pages, queries, and polling have to stay light on the server and the client.
-- **Works without internet.** The viewer may run on a LAN with no internet access. Today Bootstrap, Font Awesome, Socket.IO, Chart.js, Moment, and js-sha256 load from public CDNs, which breaks that requirement; new work must not add CDN-only dependencies, and vendoring the existing ones is an open task.
+- **Works without internet.** The viewer may run on a LAN with no internet access. The map and graph libraries (Leaflet, MapLibre, vis-network) and the login fonts are vendored under `static/`. Bootstrap, Font Awesome, Socket.IO, Chart.js and js-sha256 still load from public CDNs, which breaks that requirement; new work must not add CDN-only dependencies, and vendoring those is an open task. Map tiles come from OpenStreetMap and OpenFreeMap and need internet by nature.
 - **Light and dark themes.** Both are supported today (system preference plus a manual toggle) and both must keep working.
 - **Undecided:** whether to stay on Bootstrap 5 and whether to keep the viewer free of a frontend build step. Neither is a commitment; the current implementation uses server-rendered Jinja templates, inline and static CSS/JS, and Bootstrap 5.1.3.
 - **Terminology:** MeshCore terms (repeater, companion, room server, advert, path, hop, prefix, multibyte, region, scope, channel) are used as the firmware and community use them.

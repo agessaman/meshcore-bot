@@ -814,6 +814,11 @@
 </div>
 {% endblock %}
 
+{% block page_libs %}
+<!-- SHA-256 for channel key derivation (works in non-HTTPS contexts) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/js-sha256/0.11.0/sha256.min.js"></script>
+{% endblock %}
+
 {% block extra_js %}
 <script nonce="{{ g.csp_nonce }}">
     // Load meshcore-decoder asynchronously so it doesn't block socket init.

@@ -201,7 +201,7 @@ Charts use their own validated palettes in `static/js/dashboard.js`, not the lam
 **Body Font:** DM Sans (with `system-ui, -apple-system, Segoe UI, Roboto, sans-serif`)
 **Mono Font:** `ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace`
 
-**Character:** A clean, slightly geometric sans that stays legible at the console's small sizes, paired with the platform's own monospace for logs, keys, packet hex, and template fields. DM Sans is the chosen viewer-wide face; today only the login page loads it (with Outfit for its title), from Google Fonts. Rolling it out means self-hosting the files under `static/` so the viewer keeps working without internet, and until then the system stack is what renders.
+**Character:** A clean, slightly geometric sans that stays legible at the console's small sizes, paired with the platform's own monospace for logs, keys, packet hex, and template fields. DM Sans is the chosen viewer-wide face; today only the login page loads it (with Outfit for its title). Both are self-hosted under `static/fonts/` through `static/css/fonts.css` (Latin subset), so rolling DM Sans out to the rest of the viewer is a stylesheet change, not a new dependency; until then the system stack is what renders.
 
 ### Hierarchy
 - **Headline** (500, Bootstrap's responsive `h1`, 1.2): one page title per page, usually with a Font Awesome icon before it.

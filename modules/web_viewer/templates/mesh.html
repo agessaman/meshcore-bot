@@ -337,12 +337,13 @@
 </div>
 
 
+<!-- Map and graph libraries are vendored under static/vendor/ (versions in its README) so the page works offline. -->
 <!-- Leaflet CSS -->
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="{{ url_for('static', filename='vendor/leaflet/leaflet.css') }}" />
 <!-- MapLibre GL CSS (dark basemap is a vector style; see TILE_LAYERS) -->
-<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.css" />
+<link rel="stylesheet" href="{{ url_for('static', filename='vendor/maplibre-gl/maplibre-gl.css') }}" />
 <!-- vis-network CSS -->
-<link rel="stylesheet" href="https://unpkg.com/vis-network@9.1.9/styles/vis-network.min.css" />
+<link rel="stylesheet" href="{{ url_for('static', filename='vendor/vis-network/vis-network.min.css') }}" />
 
 <style>
     #map-view, #graph-view {
@@ -629,13 +630,13 @@
 </style>
 
 <!-- Leaflet JS -->
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="{{ url_for('static', filename='vendor/leaflet/leaflet.js') }}"></script>
 <!-- MapLibre GL + Leaflet bridge, for the vector dark basemap. Must load after Leaflet:
      the bridge binds against both globals. -->
-<script src="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.js"></script>
-<script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.1.4/leaflet-maplibre-gl.js"></script>
+<script src="{{ url_for('static', filename='vendor/maplibre-gl/maplibre-gl.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor/maplibre-gl-leaflet/leaflet-maplibre-gl.js') }}"></script>
 <!-- vis-network JS -->
-<script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
+<script src="{{ url_for('static', filename='vendor/vis-network/vis-network.min.js') }}"></script>
 
 <script nonce="{{ g.csp_nonce }}">
     // Global state

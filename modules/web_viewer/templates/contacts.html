@@ -606,6 +606,10 @@
 </div>
 {% endblock %}
 
+{% block page_libs %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+{% endblock %}
+
 {% block extra_js %}
         <script nonce="{{ g.csp_nonce }}">
 // IS_ADMIN comes from base.html (display hint only; mutations are enforced
