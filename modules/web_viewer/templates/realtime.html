@@ -2784,13 +2784,9 @@
         document.getElementById('packet-total-bytes').textContent = `${rawHex.length / 2} bytes`;
         modalSegmentOffsets = segmentOffsets(decoded, serverData);
 
-        // Packet hash - prefer decoder, then server, then compute
-        // The server's hash is the one rows, search and Copy hash use.
-        let packetHash = serverData.packet_hash || decoded?.messageHash;
-        if (!packetHash && rawHex && typeof sha256 !== 'undefined') {
-            const fullHash = sha256(rawHex);
-            packetHash = fullHash.slice(0, 8).toUpperCase();
-        }
+        // Packet hash - the server's is the one rows, search and Copy hash use;
+        // the decoder's packetHash is the same firmware hash.
+        const packetHash = serverData.packet_hash || decoded?.packetHash?.toUpperCase();
         document.getElementById('detail-packet-hash').textContent = packetHash || '—';
 
         // Timestamp

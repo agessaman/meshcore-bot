@@ -19,10 +19,20 @@ export {
   DeviceRole,
   AdvertFlags,
   RequestType,
+  AnonRequestType,
+  TextType,
   ControlSubType
 } from '../types/enums';
 export { MeshCoreKeyStore } from '../crypto/key-manager';
 export { ChannelCrypto } from '../crypto/channel-crypto';
+export {
+  calcRegionKey,
+  calcTransportCode,
+  calcTransportCodeForRegion,
+  transportCodeMatchesRegion,
+  normalizeRegionName,
+  REGION_KEY_SIZE
+} from '../crypto/region-transport';
 export { hexToBytes, bytesToHex, byteToHex, numberToHex } from '../utils/hex';
 export {
   getRouteTypeName,
@@ -30,8 +40,11 @@ export {
   getPayloadVersionName,
   getDeviceRoleName,
   getRequestTypeName,
+  getAnonRequestTypeName,
+  getTextTypeName,
   getControlSubTypeName
 } from '../utils/enum-names';
+export { PathPayloadDecoder } from '../decoder/payload-decoders/path';
 export { ed25519 };
 
 function sha512Pure(data: Uint8Array): Uint8Array {
