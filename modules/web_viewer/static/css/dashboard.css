@@ -417,3 +417,13 @@
         gap: 0.25rem 1rem;
     }
 }
+
+/* Touch screens: the bare icon buttons get a 36px hit area. Padding with a
+   matching negative margin grows the target without moving the icon. */
+@media (pointer: coarse) {
+    .dashboard-info-btn,
+    .health-strip .btn-refresh {
+        padding: 0.7rem;
+        margin: -0.7rem;
+    }
+}

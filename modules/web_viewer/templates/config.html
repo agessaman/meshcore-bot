@@ -151,7 +151,9 @@
 
     @media (max-width: 992px) {
         .config-layout {
-            grid-template-columns: 1fr;
+            /* minmax(0, ...) so the column can shrink below its widest child
+               on a phone instead of widening the page. */
+            grid-template-columns: minmax(0, 1fr);
         }
         .config-sidebar {
             position: static;

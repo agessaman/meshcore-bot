@@ -483,6 +483,109 @@
             background-color: var(--card-bg);
             color: var(--text-color);
         }
+
+        /* Status banners: the "Since" time sits beside the message on wide
+           screens and on its own line on phones. d-none still wins. */
+        .banner-since {
+            margin-left: 1rem;
+        }
+        @media (max-width: 575.98px) {
+            .banner-since {
+                display: block;
+                margin-left: 0;
+            }
+        }
+
+        /* Card headers that pair a title with controls wrap the controls onto
+           their own row when both don't fit, instead of squeezing the title
+           into a column. */
+        .card-header.d-flex {
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+
+        /* Touch screens: Bootstrap's compact controls are 29-38px tall and its
+           checkboxes 16px, too small to hit reliably. On a coarse pointer the
+           standard controls grow to 44px and the small ones to 36px, keeping
+           the dense layout on desktop untouched. */
+        @media (pointer: coarse) {
+            .btn,
+            .form-control,
+            .form-select {
+                padding-top: 0.625rem;
+                padding-bottom: 0.625rem;
+            }
+            .btn:not(.btn-link) {
+                min-width: 44px;
+            }
+            .btn-sm,
+            .btn-group-sm > .btn,
+            .input-group-sm > .btn,
+            .form-control-sm,
+            .form-select-sm,
+            .input-group-sm > .form-control,
+            .input-group-sm > .form-select,
+            .input-group-sm > .input-group-text {
+                padding-top: 0.45rem;
+                padding-bottom: 0.45rem;
+            }
+            .btn-sm:not(.btn-link),
+            .btn-group-sm > .btn:not(.btn-link) {
+                min-width: 36px;
+            }
+            .input-group-text {
+                padding-top: 0.625rem;
+                padding-bottom: 0.625rem;
+            }
+
+            .form-check {
+                min-height: 1.5rem;
+                padding-left: 2rem;
+            }
+            .form-check .form-check-input {
+                margin-left: -2rem;
+            }
+            .form-check-input {
+                width: 1.5rem;
+                height: 1.5rem;
+                margin-top: 0;
+                vertical-align: middle;
+            }
+            .form-check-label {
+                line-height: 1.5rem;
+            }
+            .form-switch {
+                padding-left: 3.25rem;
+            }
+            .form-switch .form-check-input {
+                width: 2.75rem;
+                margin-left: -3.25rem;
+            }
+            .form-check-inline {
+                margin-right: 1.25rem;
+            }
+
+            .dropdown-item {
+                padding-top: 0.625rem;
+                padding-bottom: 0.625rem;
+            }
+            .navbar-nav .nav-link {
+                padding-top: 0.75rem;
+                padding-bottom: 0.75rem;
+            }
+            .btn-close {
+                padding: 0.75rem;
+            }
+            summary {
+                padding-top: 0.5rem;
+                padding-bottom: 0.5rem;
+            }
+            .leaflet-container.leaflet-touch .leaflet-bar a {
+                width: 40px;
+                height: 40px;
+                line-height: 40px;
+            }
+        }
     </style>
 
     {% block extra_css %}{% endblock %}
@@ -636,24 +739,24 @@
 
     <!-- Zombie Radio Banner (persistent — shown on all pages when radio is in zombie state) -->
     <div id="zombie-banner"
-        class="alert alert-danger mb-0 rounded-0 border-0 border-bottom border-danger{% if not radio_zombie %} d-none{% endif %}"
+        class="alert alert-danger mb-0 rounded-0 border-0 border-bottom border-danger py-2 py-sm-3{% if not radio_zombie %} d-none{% endif %}"
         role="alert" style="border-width: 2px !important;">
         <div class="container-fluid">
             <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
                 <div>
                     <i class="fas fa-skull-crossbones me-2"></i>
-                    <strong>Radio Zombie State Detected</strong> — The bot radio firmware is unresponsive.
+                    <strong>Radio Zombie State Detected</strong> —<span class="d-none d-sm-inline"> The bot radio firmware is unresponsive.</span>
                     A physical <strong>power cycle</strong> of the radio hardware is required.
                     Disconnect/reconnect will <em>not</em> fix this.
                     <span id="zombie-since-span"
-                        class="ms-3 text-danger-emphasis small opacity-75{% if not radio_zombie_since %} d-none{% endif %}">
+                        class="banner-since text-danger-emphasis small{% if not radio_zombie_since %} d-none{% endif %}">
                         <i class="fas fa-clock me-1"></i>Since: <span id="zombie-since-text">{{ radio_zombie_since or ''
                             }}</span>
                     </span>
                 </div>
                 {% if not auth_enabled or is_admin %}
                 <div class="d-flex gap-2 align-items-center flex-shrink-0">
-                    <span class="small opacity-75">After power cycling:</span>
+                    <span class="small d-none d-sm-inline">After power cycling:</span>
                     <button id="zombie-recover-btn" class="btn btn-warning btn-sm fw-semibold"
                         type="button">
                         <i class="fas fa-power-off me-1"></i>Restart Bot Processing
@@ -666,23 +769,23 @@
 
     <!-- Radio Offline Banner (shown when repeated send timeouts have entered the offline state) -->
     <div id="offline-banner"
-        class="alert alert-warning mb-0 rounded-0 border-0 border-bottom border-warning{% if not radio_offline %} d-none{% endif %}"
+        class="alert alert-warning mb-0 rounded-0 border-0 border-bottom border-warning py-2 py-sm-3{% if not radio_offline %} d-none{% endif %}"
         role="alert" style="border-width: 2px !important;">
         <div class="container-fluid">
             <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
                 <div>
                     <i class="fas fa-plug me-2"></i>
                     <strong>Radio Offline</strong> — the bot cannot send outbound messages to the mesh.
-                    Check radio power and connection. Inbound packets may still be arriving normally.
+                    <span class="d-none d-sm-inline">Check radio power and connection. Inbound packets may still be arriving normally.</span>
                     <span id="offline-since-span"
-                        class="ms-3 text-warning-emphasis small opacity-75{% if not radio_offline_since %} d-none{% endif %}">
+                        class="banner-since text-warning-emphasis small{% if not radio_offline_since %} d-none{% endif %}">
                         <i class="fas fa-clock me-1"></i>Since: <span id="offline-since-text">{{ radio_offline_since or
                             '' }}</span>
                     </span>
                 </div>
                 {% if not auth_enabled or is_admin %}
                 <div class="d-flex gap-2 align-items-center flex-shrink-0">
-                    <span class="small opacity-75">Once radio is fixed:</span>
+                    <span class="small d-none d-sm-inline">Once radio is fixed:</span>
                     <button id="offline-clear-btn" class="btn btn-dark btn-sm fw-semibold"
                         type="button">
                         <i class="fas fa-check me-1"></i>Clear Offline Flag
