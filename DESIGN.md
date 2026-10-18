@@ -209,7 +209,7 @@ Charts use their own validated palettes in `static/js/dashboard.js`, not the lam
 - **Body** (400, 1rem, 1.5): tables, forms, descriptions.
 - **Readout** (700, 1.6rem, 1.1, tabular numerals): the big number on a stat tile.
 - **Label** (600, 0.7rem, 0.04em tracking, uppercase): stat-tile and health-strip labels. The dashboard section title is its larger sibling (700, 0.8rem, 0.08em tracking, uppercase, followed by a hairline rule).
-- **Mono** (400, ~0.875rem): log lines, packet and key fields, template references. `realtime.html` and the legacy `.log-entry` still use `'Courier New'`; that is drift toward this stack.
+- **Mono** (400, ~0.875rem): log lines, packet and key fields, template references. Every monospace use reads `--font-mono` from `base.html`, which also feeds Bootstrap's `--bs-font-monospace`, so `.font-monospace`, `code` and `pre` match.
 
 ### Named Rules
 **The Tabular Rule.** Any number that updates in place (counts, SNR, RSSI, percentages, uptime) uses tabular numerals so the digits don't shuffle while you read them.

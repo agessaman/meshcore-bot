@@ -29,6 +29,10 @@
     <style>
         /* CSS Variables for Light Mode (Default) */
         :root {
+            /* One monospace stack for logs, keys, hex and code. Bootstrap's
+               .font-monospace, code and pre read it through --bs-font-monospace. */
+            --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            --bs-font-monospace: var(--font-mono);
             --bg-color: #ffffff;
             --bg-secondary: #f8f9fa;
             --bg-tertiary: #e9ecef;
@@ -116,7 +120,7 @@
         }
 
         .log-entry {
-            font-family: 'Courier New', monospace;
+            font-family: var(--font-mono);
             font-size: 0.9em;
             margin-bottom: 5px;
             padding: 8px;

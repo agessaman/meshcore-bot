@@ -51,7 +51,7 @@
         font-size: 0.95rem;
     }
     .mesh-stat-label {
-        font-size: 0.66rem;
+        font-size: 0.7rem;
         color: var(--text-muted);
         white-space: nowrap;
     }
@@ -79,9 +79,6 @@
     @media (max-width: 991.98px) {
         .mesh-btn-text {
             display: none; /* icon-only view switch on small screens */
-        }
-        .mesh-stat-label {
-            font-size: 0.62rem;
         }
         .mesh-stat-chip {
             padding: 2px 8px;
@@ -403,7 +400,7 @@
         background-color: rgba(0, 0, 0, 0.1);
         padding: 2px 4px;
         border-radius: 3px;
-        font-family: 'Courier New', monospace;
+        font-family: var(--font-mono);
     }
     .mesh-node-popup .prefix-byte {
         display: inline-block;
@@ -412,7 +409,7 @@
         border-radius: 3px;
         padding: 2px 5px;
         margin-right: 4px;
-        font-family: 'Courier New', monospace;
+        font-family: var(--font-mono);
         font-size: 0.9em;
     }
     .mesh-node-popup .prefix-byte:last-child {

@@ -182,7 +182,7 @@
 
     /* Path encoding (bytes/hop) — neutral, non-judgmental pairing */
     .path-encoding-badge {
-        font-size: 0.65rem;
+        font-size: 0.7rem;
         font-weight: 500;
         line-height: 1.2;
         padding: 0.2em 0.45em;
@@ -1551,7 +1551,7 @@ class ModernContactsManager {
         if (outPath && outPathLen > 0) {
             // Create a unique ID for this tooltip
             const tooltipId = `hops-tooltip-${contact.user_id.substring(0, 16).replace(/[^a-zA-Z0-9]/g, '_')}`;
-            const pathCountText = hasMultiplePaths ? ` <small>(${pathsCount} paths)</small>` : '';
+            const pathCountText = hasMultiplePaths ? ` <span class="fw-normal">(${pathsCount} paths)</span>` : '';
             const bytesPerHop = contact.out_bytes_per_hop != null && [1, 2, 3].includes(Number(contact.out_bytes_per_hop)) ? Number(contact.out_bytes_per_hop) : '';
             return `<span class="badge bg-primary path-badge" 
                           id="${tooltipId}" 
@@ -2863,7 +2863,7 @@ document.addEventListener('DOMContentLoaded', () => {
     color: var(--text-color);
     padding: 0.25rem 0.5rem;
     border-radius: 0.25rem;
-    font-family: 'Courier New', monospace;
+    font-family: var(--font-mono);
     font-size: 0.9em;
 }
 
