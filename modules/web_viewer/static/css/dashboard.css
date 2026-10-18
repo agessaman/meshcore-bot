@@ -330,6 +330,18 @@
     white-space: nowrap;
 }
 
+.top-list-row__rank {
+    flex: 0 0 1.5rem;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+}
+
+.top-list-row .tag-chip {
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+}
+
 /* ── Chart wrappers ────────────────────────────────────────────────────── */
 
 .chart-box {

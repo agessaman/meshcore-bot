@@ -16,7 +16,7 @@
                     <div class="card">
                         <div class="card-body">
                             <h5 class="card-title">Total Subscriptions</h5>
-                            <h2 id="total-subscriptions">-</h2>
+                            <h2 id="total-subscriptions" class="readout-blue">-</h2>
                         </div>
                     </div>
                 </div>
@@ -24,7 +24,7 @@
                     <div class="card">
                         <div class="card-body">
                             <h5 class="card-title">Active Feeds</h5>
-                            <h2 id="active-feeds">-</h2>
+                            <h2 id="active-feeds" class="readout-teal">-</h2>
                         </div>
                     </div>
                 </div>
@@ -32,7 +32,7 @@
                     <div class="card">
                         <div class="card-body">
                             <h5 class="card-title">Items (24h)</h5>
-                            <h2 id="items-24h">-</h2>
+                            <h2 id="items-24h" class="readout-violet">-</h2>
                         </div>
                     </div>
                 </div>
@@ -40,7 +40,7 @@
                     <div class="card">
                         <div class="card-body">
                             <h5 class="card-title">Active Errors</h5>
-                            <h2 id="active-errors">-</h2>
+                            <h2 id="active-errors" class="readout-muted">-</h2>
                         </div>
                     </div>
                 </div>
@@ -488,7 +488,11 @@ class FeedManager {
             document.getElementById('total-subscriptions').textContent = data.total_subscriptions || 0;
             document.getElementById('active-feeds').textContent = data.enabled_subscriptions || 0;
             document.getElementById('items-24h').textContent = data.items_24h || 0;
-            document.getElementById('active-errors').textContent = data.active_errors || 0;
+            const activeErrors = Number(data.active_errors) || 0;
+            const errorsEl = document.getElementById('active-errors');
+            errorsEl.textContent = activeErrors;
+            // A count of errors is a state: red when there are any, quiet at zero.
+            errorsEl.className = activeErrors > 0 ? 'readout-danger' : 'readout-muted';
         } catch (error) {
             console.error('Error loading statistics:', error);
         }
@@ -587,7 +591,7 @@ class FeedManager {
             const addAction = (classes, iconClass, title, handler) => {
                 const button = document.createElement('button');
                 button.type = 'button';
-                button.className = `btn btn-sm ${classes}`;
+                button.className = `row-action ${classes}`;
                 button.title = title;
                 button.setAttribute('aria-label', title);
                 const icon = document.createElement('i');
@@ -598,15 +602,15 @@ class FeedManager {
                 actions.appendChild(button);
                 actions.appendChild(document.createTextNode(' '));
             };
-            addAction('btn-info', 'fa-eye', 'View Details', () => this.viewFeed(feed.id));
-            addAction('btn-primary', 'fa-edit', 'Edit', () => this.editFeed(feed.id));
+            addAction('row-action--view', 'fa-eye', 'View details', () => this.viewFeed(feed.id));
+            addAction('row-action--edit', 'fa-edit', 'Edit', () => this.editFeed(feed.id));
             addAction(
-                feed.enabled ? 'btn-warning' : 'btn-success',
+                feed.enabled ? 'row-action--pause' : 'row-action--play',
                 feed.enabled ? 'fa-pause' : 'fa-play',
                 feed.enabled ? 'Disable' : 'Enable',
                 () => this.toggleFeed(feed.id, !feed.enabled),
             );
-            addAction('btn-danger', 'fa-trash', 'Delete', () => this.deleteFeed(feed.id));
+            addAction('row-action--danger', 'fa-trash', 'Delete', () => this.deleteFeed(feed.id));
 
             tbody.appendChild(row);
         });

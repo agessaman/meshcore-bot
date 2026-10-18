@@ -97,10 +97,6 @@
         return node;
     }
 
-    function makeBadge(value, classes) {
-        return makeTextElement('span', value, 'badge ' + classes);
-    }
-
     /** Em dash for absent data. Zero is a real value and must not become one. */
     function formatNumber(value) {
         if (value === null || value === undefined || Number.isNaN(value)) return '—';
@@ -1098,8 +1094,9 @@
         identity.className = 'd-flex align-items-center gap-2 top-list-row__name';
         const label = makeTextElement('span', name, 'fw-semibold top-list-row__name');
         label.title = String(name ?? '');
-        identity.append(makeBadge(rank, 'bg-secondary'), label);
-        row.append(identity, makeBadge(badgeText, badgeClass));
+        identity.append(makeTextElement('span', rank, 'top-list-row__rank'), label);
+        // Counts are tinted chips in each list's own color, not lamp pills.
+        row.append(identity, makeTextElement('span', badgeText, 'tag-chip ' + badgeClass));
         return row;
     }
 
@@ -1109,14 +1106,14 @@
             container: 'top-commands-list',
             limit: 15,
             empty: 'No commands recorded.',
-            render: (item, i) => rankedRow(i + 1, item.name, formatNumber(item.count) + ' uses', 'bg-primary'),
+            render: (item, i) => rankedRow(i + 1, item.name, formatNumber(item.count) + ' uses', 'tag-chip--violet'),
         },
         users: {
             select: 'top-users-window',
             container: 'top-users-list',
             limit: 15,
             empty: 'No users recorded.',
-            render: (item, i) => rankedRow(i + 1, item.name, formatNumber(item.count) + ' msgs', 'bg-info'),
+            render: (item, i) => rankedRow(i + 1, item.name, formatNumber(item.count) + ' msgs', ''),
         },
         channels: {
             select: 'top-channels-window',
@@ -1124,8 +1121,8 @@
             limit: 10,
             empty: 'No channels recorded.',
             render: (item, i) => {
-                const row = rankedRow(i + 1, item.name, formatNumber(item.count) + ' msgs', 'bg-secondary');
-                row.appendChild(makeBadge(formatNumber(item.users) + ' users', 'bg-info'));
+                const row = rankedRow(i + 1, item.name, formatNumber(item.count) + ' msgs', 'tag-chip--teal');
+                row.appendChild(makeTextElement('span', formatNumber(item.users) + ' users', 'tag-chip'));
                 return row;
             },
         },
@@ -1141,8 +1138,9 @@
                 heading.className = 'd-flex align-items-center gap-2 mb-1';
                 const name = makeTextElement('span', item.name, 'fw-semibold top-list-row__name');
                 name.title = String(item.name ?? '');
-                heading.append(makeBadge(i + 1, 'bg-warning text-dark'), name,
-                    makeBadge(item.path_length + ' hops', 'bg-danger'));
+                const hops = Number(item.path_length) || 0;
+                heading.append(makeTextElement('span', i + 1, 'top-list-row__rank'), name,
+                    makeTextElement('span', `${hops} hop${hops === 1 ? '' : 's'}`, 'tag-chip tag-chip--violet'));
                 const path = makeTextElement('code', item.path_string, 'small text-break');
                 path.style.wordBreak = 'break-all';
                 const when = makeTextElement(
@@ -1159,7 +1157,7 @@
             container: 'top-repeaters-list',
             limit: 10,
             empty: 'No repeater adverts recorded.',
-            render: (item, i) => rankedRow(i + 1, item.name, formatNumber(item.count) + ' adverts', 'bg-success'),
+            render: (item, i) => rankedRow(i + 1, item.name, formatNumber(item.count) + ' adverts', 'tag-chip--orange'),
         },
         neighbors: {
             select: 'neighbors-window',

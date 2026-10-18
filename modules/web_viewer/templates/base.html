@@ -99,6 +99,99 @@
             color: #0d6efd !important;
         }
 
+        /* Readout colors for stat tiles: each tile reads in its own hue so a
+           row of counts can be told apart at a glance. Text-safe on both
+           themes; a tile showing a problem uses --text-danger instead. */
+        :root {
+            --readout-blue: #0a58ca;
+            --readout-teal: #0f7a5f;
+            --readout-violet: #6d28d9;
+            --readout-orange: #b4501a;
+        }
+
+        [data-theme="dark"] {
+            --readout-blue: #6ea8fe;
+            --readout-teal: #4fd1ae;
+            --readout-violet: #c4b5fd;
+            --readout-orange: #f4a26b;
+        }
+
+        .readout-blue { color: var(--readout-blue); }
+        .readout-teal { color: var(--readout-teal); }
+        .readout-violet { color: var(--readout-violet); }
+        .readout-orange { color: var(--readout-orange); }
+        .readout-muted { color: var(--text-muted); }
+        .readout-danger { color: var(--text-danger); }
+
+        /* Row actions shared by table pages: each action keeps its own color
+           and a light outline, so a row's actions are found and told apart at
+           a glance without a wall of solid buttons. */
+        :root {
+            --action-star: #a36b00;
+            --action-geo: #0f7a5f;
+            --action-play: #146c43;
+            --action-pause: #8a5a00;
+        }
+
+        [data-theme="dark"] {
+            --action-star: #ffd65a;
+            --action-geo: #4fd1ae;
+            --action-play: #75b798;
+            --action-pause: #ffda6a;
+        }
+
+        .row-action {
+            --action: var(--link-color);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.35rem;
+            min-width: 2rem;
+            height: 2rem;
+            padding: 0 0.45rem;
+            font-size: 0.875rem;
+            white-space: nowrap;
+            color: var(--action);
+            background-color: color-mix(in srgb, var(--action) 8%, transparent);
+            border: 1px solid color-mix(in srgb, var(--action) 35%, transparent);
+            border-radius: 0.25rem;
+            transition: background-color 0.12s ease-out, border-color 0.12s ease-out;
+        }
+
+        .row-action:hover,
+        .row-action:focus-visible {
+            color: var(--action);
+            background-color: color-mix(in srgb, var(--action) 18%, transparent);
+            border-color: color-mix(in srgb, var(--action) 60%, transparent);
+        }
+
+        .row-action:focus-visible {
+            outline: 2px solid var(--action);
+            outline-offset: 1px;
+        }
+
+        .row-action--view { --action: var(--text-info); }
+        .row-action--edit { --action: var(--link-color); }
+        .row-action--play { --action: var(--action-play); }
+        .row-action--pause { --action: var(--action-pause); }
+        .row-action--danger { --action: var(--text-danger); }
+
+        /* Category chips: tinted, readable, not the status lamps */
+        .tag-chip {
+            display: inline-block;
+            padding: 0.05rem 0.5rem;
+            font-size: 0.875rem;
+            font-weight: 600;
+            white-space: nowrap;
+            border-radius: 999px;
+            color: var(--chip-ink, var(--readout-blue));
+            background-color: color-mix(in srgb, var(--chip-ink, var(--readout-blue)) 14%, transparent);
+        }
+
+        .tag-chip--violet { --chip-ink: var(--readout-violet); }
+        .tag-chip--teal { --chip-ink: var(--readout-teal); }
+        .tag-chip--orange { --chip-ink: var(--readout-orange); }
+
         .status-indicator {
             width: 12px;
             height: 12px;

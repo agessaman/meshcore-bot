@@ -25,7 +25,7 @@
                     <div class="card">
                         <div class="card-body">
                             <h5 class="card-title">Total Channels</h5>
-                            <h2 id="total-channels">-</h2>
+                            <h2 id="total-channels" class="readout-blue">-</h2>
                         </div>
                     </div>
                 </div>
@@ -36,7 +36,7 @@
                                 Available Slots
                                 <i class="fas fa-info-circle text-muted ms-1" id="available-slots-info" style="font-size: 0.8em; cursor: help; display: none;" data-bs-toggle="tooltip"></i>
                             </h5>
-                            <h2 id="available-slots">-</h2>
+                            <h2 id="available-slots" class="readout-teal">-</h2>
                         </div>
                     </div>
                 </div>
@@ -44,7 +44,7 @@
                     <div class="card">
                         <div class="card-body">
                             <h5 class="card-title">Channels with Feeds</h5>
-                            <h2 id="channels-with-feeds">-</h2>
+                            <h2 id="channels-with-feeds" class="readout-violet">-</h2>
                         </div>
                     </div>
                 </div>
@@ -52,7 +52,7 @@
                     <div class="card">
                         <div class="card-body">
                             <h5 class="card-title">Empty Channels</h5>
-                            <h2 id="empty-channels">-</h2>
+                            <h2 id="empty-channels" class="readout-orange">-</h2>
                         </div>
                     </div>
                 </div>
@@ -159,7 +159,7 @@
                             </select>
                         </div>
                         <div class="col-md-auto">
-                            <button type="button" class="btn btn-warning" id="savePathHashBtn">
+                            <button type="button" class="btn btn-primary" id="savePathHashBtn">
                                 <span class="spinner-border spinner-border-sm me-1" id="savePathHashSpinner" style="display:none" role="status"></span>
                                 <i class="fas fa-upload me-1"></i>Write Path Settings
                             </button>
@@ -185,7 +185,7 @@
                             <small class="form-text text-muted" id="nodeDefaultScopeKey"></small>
                         </div>
                         <div class="col-md-auto">
-                            <button type="button" class="btn btn-warning" id="saveDefaultScopeBtn">
+                            <button type="button" class="btn btn-primary" id="saveDefaultScopeBtn">
                                 <span class="spinner-border spinner-border-sm me-1" id="saveDefaultScopeSpinner"
                                       style="display:none" role="status"></span>
                                 <i class="fas fa-upload me-1"></i>Write Default Scope
@@ -247,7 +247,7 @@
                         </div>
                     </div>
                     <div class="mt-3 d-flex gap-2 flex-wrap">
-                        <button type="button" class="btn btn-warning" id="saveIdentityBtn">
+                        <button type="button" class="btn btn-primary" id="saveIdentityBtn">
                             <span class="spinner-border spinner-border-sm me-1" id="saveIdentitySpinner" style="display:none" role="status"></span>
                             <i class="fas fa-upload me-1"></i>Write Identity
                         </button>
@@ -317,7 +317,7 @@
                         Telemetry permissions control who may request each reading type.
                     </small>
                     <div class="mt-3">
-                        <button type="button" class="btn btn-warning" id="saveMeshBtn">
+                        <button type="button" class="btn btn-primary" id="saveMeshBtn">
                             <span class="spinner-border spinner-border-sm me-1" id="saveMeshSpinner" style="display:none" role="status"></span>
                             <i class="fas fa-upload me-1"></i>Write Mesh Behavior
                         </button>
@@ -447,7 +447,7 @@
                     </div>
 
                     <div class="mt-3 d-flex gap-2 align-items-center flex-wrap">
-                        <button type="button" class="btn btn-warning" id="saveRegionScopesBtn">
+                        <button type="button" class="btn btn-primary" id="saveRegionScopesBtn">
                             <span class="spinner-border spinner-border-sm me-1" id="saveRegionScopesSpinner"
                                   style="display:none" role="status"></span>
                             <i class="fas fa-save me-1"></i>Save Region Scopes

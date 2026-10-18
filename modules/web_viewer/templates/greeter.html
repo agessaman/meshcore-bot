@@ -328,7 +328,7 @@ class GreeterManager {
             }
             const row = document.createElement('tr');
             const senderCell = document.createElement('td');
-            senderCell.appendChild(this.makeTextElement('code', user.sender_id));
+            senderCell.appendChild(this.makeTextElement('span', user.sender_id, 'greeter-name'));
             row.appendChild(senderCell);
             [
                 user.channel,
@@ -339,11 +339,11 @@ class GreeterManager {
             rolloutCell.appendChild(this.makeTextElement(
                 'span',
                 user.rollout_marked ? 'Rollout' : 'Manual',
-                `badge ${user.rollout_marked ? 'bg-warning' : 'bg-success'}`,
+                user.rollout_marked ? 'tag-chip tag-chip--violet' : 'tag-chip',
             ));
             row.appendChild(rolloutCell);
             const actionCell = document.createElement('td');
-            const button = this.makeTextElement('button', 'Mark Ungreeted', 'btn btn-sm btn-danger');
+            const button = this.makeTextElement('button', 'Mark ungreeted', 'row-action row-action--danger');
             button.type = 'button';
             button.addEventListener('click', () => this.ungreetUser(user.sender_id, user.channel));
             actionCell.appendChild(button);
@@ -540,6 +540,10 @@ document.addEventListener('DOMContentLoaded', () => {
 </script>
 
 <style>
+.greeter-name {
+    font-weight: 600;
+}
+
 .greeter-sample-text {
     white-space: pre-wrap;
     font-family: var(--font-mono);
