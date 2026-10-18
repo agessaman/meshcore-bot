@@ -526,7 +526,11 @@
         background-color: var(--rt-fresh);
     }
 
-    /* Phone: one sticky line, filters behind a button, two-line rows. */
+    .rt-pending {
+        white-space: nowrap;
+    }
+
+    /* Phone: a compact sticky strip, filters behind a button, two-line rows. */
     @media (max-width: 767.98px) {
         .rt-strip {
             gap: 0.25rem 0.9rem;
@@ -549,13 +553,24 @@
             color: var(--text-muted);
         }
 
+        /* Readings keep their full width; when the held-rows button joins
+           Pause and there isn't room, the controls drop to their own line
+           at the right instead of squeezing the readings into each other. */
         .rt-strip {
-            flex-wrap: nowrap;
-            gap: 0.25rem 0.75rem;
+            gap: 0.35rem 0.75rem;
         }
 
-        .rt-strip__item {
-            min-width: 0;
+        .rt-strip__spacer {
+            display: none;
+        }
+
+        .rt-strip__controls {
+            margin-left: auto;
+            gap: 0.4rem;
+        }
+
+        .rt-pending-more {
+            display: none;
         }
 
         .rt-filters-toggle {
@@ -936,7 +951,7 @@
         <svg id="rt-spark" class="rt-spark" viewBox="0 0 120 24" preserveAspectRatio="none" role="img" aria-label="Packets heard per 30 seconds, last 10 minutes"></svg>
     </span>
     <span class="rt-strip__spacer"></span>
-    <span class="rt-strip__item">
+    <span class="rt-strip__item rt-strip__controls">
         <button type="button" class="btn btn-sm btn-outline-primary rt-pending" id="rt-pending" hidden></button>
         <button type="button" class="btn btn-sm btn-outline-secondary" id="rt-pause" aria-pressed="false" aria-label="Pause the tape" title="Pause the tape (P)">
             <i class="fas fa-pause" aria-hidden="true"></i> <span class="rt-pause-label">Pause</span>
@@ -2324,8 +2339,12 @@
             return;
         }
         button.hidden = false;
-        const label = n ? `${n} new` : 'Updates';
-        button.textContent = hold.paused ? `${label} waiting` : `${label} · show`;
+        // The trailing words drop on a phone, where the button must stay short.
+        button.replaceChildren(
+            document.createTextNode(n ? `${n} new` : 'Updates'),
+            makeElement('span', 'rt-pending-more', hold.paused ? ' waiting' : ' · show')
+        );
+        button.setAttribute('aria-label', `${n ? `${n} new` : 'Updates'}${hold.paused ? ' waiting' : ', show them'}`);
         button.title = pendingDropped
             ? `${pendingDropped} older updates were dropped to keep the page light`
             : 'Show what arrived while the tape was held';
