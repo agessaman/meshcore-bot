@@ -181,23 +181,23 @@
             </button>
         </div>
         <div class="btn-group mesh-tool-group" role="group" aria-label="Tools">
-            <button class="btn btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#filterPanel" title="Filters">
-                <i class="fas fa-filter"></i>
+            <button class="btn btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#filterPanel" title="Filters" aria-label="Filters">
+                <i class="fas fa-filter" aria-hidden="true"></i>
             </button>
-            <button class="btn btn-sm" type="button" id="btn-heat" title="Hot connections: color edges by traffic (viridis)">
-                <i class="fas fa-fire"></i>
+            <button class="btn btn-sm" type="button" id="btn-heat" title="Hot connections: color edges by traffic (viridis)" aria-label="Hot connections">
+                <i class="fas fa-fire" aria-hidden="true"></i>
             </button>
-            <button class="btn btn-sm" type="button" id="btn-mesh-theme" title="Toggle map dark mode (independent of site theme)">
-                <i class="fas fa-moon" id="mesh-theme-icon"></i>
+            <button class="btn btn-sm" type="button" id="btn-mesh-theme" title="Toggle map dark mode (independent of site theme)" aria-label="Map dark mode">
+                <i class="fas fa-moon" aria-hidden="true" id="mesh-theme-icon"></i>
             </button>
-            <button class="btn btn-sm" type="button" id="btn-mesh-refresh" title="Refresh data">
-                <i class="fas fa-sync-alt"></i>
+            <button class="btn btn-sm" type="button" id="btn-mesh-refresh" title="Refresh data" aria-label="Refresh data">
+                <i class="fas fa-sync-alt" aria-hidden="true"></i>
             </button>
-            <button class="btn btn-sm" type="button" id="btn-mesh-export" title="Export JSON">
-                <i class="fas fa-download"></i>
+            <button class="btn btn-sm" type="button" id="btn-mesh-export" title="Export JSON" aria-label="Export JSON">
+                <i class="fas fa-download" aria-hidden="true"></i>
             </button>
-            <button class="btn btn-sm" type="button" id="btn-fullscreen" title="Fullscreen">
-                <i class="fas fa-expand"></i>
+            <button class="btn btn-sm" type="button" id="btn-fullscreen" title="Fullscreen" aria-label="Fullscreen">
+                <i class="fas fa-expand" aria-hidden="true"></i>
             </button>
         </div>
     </div>
@@ -330,7 +330,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="nodeDetailsTitle">Node Details</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body" id="nodeDetailsBody">
                 <!-- Content populated by JavaScript -->
@@ -1088,6 +1088,7 @@
         const btn = document.getElementById('btn-heat');
         if (btn) {
             btn.classList.toggle('active', edgeColorMode === 'heat');
+            btn.setAttribute('aria-pressed', String(edgeColorMode === 'heat'));
         }
     }
 

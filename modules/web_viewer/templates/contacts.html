@@ -577,7 +577,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title"><i class="fas fa-broom text-danger me-2"></i>Purge Inactive Contacts</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <p>Delete contacts that have not been heard within a threshold. This removes them from the database entirely.</p>
@@ -1050,20 +1050,20 @@ class ModernContactsManager {
                 <td><span class="badge bg-success">${Number(contact.advert_count) || 0}</span></td>
                 <td>
                     <div class="btn-group" role="group">
-                        ${IS_ADMIN ? `<button class="btn btn-sm ${contact.is_starred ? 'btn-warning' : 'btn-outline-warning'}" data-contact-action="star" data-contact-index="${contactIndex}" title="${contact.is_starred ? 'Unstar contact' : 'Star contact'}">
-                            <i class="fas fa-star"></i>
+                        ${IS_ADMIN ? `<button class="btn btn-sm ${contact.is_starred ? 'btn-warning' : 'btn-outline-warning'}" data-contact-action="star" data-contact-index="${contactIndex}" title="${contact.is_starred ? 'Unstar contact' : 'Star contact'}" aria-label="${contact.is_starred ? 'Unstar contact' : 'Star contact'}">
+                            <i class="fas fa-star" aria-hidden="true"></i>
                         </button>` : ''}
-                        <button class="btn btn-sm btn-outline-info" data-contact-action="advert" data-contact-index="${contactIndex}" title="View Advertisement Data">
-                            <i class="fas fa-info-circle"></i>
+                        <button class="btn btn-sm btn-outline-info" data-contact-action="advert" data-contact-index="${contactIndex}" title="View Advertisement Data" aria-label="View Advertisement Data">
+                            <i class="fas fa-info-circle" aria-hidden="true"></i>
                         </button>
                         ${IS_ADMIN && contact.latitude && contact.longitude && contact.latitude !== 0 && contact.longitude !== 0 ?
-                            `<button class="btn btn-sm btn-outline-primary" data-contact-action="geocode" data-contact-index="${contactIndex}" title="Geocode Location">
-                                <i class="fas fa-map-marker-alt"></i>
+                            `<button class="btn btn-sm btn-outline-primary" data-contact-action="geocode" data-contact-index="${contactIndex}" title="Geocode Location" aria-label="Geocode Location">
+                                <i class="fas fa-map-marker-alt" aria-hidden="true"></i>
                             </button>` :
                             ''
                         }
-                        ${IS_ADMIN ? `<button class="btn btn-sm btn-outline-danger" data-contact-action="delete" data-contact-index="${contactIndex}" title="Delete Contact">
-                            <i class="fas fa-trash"></i>
+                        ${IS_ADMIN ? `<button class="btn btn-sm btn-outline-danger" data-contact-action="delete" data-contact-index="${contactIndex}" title="Delete Contact" aria-label="Delete Contact">
+                            <i class="fas fa-trash" aria-hidden="true"></i>
                         </button>` : ''}
                     </div>
                 </td>
@@ -1881,7 +1881,7 @@ class ModernContactsManager {
                             <h5 class="modal-title">
                                 <i class="fas fa-route"></i> Paths for ${this.escapeHtml(contact.username || 'Unknown')}
                             </h5>
-                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                         </div>
                         <div class="modal-body paths-modal-body">
                             <div class="d-flex justify-content-between align-items-center mb-3">
@@ -2102,7 +2102,7 @@ class ModernContactsManager {
                     <div class="modal-content">
                         <div class="modal-header">
                             <h5 class="modal-title">Advertisement Data - ${this.escapeHtml(contact.username || 'Unknown')}</h5>
-                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                         </div>
                         <div class="modal-body">
                             <pre class="bg-light p-3 rounded" style="background-color: var(--bg-secondary); color: var(--text-color);">${this.escapeHtml(JSON.stringify(advertData, null, 2))}</pre>
@@ -2303,7 +2303,7 @@ class ModernContactsManager {
                             <h5 class="modal-title">
                                 <i class="fas fa-exclamation-triangle"></i> Delete Contact
                             </h5>
-                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                         </div>
                         <div class="modal-body">
                             <p class="mb-3">
@@ -2433,7 +2433,7 @@ class ModernContactsManager {
                             <h5 class="modal-title">
                                 <i class="fas fa-exclamation-triangle"></i> Delete ${count} Contact${count !== 1 ? 's' : ''}
                             </h5>
-                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                         </div>
                         <div class="modal-body">
                             <p class="mb-3">

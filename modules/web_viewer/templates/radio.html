@@ -497,7 +497,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">Create Channel</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <form id="createChannelForm">
@@ -536,7 +536,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">Channel Details</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body" id="channelDetailsContent">
                 Loading...
@@ -767,8 +767,10 @@ class RadioManager {
         button.type = 'button';
         button.className = `btn btn-sm ${colorClass}`;
         button.title = title;
+        button.setAttribute('aria-label', title);
         const icon = document.createElement('i');
         icon.className = `fas ${iconClass}`;
+        icon.setAttribute('aria-hidden', 'true');
         button.appendChild(icon);
         return button;
     }

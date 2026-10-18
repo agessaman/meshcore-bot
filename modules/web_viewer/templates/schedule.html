@@ -169,7 +169,7 @@
         const area = $('statusArea');
         area.innerHTML = '<div class="alert alert-' + kind + ' alert-dismissible fade show">'
             + escapeHtml(message)
-            + '<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>';
+            + '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button></div>';
     }
 
     function escapeHtml(value) {

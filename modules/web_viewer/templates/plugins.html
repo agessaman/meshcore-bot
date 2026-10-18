@@ -203,10 +203,10 @@
             <div class="col-12 col-md">
                 <div class="input-group input-group-sm">
                     <span class="input-group-text"><i class="fas fa-search"></i></span>
-                    <input type="text" class="form-control" id="plugins-filter"
+                    <input type="text" class="form-control" id="plugins-filter" aria-label="Filter plugins"
                            placeholder="Filter by name, section, or description…" autocomplete="off">
-                    <button class="btn btn-outline-secondary" id="plugins-filter-clear" title="Clear">
-                        <i class="fas fa-times"></i>
+                    <button class="btn btn-outline-secondary" type="button" id="plugins-filter-clear" title="Clear" aria-label="Clear filter">
+                        <i class="fas fa-times" aria-hidden="true"></i>
                     </button>
                 </div>
             </div>
@@ -729,14 +729,19 @@ function renderField(field, overrideValue, plugin) {
         const toggleBtn = document.createElement('button');
         toggleBtn.type = 'button';
         toggleBtn.className = 'btn btn-outline-secondary';
+        toggleBtn.title = 'Show / hide value';
+        toggleBtn.setAttribute('aria-label', 'Show value');
+        toggleBtn.setAttribute('aria-pressed', 'false');
         const toggleIcon = document.createElement('i');
         toggleIcon.className = 'fas fa-eye';
+        toggleIcon.setAttribute('aria-hidden', 'true');
         toggleBtn.appendChild(toggleIcon);
         toggleBtn.addEventListener('click', () => {
             const showing = input.type === 'text';
             input.type = showing ? 'password' : 'text';
             toggleIcon.classList.toggle('fa-eye', showing);
             toggleIcon.classList.toggle('fa-eye-slash', !showing);
+            toggleBtn.setAttribute('aria-pressed', String(!showing));
         });
         group.appendChild(toggleBtn);
         const fb = document.createElement('div');
@@ -1060,16 +1065,19 @@ function buildDynamicEditor(ds) {
         const ki = document.createElement('input');
         ki.type = 'text'; ki.className = 'form-control form-control-sm dyn-key';
         ki.placeholder = ds.key_placeholder || ''; ki.value = key;
+        ki.setAttribute('aria-label', `${String(ds.label ?? 'Entry')} key`);
         kc.appendChild(ki);
         const vc = document.createElement('div'); vc.className = 'col-10 col-md-6';
         const vi = document.createElement('input');
         vi.type = 'text'; vi.className = 'form-control form-control-sm dyn-value';
         vi.placeholder = ds.value_placeholder || ''; vi.value = value;
+        vi.setAttribute('aria-label', `${String(ds.label ?? 'Entry')} value`);
         vc.appendChild(vi);
         const bc = document.createElement('div'); bc.className = 'col-2 col-md-1 text-end';
         const rm = document.createElement('button');
         rm.type = 'button'; rm.className = 'btn btn-outline-danger btn-sm';
-        rm.title = 'Remove'; rm.innerHTML = '<i class="fas fa-trash"></i>';
+        rm.title = 'Remove'; rm.setAttribute('aria-label', 'Remove entry');
+        rm.innerHTML = '<i class="fas fa-trash" aria-hidden="true"></i>';
         rm.addEventListener('click', () => row.remove());
         bc.appendChild(rm);
         row.appendChild(kc); row.appendChild(vc); row.appendChild(bc);
@@ -1136,7 +1144,10 @@ function buildRepeatingBlockEditor(rb) {
     const renumber = () => {
         blocksContainer.querySelectorAll('.rb-block').forEach((card, i) => {
             const t = card.querySelector('.rb-block-title');
-            if (t) t.textContent = `${rb.item_label} ${i + 1}`;
+            const name = `${rb.item_label} ${i + 1}`;
+            if (t) t.textContent = name;
+            card.querySelector('.rb-block-enable')?.setAttribute('aria-label', `Enable ${name}`);
+            card.querySelector('.rb-block-remove')?.setAttribute('aria-label', `Remove ${name}`);
         });
     };
 
@@ -1154,14 +1165,15 @@ function buildRepeatingBlockEditor(rb) {
         const swWrap = document.createElement('div');
         swWrap.className = 'form-check form-switch mb-0';
         const sw = document.createElement('input');
-        sw.className = 'form-check-input'; sw.type = 'checkbox'; sw.role = 'switch';
+        sw.className = 'form-check-input rb-block-enable'; sw.type = 'checkbox'; sw.role = 'switch';
         sw.checked = (block ? block.enabled !== false : true);
         swWrap.appendChild(sw);
         const title = document.createElement('span');
         title.className = 'rb-block-title fw-semibold flex-grow-1';
         const rm = document.createElement('button');
         rm.type = 'button'; rm.className = 'btn btn-outline-danger btn-sm';
-        rm.title = 'Remove'; rm.innerHTML = '<i class="fas fa-trash"></i>';
+        rm.title = 'Remove'; rm.className += ' rb-block-remove';
+        rm.innerHTML = '<i class="fas fa-trash" aria-hidden="true"></i>';
         rm.addEventListener('click', () => { card.remove(); renumber(); });
         header.append(swWrap, title, rm);
         card.appendChild(header);

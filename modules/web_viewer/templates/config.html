@@ -463,9 +463,11 @@ class ConfigManager {
             if (pwdField.type === 'password') {
                 pwdField.type = 'text';
                 this.togglePwdIcon.classList.replace('fa-eye', 'fa-eye-slash');
+                this.togglePwdBtn.setAttribute('aria-pressed', 'true');
             } else {
                 pwdField.type = 'password';
                 this.togglePwdIcon.classList.replace('fa-eye-slash', 'fa-eye');
+                this.togglePwdBtn.setAttribute('aria-pressed', 'false');
             }
         });
     }

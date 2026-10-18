@@ -94,7 +94,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="feedModalTitle">Add Feed Subscription</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body" style="max-height: calc(100vh - 200px); overflow-y: auto;">
                 <form id="addFeedForm">
@@ -299,7 +299,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">Feed Details</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body" id="feedDetailsContent">
                 Loading...
@@ -589,8 +589,10 @@ class FeedManager {
                 button.type = 'button';
                 button.className = `btn btn-sm ${classes}`;
                 button.title = title;
+                button.setAttribute('aria-label', title);
                 const icon = document.createElement('i');
                 icon.className = `fas ${iconClass}`;
+                icon.setAttribute('aria-hidden', 'true');
                 button.appendChild(icon);
                 button.addEventListener('click', handler);
                 actions.appendChild(button);
