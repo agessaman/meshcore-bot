@@ -415,6 +415,7 @@
             this.tile('adverts-24h', mesh.adverts_24h, deltas.adverts, series.adverts);
             this.tile('new-nodes', mesh.new_nodes_24h, deltas.new_nodes, series.new_nodes);
             setText('new-nodes-7d', formatNumber(mesh.new_nodes_7d) + ' in 7d');
+            this.renderNewest(mesh.newest_node);
             setText('gone-quiet', formatNumber(mesh.gone_quiet_7d));
             setText('coverage-countries', formatNumber(mesh.countries));
             setText('coverage-known', formatNumber(mesh.contacts_known));
@@ -491,6 +492,21 @@
             dot.className = 'status-indicator status-' + verdict.lamp;
             dot.setAttribute('aria-hidden', 'true');
             node.replaceChildren(dot, document.createTextNode(text));
+        }
+
+        /** "Newest: N7JMV-BEACON-RP · 7 hops · 1h ago" under the New nodes count. */
+        renderNewest(node) {
+            const row = el('new-nodes-newest');
+            if (!row) return;
+            row.hidden = !node;
+            if (!node) return;
+            const name = makeTextElement('span', node.name, 'stat-tile__newest-name');
+            row.title = node.name + (node.role ? ' (' + node.role + ')' : '');
+            const facts = [];
+            if (Number.isFinite(node.hops)) facts.push(node.hops === 0 ? 'direct' : node.hops + (node.hops === 1 ? ' hop' : ' hops'));
+            if (node.first_heard) facts.push(formatAge(Date.now() / 1000 - node.first_heard));
+            row.replaceChildren(makeTextElement('span', 'newest:'), name,
+                makeTextElement('span', facts.length ? '· ' + facts.join(' · ') : '', 'stat-tile__newest-facts'));
         }
 
         /** Name the day the comparison can't use, rather than showing a fake collapse. */

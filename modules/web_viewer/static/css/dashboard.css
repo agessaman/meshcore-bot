@@ -190,6 +190,29 @@
     color: var(--text-muted);
 }
 
+/* The newest arrival's name, truncated so the tile keeps its height */
+.stat-tile__newest {
+    display: flex;
+    min-width: 0;
+    white-space: nowrap;
+}
+
+.stat-tile__newest-facts {
+    flex: none;
+    margin-left: 0.25em;
+}
+
+.stat-tile__newest-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+    flex: 0 1 auto;
+    margin-left: 0.25em;
+    color: var(--text-color);
+    font-weight: 600;
+}
+
+
 .stat-tile__spark {
     position: relative;
     height: 48px;

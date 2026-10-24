@@ -1393,3 +1393,34 @@ class TestDeltaGaps:
         deltas, gap = self._deltas(viewer)
         assert gap is None
         assert deltas["adverts"] == -50.0
+
+
+class TestNewestNode:
+    """The New nodes tile names the newest arrival heard in the last day."""
+
+    def _mesh(self, viewer):
+        from modules.web_viewer.dashboard_stats import SOURCE_CONTACT_TRACKING
+        with closing(viewer._dashboard_connection()) as conn:
+            return viewer.dashboard_stats._mesh_snapshot(conn, SOURCE_CONTACT_TRACKING)
+
+    def _contact(self, conn, pk, name, hops, age):
+        conn.execute(
+            "INSERT INTO complete_contact_tracking (public_key, name, role, hop_count, first_heard, last_heard) "
+            "VALUES (?, ?, 'repeater', ?, datetime('now','localtime',?), datetime('now','localtime'))",
+            (pk, name, hops, age),
+        )
+
+    def test_names_the_most_recent_first_heard(self, viewer):
+        with sqlite3.connect(viewer.db_path) as conn:
+            self._contact(conn, _pk(1), "older", 2, "-5 hours")
+            self._contact(conn, _pk(2), "newest", 3, "-1 hours")
+            self._contact(conn, _pk(3), "last-week", 1, "-6 days")
+        newest = self._mesh(viewer)["newest_node"]
+        assert newest["name"] == "newest"
+        assert newest["hops"] == 3
+        assert abs(time.time() - 3600 - newest["first_heard"]) < 120
+
+    def test_nothing_new_in_a_day_is_none(self, viewer):
+        with sqlite3.connect(viewer.db_path) as conn:
+            self._contact(conn, _pk(1), "last-week", 1, "-6 days")
+        assert self._mesh(viewer)["newest_node"] is None

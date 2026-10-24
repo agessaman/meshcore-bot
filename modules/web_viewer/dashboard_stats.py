@@ -1006,6 +1006,21 @@ class DashboardStatsService:
             # "Heard last week, silent this week" — a churn signal, not a total.
             mesh["gone_quiet_7d"] = row[2] or 0
 
+            # The newest arrival by name, so "10 new nodes" has a face. first_heard
+            # is stored in local time; strftime with 'utc' turns it into epoch.
+            row = conn.execute(
+                """
+                SELECT name, role, hop_count, CAST(strftime('%s', first_heard, 'utc') AS INTEGER)
+                FROM complete_contact_tracking
+                WHERE first_heard >= datetime('now', 'localtime', '-1 day')
+                  AND name IS NOT NULL AND name != ''
+                ORDER BY first_heard DESC LIMIT 1
+                """
+            ).fetchone()
+            mesh["newest_node"] = (
+                {"name": row[0], "role": row[1], "hops": row[2], "first_heard": row[3]} if row else None
+            )
+
             # Each column carries its own emptiness test rather than sharing one
             # in the WHERE clause: filtering the row set on country would drop
             # contacts that have a state or city but no country, undercounting

@@ -145,6 +145,33 @@
         flex: 1 1 auto;
     }
 
+    /* The radio's own RX LED: dark until a packet arrives, lit while they do.
+       It means "receiving", so it borrows the connected lamp's green. */
+    .rt-rx {
+        gap: 0.3rem;
+    }
+    .rt-rx__led {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        border: 1px solid color-mix(in srgb, #198754 55%, transparent);
+        background: transparent;
+        transition: background-color 160ms ease-out;
+    }
+    .rt-rx__led.is-on {
+        background: #198754;
+        transition: none;
+    }
+    [data-theme="dark"] .rt-rx__led {
+        border-color: color-mix(in srgb, #3fbf7f 55%, transparent);
+    }
+    [data-theme="dark"] .rt-rx__led.is-on {
+        background: #3fbf7f;
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .rt-rx__led { transition: none; }
+    }
+
     .rt-spark {
         display: block;
         width: 120px;
@@ -1025,6 +1052,10 @@
     <span class="rt-strip__item">
         <span class="status-indicator status-warning" id="rt-lamp" aria-hidden="true"></span>
         <strong id="rt-state" role="status">Connecting…</strong>
+    </span>
+    <span class="rt-strip__item rt-rx" title="Lights each time the radio hears a packet">
+        <span class="rt-rx__led" id="rt-rx" aria-hidden="true"></span>
+        <span class="rt-strip__label">RX</span>
     </span>
     <span class="rt-strip__item">
         <span class="rt-strip__label rt-strip__label--last">Last heard</span>
@@ -2465,8 +2496,22 @@
         return hold.paused || hold.scrolled || pointerHolds() || keyboardHolds();
     }
 
+    // RX: a burst keeps the LED lit rather than strobing it. Under reduced
+    // motion it stays dark; "Last heard" says the same thing without flashing.
+    const RX_ON_MS = 140;
+    const rxLed = document.getElementById('rt-rx');
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    let rxTimer = null;
+    function pulseRx() {
+        if (!rxLed || reducedMotion.matches) return;
+        rxLed.classList.add('is-on');
+        clearTimeout(rxTimer);
+        rxTimer = setTimeout(() => rxLed.classList.remove('is-on'), RX_ON_MS);
+    }
+
     function ingest(kind, data) {
         if (!data || typeof data !== 'object') return;
+        if (kind === 'packet' && !data.replayed) pulseRx();
         if (isHeld()) {
             pending.push({ kind, data });
             if (pending.length > MAX_PENDING) {
