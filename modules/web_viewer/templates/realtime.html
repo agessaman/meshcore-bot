@@ -2064,7 +2064,6 @@
                 appendFact(line, snrText(src.snr));
                 appendFact(line, hopsText(src.hops));
             }
-            appendFact(line, tx.hash ? 'packet not on the tape' : 'packet not captured');
         }
         if (line.firstChild === inlineTime && line.childNodes.length > 1) {
             // The separator after the phone-only time is hidden with it on desktop.
@@ -2164,6 +2163,13 @@
                 const bph = Number(p.bytes_per_hop) || 1;
                 fact('Path', `${hopsText(hops)} × ${bph} byte${bph === 1 ? '' : 's'} per hop`);
             }
+        }
+        if (!p) {
+            // The page replays only the newest 50 packets, which reach back
+            // far less than the newest 50 messages do.
+            fact('Packet', !tx.hash ? 'The bot didn\'t record which packet carried this'
+                : tx.history ? 'Older than the packets this page loaded, so route, path and receptions aren\'t shown'
+                : 'Not seen on this page, so route, path and receptions aren\'t shown');
         }
         if (tx.message && tx.message.is_dm) fact('Channel', 'Direct message');
         if (tx.decoded && !tx.message) fact('Source', 'Decrypted in this browser with a configured channel key');
