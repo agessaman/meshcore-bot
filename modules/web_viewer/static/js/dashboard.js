@@ -268,7 +268,9 @@
                 const data = await response.json();
                 this.uptimeFromHealth = data.bot_uptime > 0 ? data.bot_uptime : null;
                 this.showUptime();
-                setText('health-clients', data.connected_clients ?? 0);
+                const clients = data.connected_clients ?? 0;
+                setText('health-clients', clients);
+                setText('health-clients-noun', clients === 1 ? 'client' : 'clients');
                 this.viewerReachable = true;
             } catch (err) {
                 // The viewer itself didn't answer; that outranks anything the
@@ -622,7 +624,7 @@
                 ([label, value, color]) => {
                     const pct = (value / total) * 100;
                     const segment = makeTextElement(
-                        'div', pct >= 12 ? pct.toFixed(0) + '%' : '', 'stacked-bar__segment'
+                        'div', pct >= 12 ? pct.toFixed(1) + '%' : '', 'stacked-bar__segment'
                     );
                     segment.style.width = pct + '%';
                     segment.style.backgroundColor = color;
@@ -750,7 +752,7 @@
                         },
                         y: {
                             beginAtZero: true,
-                            title: { display: true, text: '% of series', color: colors.muted,
+                            title: { display: true, text: '% of nodes or packets', color: colors.muted,
                                      font: { size: 10 } },
                             ticks: {
                                 color: colors.muted,
@@ -1286,7 +1288,7 @@
             select: 'neighbors-window',
             container: 'neighbors-list',
             limit: 10,
-            empty: 'No direct neighbours heard in this window.',
+            empty: 'No direct neighbors heard in this window.',
             render: (item) => neighborRow(item),
             onLoad: (data) => {
                 setText('neighbors-count', formatNumber(data.total));
@@ -1361,10 +1363,10 @@
             'not a rolling 24 hours. The headline number above it is a rolling 24-hour count.',
         'neighbors-info':
             'Radios this node heard directly (MeshCore hop count 0: an empty RF path). ' +
-            'A path that already contains one hop hash is a relayed packet, not a neighbour. ' +
+            'A path that already contains one hop hash is a relayed packet, not a neighbor. ' +
             'Membership comes from those empty-path adverts plus confirmed zero-hop ' +
             'neighbor-discover responses, not from the stored hop count — that field claims ' +
-            'far more direct neighbours than the path evidence supports. SNR/RSSI are the ' +
+            'far more direct neighbors than the path evidence supports. SNR/RSSI are the ' +
             'measurement from that direct reception (or from discover, which reports SNR ' +
             'only). A relayed packet\'s SNR measures the last hop into this radio rather ' +
             'than the link to whoever sent it.',

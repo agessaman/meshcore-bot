@@ -351,13 +351,19 @@
         animation: rt-fresh 1.6s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
+    .rt-heard.is-bumped {
+        border-radius: 2px;
+        animation: rt-fresh 1.2s ease-out;
+    }
+
     @keyframes rt-fresh {
         from { background-color: var(--rt-fresh); }
         to { background-color: transparent; }
     }
 
     @media (prefers-reduced-motion: reduce) {
-        .rt-row.is-fresh {
+        .rt-row.is-fresh,
+        .rt-heard.is-bumped {
             animation: none;
         }
     }
@@ -2043,18 +2049,20 @@
                 r.append(makeElement('span', `rt-dot rt-route-dot--${route.kind}`), document.createTextNode(route.label));
                 appendFact(line, r);
             }
-            appendFact(line, hopsText(p.hops ?? p.path_len));
+            // SNR before hops: it's the reading a quick check wants, and on a
+            // phone the end of the line is what gets cut off.
             const best = bestReception(tx);
             appendFact(line, snrText(best ? best.snr : p.snr));
-            if (tx.receptions.length > 1) appendFact(line, `heard ×${tx.receptions.length}`);
+            appendFact(line, hopsText(p.hops ?? p.path_len));
+            if (tx.receptions.length > 1) appendFact(line, makeElement('span', 'rt-heard', `heard ×${tx.receptions.length}`));
             const path = pathList(p.path);
             if (path.length) appendFact(line, makeElement('span', 'rt-path', path.join(' › ')));
             if (tx.decoded && !tx.message) appendFact(line, 'decoded in this browser');
         } else {
             const src = tx.message || {};
             if (tx.message) {
-                appendFact(line, hopsText(src.hops));
                 appendFact(line, snrText(src.snr));
+                appendFact(line, hopsText(src.hops));
             }
             appendFact(line, tx.hash ? 'packet not on the tape' : 'packet not captured');
         }
@@ -2288,7 +2296,11 @@
             else insertRow(tx);
         }
         li.hidden = !tx.kept && !matches(tx);
-        if (change === 'new' || change === 'update') flash(li);
+        // A repeat only changes its count, so only the count lights up; a busy
+        // tape whose every row re-flashed on each echo never sat still.
+        const heard = change === 'update' ? li.querySelector('.rt-heard') : null;
+        if (heard) heard.classList.add('is-bumped');
+        else if (change === 'new' || change === 'update') flash(li);
         if (refocus) li.querySelector(refocus)?.focus({ preventScroll: true });
         if (change === 'new') enforceCap();
         updateCounts();
