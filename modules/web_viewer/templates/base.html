@@ -101,19 +101,21 @@
 
         /* Readout colors for stat tiles: each tile reads in its own hue so a
            row of counts can be told apart at a glance. Text-safe on both
-           themes; a tile showing a problem uses --text-danger instead. */
+           themes; a tile showing a problem uses --text-danger instead.
+           Tag chips set these on a 14% tint of themselves, so each holds 4.5:1
+           on its own tint over paper, paper-sunk, night-raised and night-sunk. */
         :root {
-            --readout-blue: #0a58ca;
-            --readout-teal: #0f7a5f;
+            --readout-blue: #0a53be;
+            --readout-teal: #0a6650;
             --readout-violet: #6d28d9;
-            --readout-orange: #b4501a;
+            --readout-orange: #9a4316;
         }
 
         [data-theme="dark"] {
-            --readout-blue: #6ea8fe;
-            --readout-teal: #4fd1ae;
-            --readout-violet: #c4b5fd;
-            --readout-orange: #f4a26b;
+            --readout-blue: #9ec5fe;
+            --readout-teal: #6fdcbf;
+            --readout-violet: #d0c4fe;
+            --readout-orange: #f6b384;
         }
 
         .readout-blue { color: var(--readout-blue); }
@@ -407,6 +409,20 @@
         }
         [data-theme="dark"] .btn-outline-primary:hover,
         [data-theme="dark"] .btn-outline-primary.active {
+            color: #fff;
+        }
+        .btn-outline-info {
+            color: var(--text-info);
+        }
+        .btn-outline-info:hover,
+        .btn-outline-info.active {
+            color: #212529;
+        }
+        .btn-outline-success {
+            color: var(--text-success);
+        }
+        .btn-outline-success:hover,
+        .btn-outline-success.active {
             color: #fff;
         }
         .btn-outline-warning {
