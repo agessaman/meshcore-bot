@@ -2286,7 +2286,7 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
                 radio_offline = False
                 radio_offline_since = None
                 bot_initializing = False
-                station = {'bot_running': None, 'bot_last_seen': None, 'radio_connected': None}
+                station = {'bot_running': None, 'bot_last_seen': None, 'bot_started': None, 'radio_connected': None}
             return jsonify({
                 'radio_zombie': radio_zombie,
                 'radio_zombie_since': radio_zombie_since,
@@ -4782,9 +4782,11 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
         bot_running = last_seen is not None and time.time() - last_seen < BOT_HEARTBEAT_STALE_S
         radio_value = self.db_manager.get_metadata('radio_connected')
         radio_connected = (radio_value == '1') if (bot_running and radio_value is not None) else None
+        started = self.db_manager.get_bot_start_time() if bot_running else None
         return {
             'bot_running': bot_running,
             'bot_last_seen': last_seen,
+            'bot_started': started,
             'radio_connected': radio_connected,
         }
 

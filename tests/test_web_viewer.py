@@ -263,6 +263,12 @@ class TestPageRoutes:
         assert "b.innerHTML" not in html
         assert "b.className = 'alert alert-success" not in html
 
+    def test_dashboard_has_a_first_run_panel(self, client):
+        """A fresh install shows one panel instead of a grid of empty boxes."""
+        html = client.get("/").data.decode()
+        assert 'id="first-run"' in html
+        assert 'id="dashboard-body"' in html
+
     def test_csp_allows_no_cdn_hosts(self, client):
         csp = client.get("/").headers["Content-Security-Policy"]
         for host in ("cdn.jsdelivr.net", "cdnjs.cloudflare.com", "unpkg.com", "fonts.googleapis.com"):

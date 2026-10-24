@@ -2317,6 +2317,7 @@ class TestApiBannerStatus:
             data = client.get('/api/banner-status').get_json()
         assert data['bot_running'] is False
         assert data['bot_last_seen'] is None
+        assert data['bot_started'] is None
         assert data['radio_connected'] is None
 
     def test_fresh_heartbeat_reports_the_radio(self, viewer_with_db):
@@ -2326,6 +2327,14 @@ class TestApiBannerStatus:
             data = client.get('/api/banner-status').get_json()
         assert data['bot_running'] is True
         assert data['radio_connected'] is False
+
+    def test_running_bot_reports_when_it_started(self, viewer_with_db):
+        started = time.time() - 720
+        viewer_with_db.db_manager.set_bot_start_time(started)
+        viewer_with_db.db_manager.set_system_health({'status': 'healthy', 'timestamp': time.time()})
+        with viewer_with_db.app.test_client() as client:
+            data = client.get('/api/banner-status').get_json()
+        assert data['bot_started'] == pytest.approx(started)
 
     def test_stale_heartbeat_means_bot_stopped(self, viewer_with_db):
         """The start time outlives the bot; only the 30 s heartbeat says it's still there."""

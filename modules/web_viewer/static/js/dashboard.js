@@ -274,6 +274,7 @@
         applyStation(detail) {
             const verdict = window.stationVerdict ? window.stationVerdict(detail) : null;
             if (!verdict) return;
+            this.renderFirstRunState(verdict);
             this.botRunning = Boolean(detail.bot_running);
             this.showUptime();
             if (this.viewerReachable === false) return;
@@ -405,6 +406,7 @@
             const series = data.series || {};
             const deltas = data.deltas || {};
             this.renderDeltaGap(data.delta_gap);
+            this.renderFirstRun(mesh, coverage);
 
             this.updateSnapshotAge();
 
@@ -452,6 +454,43 @@
             }
             this.renderDelta(id + '-delta', changePct);
             this.renderSparkline(id + '-spark', points);
+        }
+
+        /**
+         * Until the station has heard anything at all, one panel in place of the
+         * grid. It flips back on its own once the snapshot sees a node or packet.
+         */
+        renderFirstRun(mesh, coverage) {
+            const heardAnything = Boolean(
+                mesh.contacts_known || mesh.nodes_24h || mesh.adverts_24h || coverage.packets_from
+            );
+            const panel = el('first-run');
+            const body = el('dashboard-body');
+            if (panel) panel.hidden = heardAnything;
+            if (body) body.hidden = !heardAnything;
+            this.firstRun = !heardAnything;
+            if (this.firstRun && window.lastBannerStatus) this.applyStation(window.lastBannerStatus);
+        }
+
+        /** The first-run panel's opening line follows the station verdict. */
+        renderFirstRunState(verdict) {
+            const node = el('first-run-state');
+            if (!node || !this.firstRun) return;
+            const name = el('first-run')?.dataset.botName || 'The bot';
+            let text;
+            if (verdict.lamp === 'connected') {
+                text = name + ' is listening. Nothing has been heard yet.';
+            } else if (verdict.text === 'Bot starting') {
+                text = name + ' is starting up.';
+            } else if (verdict.text === 'Bot not running') {
+                text = name + ' isn\'t running, so nothing is being heard. Start the bot and this page fills in from what its radio hears.';
+            } else {
+                text = verdict.text + '. Nothing can be heard until that\'s fixed.';
+            }
+            const dot = document.createElement('span');
+            dot.className = 'status-indicator status-' + verdict.lamp;
+            dot.setAttribute('aria-hidden', 'true');
+            node.replaceChildren(dot, document.createTextNode(text));
         }
 
         /** Name the day the comparison can't use, rather than showing a fake collapse. */

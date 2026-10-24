@@ -546,6 +546,17 @@
         margin-top: 0.75rem;
     }
 
+    .rt-waiting {
+        color: var(--text-color);
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .rt-waiting-hint {
+        max-width: 36rem;
+        margin: 0.35rem auto 0;
+    }
+
     ::selection {
         background-color: var(--rt-fresh);
     }
@@ -2209,6 +2220,13 @@
         return new Date(t * 1000).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
     }
 
+    function whenOf(t) {
+        const d = new Date(t * 1000);
+        return d.toDateString() === new Date().toDateString()
+            ? clockOf(t)
+            : d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    }
+
     function insertMarker(t, text, extraClass) {
         const li = makeElement('li', `rt-divider rt-marker ${extraClass || ''}`.trim(), text);
         li.dataset.t = String(t);
@@ -2370,8 +2388,56 @@
         } else if (clearedAt !== null) {
             emptyRow.textContent = `Tape cleared at ${clockText(clearedAt)}. New transmissions show up here as the radio hears them.`;
         } else {
-            emptyRow.textContent = 'Nothing heard yet. Transmissions show up here as the radio hears them.';
+            renderWaiting();
         }
+    }
+
+    // First run: say how long the station has been listening, and after a
+    // while with nothing, where to look. Rewritten each second by the strip tick.
+    const QUIET_HINT_S = 600;
+    function renderWaiting() {
+        const v = link.verdict;
+        if (!v) {
+            emptyRow.textContent = 'Nothing heard yet. Transmissions show up here as the radio hears them.';
+            return;
+        }
+        const receiving = v.lamp === 'connected' || v.text === 'Radio can\'t transmit';
+        if (!receiving) {
+            emptyRow.textContent = v.text === 'Bot not running'
+                ? 'Nothing heard yet. The bot isn\'t running, so nothing will arrive until it starts.'
+                : `Nothing heard yet. ${v.text}: nothing can arrive until that's fixed.`;
+            return;
+        }
+        const since = link.botStarted ?? coverageStart ?? nowServer();
+        const waited = Math.max(0, nowServer() - since);
+        const head = makeElement('div', 'rt-waiting',
+            `Listening since ${whenOf(since)} (${agoSpan(waited)}) · nothing heard yet.`);
+        const parts = [head];
+        if (waited >= QUIET_HINT_S) {
+            const hint = makeElement('div', 'rt-waiting-hint');
+            const radio = makeElement('a', '', 'Radio settings');
+            radio.href = '/radio';
+            const logs = makeElement('a', '', 'the Logs');
+            logs.href = '/logs';
+            hint.append(
+                `Nothing in ${agoSpan(waited)}. On a quiet mesh that can be normal; if you expected traffic, check the frequency and preset in `,
+                radio, ', or look in ', logs, '.'
+            );
+            parts.push(hint);
+        } else {
+            parts.push(makeElement('div', 'rt-waiting-hint', 'Transmissions show up here the moment the radio hears them.'));
+        }
+        emptyRow.replaceChildren(...parts);
+    }
+
+    function agoSpan(seconds) {
+        const m = Math.floor(seconds / 60);
+        if (m < 1) return `${Math.floor(seconds)}s`;
+        if (m < 60) return `${m} min`;
+        const h = Math.floor(m / 60);
+        if (h < 24) return `${h} h ${m % 60} min`;
+        const d = Math.floor(h / 24);
+        return d === 1 ? '1 day' : `${d} days`;
     }
 
     function clearTape() {
@@ -2529,6 +2595,7 @@
         state.title = title;
 
         document.getElementById('rt-last').textContent = lastHeard === null ? 'nothing yet' : agoText(lastHeard);
+        if (!txs.size && !emptyRow.hidden && link.socket === 'up' && clearedAt === null) renderWaiting();
         renderRate();
         renderSpark();
     }
@@ -2590,6 +2657,7 @@
             link.offlineSince = detail.radio_offline_since || null;
             link.zombie = !!detail.radio_zombie;
             link.verdict = window.stationVerdict ? window.stationVerdict(detail) : null;
+            link.botStarted = typeof detail.bot_started === 'number' ? detail.bot_started : null;
         } else {
             const offline = document.getElementById('offline-banner');
             const zombie = document.getElementById('zombie-banner');

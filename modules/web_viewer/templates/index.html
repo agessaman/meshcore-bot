@@ -39,6 +39,32 @@
     </span>
 </div>
 
+<!-- First run: replaces the grid until the station has heard anything at all -->
+<section class="first-run" id="first-run" aria-labelledby="first-run-title"
+         data-bot-name="{{ bot_name|default('The bot') }}" hidden>
+    <h2 class="first-run__title" id="first-run-title">Nothing heard yet</h2>
+    <p class="first-run__state" id="first-run-state">
+        {{ bot_name|default('The bot') }} hasn't heard anything on the mesh yet.
+    </p>
+    <p class="first-run__lead">This page fills in from what the radio hears, in roughly this order:</p>
+    <ol class="first-run__steps">
+        <li><strong>Nodes.</strong> Repeaters and companions announce themselves with adverts from time to time. Each one heard becomes a node here, with how many hops away it was.</li>
+        <li><strong>Paths.</strong> Relayed packets carry the repeaters they passed through. Those build the routing mix, the hop counts and the Mesh graph.</li>
+        <li><strong>Neighbors.</strong> Radios heard directly, with no repeater in between, show up as one-hop neighbors with their signal strength.</li>
+    </ol>
+    {# Real-time and Radio are admin pages; anonymous visitors only get the wait. #}
+    {% if not auth_enabled or is_admin %}
+    <p class="first-run__note">How soon depends on how busy your mesh is. Real-time shows each transmission the moment it arrives; this page catches up within a few minutes.</p>
+    <div class="first-run__actions">
+        <a class="btn btn-primary btn-sm" href="/realtime"><i class="fas fa-broadcast-tower me-1"></i>Watch Real-time</a>
+        <a class="btn btn-outline-secondary btn-sm" href="/radio"><i class="fas fa-sliders-h me-1"></i>Check radio settings</a>
+    </div>
+    {% else %}
+    <p class="first-run__note mb-0">How soon depends on how busy your mesh is; this page catches up within a few minutes.</p>
+    {% endif %}
+</section>
+
+<div id="dashboard-body">
 <!-- ══ Mesh ══════════════════════════════════════════════════════════════ -->
 <h2 class="dashboard-section-title"><i class="fas fa-project-diagram"></i> Mesh</h2>
 
@@ -378,6 +404,7 @@
         </div>
     </div>
 </div>
+</div>{# /dashboard-body #}
 
 <!-- Connected Clients Modal -->
 <div class="modal fade" id="connectedClientsModal" tabindex="-1"
