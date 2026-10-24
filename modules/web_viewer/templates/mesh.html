@@ -284,10 +284,15 @@
         <div class="card h-100 visualization-card">
             <div class="card-body p-0 h-100" style="position: relative;">
                 <!-- Map View -->
-                <div id="map-view" style="height: 100%; width: 100%;"></div>
+                <div id="map-view" style="height: 100%; width: 100%;" aria-label="Mesh map" aria-describedby="mesh-visual-note"></div>
                 
                 <!-- Graph View -->
-                <div id="graph-view" style="height: 100%; width: 100%; display: none;"></div>
+                <div id="graph-view" style="height: 100%; width: 100%; display: none;" role="img" aria-label="Mesh graph" aria-describedby="mesh-visual-note"></div>
+                <p id="mesh-visual-note" class="visually-hidden">
+                    The map and graph are visual only. Arrow keys pan the map and plus and minus zoom it.
+                    The counts above summarize the mesh, Search Node in the filters narrows it,
+                    and the Contacts page lists every repeater with its details.
+                </p>
                 
                 <!-- Connection Legend -->
                 <div id="connection-legend" class="connection-legend">
@@ -2117,6 +2122,21 @@
     }
     
     // Render map view
+    // Chrome makes Leaflet's interactive SVG shapes Tab stops even without a
+    // tabindex, which put hundreds of unnamed, ring-less stops between the
+    // toolbar and the rest of the page. The shapes carry no text a screen reader
+    // could use, so take them out of the tab order and the accessibility tree;
+    // the map container itself stays focusable for arrow-key panning and +/- zoom.
+    function hideMapShapesFromAssistiveTech() {
+        if (!map) return;
+        ['overlayPane', 'markerPane'].forEach(name => {
+            const pane = map.getPane(name);
+            if (!pane) return;
+            pane.querySelectorAll('svg').forEach(svg => svg.setAttribute('aria-hidden', 'true'));
+            pane.querySelectorAll('.leaflet-interactive').forEach(el => el.setAttribute('tabindex', '-1'));
+        });
+    }
+
     function renderMap() {
         // Preserve highlighted node and path before clearing
         const preservedHighlightedNode = highlightedNodeObject;
@@ -2546,6 +2566,8 @@
         // We'll restore it after rendering if preservedHighlightedNode exists
         // Note: preservedHighlightedNode was already declared at the start of renderMap()
         highlightedNode = null;
+
+        hideMapShapesFromAssistiveTech();
         
         // Fit to bounds on initial load, otherwise restore previous view state.
         // Prefer the home mesh component (multi-byte connectivity from the bot's
