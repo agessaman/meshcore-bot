@@ -1277,8 +1277,13 @@
                 const statusElement = document.getElementById('connection-text');
                 const indicatorElement = document.getElementById('connection-status');
 
-                if (statusElement) {
+                if (statusElement && statusElement.textContent !== text) {
                     statusElement.textContent = text;
+                    // Announce later changes (a dropped or restored link), but
+                    // not the first connect every page load makes.
+                    if (!statusElement.hasAttribute('role')) {
+                        statusElement.setAttribute('role', 'status');
+                    }
                 }
                 if (indicatorElement) {
                     indicatorElement.className = `status-indicator status-${status}`;
