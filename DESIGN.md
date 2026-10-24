@@ -189,6 +189,14 @@ The lamp hues are fill tones. As text they fail contrast (amber on white is 1.6:
 ### Data palettes
 Charts use their own validated palettes in `static/js/dashboard.js`, not the lamp colors: `SERIES_PALETTE` (eight categorical hues plus a neutral "other", stepped separately for the light `#ffffff` and dark `#2d2d2d` card surfaces) and `MIX_COLORS` for role and device mixes. Log levels have their own light and dark sets in `logs.html` (debug teal, info blue, warning amber, error red, critical magenta or violet).
 
+The Mesh page has its own display palette, declared as `--mesh-*` tokens at the top of `mesh.html`. The map and graph have a light/dark toggle of their own, separate from the site theme, so the tokens switch on `.mesh-dark` rather than `[data-theme]`, and the JS reads them back through `meshColor()`. Every role has a legend on the map:
+- **Recency** (`--mesh-age-*`): one magenta-rose hue that fades toward the basemap as a link goes unheard (under 24 hours, 1–7 days, 7–30 days, older), with a neutral gray for unknown. Old means faded, so the lamp colors stay out of it.
+- **Heat** (`viridis`): observation counts on a log scale, matplotlib's viridis stops exactly. On the dark map the ramp starts a quarter of the way in, since its near-black end disappears there.
+- **Nodes:** repeaters in Signal Blue, room servers in Route Teal. Starred nodes get a Star Gold ring, the color of the star icon: it marks a favorite, not a state.
+- **Selection and traced paths** are drawn in ink (near-black on the light map, near-white on the dark), so they never read as data.
+- **Direction** from a selected node: the dashboard's series blue (incoming), orange (outgoing) and violet (both ways).
+- The stat chips above the map color each value like the thing it counts: repeaters in Signal Blue, edges in the recency hue, observations in viridis.
+
 ### Named Rules
 **The Lamp Rule.** Green, amber, and red mean connected, degraded, and failed. They never decorate a heading, an icon, or a button that isn't about state.
 
@@ -284,6 +292,7 @@ A terminal-dark well (Scope Black, Scope Rule border, 0.375rem corners) of monos
 ### Do:
 - **Do** take every surface, text, and border color from the `base.html` theme variables (`--bg-*`, `--text-*`, `--border-color`, `--card-*`, `--shadow-color`).
 - **Do** ship the dark-theme counterpart of any hard-coded color in the same change (The Twin Token Rule).
+- **Do** take Mesh page colors from its `--mesh-*` tokens, which follow the map's own theme toggle.
 - **Do** use Signal Blue (`#0d6efd`) as the only accent; the older `#007bff` and `#28a745` are retired.
 - **Do** use tabular numerals for live numbers and fixed scales for meters.
 - **Do** pair every status lamp and chart series with a text label or legend.
