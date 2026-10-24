@@ -15,32 +15,32 @@
                 <div class="col-md-3">
                     <div class="card">
                         <div class="card-body">
-                            <h5 class="card-title">Total Subscriptions</h5>
-                            <h2 id="total-subscriptions" class="readout-blue">-</h2>
+                            <h2 class="card-title h5">Total Subscriptions</h2>
+                            <p id="total-subscriptions" class="h2 mb-2 readout-blue">-</p>
                         </div>
                     </div>
                 </div>
                 <div class="col-md-3">
                     <div class="card">
                         <div class="card-body">
-                            <h5 class="card-title">Active Feeds</h5>
-                            <h2 id="active-feeds" class="readout-teal">-</h2>
+                            <h2 class="card-title h5">Active Feeds</h2>
+                            <p id="active-feeds" class="h2 mb-2 readout-teal">-</p>
                         </div>
                     </div>
                 </div>
                 <div class="col-md-3">
                     <div class="card">
                         <div class="card-body">
-                            <h5 class="card-title">Items (24h)</h5>
-                            <h2 id="items-24h" class="readout-violet">-</h2>
+                            <h2 class="card-title h5">Items (24h)</h2>
+                            <p id="items-24h" class="h2 mb-2 readout-violet">-</p>
                         </div>
                     </div>
                 </div>
                 <div class="col-md-3">
                     <div class="card">
                         <div class="card-body">
-                            <h5 class="card-title">Active Errors</h5>
-                            <h2 id="active-errors" class="readout-muted">-</h2>
+                            <h2 class="card-title h5">Active Errors</h2>
+                            <p id="active-errors" class="h2 mb-2 readout-muted">-</p>
                         </div>
                     </div>
                 </div>
@@ -49,7 +49,7 @@
             <!-- Feed List -->
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0">Feed Subscriptions</h5>
+                    <h2 class="h5 mb-0">Feed Subscriptions</h2>
                     <div>
                         <button type="button" id="resetAllErrorsBtn" class="btn btn-outline-secondary me-2" title="Clear recorded errors for all feeds">
                             <i class="fas fa-eraser"></i> Reset Errors
@@ -89,7 +89,7 @@
 </div>
 
 <!-- Add/Edit Feed Modal -->
-<div class="modal fade" id="addFeedModal" tabindex="-1">
+<div class="modal fade" id="addFeedModal" tabindex="-1" aria-labelledby="feedModalTitle">
     <div class="modal-dialog modal-xl">
         <div class="modal-content">
             <div class="modal-header">
@@ -294,11 +294,11 @@
 </div>
 
 <!-- Feed Details Modal -->
-<div class="modal fade" id="feedDetailsModal" tabindex="-1">
+<div class="modal fade" id="feedDetailsModal" tabindex="-1" aria-labelledby="feedDetailsModalTitle">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Feed Details</h5>
+                <h5 class="modal-title" id="feedDetailsModalTitle">Feed Details</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body" id="feedDetailsContent">
@@ -492,7 +492,8 @@ class FeedManager {
             const errorsEl = document.getElementById('active-errors');
             errorsEl.textContent = activeErrors;
             // A count of errors is a state: red when there are any, quiet at zero.
-            errorsEl.className = activeErrors > 0 ? 'readout-danger' : 'readout-muted';
+            errorsEl.classList.toggle('readout-danger', activeErrors > 0);
+            errorsEl.classList.toggle('readout-muted', activeErrors === 0);
         } catch (error) {
             console.error('Error loading statistics:', error);
         }

@@ -779,11 +779,11 @@
 </div>
 
 <!-- Purge Inactive Contacts Modal -->
-<div class="modal fade" id="purgeContactsModal" tabindex="-1">
+<div class="modal fade" id="purgeContactsModal" tabindex="-1" aria-labelledby="purgeContactsModalTitle">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title"><i class="fas fa-broom text-danger me-2"></i>Purge Inactive Contacts</h5>
+                <h5 class="modal-title" id="purgeContactsModalTitle"><i class="fas fa-broom text-danger me-2"></i>Purge Inactive Contacts</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
@@ -2086,11 +2086,11 @@ class ModernContactsManager {
         
         // Create modal HTML with dark mode support
         const modalHtml = `
-            <div class="modal fade" id="pathsModal" tabindex="-1">
+            <div class="modal fade" id="pathsModal" tabindex="-1" aria-labelledby="pathsModalTitle">
                 <div class="modal-dialog modal-lg modal-dialog-scrollable modal-fullscreen-sm-down">
                     <div class="modal-content paths-modal-content">
                         <div class="modal-header paths-modal-header">
-                            <h5 class="modal-title">
+                            <h5 class="modal-title" id="pathsModalTitle">
                                 <i class="fas fa-route" aria-hidden="true"></i> Paths for ${this.escapeHtml(contact.username || 'Unknown')}
                             </h5>
                             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
@@ -2309,11 +2309,11 @@ class ModernContactsManager {
 
         // Create a modal to display the advertisement data
         const modalHtml = `
-            <div class="modal fade" id="advertModal" tabindex="-1">
+            <div class="modal fade" id="advertModal" tabindex="-1" aria-labelledby="advertModalTitle">
                 <div class="modal-dialog modal-lg">
                     <div class="modal-content">
                         <div class="modal-header">
-                            <h5 class="modal-title">Advert data · ${this.escapeHtml(contact.username || 'Unknown')}</h5>
+                            <h5 class="modal-title" id="advertModalTitle">Advert data · ${this.escapeHtml(contact.username || 'Unknown')}</h5>
                             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                         </div>
                         <div class="modal-body">
@@ -2508,11 +2508,11 @@ class ModernContactsManager {
 
         // Create a modal for delete confirmation
         const modalHtml = `
-            <div class="modal fade" id="deleteContactModal" tabindex="-1">
+            <div class="modal fade" id="deleteContactModal" tabindex="-1" aria-labelledby="deleteContactModalTitle">
                 <div class="modal-dialog">
                     <div class="modal-content">
                         <div class="modal-header bg-danger text-white">
-                            <h5 class="modal-title">
+                            <h5 class="modal-title" id="deleteContactModalTitle">
                                 <i class="fas fa-exclamation-triangle"></i> Delete Contact
                             </h5>
                             <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
@@ -2638,11 +2638,11 @@ class ModernContactsManager {
             : contactList.slice(0, 5).join(', ') + ' and ' + (contactList.length - 5) + ' more';
         
         const modalHtml = `
-            <div class="modal fade" id="bulkDeleteContactModal" tabindex="-1">
+            <div class="modal fade" id="bulkDeleteContactModal" tabindex="-1" aria-labelledby="bulkDeleteContactModalTitle">
                 <div class="modal-dialog">
                     <div class="modal-content">
                         <div class="modal-header bg-danger text-white">
-                            <h5 class="modal-title">
+                            <h5 class="modal-title" id="bulkDeleteContactModalTitle">
                                 <i class="fas fa-exclamation-triangle"></i> Delete ${count} Contact${count !== 1 ? 's' : ''}
                             </h5>
                             <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>

@@ -1370,8 +1370,9 @@ class DatabaseInfoManager {
 
             const identity = document.createElement('div');
             identity.className = 'col-md-4';
-            const heading = document.createElement('h6');
-            heading.className = 'mb-1';
+            // h4: each table sits under the panel's "Tables" h3
+            const heading = document.createElement('h4');
+            heading.className = 'h6 mb-1';
             const icon = document.createElement('i');
             icon.className = 'fas fa-table config-table-name-icon me-1';
             heading.append(icon, document.createTextNode(String(table.name ?? '')));
