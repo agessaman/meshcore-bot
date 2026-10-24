@@ -1699,7 +1699,8 @@
             packet: null, receptions: [],
             message: null, decoded: null, advert: null, channelHash: null, decodeTried: false,
             command: null, echoes: [],
-            kept: false, open: false, el: null
+            kept: false, open: false, el: null,
+            lookup: null
         };
         txs.set(key, tx);
         return tx;
@@ -1774,6 +1775,39 @@
         noteType(data.payload_type_name);
         decodeRow(tx);
         renderTx(tx, isNew ? 'new' : 'update');
+    }
+
+    // The replay on load is the newest 50 packets, which reach back far less
+    // than the newest 50 messages do, so an older message or command row can
+    // have a hash and no packet. Opening it fetches the packet's receptions
+    // from the bot's log. They fill the row only: they aren't new hearings, so
+    // they stay out of the spark and the replay's coverage.
+    async function lookUpPacket(tx) {
+        if (tx.packet || !tx.hash || tx.lookup === 'loading' || tx.lookup === 'none') return;
+        tx.lookup = 'loading';
+        let found = [];
+        try {
+            const url = `/api/packets/by-hash/${encodeURIComponent(tx.hash)}?near=${encodeURIComponent(tx.t)}`;
+            const response = await fetch(url, { headers: { Accept: 'application/json' } });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const body = await response.json();
+            found = Array.isArray(body.packets) ? body.packets : [];
+        } catch (e) {
+            console.warn('Realtime: could not look up packet', tx.hash, e);
+            tx.lookup = 'failed';
+            if (txs.get(tx.key) === tx) renderTx(tx);
+            return;
+        }
+        // The row may have been cleared or trimmed while the request was out.
+        if (txs.get(tx.key) !== tx) return;
+        found.forEach(data => {
+            if (normHash(data.packet_hash) !== tx.hash) return;
+            if (addReception(tx.receptions, data, eventTime(data)) && !tx.packet) tx.packet = data;
+            noteType(data.payload_type_name);
+        });
+        tx.lookup = tx.packet ? 'done' : 'none';
+        if (tx.packet) decodeRow(tx);
+        renderTx(tx);
     }
 
     // Commands stored before trigger hashes existed (or without a correlated
@@ -2165,11 +2199,10 @@
             }
         }
         if (!p) {
-            // The page replays only the newest 50 packets, which reach back
-            // far less than the newest 50 messages do.
             fact('Packet', !tx.hash ? 'The bot didn\'t record which packet carried this'
-                : tx.history ? 'Older than the packets this page loaded, so route, path and receptions aren\'t shown'
-                : 'Not seen on this page, so route, path and receptions aren\'t shown');
+                : tx.lookup === 'none' ? 'Not in the bot\'s packet log, so route, path and receptions aren\'t shown'
+                : tx.lookup === 'failed' ? 'Couldn\'t load it. Close and reopen the row to try again'
+                : 'Loading…');
         }
         if (tx.message && tx.message.is_dm) fact('Channel', 'Direct message');
         if (tx.decoded && !tx.message) fact('Source', 'Decrypted in this browser with a configured channel key');
@@ -2281,6 +2314,7 @@
         main.addEventListener('click', () => {
             tx.open = !tx.open;
             renderTx(tx);
+            if (tx.open) lookUpPacket(tx);
         });
 
         const keep = makeElement('button', 'rt-keep');

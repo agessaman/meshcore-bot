@@ -1073,6 +1073,12 @@
    "POST"
   ]
  },
+ "/api/packets/by-hash/<packet_hash>": {
+  "endpoint": "api_packets_by_hash",
+  "methods": [
+   "GET"
+  ]
+ },
  "/api/plugins": {
   "GET locked anon": {
    "content_type": "application/json",

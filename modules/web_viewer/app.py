@@ -9,6 +9,7 @@ import functools
 import hmac
 import json
 import logging
+import math
 import os
 import re
 import secrets
@@ -98,6 +99,14 @@ STATS_ENDPOINT_SUNSET = "Fri, 01 Jan 2027 00:00:00 GMT"
 
 # The bot rewrites system_health every 30 s; four missed beats means it has stopped.
 BOT_HEARTBEAT_STALE_S = 120
+
+# Packet lookup by hash (Real-time rows whose packet the page never loaded). A
+# message is logged just after the packet that carried it and a command a little
+# later still, so the window reaches back further than it reaches forward.
+PACKET_HASH_RE = re.compile(r"[0-9A-Fa-f]{8,64}")
+PACKET_LOOKUP_BEFORE_S = 120
+PACKET_LOOKUP_AFTER_S = 30
+PACKET_LOOKUP_LIMIT = 50
 
 
 def _validate_dynamic_key(key: str) -> "str | None":
@@ -2998,6 +3007,50 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
                         self.logger.debug(f"Error parsing command data: {e}")
 
                 return jsonify({'commands': commands})
+
+        @self.app.route('/api/packets/by-hash/<packet_hash>')
+        @self._api_errors('Error looking up packet by hash')
+        def api_packets_by_hash(packet_hash):
+            """Every stored reception of one packet, oldest first, heard near ``near``.
+
+            Real-time asks for this when a message or command row has a hash but
+            the page never loaded its packet: the replay on load reaches back
+            far less for packets than for messages. The hash is only inside the
+            row's JSON, so ``near`` (the message's epoch time) bounds the scan to
+            the timestamp index. Rows come back marked as replayed, like the
+            socket replay's.
+            """
+            if not PACKET_HASH_RE.fullmatch(packet_hash):
+                return jsonify({'error': 'Invalid packet hash'}), 400
+            try:
+                near = float(request.args.get('near', ''))
+            except ValueError:
+                return jsonify({'error': 'near must be an epoch time'}), 400
+            if not math.isfinite(near):
+                return jsonify({'error': 'near must be an epoch time'}), 400
+
+            with self._db_connection() as conn:
+                rows = conn.execute(
+                    "SELECT timestamp, data FROM packet_stream"
+                    " WHERE type = 'packet' AND timestamp BETWEEN ? AND ?"
+                    " AND json_valid(data) AND json_extract(data, '$.packet_hash') = ?"
+                    " ORDER BY timestamp LIMIT ?",
+                    (
+                        near - PACKET_LOOKUP_BEFORE_S,
+                        near + PACKET_LOOKUP_AFTER_S,
+                        packet_hash.upper(),
+                        PACKET_LOOKUP_LIMIT,
+                    ),
+                ).fetchall()
+
+            packets = []
+            for row in rows:
+                data = json.loads(row['data'])
+                if isinstance(data, dict):
+                    data['stream_ts'] = row['timestamp']
+                    data['replayed'] = True
+                    packets.append(data)
+            return jsonify({'packets': packets})
 
         # ── Export ──────────────────────────────────────────────────────────
 

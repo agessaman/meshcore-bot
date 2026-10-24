@@ -2215,6 +2215,65 @@ class TestStreamAndCommandRoutes:
         assert resp.status_code in (200, 400, 500)
 
 
+class TestPacketsByHashRoute:
+    """Real-time fetches the packet behind a message row the replay didn't reach."""
+
+    HASH = "921F4CAF866686AD"
+    NEAR = 1_792_882_591.0
+
+    @pytest.fixture
+    def stored(self, viewer):
+        def packet(ts, packet_hash, snr):
+            return (ts, json.dumps({"packet_hash": packet_hash, "snr": snr, "payload_type_name": "GRP_TXT"}), "packet")
+
+        _insert_packet_stream_rows(viewer.db_path, [
+            packet(self.NEAR - 1, self.HASH, 9.5),
+            packet(self.NEAR - 0.5, self.HASH, -3.25),
+            packet(self.NEAR - 1, "AAAAAAAAAAAAAAAA", 1.0),
+            packet(self.NEAR - 3600, self.HASH, 2.0),
+            (self.NEAR, json.dumps({"packet_hash": self.HASH, "content": "hi"}), "message"),
+            (self.NEAR - 2, "{not json", "packet"),
+        ])
+        yield
+        with closing(sqlite3.connect(viewer.db_path)) as conn:
+            conn.execute("DELETE FROM packet_stream")
+            conn.commit()
+
+    def test_returns_receptions_near_the_time_oldest_first(self, client, stored):
+        resp = client.get(f"/api/packets/by-hash/{self.HASH.lower()}?near={self.NEAR}")
+        assert resp.status_code == 200
+        packets = resp.get_json()["packets"]
+        assert [p["snr"] for p in packets] == [9.5, -3.25]
+        assert all(p["replayed"] is True for p in packets)
+        assert [p["stream_ts"] for p in packets] == [self.NEAR - 1, self.NEAR - 0.5]
+
+    def test_nothing_outside_the_window(self, client, stored):
+        resp = client.get(f"/api/packets/by-hash/{self.HASH}?near={self.NEAR + 7200}")
+        assert resp.status_code == 200
+        assert resp.get_json() == {"packets": []}
+
+    @pytest.mark.parametrize("path", [
+        "/api/packets/by-hash/xyz?near=1",
+        "/api/packets/by-hash/1234?near=1",
+        "/api/packets/by-hash/921F4CAF866686AD",
+        "/api/packets/by-hash/921F4CAF866686AD?near=soon",
+        "/api/packets/by-hash/921F4CAF866686AD?near=nan",
+        "/api/packets/by-hash/921F4CAF866686AD?near=inf",
+    ])
+    def test_rejects_bad_input(self, client, path):
+        assert client.get(path).status_code == 400
+
+    def test_requires_admin_when_a_password_is_set(self, auth_client):
+        resp = auth_client.get(f"/api/packets/by-hash/{self.HASH}?near={self.NEAR}")
+        assert resp.status_code == 401
+
+    def test_realtime_looks_up_a_missing_packet_on_open(self, client):
+        html = client.get("/realtime").get_data(as_text=True)
+        assert "/api/packets/by-hash/" in html
+        assert "if (tx.open) lookUpPacket(tx);" in html
+        assert "packet not on the tape" not in html
+
+
 # ===========================================================================
 # Rate limiter stats API
 # ===========================================================================
