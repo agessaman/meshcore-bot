@@ -35,6 +35,35 @@ jobs:
       - name: ESLint — lint inline JavaScript
         run: npm run lint:js
 
+  vendor-sync:
+    name: Vendored front-end libraries match their lockfile
+    # On a Dependabot pull request the first commit only bumps the lockfile;
+    # vendor-refresh.yml adds the files and then dispatches this workflow.
+    if: github.event_name != 'pull_request' || github.event.pull_request.user.login != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: scripts/web-vendor/package-lock.json
+
+      - name: Re-run the sync
+        working-directory: scripts/web-vendor
+        run: npm run vendor
+
+      - name: Fail if anything under static/ changed
+        run: |
+          changes="$(git status --porcelain -- modules/web_viewer/static)"
+          if [ -n "$changes" ]; then
+            echo "$changes"
+            echo "::error::modules/web_viewer/static doesn't match scripts/web-vendor. Run 'npm run vendor' in scripts/web-vendor and commit the result."
+            exit 1
+          fi
+
   lint-shell:
     name: Lint Shell Scripts (ShellCheck)
     runs-on: ubuntu-latest

@@ -61,8 +61,6 @@ the v1.0.0 run and should be refreshed in a separate coverage review.
       `/api/dashboard/series` (the endpoint exists, no UI yet); consider the
       deferred `observed_paths(last_seen, path_length, bytes_per_hop, public_key)`
       covering index if refresher timing shows the path-length histogram dominating
-- [ ] **Subresource Integrity** — the viewer loads eight assets from three CDNs
-      with no SRI hashes; CSP pins the origins but not the file contents
 - [ ] Evaluate moving the web viewer to a separate installable package
 
 ### Commands and features

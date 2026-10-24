@@ -950,11 +950,8 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
             response.headers['X-Content-Type-Options'] = 'nosniff'
             response.headers['X-Frame-Options'] = 'SAMEORIGIN'
             response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
-            # Allow CDNs used by templates (base.html, login.html, mesh.html).
-            # Without these hosts, browsers block external CSS/JS/fonts (not CSRF).
-            # fonts.googleapis.com serves login.html's stylesheet and fonts.gstatic.com
-            # the font files it references — both hosts are needed or the login page
-            # silently falls back to system fonts.
+            # Every script, stylesheet and font is served from static/ (see
+            # static/vendor/README.md); the only external hosts are the map tiles.
             # The highest-risk admin screens have migrated their inline handlers
             # and authorize their remaining template scripts with a per-request
             # nonce. Other legacy screens retain unsafe-inline until their inline
@@ -975,26 +972,22 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
                 'api_explorer',
             }
             if request.endpoint in nonce_hardened_endpoints:
-                script_source = f"script-src 'self' 'nonce-{g.csp_nonce}' "
+                script_source = f"script-src 'self' 'nonce-{g.csp_nonce}'; "
             else:
-                script_source = "script-src 'self' 'unsafe-inline' "
+                script_source = "script-src 'self' 'unsafe-inline'; "
             response.headers['Content-Security-Policy'] = (
                 "default-src 'self'; "
                 + script_source
-                + "https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; "
-                "style-src 'self' 'unsafe-inline' "
-                "https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; "
+                + "style-src 'self' 'unsafe-inline'; "
                 "img-src 'self' data: blob: https://*.tile.openstreetmap.org "
-                "https://tiles.openfreemap.org "
-                "https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; "
-                "connect-src 'self' ws: wss: https://tiles.openfreemap.org "
-                "https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; "
+                "https://tiles.openfreemap.org; "
+                "connect-src 'self' ws: wss: https://tiles.openfreemap.org; "
                 # MapLibre GL runs its renderer in a worker spawned from a blob: URL.
                 # Without these it falls back to default-src 'self' and the dark
                 # basemap fails to start.
                 "worker-src 'self' blob:; "
                 "child-src 'self' blob:; "
-                "font-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com"
+                "font-src 'self'"
             )
 
             # Sanitize error details from 5xx JSON responses to prevent info disclosure.

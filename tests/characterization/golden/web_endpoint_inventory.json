@@ -2,7 +2,7 @@
  "/": {
   "GET locked anon": {
    "content_type": "text/html",
-   "csp_script_src": "script-src 'self' 'nonce-X' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'nonce-X'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -10,7 +10,7 @@
   },
   "GET open": {
    "content_type": "text/html",
-   "csp_script_src": "script-src 'self' 'nonce-X' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'nonce-X'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -24,7 +24,7 @@
  "/admin/config": {
   "GET locked anon": {
    "content_type": "text/html",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "/login?next=/admin/config",
    "status": 302,
    "x_content_type_options": "nosniff",
@@ -32,7 +32,7 @@
   },
   "GET open": {
    "content_type": "text/html",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -46,7 +46,7 @@
  "/api-explorer": {
   "GET locked anon": {
    "content_type": "text/html",
-   "csp_script_src": "script-src 'self' 'nonce-X' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'nonce-X'",
    "location": "/login?next=/api-explorer",
    "status": 302,
    "x_content_type_options": "nosniff",
@@ -54,7 +54,7 @@
   },
   "GET open": {
    "content_type": "text/html",
-   "csp_script_src": "script-src 'self' 'nonce-X' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'nonce-X'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -68,7 +68,7 @@
  "/api/admin/radio-offline-clear": {
   "POST locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -82,7 +82,7 @@
  "/api/admin/zombie-recover": {
   "POST locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -96,7 +96,7 @@
  "/api/banner-status": {
   "GET locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -104,7 +104,7 @@
   },
   "GET open": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -118,7 +118,7 @@
  "/api/cache": {
   "GET locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -126,7 +126,7 @@
   },
   "GET open": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -146,7 +146,7 @@
  "/api/channels": {
   "POST locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -160,7 +160,7 @@
  "/api/channels/<int:channel_idx>": {
   "PUT locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -180,7 +180,7 @@
  "/api/channels/stats": {
   "GET locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -188,7 +188,7 @@
   },
   "GET open": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -202,7 +202,7 @@
  "/api/channels/validate": {
   "POST locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -216,7 +216,7 @@
  "/api/config/logging": {
   "POST locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -230,7 +230,7 @@
  "/api/config/maintenance": {
   "POST locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -244,7 +244,7 @@
  "/api/config/notifications": {
   "POST locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -258,7 +258,7 @@
  "/api/config/notifications/test": {
   "POST locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -272,7 +272,7 @@
  "/api/config/radio-debug": {
   "POST locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -286,7 +286,7 @@
  "/api/config/radio-offline-alert": {
   "POST locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -300,7 +300,7 @@
  "/api/config/radio-probe": {
   "POST locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -314,7 +314,7 @@
  "/api/config/zombie-alert": {
   "POST locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -328,7 +328,7 @@
  "/api/connected_clients": {
   "GET locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -336,7 +336,7 @@
   },
   "GET open": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -350,7 +350,7 @@
  "/api/contact-detail": {
   "GET locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 400,
    "x_content_type_options": "nosniff",
@@ -358,7 +358,7 @@
   },
   "GET open": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 400,
    "x_content_type_options": "nosniff",
@@ -372,7 +372,7 @@
  "/api/contacts": {
   "GET locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -380,7 +380,7 @@
   },
   "GET open": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -394,7 +394,7 @@
  "/api/contacts/purge": {
   "POST locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -408,7 +408,7 @@
  "/api/contacts/purge-preview": {
   "GET locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -416,7 +416,7 @@
   },
   "GET open": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -430,7 +430,7 @@
  "/api/dashboard/refresh": {
   "POST locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -444,7 +444,7 @@
  "/api/dashboard/series": {
   "GET locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -452,7 +452,7 @@
   },
   "GET open": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -466,7 +466,7 @@
  "/api/dashboard/summary": {
   "GET locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 503,
    "x_content_type_options": "nosniff",
@@ -474,7 +474,7 @@
   },
   "GET open": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 503,
    "x_content_type_options": "nosniff",
@@ -488,7 +488,7 @@
  "/api/dashboard/top": {
   "GET locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -496,7 +496,7 @@
   },
   "GET open": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -510,7 +510,7 @@
  "/api/dashboard/windows": {
   "GET locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -518,7 +518,7 @@
   },
   "GET open": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -532,7 +532,7 @@
  "/api/database": {
   "GET locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -540,7 +540,7 @@
   },
   "GET open": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -554,7 +554,7 @@
  "/api/decode-path": {
   "POST locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 400,
    "x_content_type_options": "nosniff",
@@ -568,7 +568,7 @@
  "/api/delete-contact": {
   "POST locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -582,7 +582,7 @@
  "/api/export/contacts": {
   "GET locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -590,7 +590,7 @@
   },
   "GET open": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -604,7 +604,7 @@
  "/api/export/paths": {
   "GET locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -612,7 +612,7 @@
   },
   "GET open": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -626,7 +626,7 @@
  "/api/feeds": {
   "GET locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -634,7 +634,7 @@
   },
   "GET open": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -648,7 +648,7 @@
  "/api/feeds/<int:feed_id>": {
   "PUT locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -674,7 +674,7 @@
  "/api/feeds/<int:feed_id>/errors/reset": {
   "POST locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -688,7 +688,7 @@
  "/api/feeds/<int:feed_id>/refresh": {
   "POST locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -702,7 +702,7 @@
  "/api/feeds/default-format": {
   "GET locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -710,7 +710,7 @@
   },
   "GET open": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -724,7 +724,7 @@
  "/api/feeds/errors/reset": {
   "POST locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -738,7 +738,7 @@
  "/api/feeds/preview": {
   "POST locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -752,7 +752,7 @@
  "/api/feeds/stats": {
   "GET locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -760,7 +760,7 @@
   },
   "GET open": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -774,7 +774,7 @@
  "/api/feeds/test": {
   "POST locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -788,7 +788,7 @@
  "/api/geocode-contact": {
   "POST locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -802,7 +802,7 @@
  "/api/greeter": {
   "GET locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -810,7 +810,7 @@
   },
   "GET open": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -824,7 +824,7 @@
  "/api/greeter/end-rollout": {
   "POST locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -838,7 +838,7 @@
  "/api/greeter/ungreet": {
   "POST locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -852,7 +852,7 @@
  "/api/health": {
   "GET locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -860,7 +860,7 @@
   },
   "GET open": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -874,7 +874,7 @@
  "/api/maintenance/backup_now": {
   "POST locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -888,7 +888,7 @@
  "/api/maintenance/list_backups": {
   "GET locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -896,7 +896,7 @@
   },
   "GET open": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -910,7 +910,7 @@
  "/api/maintenance/purge": {
   "POST locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -924,7 +924,7 @@
  "/api/maintenance/restore": {
   "POST locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -938,7 +938,7 @@
  "/api/maintenance/status": {
   "GET locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -946,7 +946,7 @@
   },
   "GET open": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -960,7 +960,7 @@
  "/api/mesh/edges": {
   "GET locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -968,7 +968,7 @@
   },
   "GET open": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -982,7 +982,7 @@
  "/api/mesh/nodes": {
   "GET locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -990,7 +990,7 @@
   },
   "GET open": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -1004,7 +1004,7 @@
  "/api/mesh/resolve-path": {
   "POST locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 400,
    "x_content_type_options": "nosniff",
@@ -1018,7 +1018,7 @@
  "/api/mesh/stats": {
   "GET locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -1026,7 +1026,7 @@
   },
   "GET open": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -1040,7 +1040,7 @@
  "/api/multibyte-rollout": {
   "GET locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -1048,7 +1048,7 @@
   },
   "GET open": {
    "content_type": "text/html",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 404,
    "x_content_type_options": "nosniff",
@@ -1062,7 +1062,7 @@
  "/api/optimize-database": {
   "POST locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -1076,7 +1076,7 @@
  "/api/plugins": {
   "GET locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -1084,7 +1084,7 @@
   },
   "GET open": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -1098,7 +1098,7 @@
  "/api/plugins/<kind>/<name>": {
   "POST locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -1112,7 +1112,7 @@
  "/api/plugins/<kind>/<name>/template-preview": {
   "POST locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -1126,7 +1126,7 @@
  "/api/plugins/reload-status": {
   "GET locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -1134,7 +1134,7 @@
   },
   "GET open": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -1148,7 +1148,7 @@
  "/api/radio/advert": {
   "POST locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -1162,7 +1162,7 @@
  "/api/radio/connect": {
   "POST locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -1176,7 +1176,7 @@
  "/api/radio/firmware/config/read": {
   "POST locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -1190,7 +1190,7 @@
  "/api/radio/firmware/config/write": {
   "POST locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -1204,7 +1204,7 @@
  "/api/radio/params": {
   "POST locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -1218,7 +1218,7 @@
  "/api/radio/reboot": {
   "POST locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -1232,7 +1232,7 @@
  "/api/radio/status": {
   "GET locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -1240,7 +1240,7 @@
   },
   "GET open": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -1254,7 +1254,7 @@
  "/api/recent_commands": {
   "GET locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -1262,7 +1262,7 @@
   },
   "GET open": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -1276,7 +1276,7 @@
  "/api/region-scopes": {
   "POST locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -1290,7 +1290,7 @@
  "/api/region-warnings": {
   "GET locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -1298,7 +1298,7 @@
   },
   "GET open": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -1312,7 +1312,7 @@
  "/api/region-warnings/settings": {
   "POST locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -1326,7 +1326,7 @@
  "/api/scheduled-messages": {
   "PUT locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -1340,7 +1340,7 @@
  "/api/scheduled-messages/preview": {
   "POST locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -1354,7 +1354,7 @@
  "/api/stats": {
   "GET locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -1362,7 +1362,7 @@
   },
   "GET open": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -1376,7 +1376,7 @@
  "/api/stats/rate_limiters": {
   "GET locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -1384,7 +1384,7 @@
   },
   "GET open": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -1398,7 +1398,7 @@
  "/api/stream_data": {
   "POST locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 400,
    "x_content_type_options": "nosniff",
@@ -1412,7 +1412,7 @@
  "/api/system-health": {
   "GET locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -1420,7 +1420,7 @@
   },
   "GET open": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -1434,7 +1434,7 @@
  "/api/toggle-star-contact": {
   "POST locked anon": {
    "content_type": "application/json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 401,
    "x_content_type_options": "nosniff",
@@ -1448,7 +1448,7 @@
  "/apple-touch-icon.png": {
   "GET locked anon": {
    "content_type": "image/png",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -1456,7 +1456,7 @@
   },
   "GET open": {
    "content_type": "image/png",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -1470,7 +1470,7 @@
  "/cache": {
   "GET locked anon": {
    "content_type": "text/html",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "/login?next=/cache",
    "status": 302,
    "x_content_type_options": "nosniff",
@@ -1478,7 +1478,7 @@
   },
   "GET open": {
    "content_type": "text/html",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "/config#database",
    "status": 302,
    "x_content_type_options": "nosniff",
@@ -1492,7 +1492,7 @@
  "/config": {
   "GET locked anon": {
    "content_type": "text/html",
-   "csp_script_src": "script-src 'self' 'nonce-X' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'nonce-X'",
    "location": "/login?next=/config",
    "status": 302,
    "x_content_type_options": "nosniff",
@@ -1500,7 +1500,7 @@
   },
   "GET open": {
    "content_type": "text/html",
-   "csp_script_src": "script-src 'self' 'nonce-X' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'nonce-X'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -1514,7 +1514,7 @@
  "/contacts": {
   "GET locked anon": {
    "content_type": "text/html",
-   "csp_script_src": "script-src 'self' 'nonce-X' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'nonce-X'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -1522,7 +1522,7 @@
   },
   "GET open": {
    "content_type": "text/html",
-   "csp_script_src": "script-src 'self' 'nonce-X' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'nonce-X'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -1536,7 +1536,7 @@
  "/favicon-16x16.png": {
   "GET locked anon": {
    "content_type": "image/png",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -1544,7 +1544,7 @@
   },
   "GET open": {
    "content_type": "image/png",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -1558,7 +1558,7 @@
  "/favicon-32x32.png": {
   "GET locked anon": {
    "content_type": "image/png",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -1566,7 +1566,7 @@
   },
   "GET open": {
    "content_type": "image/png",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -1580,7 +1580,7 @@
  "/favicon.ico": {
   "GET locked anon": {
    "content_type": "image/x-icon",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -1588,7 +1588,7 @@
   },
   "GET open": {
    "content_type": "image/x-icon",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -1602,7 +1602,7 @@
  "/feeds": {
   "GET locked anon": {
    "content_type": "text/html",
-   "csp_script_src": "script-src 'self' 'nonce-X' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'nonce-X'",
    "location": "/login?next=/feeds",
    "status": 302,
    "x_content_type_options": "nosniff",
@@ -1610,7 +1610,7 @@
   },
   "GET open": {
    "content_type": "text/html",
-   "csp_script_src": "script-src 'self' 'nonce-X' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'nonce-X'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -1624,7 +1624,7 @@
  "/greeter": {
   "GET locked anon": {
    "content_type": "text/html",
-   "csp_script_src": "script-src 'self' 'nonce-X' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'nonce-X'",
    "location": "/login?next=/greeter",
    "status": 302,
    "x_content_type_options": "nosniff",
@@ -1632,7 +1632,7 @@
   },
   "GET open": {
    "content_type": "text/html",
-   "csp_script_src": "script-src 'self' 'nonce-X' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'nonce-X'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -1646,7 +1646,7 @@
  "/login": {
   "GET locked anon": {
    "content_type": "text/html",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -1654,7 +1654,7 @@
   },
   "GET open": {
    "content_type": "text/html",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "/",
    "status": 302,
    "x_content_type_options": "nosniff",
@@ -1662,7 +1662,7 @@
   },
   "POST locked anon": {
    "content_type": "text/html",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -1677,7 +1677,7 @@
  "/logout": {
   "GET locked anon": {
    "content_type": "text/html",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "/",
    "status": 302,
    "x_content_type_options": "nosniff",
@@ -1685,7 +1685,7 @@
   },
   "GET open": {
    "content_type": "text/html",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "/",
    "status": 302,
    "x_content_type_options": "nosniff",
@@ -1699,7 +1699,7 @@
  "/logs": {
   "GET locked anon": {
    "content_type": "text/html",
-   "csp_script_src": "script-src 'self' 'nonce-X' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'nonce-X'",
    "location": "/login?next=/logs",
    "status": 302,
    "x_content_type_options": "nosniff",
@@ -1707,7 +1707,7 @@
   },
   "GET open": {
    "content_type": "text/html",
-   "csp_script_src": "script-src 'self' 'nonce-X' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'nonce-X'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -1721,7 +1721,7 @@
  "/mesh": {
   "GET locked anon": {
    "content_type": "text/html",
-   "csp_script_src": "script-src 'self' 'nonce-X' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'nonce-X'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -1729,7 +1729,7 @@
   },
   "GET open": {
    "content_type": "text/html",
-   "csp_script_src": "script-src 'self' 'nonce-X' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'nonce-X'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -1743,7 +1743,7 @@
  "/multibyte-rollout": {
   "GET locked anon": {
    "content_type": "text/html",
-   "csp_script_src": "script-src 'self' 'nonce-X' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'nonce-X'",
    "location": "/login?next=/multibyte-rollout",
    "status": 302,
    "x_content_type_options": "nosniff",
@@ -1751,7 +1751,7 @@
   },
   "GET open": {
    "content_type": "text/html",
-   "csp_script_src": "script-src 'self' 'nonce-X' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'nonce-X'",
    "location": "",
    "status": 404,
    "x_content_type_options": "nosniff",
@@ -1765,7 +1765,7 @@
  "/plugins": {
   "GET locked anon": {
    "content_type": "text/html",
-   "csp_script_src": "script-src 'self' 'nonce-X' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'nonce-X'",
    "location": "/login?next=/plugins",
    "status": 302,
    "x_content_type_options": "nosniff",
@@ -1773,7 +1773,7 @@
   },
   "GET open": {
    "content_type": "text/html",
-   "csp_script_src": "script-src 'self' 'nonce-X' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'nonce-X'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -1787,7 +1787,7 @@
  "/radio": {
   "GET locked anon": {
    "content_type": "text/html",
-   "csp_script_src": "script-src 'self' 'nonce-X' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'nonce-X'",
    "location": "/login?next=/radio",
    "status": 302,
    "x_content_type_options": "nosniff",
@@ -1795,7 +1795,7 @@
   },
   "GET open": {
    "content_type": "text/html",
-   "csp_script_src": "script-src 'self' 'nonce-X' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'nonce-X'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -1809,7 +1809,7 @@
  "/realtime": {
   "GET locked anon": {
    "content_type": "text/html",
-   "csp_script_src": "script-src 'self' 'nonce-X' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'nonce-X'",
    "location": "/login?next=/realtime",
    "status": 302,
    "x_content_type_options": "nosniff",
@@ -1817,7 +1817,7 @@
   },
   "GET open": {
    "content_type": "text/html",
-   "csp_script_src": "script-src 'self' 'nonce-X' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'nonce-X'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -1831,7 +1831,7 @@
  "/region-warnings": {
   "GET locked anon": {
    "content_type": "text/html",
-   "csp_script_src": "script-src 'self' 'nonce-X' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'nonce-X'",
    "location": "/login?next=/region-warnings",
    "status": 302,
    "x_content_type_options": "nosniff",
@@ -1839,7 +1839,7 @@
   },
   "GET open": {
    "content_type": "text/html",
-   "csp_script_src": "script-src 'self' 'nonce-X' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'nonce-X'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -1853,7 +1853,7 @@
  "/schedule": {
   "GET locked anon": {
    "content_type": "text/html",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "/login?next=/schedule",
    "status": 302,
    "x_content_type_options": "nosniff",
@@ -1861,7 +1861,7 @@
   },
   "GET open": {
    "content_type": "text/html",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -1875,7 +1875,7 @@
  "/site.webmanifest": {
   "GET locked anon": {
    "content_type": "application/manifest+json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",
@@ -1883,7 +1883,7 @@
   },
   "GET open": {
    "content_type": "application/manifest+json",
-   "csp_script_src": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
    "status": 200,
    "x_content_type_options": "nosniff",

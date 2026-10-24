@@ -9,6 +9,7 @@ side-effect free.
 import configparser
 import json
 import logging
+import re
 import sqlite3
 from contextlib import closing, contextmanager
 from pathlib import Path
@@ -233,6 +234,31 @@ class TestPageRoutes:
         html = client.get("/realtime").data.decode()
         assert "vendor/js-sha256/sha256.min.js" in html
         assert "cdnjs.cloudflare.com/ajax/libs/js-sha256" not in html
+
+    def test_templates_load_no_scripts_styles_or_fonts_from_other_hosts(self):
+        """The viewer has to work on a LAN with no internet; libraries are vendored."""
+        templates = Path(__file__).resolve().parents[1] / "modules" / "web_viewer" / "templates"
+        external = re.compile(r'<(?:script|link)\b[^>]*\b(?:src|href)="(?:https?:)?//', re.I)
+        offenders = [
+            str(path.relative_to(templates))
+            for path in templates.rglob("*.html")
+            if external.search(path.read_text(encoding="utf-8"))
+        ]
+        assert offenders == []
+
+    def test_every_vendored_asset_a_template_names_exists(self):
+        root = Path(__file__).resolve().parents[1] / "modules" / "web_viewer"
+        named = set()
+        for path in (root / "templates").rglob("*.html"):
+            named.update(re.findall(r"filename='((?:vendor|fonts)/[^']+)'", path.read_text(encoding="utf-8")))
+        assert named
+        missing = sorted(name for name in named if not (root / "static" / name).is_file())
+        assert missing == []
+
+    def test_csp_allows_no_cdn_hosts(self, client):
+        csp = client.get("/").headers["Content-Security-Policy"]
+        for host in ("cdn.jsdelivr.net", "cdnjs.cloudflare.com", "unpkg.com", "fonts.googleapis.com"):
+            assert host not in csp, host
 
     def test_logs(self, client):
         resp = client.get("/logs")
