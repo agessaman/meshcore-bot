@@ -995,6 +995,20 @@
         </div>
     </div>
 
+    <!-- Recovery banner: shown when a poll sees the radio or bot come back -->
+    <div id="recovery-banner"
+        class="alert alert-success mb-0 rounded-0 border-0 border-bottom border-success py-2 d-none"
+        role="status">
+        <div class="container-fluid d-flex align-items-center justify-content-between gap-2">
+            <div>
+                <i class="fas fa-check-circle me-2"></i>
+                <strong id="recovery-title"></strong>
+                <span id="recovery-detail"></span>
+            </div>
+            <button type="button" class="btn-close" id="recovery-close" aria-label="Dismiss"></button>
+        </div>
+    </div>
+
     <script nonce="{{ g.csp_nonce }}">
         // One toast stack for every page. `message` is a string or a node the
         // caller has already filled with text; nothing is parsed as HTML.
@@ -1045,10 +1059,10 @@
                 .then(function (r) { return r.json(); })
                 .then(function (data) {
                     if (data.success) {
-                        var b = document.getElementById('zombie-banner');
-                        b.className = 'alert alert-success mb-0 rounded-0 border-0 border-bottom border-success';
-                        b.innerHTML = '<div class="container-fluid"><i class="fas fa-check-circle me-2"></i>' +
-                            '<strong>Reconnect scheduled.</strong> Refresh this page in a few seconds to confirm the radio is back online.</div>';
+                        // The banner poll confirms the recovery; the banner itself
+                        // stays intact so it can show again if the radio drops later.
+                        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Reconnecting\u2026';
+                        window.pollBannersSoon && window.pollBannersSoon();
                     } else {
                         btn.disabled = false;
                         btn.innerHTML = '<i class="fas fa-power-off me-1"></i>Restart Bot Processing';
@@ -1071,10 +1085,8 @@
                 .then(function (r) { return r.json(); })
                 .then(function (data) {
                     if (data.success) {
-                        var b = document.getElementById('offline-banner');
-                        b.className = 'alert alert-success mb-0 rounded-0 border-0 border-bottom border-success';
-                        b.innerHTML = '<div class="container-fluid"><i class="fas fa-check-circle me-2"></i>' +
-                            '<strong>Offline flag cleared.</strong> The bot will resume outbound sends. Refresh to confirm.</div>';
+                        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Waiting for the bot\u2026';
+                        window.pollBannersSoon && window.pollBannersSoon();
                     } else {
                         btn.disabled = false;
                         btn.innerHTML = '<i class="fas fa-check me-1"></i>Clear Offline Flag';
@@ -1156,7 +1168,95 @@
 
         // Live banner polling — updates all banners every 10s without a page reload
         (function () {
+            var BUTTON_LABELS = {
+                'zombie-recover-btn': '<i class="fas fa-power-off me-1"></i>Restart Bot Processing',
+                'offline-clear-btn': '<i class="fas fa-check me-1"></i>Clear Offline Flag'
+            };
+            function resetButton(id) {
+                var btn = document.getElementById(id);
+                if (btn && btn.disabled) { btn.disabled = false; btn.innerHTML = BUTTON_LABELS[id]; }
+            }
+
+            function bannerShown(id) {
+                var el = document.getElementById(id);
+                return !!el && !el.classList.contains('d-none');
+            }
+            function sinceOf(id) {
+                var el = document.getElementById(id);
+                return el && el.getAttribute('datetime') ? el.getAttribute('datetime') : null;
+            }
+            // What the server rendered, so a problem that clears on the first
+            // poll after page load still gets its recovery notice.
+            var previous = {
+                radio_offline: bannerShown('offline-banner'),
+                radio_offline_since: sinceOf('offline-since-text'),
+                radio_zombie: bannerShown('zombie-banner'),
+                radio_zombie_since: sinceOf('zombie-since-text')
+            };
+
+            function clock(date) {
+                return date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+            }
+            function span(seconds) {
+                var m = Math.round(seconds / 60);
+                if (m < 1) return 'under a minute';
+                if (m < 60) return m + ' min';
+                var h = Math.floor(m / 60), rest = m % 60;
+                if (h < 24) return h + ' h' + (rest ? ' ' + rest + ' min' : '');
+                var days = Math.round(h / 24);
+                return days + (days === 1 ? ' day' : ' days');
+            }
+
+            var recoveryTimer = null;
+            function showRecovery(title, since, what) {
+                var banner = document.getElementById('recovery-banner');
+                if (!banner) return;
+                var now = new Date();
+                var sinceDate = since ? new Date(since) : null;
+                if (sinceDate && isNaN(sinceDate.getTime())) sinceDate = null;
+                document.getElementById('recovery-title').textContent = title + ' at ' + clock(now);
+                document.getElementById('recovery-detail').textContent = sinceDate
+                    ? '\u00b7 ' + what + ' for ' + span((now - sinceDate) / 1000) + ', since ' + clock(sinceDate)
+                    : '';
+                banner.classList.remove('d-none');
+                clearTimeout(recoveryTimer);
+                recoveryTimer = setTimeout(function () { banner.classList.add('d-none'); }, 20000);
+                window.dispatchEvent(new CustomEvent('station-recovered', {
+                    detail: { title: title, since: sinceDate ? sinceDate.getTime() / 1000 : null, what: what }
+                }));
+            }
+            document.getElementById('recovery-close')?.addEventListener('click', function () {
+                clearTimeout(recoveryTimer);
+                document.getElementById('recovery-banner').classList.add('d-none');
+            });
+
+            // One notice per poll, the most fundamental recovery first
+            function noticeRecovery(prev, d) {
+                if (prev.bot_running === false && d.bot_running === true) {
+                    var last = prev.bot_last_seen ? new Date(prev.bot_last_seen * 1000).toISOString() : null;
+                    showRecovery('Bot running again', last, 'stopped');
+                } else if (prev.radio_zombie && !d.radio_zombie) {
+                    showRecovery('Radio responding again', prev.radio_zombie_since, 'unresponsive');
+                } else if (prev.radio_connected === false && d.radio_connected === true) {
+                    showRecovery('Radio reconnected', radioDownSince, 'disconnected');
+                } else if (prev.radio_offline && !d.radio_offline) {
+                    showRecovery('Radio back online', prev.radio_offline_since, 'offline');
+                }
+            }
+
+            // The server keeps no "since" for a dropped radio link, so note when
+            // this page first saw it down.
+            var radioDownSince = null;
+
             function applyBannerStatus(d) {
+                noticeRecovery(previous, d);
+                if (d.radio_connected === false && previous.radio_connected !== false) {
+                    radioDownSince = new Date().toISOString();
+                }
+                previous = d;
+                if (!d.radio_zombie) resetButton('zombie-recover-btn');
+                if (!d.radio_offline) resetButton('offline-clear-btn');
+
                 var show = function (id) { var el = document.getElementById(id); if (el) el.classList.remove('d-none'); };
                 var hide = function (id) { var el = document.getElementById(id); if (el) el.classList.add('d-none'); };
 
@@ -1190,6 +1290,12 @@
                     .then(applyBannerStatus)
                     .catch(function () { });  // silent — server may be restarting
             }
+
+            // After an admin action, confirm sooner than the next 10 s tick
+            window.pollBannersSoon = function () {
+                setTimeout(pollBanners, 1500);
+                setTimeout(pollBanners, 5000);
+            };
 
             // Once now, so pages showing the station verdict don't wait 10 s for it
             pollBanners();

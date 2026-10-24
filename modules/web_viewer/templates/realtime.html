@@ -243,6 +243,24 @@
         border-bottom: 1px solid var(--border-color);
     }
 
+    /* Link and radio events on the tape: a lamp dot says how it turned out
+       (green recovered, amber something missed, gray a covered blip). */
+    .rt-marker {
+        text-transform: none;
+        letter-spacing: 0;
+        font-size: 0.75rem;
+    }
+    .rt-marker::before {
+        content: "";
+        flex: none;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--text-muted);
+    }
+    .rt-marker--recovered::before { background: #198754; }
+    .rt-marker--gap::before { background: #ffc107; }
+
     .rt-row {
         position: relative;
         border-bottom: 1px solid var(--border-color);
@@ -1594,6 +1612,7 @@
     }
 
     function noteHeard(t, replayed) {
+        if (replayed && gapWatch && (gapWatch.earliest === null || t < gapWatch.earliest)) gapWatch.earliest = t;
         heardTimes.push(t);
         if (heardTimes.length > 1 && heardTimes[heardTimes.length - 2] > t) heardTimes.sort((a, b) => a - b);
         if (lastHeard === null || t > lastHeard) lastHeard = t;
@@ -2177,6 +2196,58 @@
         li.classList.add('is-fresh');
     }
 
+    // ── Markers: what happened to the link and the radio, in tape order ──
+
+    const MAX_MARKERS = 20;
+    const GAP_SETTLE_MS = 3000;      // time for a reconnect's replay to arrive
+    const GAP_QUIET_S = 15;          // a covered blip shorter than this isn't worth a line
+    let lostAt = null;               // server time the socket dropped
+    let gapWatch = null;             // { from, to, earliest } while a reconnect's replay arrives
+    const gaps = [];                 // [from, to] spans the page can't speak for
+
+    function clockOf(t) {
+        return new Date(t * 1000).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+    }
+
+    function insertMarker(t, text, extraClass) {
+        const li = makeElement('li', `rt-divider rt-marker ${extraClass || ''}`.trim(), text);
+        li.dataset.t = String(t);
+        let ref = null;
+        for (const child of tape.children) {
+            if (child === divider) {
+                ref = divider;
+                break;
+            }
+            const other = child.dataset.key ? txs.get(child.dataset.key) : null;
+            const childT = other ? other.t : (child.dataset.t ? Number(child.dataset.t) : null);
+            if (childT !== null && childT < t) {
+                ref = child;
+                break;
+            }
+        }
+        tape.insertBefore(li, ref);
+        const markers = tape.querySelectorAll('.rt-marker');
+        for (let i = markers.length - 1; i >= MAX_MARKERS; i--) markers[i].remove();
+    }
+
+    // The reconnect replays the newest 50 rows. If the oldest of them reaches
+    // back past the drop, nothing was missed; otherwise say which span wasn't.
+    function settleGap() {
+        const g = gapWatch;
+        gapWatch = null;
+        if (!g || g.from === null) return;
+        const covered = g.earliest === null || g.earliest <= g.from;
+        if (covered) {
+            if (g.to - g.from >= GAP_QUIET_S) {
+                insertMarker(g.from, `Link lost ${clockOf(g.from)}–${clockOf(g.to)} · nothing missed`, 'rt-marker--link');
+            }
+            return;
+        }
+        const missedTo = Math.min(g.earliest, g.to);
+        gaps.push([g.from, missedTo]);
+        insertMarker(g.from, `Link lost ${clockOf(g.from)}–${clockOf(g.to)} · anything heard ${clockOf(g.from)}–${clockOf(missedTo)} isn't shown`, 'rt-marker--gap');
+    }
+
     function insertRow(tx) {
         emptyRow.hidden = true;
         if (tx.history && !divider) {
@@ -2305,6 +2376,7 @@
 
     function clearTape() {
         Array.from(txs.values()).forEach(tx => { if (!tx.kept) removeTx(tx); });
+        tape.querySelectorAll('.rt-marker').forEach(li => li.remove());
         clearedAt = nowServer();
         updateCounts();
     }
@@ -2495,7 +2567,10 @@
         counts.forEach((c, i) => {
             // Time before the page's first packet is unknown, not quiet: it
             // gets a hairline instead of a bar.
-            const unknown = start + (i + 1) * SPARK_BUCKET_S < known;
+            const bucketStart = start + i * SPARK_BUCKET_S;
+            const bucketEnd = bucketStart + SPARK_BUCKET_S;
+            const unknown = bucketEnd < known
+                || gaps.some(([from, to]) => bucketStart >= from && bucketEnd <= to);
             const h = unknown ? 1 : (c ? Math.max(2, Math.round((c / max) * 22)) : 1);
             const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
             rect.setAttribute('x', (i * width + 0.5).toFixed(2));
@@ -2529,6 +2604,12 @@
     // ── Wiring ──
 
     window.addEventListener('banner-status', e => readBannerState(e.detail));
+    window.addEventListener('station-recovered', e => {
+        const d = e.detail || {};
+        const now = nowServer();
+        const since = d.since ? ` · ${d.what} ${clockOf(d.since)}–${clockOf(now)}` : '';
+        insertMarker(now, `${d.title}${since}`, 'rt-marker--recovered');
+    });
     readBannerState(window.lastBannerStatus || null);
 
     document.getElementById('rt-pause').addEventListener('click', () => setPaused(!hold.paused));
@@ -2631,6 +2712,11 @@
             link.socket = 'up';
             connectCount++;
             if (connectCount === 1 && coverageStart === null) coverageStart = nowServer();
+            if (connectCount > 1 && lostAt !== null) {
+                gapWatch = { from: lostAt, to: nowServer(), earliest: null };
+                lostAt = null;
+                setTimeout(settleGap, GAP_SETTLE_MS);
+            }
             socket.emit('subscribe_commands');
             socket.emit('subscribe_packets');
             socket.emit('subscribe_messages');
@@ -2641,6 +2727,7 @@
         socket.on('connect', onConnect);
         if (socket.connected) onConnect();
         socket.on('disconnect', () => {
+            if (link.socket === 'up' && lostAt === null) lostAt = nowServer();
             if (link.socket !== 'kicked') link.socket = 'down';
             renderStrip();
         });

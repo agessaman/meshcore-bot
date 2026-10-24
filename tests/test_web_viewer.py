@@ -255,6 +255,14 @@ class TestPageRoutes:
         missing = sorted(name for name in named if not (root / "static" / name).is_file())
         assert missing == []
 
+    def test_banner_actions_leave_the_banners_intact(self, client):
+        """Clearing a flag used to overwrite its banner, so a later drop re-showed a stale success message."""
+        html = client.get("/").data.decode()
+        assert 'id="recovery-banner"' in html
+        assert "Offline flag cleared." not in html
+        assert "b.innerHTML" not in html
+        assert "b.className = 'alert alert-success" not in html
+
     def test_csp_allows_no_cdn_hosts(self, client):
         csp = client.get("/").headers["Content-Security-Policy"]
         for host in ("cdn.jsdelivr.net", "cdnjs.cloudflare.com", "unpkg.com", "fonts.googleapis.com"):
