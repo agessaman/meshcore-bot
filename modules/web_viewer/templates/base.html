@@ -749,6 +749,46 @@
 
 <body data-is-admin="{{ 'true' if (not auth_enabled or is_admin) else 'false' }}">
     <a class="skip-link" href="#main-content">Skip to content</a>
+    <script nonce="{{ g.csp_nonce }}">
+        // Font Awesome draws its glyphs as CSS content, which screen readers
+        // otherwise read into the name of the heading or button around them.
+        // Hide every icon from assistive tech unless it carries its own label,
+        // including icons pages build later. This is what Font Awesome's own JS
+        // does; the viewer loads only its CSS.
+        (function () {
+            const ICON = 'i.fas, i.far, i.fab, i.fa';
+            function mark(icon) {
+                if (icon.hasAttribute('aria-label')) {
+                    if (!icon.hasAttribute('role')) icon.setAttribute('role', 'img');
+                    // A label added after the icon was hidden un-hides it
+                    if (icon.dataset.iconHidden) {
+                        icon.removeAttribute('aria-hidden');
+                        delete icon.dataset.iconHidden;
+                    }
+                } else if (!icon.hasAttribute('aria-hidden')) {
+                    icon.setAttribute('aria-hidden', 'true');
+                    icon.dataset.iconHidden = '1';
+                }
+            }
+            function scan(root) {
+                if (root.nodeType !== 1) return;
+                if (root.matches(ICON)) mark(root);
+                root.querySelectorAll(ICON).forEach(mark);
+            }
+            new MutationObserver((records) => {
+                records.forEach((record) => {
+                    if (record.type === 'attributes') {
+                        if (record.target.matches(ICON)) mark(record.target);
+                    } else {
+                        record.addedNodes.forEach(scan);
+                    }
+                });
+            }).observe(document.body, {
+                childList: true, subtree: true, attributes: true, attributeFilter: ['aria-label'],
+            });
+            document.addEventListener('DOMContentLoaded', () => scan(document.body));
+        })();
+    </script>
     <div class="viewer-toasts" id="viewer-toasts" aria-live="polite"></div>
 
     <!-- Navigation -->
