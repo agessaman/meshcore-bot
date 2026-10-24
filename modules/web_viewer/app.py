@@ -96,6 +96,9 @@ from modules.web_viewer.dashboard_stats import (
 # RFC 8594 Sunset date advertised on the deprecated /api/stats endpoint.
 STATS_ENDPOINT_SUNSET = "Fri, 01 Jan 2027 00:00:00 GMT"
 
+# The bot rewrites system_health every 30 s; four missed beats means it has stopped.
+BOT_HEARTBEAT_STALE_S = 120
+
 
 def _validate_dynamic_key(key: str) -> "str | None":
     """Validate a dynamic-section row key. Returns an error message or None.
@@ -2269,25 +2272,28 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
 
         @self.app.route('/api/banner-status')
         def api_banner_status():
-            """Return current banner states for live JS polling."""
+            """Return current banner states, and whether the station is up, for live JS polling."""
             try:
                 radio_zombie = self.db_manager.get_metadata('bot.radio_zombie') == 'true'
                 radio_zombie_since = self.db_manager.get_metadata('bot.radio_zombie_since') or None
                 radio_offline = self.db_manager.get_metadata('bot.radio_offline') == 'true'
                 radio_offline_since = self.db_manager.get_metadata('bot.radio_offline_since') or None
                 bot_initializing = self.db_manager.get_metadata('bot.initializing') == 'true'
+                station = self._station_state()
             except Exception:
                 radio_zombie = False
                 radio_zombie_since = None
                 radio_offline = False
                 radio_offline_since = None
                 bot_initializing = False
+                station = {'bot_running': None, 'bot_last_seen': None, 'radio_connected': None}
             return jsonify({
                 'radio_zombie': radio_zombie,
                 'radio_zombie_since': radio_zombie_since,
                 'radio_offline': radio_offline,
                 'radio_offline_since': radio_offline_since,
                 'bot_initializing': bot_initializing,
+                **station,
             })
 
         @self.app.route('/api/system-health')
@@ -4756,6 +4762,31 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
                 return jsonify({'error': 'flood must be true or false'}), 400
             op_id = self._queue_operation('radio_advert', {'flood': flood})
             return jsonify({'success': True, 'operation_id': op_id})
+
+    def _station_state(self) -> dict[str, Any]:
+        """Whether the bot is running and its radio connected, from bot_metadata.
+
+        The stored start time survives the bot stopping, so uptime can't answer
+        "is it running?". The bot rewrites system_health every 30 seconds
+        (core.py's main loop); a heartbeat older than BOT_HEARTBEAT_STALE_S means
+        it isn't. radio_connected is the bot's last word on the link, so it's
+        only reported while the bot is there to keep it current.
+        """
+        last_seen = None
+        health = self.db_manager.get_system_health()
+        if isinstance(health, dict):
+            try:
+                last_seen = float(health.get('timestamp')) if health.get('timestamp') else None
+            except (TypeError, ValueError):
+                last_seen = None
+        bot_running = last_seen is not None and time.time() - last_seen < BOT_HEARTBEAT_STALE_S
+        radio_value = self.db_manager.get_metadata('radio_connected')
+        radio_connected = (radio_value == '1') if (bot_running and radio_value is not None) else None
+        return {
+            'bot_running': bot_running,
+            'bot_last_seen': last_seen,
+            'radio_connected': radio_connected,
+        }
 
     def _get_bot_uptime(self):
         """Get bot uptime in seconds from database"""

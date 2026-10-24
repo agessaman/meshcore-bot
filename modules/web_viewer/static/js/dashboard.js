@@ -128,7 +128,7 @@
     }
 
     function formatUptime(seconds) {
-        if (seconds === null || seconds === undefined || seconds <= 0) return 'bot down?';
+        if (seconds === null || seconds === undefined || seconds <= 0) return '—';
         const days = Math.floor(seconds / 86400);
         const hours = Math.floor((seconds % 86400) / 3600);
         const minutes = Math.floor((seconds % 3600) / 60);
@@ -200,6 +200,10 @@
             this.loadWindows();
             this.loadHealth();
             this.loadSummary();
+            // The station verdict comes from base.html's banner poll, which every
+            // page already runs; this page only renders it.
+            window.addEventListener('banner-status', (event) => this.applyStation(event.detail));
+            if (window.lastBannerStatus) this.applyStation(window.lastBannerStatus);
             this.timers.push(setInterval(() => this.whenVisible(() => this.loadHealth()), HEALTH_POLL_MS));
             this.timers.push(setInterval(() => this.whenVisible(() => this.loadSummary()), SUMMARY_POLL_MS));
             this.timers.push(setInterval(() => this.tickUptime(), 1000));
@@ -253,21 +257,44 @@
                 const response = await fetch('/api/health');
                 if (!response.ok) throw new Error('HTTP ' + response.status);
                 const data = await response.json();
-                this.botUptime = data.bot_uptime > 0 ? data.bot_uptime : null;
+                this.uptimeFromHealth = data.bot_uptime > 0 ? data.bot_uptime : null;
+                this.showUptime();
                 setText('health-clients', data.connected_clients ?? 0);
-                setText('health-uptime', formatUptime(this.botUptime));
-                const radio = el('health-radio');
-                if (radio) {
-                    const degraded = Boolean(data.radio_zombie);
-                    radio.textContent = degraded ? 'radio degraded' : 'radio ok';
-                    radio.className = 'health-strip__item ' + (degraded ? 'text-warning' : '');
-                }
-                this.setStatusDot('health-status-dot', data.status === 'healthy' ? 'connected' : 'warning');
-                setText('health-status-text', data.status === 'healthy' ? 'Online' : 'Degraded');
+                this.viewerReachable = true;
             } catch (err) {
+                // The viewer itself didn't answer; that outranks anything the
+                // last station verdict said.
+                this.viewerReachable = false;
                 this.setStatusDot('health-status-dot', 'disconnected');
-                setText('health-status-text', 'Offline');
+                setText('health-status-text', 'Viewer unreachable');
             }
+        }
+
+        /** One verdict for the strip: is the bot running, and is its radio up? */
+        applyStation(detail) {
+            const verdict = window.stationVerdict ? window.stationVerdict(detail) : null;
+            if (!verdict) return;
+            this.botRunning = Boolean(detail.bot_running);
+            this.showUptime();
+            if (this.viewerReachable === false) return;
+            this.setStatusDot('health-status-dot', verdict.lamp);
+            const text = el('health-status-text');
+            if (text) {
+                text.textContent = verdict.text;
+                text.title = verdict.title;
+            }
+            const radio = el('health-radio');
+            if (radio) {
+                radio.textContent = verdict.radio;
+                const tone = !this.botRunning ? '' : { warning: ' text-warning', disconnected: ' text-danger' }[verdict.lamp] || '';
+                radio.className = 'health-strip__item' + tone;
+            }
+        }
+
+        /** The stored start time outlives the bot, so uptime only shows while it runs. */
+        showUptime() {
+            this.botUptime = this.botRunning === false ? null : (this.uptimeFromHealth ?? null);
+            setText('health-uptime', formatUptime(this.botUptime));
         }
 
         async loadSummary() {
@@ -377,6 +404,7 @@
             const coverage = data.coverage || {};
             const series = data.series || {};
             const deltas = data.deltas || {};
+            this.renderDeltaGap(data.delta_gap);
 
             this.updateSnapshotAge();
 
@@ -424,6 +452,19 @@
             }
             this.renderDelta(id + '-delta', changePct);
             this.renderSparkline(id + '-spark', points);
+        }
+
+        /** Name the day the comparison can't use, rather than showing a fake collapse. */
+        renderDeltaGap(gapDate) {
+            const node = el('delta-gap');
+            if (!node) return;
+            node.hidden = !gapDate;
+            if (!gapDate) return;
+            const day = new Date(gapDate + 'T12:00:00');
+            const label = Number.isNaN(day.getTime())
+                ? gapDate
+                : day.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+            node.textContent = 'No change shown: nothing was recorded on ' + label + '.';
         }
 
         renderDelta(id, changePct) {

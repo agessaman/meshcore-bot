@@ -1121,6 +1121,39 @@
             formatSince(el, el.getAttribute('datetime'));
         });
 
+        // One verdict on the station for every page that shows it (dashboard
+        // strip, Real-time strip), from /api/banner-status. Lamp colors mean
+        // what DESIGN.md says: green listening, amber degraded, red not working.
+        // Returns null until the first poll answers.
+        window.stationVerdict = function (d) {
+            if (!d || d.bot_running === undefined || d.bot_running === null) return null;
+            var lastSeen = d.bot_last_seen ? new Date(d.bot_last_seen * 1000) : null;
+            if (d.bot_initializing) {
+                return { lamp: 'warning', text: 'Bot starting', radio: 'radio —',
+                         title: 'The bot is connecting to its radio.' };
+            }
+            if (!d.bot_running) {
+                return { lamp: 'disconnected', text: 'Bot not running', radio: 'radio —',
+                         title: lastSeen
+                             ? 'No word from the bot since ' + lastSeen.toLocaleString() + '. Nothing is being heard or sent.'
+                             : 'The bot hasn\'t run against this database yet. Nothing is being heard or sent.' };
+            }
+            if (d.radio_zombie) {
+                return { lamp: 'disconnected', text: 'Radio not responding', radio: 'radio not responding',
+                         title: 'The radio stopped answering. It needs a power cycle.' };
+            }
+            if (d.radio_connected === false) {
+                return { lamp: 'disconnected', text: 'Radio disconnected', radio: 'radio disconnected',
+                         title: 'The bot is running but has no link to its radio.' };
+            }
+            if (d.radio_offline) {
+                return { lamp: 'warning', text: 'Radio can\'t transmit', radio: 'radio can\'t transmit',
+                         title: 'Sends are failing. Packets may still be arriving.' };
+            }
+            return { lamp: 'connected', text: 'Listening',
+                     radio: d.radio_connected === true ? 'radio connected' : 'radio —', title: '' };
+        };
+
         // Live banner polling — updates all banners every 10s without a page reload
         (function () {
             function applyBannerStatus(d) {
@@ -1147,6 +1180,7 @@
 
                 // Pages that show radio state (Realtime) read it from here
                 // rather than polling a second time.
+                window.lastBannerStatus = d;
                 window.dispatchEvent(new CustomEvent('banner-status', { detail: d }));
             }
 
@@ -1157,6 +1191,8 @@
                     .catch(function () { });  // silent — server may be restarting
             }
 
+            // Once now, so pages showing the station verdict don't wait 10 s for it
+            pollBanners();
             setInterval(pollBanners, 10000);
         })();
     </script>
