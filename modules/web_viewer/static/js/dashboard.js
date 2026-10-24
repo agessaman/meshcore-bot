@@ -28,10 +28,19 @@
         series: '#0d6efd',
     };
 
-    const MIX_COLORS = [
-        '#0d6efd', '#20c997', '#fd7e14', '#6f42c1',
-        '#d63384', '#198754', '#0dcaf0', '#adb5bd',
-    ];
+    // Role mix: each role keeps one color, matching the Mesh page's node fills
+    // (repeaters Signal Blue, room servers Route Teal), and none of them is a
+    // status lamp. Roles the list doesn't know take the spares by rank.
+    const ROLE_COLORS = {
+        repeater: '#0d6efd',
+        roomserver: '#20c997',
+        companion: '#fd7e14',
+        sensor: '#6f42c1',
+        bot: '#d63384',
+        gateway: '#0dcaf0',
+    };
+    const MIX_SPARE_COLORS = ['#6610f2', '#795548', '#e83e8c'];
+    const MIX_NEUTRAL = '#adb5bd';  // Unknown and Other: not a category
 
     // Payload buckets on the encoding chart.  Must stay in the same order as
     // PACKET_ENCODING_BUCKETS server-side: the slot index picks the colour, so a
@@ -432,7 +441,7 @@
 
             // Routing, encoding, distributions
             this.renderRouteMix(mesh.route_mix, coverage.packets_window_label);
-            this.renderMix('payload-mix', mesh.payload_mix);
+            this.renderMix('payload-mix', mesh.payload_mix, (name) => this.payloadColor(name));
             this.renderHopsHistogram(mesh.hops, coverage.packets_window_label);
             this.renderDoughnut('contactsEncodingChart', 'contacts-encoding-summary',
                 (mesh.encoding || {}).contacts_7d, 'contacts');
@@ -440,7 +449,7 @@
                 (mesh.encoding || {}).packets, 'packets');
             setText('packets-window-label', coverage.packets_window_label || 'no data');
             this.renderPacketEncodingTrend(data.packet_encoding);
-            this.renderMix('role-mix', mesh.role_mix);
+            this.renderMix('role-mix', mesh.role_mix, this.roleColors());
 
             this.renderSourceNotes(coverage);
         }
@@ -1014,7 +1023,25 @@
             });
         }
 
-        renderMix(containerId, entries) {
+        /** Payload types take their fixed slot from the multibyte chart's palette. */
+        payloadColor(name) {
+            const palette = SERIES_PALETTE[isDark() ? 'dark' : 'light'];
+            const slot = PACKET_ENCODING_TYPES.indexOf(String(name).toUpperCase());
+            return palette[slot >= 0 ? slot : PACKET_ENCODING_TYPES.indexOf('OTHER')];
+        }
+
+        /** A color picker for one role-mix render: fixed roles, then spares by rank. */
+        roleColors() {
+            let spare = 0;
+            return (name) => {
+                const key = String(name).toLowerCase();
+                if (ROLE_COLORS[key]) return ROLE_COLORS[key];
+                if (key === 'unknown' || key === 'other') return MIX_NEUTRAL;
+                return MIX_SPARE_COLORS[spare++ % MIX_SPARE_COLORS.length];
+            };
+        }
+
+        renderMix(containerId, entries, colorFor) {
             const container = el(containerId);
             if (!container) return;
             const list = Array.isArray(entries) ? entries : [];
@@ -1027,7 +1054,7 @@
             // total shown beside them.
             const max = Math.max(...list.map((entry) => Number(entry[1]) || 0), 1);
             container.replaceChildren();
-            list.forEach((entry, index) => {
+            list.forEach((entry) => {
                 const [name, count] = entry;
                 const row = document.createElement('div');
                 row.className = 'mix-row';
@@ -1036,7 +1063,7 @@
                 const fill = document.createElement('div');
                 fill.className = 'mix-row__fill';
                 fill.style.width = ((Number(count) || 0) / max * 100).toFixed(1) + '%';
-                fill.style.backgroundColor = MIX_COLORS[index % MIX_COLORS.length];
+                fill.style.backgroundColor = colorFor(name);
                 track.appendChild(fill);
                 row.append(
                     makeTextElement('div', name, 'mix-row__name'),

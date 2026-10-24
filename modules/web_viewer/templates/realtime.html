@@ -145,6 +145,56 @@
         flex: 1 1 auto;
     }
 
+    /* Channel dots: 20 colors, ten hues kept clear of the status lamps' red,
+       amber and green, each at two lightness steps. Every one holds 3:1 on the
+       card in its theme (4.2:1 light, 5.2:1 dark); the channel name beside the
+       dot carries the identity, so a shared color between two channels is
+       harmless. */
+    :root {
+        --ch-0: #af5a21;
+        --ch-1: #737c00;
+        --ch-2: #008c7e;
+        --ch-3: #00879e;
+        --ch-4: #007eb5;
+        --ch-5: #4573c0;
+        --ch-6: #6e67bd;
+        --ch-7: #8c5cad;
+        --ch-8: #a25492;
+        --ch-9: #af5074;
+        --ch-10: #883600;
+        --ch-11: #515900;
+        --ch-12: #00685c;
+        --ch-13: #00637a;
+        --ch-14: #005b8f;
+        --ch-15: #234f99;
+        --ch-16: #4d4496;
+        --ch-17: #683987;
+        --ch-18: #7c316e;
+        --ch-19: #872c52;
+    }
+    [data-theme="dark"] {
+        --ch-0: #e08d5d;
+        --ch-1: #a2ad4f;
+        --ch-2: #26bdae;
+        --ch-3: #1db8ce;
+        --ch-4: #4cb0e5;
+        --ch-5: #78a5ef;
+        --ch-6: #9d99ed;
+        --ch-7: #bc8fdd;
+        --ch-8: #d387c2;
+        --ch-9: #e183a4;
+        --ch-10: #ffb382;
+        --ch-11: #c8d475;
+        --ch-12: #5ce4d5;
+        --ch-13: #58e0f6;
+        --ch-14: #75d7ff;
+        --ch-15: #9cccff;
+        --ch-16: #c2bfff;
+        --ch-17: #e3b4ff;
+        --ch-18: #fbacea;
+        --ch-19: #ffa9ca;
+    }
+
     /* The radio's own RX LED: dark until a packet arrives, lit while they do.
        It means "receiving", so it borrows the connected lamp's green. */
     .rt-rx {
@@ -1617,9 +1667,22 @@
     }
 
     /** A stable data hue per channel, so a channel is recognizable at a glance; its name is always beside it. */
+    // Each channel starts at its hashed slot, so its color is the same from one
+    // visit to the next; if another channel on this page already holds that
+    // slot it moves on to a free one, so up to 20 channels never share a color.
+    const CHANNEL_COLORS = 20;  // --ch-0 … --ch-19 in the page CSS
+    const channelSlots = new Map();
     function channelDotColor(channel) {
         const s = String(channel || '').trim().toLowerCase().replace(/^#/, '');
-        return `hsl(${hashStringToUint(s) % 360}, 55%, 50%)`;
+        if (!channelSlots.has(s)) {
+            const taken = new Set(channelSlots.values());
+            let slot = hashStringToUint(s) % CHANNEL_COLORS;
+            // Step 7 (coprime with 20): the next try is a clearly different hue,
+            // not the neighbor on the wheel, and every slot is still reached.
+            for (let i = 0; i < CHANNEL_COLORS && taken.has(slot); i++) slot = (slot + 7) % CHANNEL_COLORS;
+            channelSlots.set(s, slot);
+        }
+        return `var(--ch-${channelSlots.get(s)})`;
     }
 
     // ── Transmissions ──
