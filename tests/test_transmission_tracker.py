@@ -475,6 +475,34 @@ class TestUpdateCommandInDatabase:
         assert updated["repeater_counts"]["7e"] == 2
         assert updated["repeater_counts"]["ab"] == 1
 
+    def test_update_records_reply_packet_hash(self, mock_logger, tmp_path):
+        """The heard-back hash lets the realtime page fold the reply's echoes into the command."""
+        tracker, db_path = _build_tracker_with_db(mock_logger, tmp_path)
+        with closing(sqlite3.connect(db_path)) as conn:
+            conn.execute(
+                "INSERT INTO packet_stream (type, timestamp, data) VALUES (?, ?, ?)",
+                ("command", time.time(), json.dumps({"command_id": "cmd-hash", "repeat_count": 0})),
+            )
+            conn.commit()
+        rec = TransmissionRecord(
+            timestamp=time.time(), content="hello", target="general", message_type="channel",
+            command_id="cmd-hash", repeat_count=1, packet_hash="FEEDFACE00112233",
+        )
+        tracker._update_command_in_database(rec)
+        with closing(sqlite3.connect(db_path)) as conn:
+            row = conn.execute("SELECT data FROM packet_stream WHERE type = 'command'").fetchone()
+        assert json.loads(row[0])["reply_packet_hash"] == "FEEDFACE00112233"
+
+    def test_get_repeat_info_reports_packet_hash(self, mock_logger, tmp_path):
+        tracker, _ = _build_tracker_with_db(mock_logger, tmp_path)
+        rec = TransmissionRecord(
+            timestamp=time.time(), content="hello", target="general", message_type="channel",
+            command_id="cmd-info", packet_hash="FEEDFACE00112233",
+        )
+        tracker.confirmed_transmissions["FEEDFACE00112233"] = rec
+        assert tracker.get_repeat_info(command_id="cmd-info")["packet_hash"] == "FEEDFACE00112233"
+        assert tracker.get_repeat_info(command_id="missing")["packet_hash"] is None
+
     def test_no_matching_row_leaves_db_unchanged(self, mock_logger, tmp_path):
         """If no row matches command_id, the DB is not modified."""
         tracker, db_path = _build_tracker_with_db(mock_logger, tmp_path)

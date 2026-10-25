@@ -306,20 +306,7 @@ class DatabaseInfoManager {
     }
     
     showError(message) {
-        const errorDiv = document.createElement('div');
-        errorDiv.className = 'alert alert-danger';
-        errorDiv.textContent = message;
-        
-        const content = document.querySelector('.container-fluid');
-        if (content) {
-            content.insertBefore(errorDiv, content.firstChild);
-            
-            setTimeout(() => {
-                if (errorDiv.parentNode) {
-                    errorDiv.parentNode.removeChild(errorDiv);
-                }
-            }, 5000);
-        }
+        window.viewerToast(String(message ?? ''), 'danger');
     }
 }
 

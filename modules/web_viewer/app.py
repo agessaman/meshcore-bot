@@ -9,6 +9,7 @@ import functools
 import hmac
 import json
 import logging
+import math
 import os
 import re
 import secrets
@@ -95,6 +96,17 @@ from modules.web_viewer.dashboard_stats import (
 
 # RFC 8594 Sunset date advertised on the deprecated /api/stats endpoint.
 STATS_ENDPOINT_SUNSET = "Fri, 01 Jan 2027 00:00:00 GMT"
+
+# The bot rewrites system_health every 30 s; four missed beats means it has stopped.
+BOT_HEARTBEAT_STALE_S = 120
+
+# Packet lookup by hash (Real-time rows whose packet the page never loaded). A
+# message is logged just after the packet that carried it and a command a little
+# later still, so the window reaches back further than it reaches forward.
+PACKET_HASH_RE = re.compile(r"[0-9A-Fa-f]{8,64}")
+PACKET_LOOKUP_BEFORE_S = 120
+PACKET_LOOKUP_AFTER_S = 30
+PACKET_LOOKUP_LIMIT = 50
 
 
 def _validate_dynamic_key(key: str) -> "str | None":
@@ -850,9 +862,10 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
             '/api/stream_data',
         ])
 
-        # Issue #240 public HTML surface (Realtime page renders; live socket stays admin).
+        # Issue #240 public HTML surface. Realtime is admin-only: its live socket
+        # is, so an anonymous visit would only ever show an empty page.
         _PUBLIC_PAGE_PATHS = frozenset([
-            '/', '/realtime', '/contacts', '/mesh',
+            '/', '/contacts', '/mesh',
         ])
 
         # Anonymous-safe GET APIs: mesh-visible / aggregate data only. No channel
@@ -949,11 +962,8 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
             response.headers['X-Content-Type-Options'] = 'nosniff'
             response.headers['X-Frame-Options'] = 'SAMEORIGIN'
             response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
-            # Allow CDNs used by templates (base.html, login.html, mesh.html).
-            # Without these hosts, browsers block external CSS/JS/fonts (not CSRF).
-            # fonts.googleapis.com serves login.html's stylesheet and fonts.gstatic.com
-            # the font files it references — both hosts are needed or the login page
-            # silently falls back to system fonts.
+            # Every script, stylesheet and font is served from static/ (see
+            # static/vendor/README.md); the only external hosts are the map tiles.
             # The highest-risk admin screens have migrated their inline handlers
             # and authorize their remaining template scripts with a per-request
             # nonce. Other legacy screens retain unsafe-inline until their inline
@@ -974,28 +984,22 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
                 'api_explorer',
             }
             if request.endpoint in nonce_hardened_endpoints:
-                script_source = f"script-src 'self' 'nonce-{g.csp_nonce}' "
+                script_source = f"script-src 'self' 'nonce-{g.csp_nonce}'; "
             else:
-                script_source = "script-src 'self' 'unsafe-inline' "
+                script_source = "script-src 'self' 'unsafe-inline'; "
             response.headers['Content-Security-Policy'] = (
                 "default-src 'self'; "
                 + script_source
-                + "https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com; "
-                "style-src 'self' 'unsafe-inline' "
-                "https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com "
-                "https://fonts.googleapis.com; "
+                + "style-src 'self' 'unsafe-inline'; "
                 "img-src 'self' data: blob: https://*.tile.openstreetmap.org "
-                "https://tiles.openfreemap.org "
-                "https://unpkg.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; "
-                "connect-src 'self' ws: wss: https://tiles.openfreemap.org "
-                "https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com; "
+                "https://tiles.openfreemap.org; "
+                "connect-src 'self' ws: wss: https://tiles.openfreemap.org; "
                 # MapLibre GL runs its renderer in a worker spawned from a blob: URL.
                 # Without these it falls back to default-src 'self' and the dark
                 # basemap fails to start.
                 "worker-src 'self' blob:; "
                 "child-src 'self' blob:; "
-                "font-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com "
-                "https://fonts.gstatic.com"
+                "font-src 'self'"
             )
 
             # Sanitize error details from 5xx JSON responses to prevent info disclosure.
@@ -2277,25 +2281,28 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
 
         @self.app.route('/api/banner-status')
         def api_banner_status():
-            """Return current banner states for live JS polling."""
+            """Return current banner states, and whether the station is up, for live JS polling."""
             try:
                 radio_zombie = self.db_manager.get_metadata('bot.radio_zombie') == 'true'
                 radio_zombie_since = self.db_manager.get_metadata('bot.radio_zombie_since') or None
                 radio_offline = self.db_manager.get_metadata('bot.radio_offline') == 'true'
                 radio_offline_since = self.db_manager.get_metadata('bot.radio_offline_since') or None
                 bot_initializing = self.db_manager.get_metadata('bot.initializing') == 'true'
+                station = self._station_state()
             except Exception:
                 radio_zombie = False
                 radio_zombie_since = None
                 radio_offline = False
                 radio_offline_since = None
                 bot_initializing = False
+                station = {'bot_running': None, 'bot_last_seen': None, 'bot_started': None, 'radio_connected': None}
             return jsonify({
                 'radio_zombie': radio_zombie,
                 'radio_zombie_since': radio_zombie_since,
                 'radio_offline': radio_offline,
                 'radio_offline_since': radio_offline_since,
                 'bot_initializing': bot_initializing,
+                **station,
             })
 
         @self.app.route('/api/system-health')
@@ -3000,6 +3007,50 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
                         self.logger.debug(f"Error parsing command data: {e}")
 
                 return jsonify({'commands': commands})
+
+        @self.app.route('/api/packets/by-hash/<packet_hash>')
+        @self._api_errors('Error looking up packet by hash')
+        def api_packets_by_hash(packet_hash):
+            """Every stored reception of one packet, oldest first, heard near ``near``.
+
+            Real-time asks for this when a message or command row has a hash but
+            the page never loaded its packet: the replay on load reaches back
+            far less for packets than for messages. The hash is only inside the
+            row's JSON, so ``near`` (the message's epoch time) bounds the scan to
+            the timestamp index. Rows come back marked as replayed, like the
+            socket replay's.
+            """
+            if not PACKET_HASH_RE.fullmatch(packet_hash):
+                return jsonify({'error': 'Invalid packet hash'}), 400
+            try:
+                near = float(request.args.get('near', ''))
+            except ValueError:
+                return jsonify({'error': 'near must be an epoch time'}), 400
+            if not math.isfinite(near):
+                return jsonify({'error': 'near must be an epoch time'}), 400
+
+            with self._db_connection() as conn:
+                rows = conn.execute(
+                    "SELECT timestamp, data FROM packet_stream"
+                    " WHERE type = 'packet' AND timestamp BETWEEN ? AND ?"
+                    " AND json_valid(data) AND json_extract(data, '$.packet_hash') = ?"
+                    " ORDER BY timestamp LIMIT ?",
+                    (
+                        near - PACKET_LOOKUP_BEFORE_S,
+                        near + PACKET_LOOKUP_AFTER_S,
+                        packet_hash.upper(),
+                        PACKET_LOOKUP_LIMIT,
+                    ),
+                ).fetchall()
+
+            packets = []
+            for row in rows:
+                data = json.loads(row['data'])
+                if isinstance(data, dict):
+                    data['stream_ts'] = row['timestamp']
+                    data['replayed'] = True
+                    packets.append(data)
+            return jsonify({'packets': packets})
 
         # ── Export ──────────────────────────────────────────────────────────
 
@@ -4764,6 +4815,33 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
                 return jsonify({'error': 'flood must be true or false'}), 400
             op_id = self._queue_operation('radio_advert', {'flood': flood})
             return jsonify({'success': True, 'operation_id': op_id})
+
+    def _station_state(self) -> dict[str, Any]:
+        """Whether the bot is running and its radio connected, from bot_metadata.
+
+        The stored start time survives the bot stopping, so uptime can't answer
+        "is it running?". The bot rewrites system_health every 30 seconds
+        (core.py's main loop); a heartbeat older than BOT_HEARTBEAT_STALE_S means
+        it isn't. radio_connected is the bot's last word on the link, so it's
+        only reported while the bot is there to keep it current.
+        """
+        last_seen = None
+        health = self.db_manager.get_system_health()
+        if isinstance(health, dict):
+            try:
+                last_seen = float(health.get('timestamp')) if health.get('timestamp') else None
+            except (TypeError, ValueError):
+                last_seen = None
+        bot_running = last_seen is not None and time.time() - last_seen < BOT_HEARTBEAT_STALE_S
+        radio_value = self.db_manager.get_metadata('radio_connected')
+        radio_connected = (radio_value == '1') if (bot_running and radio_value is not None) else None
+        started = self.db_manager.get_bot_start_time() if bot_running else None
+        return {
+            'bot_running': bot_running,
+            'bot_last_seen': last_seen,
+            'bot_started': started,
+            'radio_connected': radio_connected,
+        }
 
     def _get_bot_uptime(self):
         """Get bot uptime in seconds from database"""

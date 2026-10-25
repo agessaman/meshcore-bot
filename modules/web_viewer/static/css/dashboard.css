@@ -61,6 +61,68 @@
     cursor: progress;
 }
 
+/* ── First run ─────────────────────────────────────────────────────────── */
+/* Shown instead of the grid until the station has heard anything; one panel
+   in the station's own voice rather than fifteen "No data." boxes. */
+
+.first-run {
+    max-width: 46rem;
+    padding: 1.25rem 1.5rem;
+    background-color: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    box-shadow: 0 1px 3px var(--shadow-color);
+}
+
+.first-run__title {
+    margin: 0 0 0.35rem;
+    font-size: 1.25rem;
+    font-weight: 600;
+}
+
+.first-run__state {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+    font-weight: 600;
+}
+
+.first-run__state .status-indicator {
+    flex: none;
+    margin-right: 0;
+}
+
+.first-run__lead,
+.first-run__note {
+    color: var(--text-muted);
+}
+
+.first-run__lead {
+    margin-bottom: 0.5rem;
+}
+
+.first-run__steps {
+    margin: 0 0 1rem;
+    padding-left: 1.25rem;
+}
+
+.first-run__steps li {
+    margin-bottom: 0.4rem;
+    padding-left: 0.25rem;
+}
+
+.first-run__steps li::marker {
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+}
+
+.first-run__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
 /* ── Section headings ──────────────────────────────────────────────────── */
 
 .dashboard-section-title {
@@ -127,6 +189,29 @@
     font-size: 0.75rem;
     color: var(--text-muted);
 }
+
+/* The newest arrival's name, truncated so the tile keeps its height */
+.stat-tile__newest {
+    display: flex;
+    min-width: 0;
+    white-space: nowrap;
+}
+
+.stat-tile__newest-facts {
+    flex: none;
+    margin-left: 0.25em;
+}
+
+.stat-tile__newest-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+    flex: 0 1 auto;
+    margin-left: 0.25em;
+    color: var(--text-color);
+    font-weight: 600;
+}
+
 
 .stat-tile__spark {
     position: relative;
@@ -330,6 +415,18 @@
     white-space: nowrap;
 }
 
+.top-list-row__rank {
+    flex: 0 0 1.5rem;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+}
+
+.top-list-row .tag-chip {
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+}
+
 /* ── Chart wrappers ────────────────────────────────────────────────────── */
 
 .chart-box {
@@ -415,5 +512,15 @@
 
     .health-strip {
         gap: 0.25rem 1rem;
+    }
+}
+
+/* Touch screens: the bare icon buttons get a 36px hit area. Padding with a
+   matching negative margin grows the target without moving the icon. */
+@media (pointer: coarse) {
+    .dashboard-info-btn,
+    .health-strip .btn-refresh {
+        padding: 0.7rem;
+        margin: -0.7rem;
     }
 }

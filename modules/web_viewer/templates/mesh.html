@@ -37,6 +37,19 @@
         border-radius: 8px;
         padding: 3px 10px;
     }
+    /* Stat values take the color of what they count on the map: repeaters in
+       Signal Blue like their dots, edges in the recency hue, observations in
+       viridis (the heat ramp). Text steps of each, per site theme. */
+    #mesh-graph-container {
+        --mesh-text-edges: #b0226f;
+        --mesh-text-obs: #2c728e;
+    }
+    [data-theme="dark"] #mesh-graph-container {
+        --mesh-text-edges: #f472b6;
+        --mesh-text-obs: #5ec962;
+    }
+    .mesh-stat-value--edges { color: var(--mesh-text-edges); }
+    .mesh-stat-value--obs { color: var(--mesh-text-obs); }
     .mesh-stat-chip > i {
         color: var(--text-muted);
         font-size: 0.8rem;
@@ -51,7 +64,7 @@
         font-size: 0.95rem;
     }
     .mesh-stat-label {
-        font-size: 0.66rem;
+        font-size: 0.7rem;
         color: var(--text-muted);
         white-space: nowrap;
     }
@@ -67,8 +80,8 @@
         color: var(--text-color);
     }
     .mesh-view-switch .btn.active {
-        background: #0d6efd;
-        border-color: #0d6efd;
+        background: var(--bs-primary);
+        border-color: var(--bs-primary);
         color: #fff;
     }
     .mesh-tool-group .btn.active {
@@ -79,9 +92,6 @@
     @media (max-width: 991.98px) {
         .mesh-btn-text {
             display: none; /* icon-only view switch on small screens */
-        }
-        .mesh-stat-label {
-            font-size: 0.62rem;
         }
         .mesh-stat-chip {
             padding: 2px 8px;
@@ -152,21 +162,21 @@
         <div class="mesh-stat-chip" title="Total connections">
             <i class="fas fa-link"></i>
             <div class="mesh-stat-text">
-                <span id="stat-edge-count" class="mesh-stat-value text-info">0</span>
+                <span id="stat-edge-count" class="mesh-stat-value mesh-stat-value--edges">0</span>
                 <span class="mesh-stat-label" id="stat-edge-detail">Edges</span>
             </div>
         </div>
         <div class="mesh-stat-chip" title="Average observations per edge">
             <i class="fas fa-chart-line"></i>
             <div class="mesh-stat-text">
-                <span id="stat-avg-obs" class="mesh-stat-value text-success">0</span>
+                <span id="stat-avg-obs" class="mesh-stat-value mesh-stat-value--obs">0</span>
                 <span class="mesh-stat-label">Avg Obs/Edge</span>
             </div>
         </div>
         <div class="mesh-stat-chip" title="Average edge distance">
             <i class="fas fa-ruler"></i>
             <div class="mesh-stat-text">
-                <span id="stat-avg-dist" class="mesh-stat-value text-warning">0</span>
+                <span id="stat-avg-dist" class="mesh-stat-value">0</span>
                 <span class="mesh-stat-label">Avg km</span>
             </div>
         </div>
@@ -181,23 +191,23 @@
             </button>
         </div>
         <div class="btn-group mesh-tool-group" role="group" aria-label="Tools">
-            <button class="btn btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#filterPanel" title="Filters">
-                <i class="fas fa-filter"></i>
+            <button class="btn btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#filterPanel" title="Filters" aria-label="Filters">
+                <i class="fas fa-filter" aria-hidden="true"></i>
             </button>
-            <button class="btn btn-sm" type="button" id="btn-heat" title="Hot connections: color edges by traffic (viridis)">
-                <i class="fas fa-fire"></i>
+            <button class="btn btn-sm" type="button" id="btn-heat" title="Hot connections: color edges by traffic (viridis)" aria-label="Hot connections">
+                <i class="fas fa-fire" aria-hidden="true"></i>
             </button>
-            <button class="btn btn-sm" type="button" id="btn-mesh-theme" title="Toggle map dark mode (independent of site theme)">
-                <i class="fas fa-moon" id="mesh-theme-icon"></i>
+            <button class="btn btn-sm" type="button" id="btn-mesh-theme" title="Toggle map dark mode (independent of site theme)" aria-label="Map dark mode">
+                <i class="fas fa-moon" aria-hidden="true" id="mesh-theme-icon"></i>
             </button>
-            <button class="btn btn-sm" type="button" id="btn-mesh-refresh" title="Refresh data">
-                <i class="fas fa-sync-alt"></i>
+            <button class="btn btn-sm" type="button" id="btn-mesh-refresh" title="Refresh data" aria-label="Refresh data">
+                <i class="fas fa-sync-alt" aria-hidden="true"></i>
             </button>
-            <button class="btn btn-sm" type="button" id="btn-mesh-export" title="Export JSON">
-                <i class="fas fa-download"></i>
+            <button class="btn btn-sm" type="button" id="btn-mesh-export" title="Export JSON" aria-label="Export JSON">
+                <i class="fas fa-download" aria-hidden="true"></i>
             </button>
-            <button class="btn btn-sm" type="button" id="btn-fullscreen" title="Fullscreen">
-                <i class="fas fa-expand"></i>
+            <button class="btn btn-sm" type="button" id="btn-fullscreen" title="Fullscreen" aria-label="Fullscreen">
+                <i class="fas fa-expand" aria-hidden="true"></i>
             </button>
         </div>
     </div>
@@ -274,24 +284,29 @@
         <div class="card h-100 visualization-card">
             <div class="card-body p-0 h-100" style="position: relative;">
                 <!-- Map View -->
-                <div id="map-view" style="height: 100%; width: 100%;"></div>
+                <div id="map-view" style="height: 100%; width: 100%;" aria-label="Mesh map" aria-describedby="mesh-visual-note"></div>
                 
                 <!-- Graph View -->
-                <div id="graph-view" style="height: 100%; width: 100%; display: none;"></div>
+                <div id="graph-view" style="height: 100%; width: 100%; display: none;" role="img" aria-label="Mesh graph" aria-describedby="mesh-visual-note"></div>
+                <p id="mesh-visual-note" class="visually-hidden">
+                    The map and graph are visual only. Arrow keys pan the map and plus and minus zoom it.
+                    The counts above summarize the mesh, Search Node in the filters narrows it,
+                    and the Contacts page lists every repeater with its details.
+                </p>
                 
                 <!-- Connection Legend -->
                 <div id="connection-legend" class="connection-legend">
                     <strong>Connection Types:</strong>
                     <div class="connection-legend-item">
-                        <span class="connection-legend-color" style="background-color: #10b981;"></span>
+                        <span class="connection-legend-color connection-legend-color--in"></span>
                         <span>Incoming</span>
                     </div>
                     <div class="connection-legend-item">
-                        <span class="connection-legend-color" style="background-color: #3b82f6;"></span>
+                        <span class="connection-legend-color connection-legend-color--out"></span>
                         <span>Outgoing</span>
                     </div>
                     <div class="connection-legend-item">
-                        <span class="connection-legend-color" style="background-color: #9333ea;"></span>
+                        <span class="connection-legend-color connection-legend-color--both"></span>
                         <span>Bidirectional</span>
                     </div>
                     <hr style="margin: 4px 0;">
@@ -309,9 +324,19 @@
                     </div>
                 </div>
 
+                <!-- Recency scale, shown in the default (age) coloring -->
+                <div id="age-legend" class="scale-legend age-legend active">
+                    <div class="scale-legend-title">Last heard</div>
+                    <div class="age-legend-item"><span class="age-legend-swatch" style="--swatch: var(--mesh-age-day)"></span>Under 24 hours</div>
+                    <div class="age-legend-item"><span class="age-legend-swatch" style="--swatch: var(--mesh-age-week)"></span>1–7 days</div>
+                    <div class="age-legend-item"><span class="age-legend-swatch" style="--swatch: var(--mesh-age-month)"></span>7–30 days</div>
+                    <div class="age-legend-item"><span class="age-legend-swatch" style="--swatch: var(--mesh-age-older)"></span>Older</div>
+                    <div class="age-legend-item"><span class="age-legend-swatch" style="--swatch: var(--mesh-age-unknown)"></span>Unknown</div>
+                </div>
+
                 <!-- Hot-connections (viridis) scale, shown when heat coloring is active -->
-                <div id="heat-legend" class="heat-legend">
-                    <div class="heat-legend-title">Observations</div>
+                <div id="heat-legend" class="scale-legend heat-legend">
+                    <div class="scale-legend-title">Observations</div>
                     <div class="heat-legend-bar"></div>
                     <div class="heat-legend-labels">
                         <span id="heat-legend-min">1</span>
@@ -325,12 +350,12 @@
 </div>
 
 <!-- Node Details Modal -->
-<div class="modal fade" id="nodeDetailsModal" tabindex="-1">
+<div class="modal fade" id="nodeDetailsModal" tabindex="-1" aria-labelledby="nodeDetailsTitle">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="nodeDetailsTitle">Node Details</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body" id="nodeDetailsBody">
                 <!-- Content populated by JavaScript -->
@@ -340,14 +365,96 @@
 </div>
 
 
+<!-- Map and graph libraries are vendored under static/vendor/ (versions in its README) so the page works offline. -->
 <!-- Leaflet CSS -->
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="{{ url_for('static', filename='vendor/leaflet/leaflet.css') }}" />
 <!-- MapLibre GL CSS (dark basemap is a vector style; see TILE_LAYERS) -->
-<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.css" />
+<link rel="stylesheet" href="{{ url_for('static', filename='vendor/maplibre-gl/maplibre-gl.css') }}" />
 <!-- vis-network CSS -->
-<link rel="stylesheet" href="https://unpkg.com/vis-network@9.1.9/styles/vis-network.min.css" />
+<link rel="stylesheet" href="{{ url_for('static', filename='vendor/vis-network/vis-network.min.css') }}" />
 
 <style>
+    /* Mesh display palette. The map and graph have their own light/dark toggle
+       (.mesh-dark on #mesh-graph-container), independent of the site theme, so
+       everything drawn on or floating over them reads these instead of the
+       base.html tokens. The JS reads the data colors back through meshColor(). */
+    #mesh-graph-container {
+        /* Overlay chrome: legends, popups, map controls */
+        --mesh-canvas: #ffffff;
+        --mesh-raised: #ffffff;
+        --mesh-raised-hover: #f1f3f5;
+        --mesh-panel-bg: rgba(255, 255, 255, 0.95);
+        --mesh-panel-ink: #212529;
+        --mesh-panel-muted: #5f666d;
+        --mesh-panel-rule: rgba(0, 0, 0, 0.12);
+        --mesh-panel-shadow: rgba(0, 0, 0, 0.2);
+        --mesh-link: #0d6efd;
+        --mesh-code: #ab296a;
+        --mesh-code-bg: rgba(0, 0, 0, 0.08);
+        --mesh-chip-border: rgba(0, 0, 0, 0.15);
+
+        /* Recency: one hue that fades as a link goes unheard */
+        --mesh-age-day: #c0267a;
+        --mesh-age-week: #d0699b;
+        --mesh-age-month: #c5a3b9;
+        --mesh-age-older: #bdb6c4;
+        --mesh-age-unknown: #8a9097;
+
+        /* Nodes. Star gold is the star icon's color, not the warning lamp. */
+        --mesh-node-repeater: #0d6efd;
+        --mesh-node-roomserver: #0f9f80;
+        --mesh-node-ring: #ffffff;
+        --mesh-star: #ffc107;
+
+        /* Selection and traced paths are drawn in ink, so they never read as data */
+        --mesh-select: #212529;
+
+        /* Direction from a selected node: the dashboard's series blue, orange, violet */
+        --mesh-dir-in: #2a78d6;
+        --mesh-dir-out: #eb6834;
+        --mesh-dir-both: #4a3aa7;
+        --mesh-dim: #8a9097;
+
+        /* Graph labels */
+        --mesh-label: #212529;
+        --mesh-label-halo: #ffffff;
+    }
+    #mesh-graph-container.mesh-dark {
+        --mesh-canvas: #1a1a1a;
+        --mesh-raised: #2d2d2d;
+        --mesh-raised-hover: #3d3d3d;
+        --mesh-panel-bg: rgba(45, 45, 45, 0.95);
+        --mesh-panel-ink: #e9ecef;
+        --mesh-panel-muted: #adb5bd;
+        --mesh-panel-rule: #495057;
+        --mesh-panel-shadow: rgba(0, 0, 0, 0.45);
+        --mesh-link: #6ea8fe;
+        --mesh-code: #e685b5;
+        --mesh-code-bg: rgba(255, 255, 255, 0.12);
+        --mesh-chip-border: rgba(255, 255, 255, 0.2);
+
+        --mesh-age-day: #f472b6;
+        --mesh-age-week: #c86b9a;
+        --mesh-age-month: #8a6a80;
+        --mesh-age-older: #5d5763;
+        --mesh-age-unknown: #6c737a;
+
+        --mesh-node-repeater: #3d8bfd;
+        --mesh-node-roomserver: #20c997;
+        --mesh-node-ring: #ffffff;
+        --mesh-star: #ffc107;
+
+        --mesh-select: #f8f9fa;
+
+        --mesh-dir-in: #3987e5;
+        --mesh-dir-out: #d95926;
+        --mesh-dir-both: #9085e9;
+        --mesh-dim: #6c737a;
+
+        --mesh-label: #e9ecef;
+        --mesh-label-halo: #1a1a1a;
+    }
+
     #map-view, #graph-view {
         min-height: 600px;
     }
@@ -384,35 +491,28 @@
         -ms-touch-action: pan-x pan-y;
         touch-action: pan-x pan-y;
     }
-    .node-marker-repeater {
-        background-color: #0d6efd;
-    }
-    .node-marker-roomserver {
-        background-color: #198754;
-    }
-    .node-marker-starred {
-        border: 3px solid #ffc107;
-    }
     .mesh-node-popup .leaflet-popup-content {
         margin: 10px 15px;
     }
     .mesh-node-popup .leaflet-popup-content table {
         border-collapse: collapse;
     }
-    .mesh-node-popup .leaflet-popup-content code {
-        background-color: rgba(0, 0, 0, 0.1);
+    .mesh-node-popup .leaflet-popup-content code,
+    .mesh-edge-popup .leaflet-popup-content code {
+        background-color: var(--mesh-code-bg);
+        color: var(--mesh-code);
         padding: 2px 4px;
         border-radius: 3px;
-        font-family: 'Courier New', monospace;
+        font-family: var(--font-mono);
     }
     .mesh-node-popup .prefix-byte {
         display: inline-block;
-        background-color: rgba(0, 0, 0, 0.08);
-        border: 1px solid rgba(0, 0, 0, 0.15);
+        background-color: var(--mesh-code-bg);
+        border: 1px solid var(--mesh-chip-border);
         border-radius: 3px;
         padding: 2px 5px;
         margin-right: 4px;
-        font-family: 'Courier New', monospace;
+        font-family: var(--font-mono);
         font-size: 0.9em;
     }
     .mesh-node-popup .prefix-byte:last-child {
@@ -425,12 +525,12 @@
         position: absolute;
         bottom: 30px;
         right: 10px;
-        background: rgba(255, 255, 255, 0.95);
-        color: #212529;
+        background: var(--mesh-panel-bg);
+        color: var(--mesh-panel-ink);
         padding: 10px;
-        border-radius: 5px;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-        border: 1px solid rgba(0,0,0,0.1);
+        border-radius: 0.375rem;
+        box-shadow: 0 2px 5px var(--mesh-panel-shadow);
+        border: 1px solid var(--mesh-panel-rule);
         z-index: 1000;
         font-size: 0.85em;
         display: none;
@@ -454,34 +554,53 @@
         margin-right: 8px;
         display: inline-block;
     }
-    .mesh-dark .connection-legend {
-        background: rgba(45, 45, 45, 0.95);
-        color: #e9ecef;
-        border-color: #495057;
+    .connection-legend-color--in { background: var(--mesh-dir-in); }
+    .connection-legend-color--out { background: var(--mesh-dir-out); }
+    .connection-legend-color--both { background: var(--mesh-dir-both); }
+    .connection-legend hr {
+        margin: 4px 0;
+        border-color: var(--mesh-panel-rule);
+        opacity: 1;
     }
 
-    /* Hot-connections (viridis) scale legend */
-    .heat-legend {
+    /* Scale legends (recency, heat): bottom-left, one at a time */
+    .scale-legend {
         position: absolute;
         bottom: 30px;
         left: 10px;
-        background: rgba(255, 255, 255, 0.95);
-        color: #212529;
+        background: var(--mesh-panel-bg);
+        color: var(--mesh-panel-ink);
         padding: 8px 10px;
-        border-radius: 5px;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-        border: 1px solid rgba(0,0,0,0.1);
+        border-radius: 0.375rem;
+        box-shadow: 0 2px 5px var(--mesh-panel-shadow);
+        border: 1px solid var(--mesh-panel-rule);
         z-index: 1000;
-        font-size: 0.75em;
+        font-size: 0.75rem;
         display: none;
         min-width: 140px;
     }
-    .heat-legend.active {
+    .scale-legend.active {
         display: block;
     }
-    .heat-legend-title {
+    /* A selection recolors edges by direction, so the recency key no longer applies */
+    #connection-legend.active ~ #age-legend {
+        display: none;
+    }
+    .scale-legend-title {
         font-weight: 600;
         margin-bottom: 4px;
+    }
+    .age-legend-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        line-height: 1.6;
+    }
+    .age-legend-swatch {
+        width: 20px;
+        height: 3px;
+        border-radius: 2px;
+        background: var(--swatch);
     }
     .heat-legend-bar {
         height: 8px;
@@ -492,39 +611,23 @@
         display: flex;
         justify-content: space-between;
         margin-top: 2px;
-        color: #6c757d;
+        color: var(--mesh-panel-muted);
+        font-variant-numeric: tabular-nums;
     }
     .heat-legend-note {
         margin-top: 2px;
-        font-size: 0.9em;
-        color: #6c757d;
-    }
-    .mesh-dark .heat-legend-note {
-        color: #adb5bd;
-    }
-    .mesh-dark .heat-legend {
-        background: rgba(45, 45, 45, 0.95);
-        color: #e9ecef;
-        border-color: #495057;
+        color: var(--mesh-panel-muted);
     }
     /* Dark mode compresses the cold (near-black) end of the ramp out of the scale */
     .mesh-dark .heat-legend-bar {
         background: linear-gradient(90deg, #414487, #2c728e, #22a884, #7ad151, #fde725);
     }
-    .mesh-dark .heat-legend-labels {
-        color: #adb5bd;
-    }
 
     /* Mesh display dark theme: Leaflet chrome + graph canvas.
        Applied via .mesh-dark on #mesh-graph-container, independent of [data-theme]. */
-    #graph-view {
-        background: #ffffff;
-    }
-    .mesh-dark #graph-view {
-        background: #1a1a1a;
-    }
+    #graph-view,
     .mesh-dark .leaflet-container {
-        background: #1a1a1a;
+        background: var(--mesh-canvas);
     }
     /* Raster fallback only (see setBaseTileLayer): invert the OSM tiles the way
        openstreetmap.org itself did for dark mode.  Scoped to the tiles so node
@@ -536,34 +639,50 @@
     .mesh-basemap-fallback .leaflet-tile {
         filter: invert(1) hue-rotate(180deg) brightness(0.95) contrast(0.9);
     }
-    .mesh-dark .leaflet-popup-content-wrapper,
-    .mesh-dark .leaflet-popup-tip {
-        background: #2d2d2d;
-        color: #e9ecef;
+    div.vis-tooltip {
+        font-family: inherit;
+        box-shadow: 0 2px 5px var(--mesh-panel-shadow);
     }
+    div.vis-tooltip,
+    .mesh-dark .leaflet-popup-content-wrapper,
+    .mesh-dark .leaflet-popup-tip,
+    .mesh-dark .leaflet-tooltip {
+        background: var(--mesh-raised);
+        color: var(--mesh-panel-ink);
+        border-color: var(--mesh-panel-rule);
+    }
+    .mesh-dark .leaflet-tooltip-top::before { border-top-color: var(--mesh-raised); }
+    .mesh-dark .leaflet-tooltip-bottom::before { border-bottom-color: var(--mesh-raised); }
+    .mesh-dark .leaflet-tooltip-left::before { border-left-color: var(--mesh-raised); }
+    .mesh-dark .leaflet-tooltip-right::before { border-right-color: var(--mesh-raised); }
     .mesh-dark .leaflet-control-zoom a {
-        background: #2d2d2d;
-        color: #e9ecef;
-        border-color: #495057;
+        background: var(--mesh-raised);
+        color: var(--mesh-panel-ink);
+        border-color: var(--mesh-panel-rule);
     }
     .mesh-dark .leaflet-control-zoom a:hover {
-        background: #3d3d3d;
+        background: var(--mesh-raised-hover);
     }
     .mesh-dark .leaflet-control-attribution {
         background: rgba(26, 26, 26, 0.7);
-        color: #adb5bd;
+        color: var(--mesh-panel-muted);
     }
-    .mesh-dark .leaflet-control-attribution a {
-        color: #6ea8fe;
+    .leaflet-container .leaflet-control-attribution a,
+    .leaflet-popup-content a {
+        color: var(--mesh-link);
     }
-    .mesh-dark .mesh-node-popup .leaflet-popup-content code,
-    .mesh-dark .mesh-edge-popup .leaflet-popup-content code {
-        background-color: rgba(255, 255, 255, 0.12);
-        color: #e685b5; /* Bootstrap's code pink is unreadable on the dark popup */
+    /* Labels and rules inside node and edge popups (built in JS) */
+    .mesh-popup-label {
+        padding: 2px 8px 2px 0;
+        color: var(--mesh-panel-muted);
     }
-    .mesh-dark .mesh-node-popup .prefix-byte {
-        background-color: rgba(255, 255, 255, 0.1);
-        border-color: rgba(255, 255, 255, 0.2);
+    .mesh-popup-rule {
+        margin: 5px 0;
+        border-color: var(--mesh-panel-rule);
+        opacity: 1;
+    }
+    .mesh-popup-star {
+        color: var(--mesh-star);
     }
 </style>
 
@@ -576,7 +695,7 @@
         width: 100vw !important;
         height: 100vh !important;
         z-index: 9999 !important;
-        background: white;
+        background: var(--bg-color);
     }
     
     .fullscreen-mode .leaflet-control-container {
@@ -604,41 +723,28 @@
         top: 10px;
         right: 10px;
         z-index: 10001;
-        background: rgba(255, 255, 255, 0.9);
-        border: 1px solid #ccc;
-        border-radius: 4px;
+        background: var(--mesh-panel-bg);
+        color: var(--mesh-panel-ink);
+        border: 1px solid var(--mesh-panel-rule);
+        border-radius: 0.25rem;
         padding: 8px 12px;
         cursor: pointer;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        box-shadow: 0 2px 5px var(--mesh-panel-shadow);
     }
     
     .fullscreen-mode .fullscreen-exit-btn:hover {
-        background: rgba(255, 255, 255, 1);
-    }
-    
-    [data-theme="dark"] .fullscreen-mode {
-        background: var(--bg-color);
-    }
-    
-    [data-theme="dark"] .fullscreen-mode .fullscreen-exit-btn {
-        background: rgba(45, 45, 45, 0.9);
-        border-color: #555;
-        color: var(--text-color);
-    }
-    
-    [data-theme="dark"] .fullscreen-mode .fullscreen-exit-btn:hover {
-        background: rgba(45, 45, 45, 1);
+        background: var(--mesh-raised-hover);
     }
 </style>
 
 <!-- Leaflet JS -->
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="{{ url_for('static', filename='vendor/leaflet/leaflet.js') }}"></script>
 <!-- MapLibre GL + Leaflet bridge, for the vector dark basemap. Must load after Leaflet:
      the bridge binds against both globals. -->
-<script src="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.js"></script>
-<script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.1.4/leaflet-maplibre-gl.js"></script>
+<script src="{{ url_for('static', filename='vendor/maplibre-gl/maplibre-gl.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor/maplibre-gl-leaflet/leaflet-maplibre-gl.js') }}"></script>
 <!-- vis-network JS -->
-<script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
+<script src="{{ url_for('static', filename='vendor/vis-network/vis-network.min.js') }}"></script>
 
 <script nonce="{{ g.csp_nonce }}">
     // Global state
@@ -864,9 +970,40 @@
         baseTileLayer.addTo(map);
     }
 
+    // The mesh display palette lives in CSS (see the --mesh-* tokens) so both
+    // themes are defined in one place; the renderers need concrete colors, so
+    // read them back whenever the mesh theme changes.
+    const MESH_COLOR_VARS = {
+        ageDay: '--mesh-age-day', ageWeek: '--mesh-age-week', ageMonth: '--mesh-age-month',
+        ageOlder: '--mesh-age-older', ageUnknown: '--mesh-age-unknown',
+        repeater: '--mesh-node-repeater', roomserver: '--mesh-node-roomserver',
+        ring: '--mesh-node-ring', star: '--mesh-star', select: '--mesh-select',
+        dirIn: '--mesh-dir-in', dirOut: '--mesh-dir-out', dirBoth: '--mesh-dir-both', dim: '--mesh-dim',
+        label: '--mesh-label', labelHalo: '--mesh-label-halo',
+    };
+    let meshPalette = null;
+
+    function readMeshPalette() {
+        const style = getComputedStyle(document.getElementById('mesh-graph-container'));
+        meshPalette = {};
+        Object.entries(MESH_COLOR_VARS).forEach(([key, cssVar]) => {
+            meshPalette[key] = style.getPropertyValue(cssVar).trim();
+        });
+    }
+
+    function meshColor(key) {
+        if (!meshPalette) readMeshPalette();
+        return meshPalette[key];
+    }
+
+    function nodeRingColor(node) {
+        return node.is_starred ? meshColor('star') : meshColor('ring');
+    }
+
     function applyMeshTheme() {
         const dark = getMeshTheme() === 'dark';
         document.getElementById('mesh-graph-container').classList.toggle('mesh-dark', dark);
+        readMeshPalette();
         const icon = document.getElementById('mesh-theme-icon');
         if (icon) {
             icon.className = dark ? 'fas fa-sun' : 'fas fa-moon';
@@ -882,9 +1019,23 @@
             console.debug('Error saving mesh theme:', error);
         }
         applyMeshTheme();
-        // Heat colors are theme-dependent (dark compresses the cold end), so re-render
-        if (edgeColorMode === 'heat') {
+        recolorMesh();
+    }
+
+    // Edge, node and label colors depend on the mesh theme. The map re-renders;
+    // the graph is recolored in place so a theme switch doesn't rerun its layout.
+    function recolorMesh() {
+        if (currentView !== 'graph' || !graphNetwork) {
             applyFilters();
+            return;
+        }
+        graphNetwork.setOptions({
+            nodes: { font: { color: meshColor('label'), strokeColor: meshColor('labelHalo') } }
+        });
+        if (highlightedNodeObject) {
+            highlightNodeConnectionsGraph(highlightedNodeObject);
+        } else {
+            clearHighlights();
         }
     }
 
@@ -902,9 +1053,7 @@
         new MutationObserver(() => {
             if (!meshThemeOverride) {
                 applyMeshTheme();
-                if (edgeColorMode === 'heat') {
-                    applyFilters();
-                }
+                recolorMesh();
             }
         }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
     }
@@ -1002,7 +1151,7 @@
         if (edgeColorMode === 'heat') {
             return viridisThemed(nodeHeatT(node));
         }
-        return node.role === 'roomserver' ? '#198754' : '#0d6efd';
+        return node.role === 'roomserver' ? meshColor('roomserver') : meshColor('repeater');
     }
 
     // --- Initial map framing: home mesh component ---
@@ -1075,6 +1224,8 @@
     }
 
     function updateHeatLegend() {
+        const ageLegend = document.getElementById('age-legend');
+        if (ageLegend) ageLegend.classList.toggle('active', edgeColorMode !== 'heat');
         const legend = document.getElementById('heat-legend');
         if (!legend) return;
         legend.classList.toggle('active', edgeColorMode === 'heat');
@@ -1088,6 +1239,7 @@
         const btn = document.getElementById('btn-heat');
         if (btn) {
             btn.classList.toggle('active', edgeColorMode === 'heat');
+            btn.setAttribute('aria-pressed', String(edgeColorMode === 'heat'));
         }
     }
 
@@ -1342,7 +1494,7 @@
                 if (normalizedPathEdgeKeys.has(normalizedKey)) {
                     // Apply path highlight style
                     line.setStyle({
-                        color: '#fbbf24', // Bright yellow/orange
+                        color: meshColor('select'),
                         weight: 6, // Thicker
                         opacity: 1.0 // Fully opaque
                     });
@@ -1351,7 +1503,7 @@
                     const originalStyle = allEdgeStyles.get(edgeKey);
                     if (originalStyle) {
                         line.setStyle({
-                            color: '#848484',
+                            color: meshColor('dim'),
                             weight: Math.max(1, originalStyle.weight * 0.5),
                             opacity: 0.2
                         });
@@ -1401,7 +1553,7 @@
                     marker.setStyle({
                         radius: highlightSize,
                         weight: highlightBorderWeight,
-                        color: '#f59e0b' // Amber border
+                        color: meshColor('select')
                     });
                 }
             }
@@ -1441,7 +1593,7 @@
                     marker.setStyle({
                         radius: normalSize,
                         weight: normalBorderWeight,
-                        color: node.is_starred ? '#ffc107' : '#ffffff',
+                        color: nodeRingColor(node),
                         fillOpacity: 0.8
                     });
                 }
@@ -1970,6 +2122,21 @@
     }
     
     // Render map view
+    // Chrome makes Leaflet's interactive SVG shapes Tab stops even without a
+    // tabindex, which put hundreds of unnamed, ring-less stops between the
+    // toolbar and the rest of the page. The shapes carry no text a screen reader
+    // could use, so take them out of the tab order and the accessibility tree;
+    // the map container itself stays focusable for arrow-key panning and +/- zoom.
+    function hideMapShapesFromAssistiveTech() {
+        if (!map) return;
+        ['overlayPane', 'markerPane'].forEach(name => {
+            const pane = map.getPane(name);
+            if (!pane) return;
+            pane.querySelectorAll('svg').forEach(svg => svg.setAttribute('aria-hidden', 'true'));
+            pane.querySelectorAll('.leaflet-interactive').forEach(el => el.setAttribute('tabindex', '-1'));
+        });
+    }
+
     function renderMap() {
         // Preserve highlighted node and path before clearing
         const preservedHighlightedNode = highlightedNodeObject;
@@ -2180,50 +2347,50 @@
             const edgeTooltipContent = `
                 <div style="min-width: 250px;">
                     <strong style="font-size: 1.1em;">${fromPrefixDisplay} → ${toPrefixDisplay}</strong><br>
-                    <hr style="margin: 5px 0; border-color: #666;">
+                    <hr class="mesh-popup-rule">
                     <table style="width: 100%; font-size: 0.9em;">
                         <tr>
-                            <td style="padding: 2px 8px 2px 0; color: #888;"><strong>From:</strong></td>
+                            <td class="mesh-popup-label"><strong>From:</strong></td>
                             <td style="padding: 2px 0;">${fromNode ? escapeHtml(fromNode.name) : escapeHtml(edge.from_prefix)}</td>
                         </tr>
                         <tr>
-                            <td style="padding: 2px 8px 2px 0; color: #888;"><strong>To:</strong></td>
+                            <td class="mesh-popup-label"><strong>To:</strong></td>
                             <td style="padding: 2px 0;">${toNode ? escapeHtml(toNode.name) : escapeHtml(edge.to_prefix)}</td>
                         </tr>
                         <tr>
-                            <td style="padding: 2px 8px 2px 0; color: #888;"><strong>Observations:</strong></td>
+                            <td class="mesh-popup-label"><strong>Observations:</strong></td>
                             <td style="padding: 2px 0;">${edge.observation_count}</td>
                         </tr>
                         ${evidenceLabel ? `<tr>
-                            <td style="padding: 2px 8px 2px 0; color: #888;"><strong>Evidence:</strong></td>
+                            <td class="mesh-popup-label"><strong>Evidence:</strong></td>
                             <td style="padding: 2px 0;">${evidenceLabel}</td>
                         </tr>` : ''}
                         ${isNeighborEdge(edge) && formatSnr(edge.best_snr) ? `<tr>
-                            <td style="padding: 2px 8px 2px 0; color: #888;"><strong>Best SNR:</strong></td>
+                            <td class="mesh-popup-label"><strong>Best SNR:</strong></td>
                             <td style="padding: 2px 0;">${formatSnr(edge.best_snr)}${formatSnr(edge.last_snr) ? ` (last ${formatSnr(edge.last_snr)})` : ''}</td>
                         </tr>` : ''}
                         <tr>
-                            <td style="padding: 2px 8px 2px 0; color: #888;"><strong>Distance:</strong></td>
+                            <td class="mesh-popup-label"><strong>Distance:</strong></td>
                             <td style="padding: 2px 0;">${edgeDistance ? edgeDistance.toFixed(2) + ' km' : 'N/A'}</td>
                         </tr>
                         <tr>
-                            <td style="padding: 2px 8px 2px 0; color: #888;"><strong>Avg Hop Position:</strong></td>
+                            <td class="mesh-popup-label"><strong>Avg Hop Position:</strong></td>
                             <td style="padding: 2px 0;">${edge.avg_hop_position ? edge.avg_hop_position.toFixed(2) : 'N/A'}</td>
                         </tr>
                         <tr>
-                            <td style="padding: 2px 8px 2px 0; color: #888;"><strong>First Seen:</strong></td>
+                            <td class="mesh-popup-label"><strong>First Seen:</strong></td>
                             <td style="padding: 2px 0;">${edge.first_seen ? new Date(edge.first_seen).toLocaleString() : 'Unknown'}</td>
                         </tr>
                         <tr>
-                            <td style="padding: 2px 8px 2px 0; color: #888;"><strong>Last Seen:</strong></td>
+                            <td class="mesh-popup-label"><strong>Last Seen:</strong></td>
                             <td style="padding: 2px 0;">${edge.last_seen ? new Date(edge.last_seen).toLocaleString() : 'Unknown'}</td>
                         </tr>
                         ${edge.from_public_key ? `<tr>
-                            <td style="padding: 2px 8px 2px 0; color: #888;"><strong>From Public Key:</strong></td>
+                            <td class="mesh-popup-label"><strong>From Public Key:</strong></td>
                             <td style="padding: 2px 0;"><code style="font-size: 0.85em;">${formatPublicKey(edge.from_public_key)}</code></td>
                         </tr>` : ''}
                         ${edge.to_public_key ? `<tr>
-                            <td style="padding: 2px 8px 2px 0; color: #888;"><strong>To Public Key:</strong></td>
+                            <td class="mesh-popup-label"><strong>To Public Key:</strong></td>
                             <td style="padding: 2px 0;"><code style="font-size: 0.85em;">${formatPublicKey(edge.to_public_key)}</code></td>
                         </tr>` : ''}
                     </table>
@@ -2284,7 +2451,7 @@
             const marker = L.circleMarker([node.latitude, node.longitude], {
                 radius: nodeSize,
                 fillColor: getNodeFillColor(node),
-                color: node.is_starred ? '#ffc107' : '#fff',
+                color: nodeRingColor(node),
                 weight: borderWeight,
                 opacity: 1,
                 fillOpacity: 0.8,
@@ -2317,42 +2484,42 @@
             const tooltipContent = `
                 <div style="min-width: 250px;">
                     <strong style="font-size: 1.1em;">${escapeHtml(node.name)}</strong><br>
-                    <hr style="margin: 5px 0; border-color: #666;">
+                    <hr class="mesh-popup-rule">
                     <table style="width: 100%; font-size: 0.9em;">
                         <tr>
-                            <td style="padding: 2px 8px 2px 0; color: #888;"><strong>Prefix:</strong></td>
+                            <td class="mesh-popup-label"><strong>Prefix:</strong></td>
                             <td style="padding: 2px 0;">${formatPrefixAsByteChunksHTML(node.public_key || node.prefix || '', numBytes)}</td>
                         </tr>
                         <tr>
-                            <td style="padding: 2px 8px 2px 0; color: #888;"><strong>Public Key:</strong></td>
+                            <td class="mesh-popup-label"><strong>Public Key:</strong></td>
                             <td style="padding: 2px 0;"><code style="font-size: 0.85em;">${formatPublicKey(node.public_key)}</code></td>
                         </tr>
                         <tr>
-                            <td style="padding: 2px 8px 2px 0; color: #888;"><strong>Role:</strong></td>
+                            <td class="mesh-popup-label"><strong>Role:</strong></td>
                             <td style="padding: 2px 0; text-transform: capitalize;">${escapeHtml(node.role)}</td>
                         </tr>
                         <tr>
-                            <td style="padding: 2px 8px 2px 0; color: #888;"><strong>Location:</strong></td>
+                            <td class="mesh-popup-label"><strong>Location:</strong></td>
                             <td style="padding: 2px 0;">${node.latitude.toFixed(6)}, ${node.longitude.toFixed(6)}</td>
                         </tr>
                         <tr>
-                            <td style="padding: 2px 8px 2px 0; color: #888;"><strong>Starred:</strong></td>
-                            <td style="padding: 2px 0;">${node.is_starred ? '<i class="fas fa-star" style="color: #ffc107;"></i> Yes' : 'No'}</td>
+                            <td class="mesh-popup-label"><strong>Starred:</strong></td>
+                            <td style="padding: 2px 0;">${node.is_starred ? '<i class="fas fa-star mesh-popup-star" aria-hidden="true"></i> Yes' : 'No'}</td>
                         </tr>
                         <tr>
-                            <td style="padding: 2px 8px 2px 0; color: #888;"><strong>Last Heard:</strong></td>
+                            <td class="mesh-popup-label"><strong>Last Heard:</strong></td>
                             <td style="padding: 2px 0;">${node.last_heard ? new Date(node.last_heard).toLocaleString() : 'Never'}</td>
                         </tr>
                         <tr>
-                            <td style="padding: 2px 8px 2px 0; color: #888;"><strong>Last Advert:</strong></td>
+                            <td class="mesh-popup-label"><strong>Last Advert:</strong></td>
                             <td style="padding: 2px 0;">${node.last_advert_timestamp ? new Date(node.last_advert_timestamp).toLocaleString() : 'Never'}</td>
                         </tr>
                         <tr>
-                            <td style="padding: 2px 8px 2px 0; color: #888;"><strong>Connections:</strong></td>
+                            <td class="mesh-popup-label"><strong>Connections:</strong></td>
                             <td style="padding: 2px 0;">${connections.length} total (${incoming} incoming, ${outgoing} outgoing)</td>
                         </tr>
                         <tr>
-                            <td style="padding: 2px 8px 2px 0; color: #888;"><strong>Path Observations:</strong></td>
+                            <td class="mesh-popup-label"><strong>Path Observations:</strong></td>
                             <td style="padding: 2px 0;">${(nodeHeatTotals.get(getNodeId(node)) || 0).toLocaleString()}</td>
                         </tr>
                     </table>
@@ -2399,6 +2566,8 @@
         // We'll restore it after rendering if preservedHighlightedNode exists
         // Note: preservedHighlightedNode was already declared at the start of renderMap()
         highlightedNode = null;
+
+        hideMapShapesFromAssistiveTech();
         
         // Fit to bounds on initial load, otherwise restore previous view state.
         // Prefer the home mesh component (multi-byte connectivity from the bot's
@@ -2465,15 +2634,9 @@
                     prefix: node.prefix, // Store prefix for reference
                     color: {
                         background: getNodeFillColor(node),
-                        border: node.is_starred ? '#ffc107' : '#fff',
-                        highlight: {
-                            background: node.role === 'roomserver' ? '#10b981' : '#f59e0b',
-                            border: '#d97706'
-                        },
-                        hover: {
-                            background: node.role === 'roomserver' ? '#10b981' : '#f59e0b',
-                            border: '#d97706'
-                        }
+                        border: nodeRingColor(node),
+                        highlight: { background: getNodeFillColor(node), border: meshColor('select') },
+                        hover: { background: getNodeFillColor(node), border: meshColor('select') }
                     },
                     size: getNodeSize(node),
                     borderWidth: getBorderWeight(getNodeSize(node), node.is_starred),
@@ -2524,30 +2687,22 @@
                 shape: 'dot',
                 font: {
                     size: 13,
-                    color: '#ffffff',
-                    strokeWidth: 2,
-                    strokeColor: '#000000',
+                    color: meshColor('label'),
+                    strokeWidth: 3,
+                    strokeColor: meshColor('labelHalo'),
                     face: 'Arial',
                     align: 'center'
                 },
                 labelHighlightBold: true,
                 // Reduce label overlap by adjusting label distance
                 margin: 8,
-                // Global fallback so hover/highlight are never default gray (#848484)
-                color: {
-                    highlight: { border: '#d97706', background: '#f59e0b' },
-                    hover: { border: '#d97706', background: '#f59e0b' }
-                },
+                // Hover and selection keep the node's own fill and ring it in ink,
+                // so a selected repeater still reads as a repeater
                 chosen: {
                     node: function(values, id, selected, hovering) {
                         if (hovering || selected) {
-                            values.color = {
-                                background: '#f59e0b',
-                                border: '#d97706',
-                                highlight: { background: '#f59e0b', border: '#d97706' },
-                                hover: { background: '#f59e0b', border: '#d97706' }
-                            };
-                            values.font = { size: 15, color: '#fef3c7', strokeWidth: 3, strokeColor: '#92400e' };
+                            values.borderColor = meshColor('select');
+                            values.borderWidth = Math.max(values.borderWidth, 3);
                             values.size = values.size * 1.2; // Slightly enlarge on hover/select
                         }
                     }
@@ -2643,11 +2798,11 @@
                         }
                         let highlightColor;
                         if (bidirectionalEdgeIds.has(edgeId)) {
-                            highlightColor = '#9333ea';
+                            highlightColor = meshColor('dirBoth');
                         } else if (fromNodeId === focusNodeId) {
-                            highlightColor = '#3b82f6';
+                            highlightColor = meshColor('dirOut');
                         } else {
-                            highlightColor = '#10b981';
+                            highlightColor = meshColor('dirIn');
                         }
                         const baseWidth = getEdgeWeight(edge);
                         edgeStyles[edgeId] = {
@@ -2669,7 +2824,7 @@
                     }
                     return {
                         id: edgeId,
-                        color: { color: '#848484', opacity: 0.2 },
+                        color: { color: meshColor('dim'), opacity: 0.2 },
                         width: 1
                     };
                 });
@@ -2839,20 +2994,19 @@
                 const edgeNodes = edgeToNodes.get(edgeKey);
                 let highlightColor;
                 if (bidirectionalEdges.has(edgeKey) || bidirectionalEdges.has(`${edge.to_prefix}-${edge.from_prefix}`)) {
-                    // Bidirectional - purple
-                    highlightColor = '#9333ea';
+                    highlightColor = meshColor('dirBoth');
                 } else if (edgeNodes && edgeNodes.fromNode) {
                     const fromNodeId = getNodeId(edgeNodes.fromNode);
                     if (fromNodeId === clickedNodeId) {
-                        // Outgoing - blue (from node matches clicked node)
-                        highlightColor = '#3b82f6';
+                        // Outgoing (from node matches clicked node)
+                        highlightColor = meshColor('dirOut');
                     } else {
-                        // Incoming - green (to node matches clicked node)
-                        highlightColor = '#10b981';
+                        // Incoming (to node matches clicked node)
+                        highlightColor = meshColor('dirIn');
                     }
                 } else {
                     // Fallback to prefix matching if node objects not available
-                    highlightColor = edge.from_prefix === clickedNode.prefix ? '#3b82f6' : '#10b981';
+                    highlightColor = edge.from_prefix === clickedNode.prefix ? meshColor('dirOut') : meshColor('dirIn');
                 }
                 
                 // Store original style
@@ -2872,7 +3026,7 @@
                 const originalStyle = allEdgeStyles.get(edgeKey);
                 if (originalStyle) {
                     line.setStyle({
-                        color: '#848484', // Gray color for dimmed edges
+                        color: meshColor('dim'),
                         weight: Math.max(1, originalStyle.weight * 0.5), // Thinner
                         opacity: 0.2 // Much lower opacity
                     });
@@ -2907,7 +3061,7 @@
                 marker.setStyle({
                     radius: highlightSize,
                     weight: highlightBorderWeight,
-                    color: '#ffc107',
+                    color: meshColor('select'),
                     fillOpacity: 1.0
                 });
             } else if (connectedNodeIds.has(nodeId)) {
@@ -2922,7 +3076,7 @@
                     marker.setStyle({
                         radius: nodeSize,
                         weight: borderWeight,
-                        color: node.is_starred ? '#ffc107' : '#fff',
+                        color: nodeRingColor(node),
                         fillOpacity: 0.8
                     });
                 }
@@ -3016,14 +3170,14 @@
                     bidirectionalEdgeIds.add(reverseEdgeId);
                 }
                 
-                // Use connection direction colors: blue outgoing, green incoming, purple bidirectional
+                // Connection direction colors (see the connection legend)
                 let highlightColor;
                 if (bidirectionalEdgeIds.has(edgeId)) {
-                    highlightColor = '#9333ea'; // Purple for bidirectional
+                    highlightColor = meshColor('dirBoth');
                 } else if (fromNodeId === clickedNodeId) {
-                    highlightColor = '#3b82f6'; // Blue for outgoing
+                    highlightColor = meshColor('dirOut');
                 } else {
-                    highlightColor = '#10b981'; // Green for incoming
+                    highlightColor = meshColor('dirIn');
                 }
                 const baseWidth = getEdgeWeight(edge);
                 edgeStyles[edgeId] = {
@@ -3047,7 +3201,7 @@
             }
             return {
                 id: edgeId,
-                color: { color: '#848484', opacity: 0.2 },
+                color: { color: meshColor('dim'), opacity: 0.2 },
                 width: 1
             };
         });
@@ -3056,7 +3210,7 @@
         graphNetwork.selectNodes([clickedNodeId]);
         
         // Update all nodes in one batch: one update per graph node so labels aren't overwritten by duplicates
-        const nodeHighlightColor = clickedNode.role === 'roomserver' ? '#10b981' : '#f59e0b';
+        const select = meshColor('select');
         const graphNodeIds = graphNetwork.body.data.nodes.getIds();
         const nodeUpdates = graphNodeIds.map(nid => {
             const n = filteredNodes.find(fn => getNodeId(fn) === nid);
@@ -3064,8 +3218,7 @@
             const isClicked = nid === clickedNodeId;
             const isLinked = connectedNodeIds.has(nid);
             const bg = getNodeFillColor(n);
-            const border = n.is_starred ? '#ffc107' : '#fff';
-            const hlBg = n.role === 'roomserver' ? '#10b981' : '#f59e0b';
+            const border = nodeRingColor(n);
             const label = isLinked
                 ? (n.name.length > 22 ? n.name.substring(0, 22) + '... (' + n.prefix + ')' : n.name + ' (' + n.prefix + ')')
                 : '';
@@ -3075,14 +3228,14 @@
                 label: label,
                 title: title,
                 color: isClicked
-                    ? { border: '#d97706', background: nodeHighlightColor, highlight: { border: '#d97706', background: nodeHighlightColor }, hover: { border: '#d97706', background: nodeHighlightColor } }
-                    : { background: bg, border: border, highlight: { background: hlBg, border: '#d97706' }, hover: { background: hlBg, border: '#d97706' } },
+                    ? { border: select, background: bg, highlight: { border: select, background: bg }, hover: { border: select, background: bg } }
+                    : { background: bg, border: border, highlight: { background: bg, border: select }, hover: { background: bg, border: select } },
                 borderWidth: isClicked ? 4 : getBorderWeight(getNodeSize(n), n.is_starred),
                 size: isClicked ? getNodeSize(clickedNode) + 2 : getNodeSize(n)
             };
             // Force label to render for linked nodes (vis-network can skip if font not set on update)
             if (isLinked) {
-                update.font = { size: 13, color: '#ffffff', strokeWidth: 2, strokeColor: '#000000' };
+                update.font = { size: 13, color: meshColor('label'), strokeWidth: 3, strokeColor: meshColor('labelHalo') };
             }
             return update;
         });
@@ -3118,7 +3271,7 @@
                     marker.setStyle({
                         radius: nodeSize,
                         weight: borderWeight,
-                        color: node.is_starred ? '#ffc107' : '#fff',
+                        color: nodeRingColor(node),
                         fillOpacity: 0.8
                     });
                 }
@@ -3172,8 +3325,8 @@
                 const nodeSize = getNodeSize(node);
                 const borderWidth = getBorderWeight(nodeSize, node.is_starred);
                 const bg = getNodeFillColor(node);
-                const border = node.is_starred ? '#ffc107' : '#fff';
-                const hlBg = node.role === 'roomserver' ? '#10b981' : '#f59e0b';
+                const border = nodeRingColor(node);
+                const select = meshColor('select');
                 return {
                     id: nodeId,
                     label: getDefaultNodeLabel(node),
@@ -3182,8 +3335,8 @@
                     color: {
                         background: bg,
                         border: border,
-                        highlight: { background: hlBg, border: '#d97706' },
-                        hover: { background: hlBg, border: '#d97706' }
+                        highlight: { background: bg, border: select },
+                        hover: { background: bg, border: select }
                     },
                     borderWidth: borderWidth,
                     size: nodeSize
@@ -3283,32 +3436,34 @@
     function getEdgeColor(edge) {
         if (edgeColorMode === 'heat') return heatColor(edge);
 
-        if (!edge.last_seen) return '#6c757d'; // Gray for unknown
+        // Recency fades one hue (see the age legend); the status lamps stay out of it
+        if (!edge.last_seen) return meshColor('ageUnknown');
 
         const lastSeen = new Date(edge.last_seen);
         const now = new Date();
         const daysAgo = (now - lastSeen) / (1000 * 60 * 60 * 24);
 
-        if (daysAgo < 1) return '#198754'; // Green (recent)
-        if (daysAgo < 7) return '#ffc107'; // Yellow
-        if (daysAgo < 30) return '#fd7e14'; // Orange
-        return '#dc3545'; // Red (old)
+        if (daysAgo < 1) return meshColor('ageDay');
+        if (daysAgo < 7) return meshColor('ageWeek');
+        if (daysAgo < 30) return meshColor('ageMonth');
+        return meshColor('ageOlder');
     }
 
     function getEdgeOpacity(edge) {
         // Heat mode: hot edges pop, cold edges recede (recency shown by color mode 'age')
         if (edgeColorMode === 'heat') return 0.45 + 0.5 * heatT(edge);
 
-        if (!edge.last_seen) return 0.3;
+        // The age colors already fade toward the basemap, so opacity steps gently
+        if (!edge.last_seen) return 0.6;
 
         const lastSeen = new Date(edge.last_seen);
         const now = new Date();
         const daysAgo = (now - lastSeen) / (1000 * 60 * 60 * 24);
 
-        if (daysAgo < 1) return 0.9;
-        if (daysAgo < 7) return 0.7;
-        if (daysAgo < 30) return 0.5;
-        return 0.3;
+        if (daysAgo < 1) return 0.95;
+        if (daysAgo < 7) return 0.85;
+        if (daysAgo < 30) return 0.75;
+        return 0.65;
     }
     
     function showNodeDetails(node) {

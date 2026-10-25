@@ -1339,3 +1339,88 @@ class TestDashboardApi:
         assert response.headers["Deprecation"] == "true"
         assert "Sunset" in response.headers
         assert response.get_json()["deprecated"] is True
+
+
+class TestDeltaGaps:
+    """A compared day on which nothing was heard is a collection gap, not a collapse."""
+
+    @staticmethod
+    def _day(conn, date_str, packets, adverts, messages):
+        conn.execute(
+            "INSERT INTO daily_rollup (date, is_final, packets_total, adverts_total, messages_total, nodes_active) "
+            "VALUES (?, 1, ?, ?, ?, ?)",
+            (date_str, packets, adverts, messages, adverts),
+        )
+
+    def _deltas(self, viewer):
+        with closing(viewer._dashboard_connection()) as conn:
+            return (viewer.dashboard_stats._deltas_from_rollup(conn),
+                    viewer.dashboard_stats._delta_gap_from_rollup(conn))
+
+    def test_silent_last_day_suppresses_the_change(self, viewer):
+        with closing(viewer._dashboard_connection()) as conn:
+            self._day(conn, "2026-10-22", 44000, 600, 340)
+            self._day(conn, "2026-10-23", 0, 0, 0)
+            conn.commit()
+        deltas, gap = self._deltas(viewer)
+        assert gap == "2026-10-23"
+        assert deltas and all(value is None for value in deltas.values())
+
+    def test_silent_baseline_day_is_named_too(self, viewer):
+        with closing(viewer._dashboard_connection()) as conn:
+            self._day(conn, "2026-10-22", 0, 0, 0)
+            self._day(conn, "2026-10-23", 44000, 600, 340)
+            conn.commit()
+        deltas, gap = self._deltas(viewer)
+        assert gap == "2026-10-22"
+        assert all(value is None for value in deltas.values())
+
+    def test_no_history_at_all_is_not_called_a_gap(self, viewer):
+        """A fresh install has two empty days: nothing to compare, but no gap to name."""
+        with closing(viewer._dashboard_connection()) as conn:
+            self._day(conn, "2026-10-22", 0, 0, 0)
+            self._day(conn, "2026-10-23", 0, 0, 0)
+            conn.commit()
+        deltas, gap = self._deltas(viewer)
+        assert gap is None
+        assert all(value is None for value in deltas.values())
+
+    def test_quiet_but_heard_days_still_compare(self, viewer):
+        with closing(viewer._dashboard_connection()) as conn:
+            self._day(conn, "2026-10-22", 200, 10, 0)
+            self._day(conn, "2026-10-23", 100, 5, 0)
+            conn.commit()
+        deltas, gap = self._deltas(viewer)
+        assert gap is None
+        assert deltas["adverts"] == -50.0
+
+
+class TestNewestNode:
+    """The New nodes tile names the newest arrival heard in the last day."""
+
+    def _mesh(self, viewer):
+        from modules.web_viewer.dashboard_stats import SOURCE_CONTACT_TRACKING
+        with closing(viewer._dashboard_connection()) as conn:
+            return viewer.dashboard_stats._mesh_snapshot(conn, SOURCE_CONTACT_TRACKING)
+
+    def _contact(self, conn, pk, name, hops, age):
+        conn.execute(
+            "INSERT INTO complete_contact_tracking (public_key, name, role, hop_count, first_heard, last_heard) "
+            "VALUES (?, ?, 'repeater', ?, datetime('now','localtime',?), datetime('now','localtime'))",
+            (pk, name, hops, age),
+        )
+
+    def test_names_the_most_recent_first_heard(self, viewer):
+        with sqlite3.connect(viewer.db_path) as conn:
+            self._contact(conn, _pk(1), "older", 2, "-5 hours")
+            self._contact(conn, _pk(2), "newest", 3, "-1 hours")
+            self._contact(conn, _pk(3), "last-week", 1, "-6 days")
+        newest = self._mesh(viewer)["newest_node"]
+        assert newest["name"] == "newest"
+        assert newest["hops"] == 3
+        assert abs(time.time() - 3600 - newest["first_heard"]) < 120
+
+    def test_nothing_new_in_a_day_is_none(self, viewer):
+        with sqlite3.connect(viewer.db_path) as conn:
+            self._contact(conn, _pk(1), "last-week", 1, "-6 days")
+        assert self._mesh(viewer)["newest_node"] is None

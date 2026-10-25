@@ -28,10 +28,19 @@
         series: '#0d6efd',
     };
 
-    const MIX_COLORS = [
-        '#0d6efd', '#20c997', '#fd7e14', '#6f42c1',
-        '#d63384', '#198754', '#0dcaf0', '#adb5bd',
-    ];
+    // Role mix: each role keeps one color, matching the Mesh page's node fills
+    // (repeaters Signal Blue, room servers Route Teal), and none of them is a
+    // status lamp. Roles the list doesn't know take the spares by rank.
+    const ROLE_COLORS = {
+        repeater: '#0d6efd',
+        roomserver: '#20c997',
+        companion: '#fd7e14',
+        sensor: '#6f42c1',
+        bot: '#d63384',
+        gateway: '#0dcaf0',
+    };
+    const MIX_SPARE_COLORS = ['#6610f2', '#795548', '#e83e8c'];
+    const MIX_NEUTRAL = '#adb5bd';  // Unknown and Other: not a category
 
     // Payload buckets on the encoding chart.  Must stay in the same order as
     // PACKET_ENCODING_BUCKETS server-side: the slot index picks the colour, so a
@@ -97,10 +106,6 @@
         return node;
     }
 
-    function makeBadge(value, classes) {
-        return makeTextElement('span', value, 'badge ' + classes);
-    }
-
     /** Em dash for absent data. Zero is a real value and must not become one. */
     function formatNumber(value) {
         if (value === null || value === undefined || Number.isNaN(value)) return '—';
@@ -132,7 +137,7 @@
     }
 
     function formatUptime(seconds) {
-        if (seconds === null || seconds === undefined || seconds <= 0) return 'bot down?';
+        if (seconds === null || seconds === undefined || seconds <= 0) return '—';
         const days = Math.floor(seconds / 86400);
         const hours = Math.floor((seconds % 86400) / 3600);
         const minutes = Math.floor((seconds % 3600) / 60);
@@ -204,6 +209,10 @@
             this.loadWindows();
             this.loadHealth();
             this.loadSummary();
+            // The station verdict comes from base.html's banner poll, which every
+            // page already runs; this page only renders it.
+            window.addEventListener('banner-status', (event) => this.applyStation(event.detail));
+            if (window.lastBannerStatus) this.applyStation(window.lastBannerStatus);
             this.timers.push(setInterval(() => this.whenVisible(() => this.loadHealth()), HEALTH_POLL_MS));
             this.timers.push(setInterval(() => this.whenVisible(() => this.loadSummary()), SUMMARY_POLL_MS));
             this.timers.push(setInterval(() => this.tickUptime(), 1000));
@@ -257,21 +266,47 @@
                 const response = await fetch('/api/health');
                 if (!response.ok) throw new Error('HTTP ' + response.status);
                 const data = await response.json();
-                this.botUptime = data.bot_uptime > 0 ? data.bot_uptime : null;
-                setText('health-clients', data.connected_clients ?? 0);
-                setText('health-uptime', formatUptime(this.botUptime));
-                const radio = el('health-radio');
-                if (radio) {
-                    const degraded = Boolean(data.radio_zombie);
-                    radio.textContent = degraded ? 'radio degraded' : 'radio ok';
-                    radio.className = 'health-strip__item ' + (degraded ? 'text-warning' : '');
-                }
-                this.setStatusDot('health-status-dot', data.status === 'healthy' ? 'connected' : 'warning');
-                setText('health-status-text', data.status === 'healthy' ? 'Online' : 'Degraded');
+                this.uptimeFromHealth = data.bot_uptime > 0 ? data.bot_uptime : null;
+                this.showUptime();
+                const clients = data.connected_clients ?? 0;
+                setText('health-clients', clients);
+                setText('health-clients-noun', clients === 1 ? 'client' : 'clients');
+                this.viewerReachable = true;
             } catch (err) {
+                // The viewer itself didn't answer; that outranks anything the
+                // last station verdict said.
+                this.viewerReachable = false;
                 this.setStatusDot('health-status-dot', 'disconnected');
-                setText('health-status-text', 'Offline');
+                setText('health-status-text', 'Viewer unreachable');
             }
+        }
+
+        /** One verdict for the strip: is the bot running, and is its radio up? */
+        applyStation(detail) {
+            const verdict = window.stationVerdict ? window.stationVerdict(detail) : null;
+            if (!verdict) return;
+            this.renderFirstRunState(verdict);
+            this.botRunning = Boolean(detail.bot_running);
+            this.showUptime();
+            if (this.viewerReachable === false) return;
+            this.setStatusDot('health-status-dot', verdict.lamp);
+            const text = el('health-status-text');
+            if (text) {
+                text.textContent = verdict.text;
+                text.title = verdict.title;
+            }
+            const radio = el('health-radio');
+            if (radio) {
+                radio.textContent = verdict.radio;
+                const tone = !this.botRunning ? '' : { warning: ' text-warning', disconnected: ' text-danger' }[verdict.lamp] || '';
+                radio.className = 'health-strip__item' + tone;
+            }
+        }
+
+        /** The stored start time outlives the bot, so uptime only shows while it runs. */
+        showUptime() {
+            this.botUptime = this.botRunning === false ? null : (this.uptimeFromHealth ?? null);
+            setText('health-uptime', formatUptime(this.botUptime));
         }
 
         async loadSummary() {
@@ -381,6 +416,8 @@
             const coverage = data.coverage || {};
             const series = data.series || {};
             const deltas = data.deltas || {};
+            this.renderDeltaGap(data.delta_gap);
+            this.renderFirstRun(mesh, coverage);
 
             this.updateSnapshotAge();
 
@@ -389,6 +426,7 @@
             this.tile('adverts-24h', mesh.adverts_24h, deltas.adverts, series.adverts);
             this.tile('new-nodes', mesh.new_nodes_24h, deltas.new_nodes, series.new_nodes);
             setText('new-nodes-7d', formatNumber(mesh.new_nodes_7d) + ' in 7d');
+            this.renderNewest(mesh.newest_node);
             setText('gone-quiet', formatNumber(mesh.gone_quiet_7d));
             setText('coverage-countries', formatNumber(mesh.countries));
             setText('coverage-known', formatNumber(mesh.contacts_known));
@@ -405,7 +443,7 @@
 
             // Routing, encoding, distributions
             this.renderRouteMix(mesh.route_mix, coverage.packets_window_label);
-            this.renderMix('payload-mix', mesh.payload_mix);
+            this.renderMix('payload-mix', mesh.payload_mix, (name) => this.payloadColor(name));
             this.renderHopsHistogram(mesh.hops, coverage.packets_window_label);
             this.renderDoughnut('contactsEncodingChart', 'contacts-encoding-summary',
                 (mesh.encoding || {}).contacts_7d, 'contacts');
@@ -413,7 +451,7 @@
                 (mesh.encoding || {}).packets, 'packets');
             setText('packets-window-label', coverage.packets_window_label || 'no data');
             this.renderPacketEncodingTrend(data.packet_encoding);
-            this.renderMix('role-mix', mesh.role_mix);
+            this.renderMix('role-mix', mesh.role_mix, this.roleColors());
 
             this.renderSourceNotes(coverage);
         }
@@ -428,6 +466,71 @@
             }
             this.renderDelta(id + '-delta', changePct);
             this.renderSparkline(id + '-spark', points);
+        }
+
+        /**
+         * Until the station has heard anything at all, one panel in place of the
+         * grid. It flips back on its own once the snapshot sees a node or packet.
+         */
+        renderFirstRun(mesh, coverage) {
+            const heardAnything = Boolean(
+                mesh.contacts_known || mesh.nodes_24h || mesh.adverts_24h || coverage.packets_from
+            );
+            const panel = el('first-run');
+            const body = el('dashboard-body');
+            if (panel) panel.hidden = heardAnything;
+            if (body) body.hidden = !heardAnything;
+            this.firstRun = !heardAnything;
+            if (this.firstRun && window.lastBannerStatus) this.applyStation(window.lastBannerStatus);
+        }
+
+        /** The first-run panel's opening line follows the station verdict. */
+        renderFirstRunState(verdict) {
+            const node = el('first-run-state');
+            if (!node || !this.firstRun) return;
+            const name = el('first-run')?.dataset.botName || 'The bot';
+            let text;
+            if (verdict.lamp === 'connected') {
+                text = name + ' is listening. Nothing has been heard yet.';
+            } else if (verdict.text === 'Bot starting') {
+                text = name + ' is starting up.';
+            } else if (verdict.text === 'Bot not running') {
+                text = name + ' isn\'t running, so nothing is being heard. Start the bot and this page fills in from what its radio hears.';
+            } else {
+                text = verdict.text + '. Nothing can be heard until that\'s fixed.';
+            }
+            const dot = document.createElement('span');
+            dot.className = 'status-indicator status-' + verdict.lamp;
+            dot.setAttribute('aria-hidden', 'true');
+            node.replaceChildren(dot, document.createTextNode(text));
+        }
+
+        /** "Newest: N7JMV-BEACON-RP · 7 hops · 1h ago" under the New nodes count. */
+        renderNewest(node) {
+            const row = el('new-nodes-newest');
+            if (!row) return;
+            row.hidden = !node;
+            if (!node) return;
+            const name = makeTextElement('span', node.name, 'stat-tile__newest-name');
+            row.title = node.name + (node.role ? ' (' + node.role + ')' : '');
+            const facts = [];
+            if (Number.isFinite(node.hops)) facts.push(node.hops === 0 ? 'direct' : node.hops + (node.hops === 1 ? ' hop' : ' hops'));
+            if (node.first_heard) facts.push(formatAge(Date.now() / 1000 - node.first_heard));
+            row.replaceChildren(makeTextElement('span', 'newest:'), name,
+                makeTextElement('span', facts.length ? '· ' + facts.join(' · ') : '', 'stat-tile__newest-facts'));
+        }
+
+        /** Name the day the comparison can't use, rather than showing a fake collapse. */
+        renderDeltaGap(gapDate) {
+            const node = el('delta-gap');
+            if (!node) return;
+            node.hidden = !gapDate;
+            if (!gapDate) return;
+            const day = new Date(gapDate + 'T12:00:00');
+            const label = Number.isNaN(day.getTime())
+                ? gapDate
+                : day.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+            node.textContent = 'No change shown: nothing was recorded on ' + label + '.';
         }
 
         renderDelta(id, changePct) {
@@ -521,7 +624,7 @@
                 ([label, value, color]) => {
                     const pct = (value / total) * 100;
                     const segment = makeTextElement(
-                        'div', pct >= 12 ? pct.toFixed(0) + '%' : '', 'stacked-bar__segment'
+                        'div', pct >= 12 ? pct.toFixed(1) + '%' : '', 'stacked-bar__segment'
                     );
                     segment.style.width = pct + '%';
                     segment.style.backgroundColor = color;
@@ -649,7 +752,7 @@
                         },
                         y: {
                             beginAtZero: true,
-                            title: { display: true, text: '% of series', color: colors.muted,
+                            title: { display: true, text: '% of nodes or packets', color: colors.muted,
                                      font: { size: 10 } },
                             ticks: {
                                 color: colors.muted,
@@ -922,7 +1025,25 @@
             });
         }
 
-        renderMix(containerId, entries) {
+        /** Payload types take their fixed slot from the multibyte chart's palette. */
+        payloadColor(name) {
+            const palette = SERIES_PALETTE[isDark() ? 'dark' : 'light'];
+            const slot = PACKET_ENCODING_TYPES.indexOf(String(name).toUpperCase());
+            return palette[slot >= 0 ? slot : PACKET_ENCODING_TYPES.indexOf('OTHER')];
+        }
+
+        /** A color picker for one role-mix render: fixed roles, then spares by rank. */
+        roleColors() {
+            let spare = 0;
+            return (name) => {
+                const key = String(name).toLowerCase();
+                if (ROLE_COLORS[key]) return ROLE_COLORS[key];
+                if (key === 'unknown' || key === 'other') return MIX_NEUTRAL;
+                return MIX_SPARE_COLORS[spare++ % MIX_SPARE_COLORS.length];
+            };
+        }
+
+        renderMix(containerId, entries, colorFor) {
             const container = el(containerId);
             if (!container) return;
             const list = Array.isArray(entries) ? entries : [];
@@ -935,7 +1056,7 @@
             // total shown beside them.
             const max = Math.max(...list.map((entry) => Number(entry[1]) || 0), 1);
             container.replaceChildren();
-            list.forEach((entry, index) => {
+            list.forEach((entry) => {
                 const [name, count] = entry;
                 const row = document.createElement('div');
                 row.className = 'mix-row';
@@ -944,7 +1065,7 @@
                 const fill = document.createElement('div');
                 fill.className = 'mix-row__fill';
                 fill.style.width = ((Number(count) || 0) / max * 100).toFixed(1) + '%';
-                fill.style.backgroundColor = MIX_COLORS[index % MIX_COLORS.length];
+                fill.style.backgroundColor = colorFor(name);
                 track.appendChild(fill);
                 row.append(
                     makeTextElement('div', name, 'mix-row__name'),
@@ -1098,8 +1219,9 @@
         identity.className = 'd-flex align-items-center gap-2 top-list-row__name';
         const label = makeTextElement('span', name, 'fw-semibold top-list-row__name');
         label.title = String(name ?? '');
-        identity.append(makeBadge(rank, 'bg-secondary'), label);
-        row.append(identity, makeBadge(badgeText, badgeClass));
+        identity.append(makeTextElement('span', rank, 'top-list-row__rank'), label);
+        // Counts are tinted chips in each list's own color, not lamp pills.
+        row.append(identity, makeTextElement('span', badgeText, 'tag-chip ' + badgeClass));
         return row;
     }
 
@@ -1109,14 +1231,14 @@
             container: 'top-commands-list',
             limit: 15,
             empty: 'No commands recorded.',
-            render: (item, i) => rankedRow(i + 1, item.name, formatNumber(item.count) + ' uses', 'bg-primary'),
+            render: (item, i) => rankedRow(i + 1, item.name, formatNumber(item.count) + ' uses', 'tag-chip--violet'),
         },
         users: {
             select: 'top-users-window',
             container: 'top-users-list',
             limit: 15,
             empty: 'No users recorded.',
-            render: (item, i) => rankedRow(i + 1, item.name, formatNumber(item.count) + ' msgs', 'bg-info'),
+            render: (item, i) => rankedRow(i + 1, item.name, formatNumber(item.count) + ' msgs', ''),
         },
         channels: {
             select: 'top-channels-window',
@@ -1124,8 +1246,8 @@
             limit: 10,
             empty: 'No channels recorded.',
             render: (item, i) => {
-                const row = rankedRow(i + 1, item.name, formatNumber(item.count) + ' msgs', 'bg-secondary');
-                row.appendChild(makeBadge(formatNumber(item.users) + ' users', 'bg-info'));
+                const row = rankedRow(i + 1, item.name, formatNumber(item.count) + ' msgs', 'tag-chip--teal');
+                row.appendChild(makeTextElement('span', formatNumber(item.users) + ' users', 'tag-chip'));
                 return row;
             },
         },
@@ -1141,8 +1263,9 @@
                 heading.className = 'd-flex align-items-center gap-2 mb-1';
                 const name = makeTextElement('span', item.name, 'fw-semibold top-list-row__name');
                 name.title = String(item.name ?? '');
-                heading.append(makeBadge(i + 1, 'bg-warning text-dark'), name,
-                    makeBadge(item.path_length + ' hops', 'bg-danger'));
+                const hops = Number(item.path_length) || 0;
+                heading.append(makeTextElement('span', i + 1, 'top-list-row__rank'), name,
+                    makeTextElement('span', `${hops} hop${hops === 1 ? '' : 's'}`, 'tag-chip tag-chip--violet'));
                 const path = makeTextElement('code', item.path_string, 'small text-break');
                 path.style.wordBreak = 'break-all';
                 const when = makeTextElement(
@@ -1159,13 +1282,13 @@
             container: 'top-repeaters-list',
             limit: 10,
             empty: 'No repeater adverts recorded.',
-            render: (item, i) => rankedRow(i + 1, item.name, formatNumber(item.count) + ' adverts', 'bg-success'),
+            render: (item, i) => rankedRow(i + 1, item.name, formatNumber(item.count) + ' adverts', 'tag-chip--orange'),
         },
         neighbors: {
             select: 'neighbors-window',
             container: 'neighbors-list',
             limit: 10,
-            empty: 'No direct neighbours heard in this window.',
+            empty: 'No direct neighbors heard in this window.',
             render: (item) => neighborRow(item),
             onLoad: (data) => {
                 setText('neighbors-count', formatNumber(data.total));
@@ -1240,10 +1363,10 @@
             'not a rolling 24 hours. The headline number above it is a rolling 24-hour count.',
         'neighbors-info':
             'Radios this node heard directly (MeshCore hop count 0: an empty RF path). ' +
-            'A path that already contains one hop hash is a relayed packet, not a neighbour. ' +
+            'A path that already contains one hop hash is a relayed packet, not a neighbor. ' +
             'Membership comes from those empty-path adverts plus confirmed zero-hop ' +
             'neighbor-discover responses, not from the stored hop count — that field claims ' +
-            'far more direct neighbours than the path evidence supports. SNR/RSSI are the ' +
+            'far more direct neighbors than the path evidence supports. SNR/RSSI are the ' +
             'measurement from that direct reception (or from discover, which reports SNR ' +
             'only). A relayed packet\'s SNR measures the last hop into this radio rather ' +
             'than the link to whoever sent it.',

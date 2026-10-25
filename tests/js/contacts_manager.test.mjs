@@ -23,6 +23,16 @@ function fakeElement(overrides = {}) {
         addEventListener(type, listener) {
             this.listeners[type] = listener;
         },
+        attributes: {},
+        setAttribute(name, value) {
+            this.attributes[name] = String(value);
+        },
+        removeAttribute(name) {
+            delete this.attributes[name];
+        },
+        getAttribute(name) {
+            return this.attributes[name] ?? null;
+        },
         replaceChildren() {
             this.innerHTML = '';
         },
@@ -282,6 +292,8 @@ test('updateSortIcons leaves the hops info tip alone', () => {
     assert.equal(sortIcon.className, 'fas fa-sort-up sort-icon');
     assert.equal(infoIcon.className, 'fas fa-info-circle');
     assert.equal(hopsHeader.classList._added, 'sort-active');
+    assert.equal(hopsHeader.getAttribute('aria-sort'), 'ascending');
+    assert.equal(otherHeader.getAttribute('aria-sort'), null);
 });
 
 test('search is debounced before reloading the first page', () => {

@@ -48,7 +48,7 @@
 </div>
 
 <!-- Add / edit modal -->
-<div class="modal fade" id="scheduleModal" tabindex="-1" aria-hidden="true">
+<div class="modal fade" id="scheduleModal" tabindex="-1" aria-hidden="true" aria-labelledby="scheduleModalTitle">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
@@ -169,7 +169,7 @@
         const area = $('statusArea');
         area.innerHTML = '<div class="alert alert-' + kind + ' alert-dismissible fade show">'
             + escapeHtml(message)
-            + '<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>';
+            + '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button></div>';
     }
 
     function escapeHtml(value) {

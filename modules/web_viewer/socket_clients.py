@@ -225,7 +225,7 @@ class SocketClientsMixin:
             _conn.row_factory = sqlite3.Row
             _cur = _conn.cursor()
             _cur.execute(
-                "SELECT data, type FROM packet_stream"
+                "SELECT timestamp, data, type FROM packet_stream"
                 f" WHERE {where}"
                 " ORDER BY timestamp DESC LIMIT 50"
             )
@@ -233,6 +233,11 @@ class SocketClientsMixin:
         for row in rows:
             try:
                 data = json.loads(row['data'])
+                # Marked so the page can file it under history rather than
+                # present it as just heard.
+                if isinstance(data, dict):
+                    data['stream_ts'] = row['timestamp']
+                    data['replayed'] = True
                 emit(event_for_type(row['type']), data)
             except (json.JSONDecodeError, KeyError, TypeError):
                 pass

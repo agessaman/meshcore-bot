@@ -109,7 +109,7 @@
         font-variant-numeric: tabular-nums;
     }
     .config-maint-time {
-        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        font-family: var(--font-mono);
         font-size: 0.9em;
     }
     .config-outcome-cell {
@@ -151,7 +151,9 @@
 
     @media (max-width: 992px) {
         .config-layout {
-            grid-template-columns: 1fr;
+            /* minmax(0, ...) so the column can shrink below its widest child
+               on a phone instead of widening the page. */
+            grid-template-columns: minmax(0, 1fr);
         }
         .config-sidebar {
             position: static;
@@ -174,10 +176,10 @@
                     {% set category_panels = config_panels | selectattr('category', 'equalto', category_key) | list %}
                     {% if category_panels %}
                     <div class="mb-3">
-                        <h6 class="text-uppercase text-muted fw-semibold mb-2" style="font-size:.75rem;letter-spacing:.05em;">
+                        <p class="text-uppercase text-muted fw-semibold mb-2" id="config-nav-{{ category_key }}" style="font-size:.75rem;letter-spacing:.05em;">
                             {{ category_label }}
-                        </h6>
-                        <nav class="nav flex-column">
+                        </p>
+                        <nav class="nav flex-column" aria-labelledby="config-nav-{{ category_key }}">
                             {% for panel in category_panels %}
                             <a class="nav-link px-2 py-1" href="#{{ panel.id }}" data-config-target="{{ panel.id }}">
                                 <i class="{{ panel.icon }} me-2"></i>{{ panel.title }}
@@ -191,10 +193,10 @@
             </div>
             <div class="config-admin-tools card">
                 <div class="card-body p-3">
-                    <h6 class="text-uppercase text-muted fw-semibold mb-2" style="font-size:.75rem;letter-spacing:.05em;">
+                    <p class="text-uppercase text-muted fw-semibold mb-2" id="config-nav-admin" style="font-size:.75rem;letter-spacing:.05em;">
                         Admin Tools
-                    </h6>
-                    <nav class="nav flex-column">
+                    </p>
+                    <nav class="nav flex-column" aria-labelledby="config-nav-admin">
                         <a class="nav-link px-2 py-1" href="/api-explorer">
                             <i class="fas fa-plug me-2"></i>API
                         </a>
@@ -205,11 +207,11 @@
                 </div>
             </div>
         </aside>
-        <main>
+        <div class="config-panels">
             {% for panel in config_panels %}
             {% include panel.template %}
             {% endfor %}
-        </main>
+        </div>
     </div>
 </div>
 
@@ -463,9 +465,11 @@ class ConfigManager {
             if (pwdField.type === 'password') {
                 pwdField.type = 'text';
                 this.togglePwdIcon.classList.replace('fa-eye', 'fa-eye-slash');
+                this.togglePwdBtn.setAttribute('aria-pressed', 'true');
             } else {
                 pwdField.type = 'password';
                 this.togglePwdIcon.classList.replace('fa-eye-slash', 'fa-eye');
+                this.togglePwdBtn.setAttribute('aria-pressed', 'false');
             }
         });
     }
@@ -1366,8 +1370,9 @@ class DatabaseInfoManager {
 
             const identity = document.createElement('div');
             identity.className = 'col-md-4';
-            const heading = document.createElement('h6');
-            heading.className = 'mb-1';
+            // h4: each table sits under the panel's "Tables" h3
+            const heading = document.createElement('h4');
+            heading.className = 'h6 mb-1';
             const icon = document.createElement('i');
             icon.className = 'fas fa-table config-table-name-icon me-1';
             heading.append(icon, document.createTextNode(String(table.name ?? '')));

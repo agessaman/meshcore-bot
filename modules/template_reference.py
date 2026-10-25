@@ -302,7 +302,7 @@ def _preview_piped(spec: dict[str, Any], template: str, config: Optional[configp
     if not text:
         fallback_key = spec.get("blank_config")
         configured = _config_get(config, *fallback_key) if fallback_key else None
-        if configured:
+        if configured and fallback_key:
             text = _strip_quotes(configured)
             note = f"The field is blank, so the bot uses [{fallback_key[0]}] {fallback_key[1]}."
         elif spec.get("blank_default"):
@@ -413,7 +413,7 @@ def _preview_multitest(spec: dict[str, Any], template: str, config: Optional[con
 
     mode = _parse_condense_paths_mode(_config_get(config, "Multitest_Command", "condense_paths") or "true")
     paths = sorted(_MULTITEST_PATHS)
-    paths_text = _condense_path_lines(paths, mode) if mode in ("flat", "nested") else "\n".join(paths)
+    paths_text = _condense_path_lines(paths, mode) if mode != "off" else "\n".join(paths)
     sample = {"sender": "Alice", "path_count": len(paths), "paths": paths_text, "listening_duration": 6}
     default = f"Paths({len(paths)}):\n{paths_text}"
 

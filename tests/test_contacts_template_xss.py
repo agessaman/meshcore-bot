@@ -71,14 +71,26 @@ def test_untrusted_advert_fields_are_escaped_in_dom_interpolations(template_sour
         expr = match.group(1)
         if not any(token in expr for token in UNTRUSTED_TOKENS):
             continue
-        if "escapeHtml(" not in expr:
+        # escapeAttribute() is the quote-safe variant used inside attribute
+        # values (aria-label, title); escapeHtml() is for element content.
+        if "escapeHtml(" not in expr and "escapeAttribute(" not in expr:
             line_no = template_source.count("\n", 0, match.start()) + 1
             offenders.append(f"line {line_no}: ${{{expr.strip()}}}")
 
     assert not offenders, (
         "Unescaped advert-name field rendered into the DOM (stored XSS). "
-        "Wrap each in this.escapeHtml(...):\n  " + "\n  ".join(offenders)
+        "Wrap each in this.escapeHtml(...), or this.escapeAttribute(...) "
+        "inside an attribute value:\n  " + "\n  ".join(offenders)
     )
+
+
+def test_escape_attribute_helper_encodes_quotes(template_source):
+    """escapeAttribute must encode both quote styles so a name can't leave the attribute."""
+    start = template_source.index("escapeAttribute(text) {")
+    body = template_source[start:template_source.index("}", start)]
+    assert ".replace(/\"/g, '&quot;')" in body
+    assert ".replace(/'/g, '&#39;')" in body
+    assert ".replace(/</g, '&lt;')" in body
 
 
 def test_specific_known_sinks_are_escaped(template_source: str) -> None:
@@ -260,8 +272,8 @@ def test_realtime_untrusted_fields_never_reach_html_parsers(realtime_source):
 
 def test_realtime_known_safe_sinks(realtime_source: str) -> None:
     """Lock in DOM text sinks for advert name, sender, body, and channel."""
-    assert "makeElement('strong', '', data.sender || '?')" in realtime_source
-    assert "entry.append(header, makeElement('div', 'text-break', bodyRaw))" in realtime_source
-    assert "data.channel\n            )" in realtime_source
-    assert "document.createTextNode(` ${String(data.advert_name)}" in realtime_source
+    assert "makeElement('span', 'rt-who', msg.sender || '?')" in realtime_source
+    assert "makeElement('span', 'rt-text', stripLeadingChannelBracketTag(msg.content || '', isDm))" in realtime_source
+    assert "chip.appendChild(document.createTextNode(String(channel)))" in realtime_source
+    assert "makeElement('span', 'rt-who', tx.advert.name)" in realtime_source
     assert "appendNodeInfo('Name', name)" in realtime_source

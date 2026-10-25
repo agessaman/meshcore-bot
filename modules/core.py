@@ -891,6 +891,12 @@ class MeshCoreBot(ServiceSupervisorMixin, RadioLinkMixin, RadioOfflineBreaker, D
         except Exception as e:
             self.logger.debug("Could not set bot.initializing metadata: %s", e)
 
+        # The offline flag in bot_metadata is only written on transitions, so a
+        # 'true' left by an earlier run would keep the viewer's Radio Offline
+        # banner up forever: this process starts with no send failures and never
+        # transitions. Publish the fresh state so the stored flag is this run's.
+        self._publish_offline_state()
+
         # Start web viewer early (before radio connect) so operators can see the
         # initializing banner and monitor startup progress
         if self.web_viewer_integration and self.web_viewer_integration.enabled:

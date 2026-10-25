@@ -19,21 +19,25 @@
         })();
     </script>
 
-    <!-- Bootstrap 5.1.3 -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap, Font Awesome and the other libraries are vendored under static/vendor/ (versions in its README). -->
+    <link href="{{ url_for('static', filename='vendor/bootstrap/bootstrap.min.css') }}" rel="stylesheet">
 
     <!-- Font Awesome for icons -->
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='vendor/fontawesome/css/all.min.css') }}" rel="stylesheet">
 
     <!-- Custom styles -->
     <style>
         /* CSS Variables for Light Mode (Default) */
         :root {
+            /* One monospace stack for logs, keys, hex and code. Bootstrap's
+               .font-monospace, code and pre read it through --bs-font-monospace. */
+            --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            --bs-font-monospace: var(--font-mono);
             --bg-color: #ffffff;
             --bg-secondary: #f8f9fa;
             --bg-tertiary: #e9ecef;
             --text-color: #212529;
-            --text-muted: #6c757d;
+            --text-muted: #5f666d;
             --border-color: #dee2e6;
             --card-bg: #ffffff;
             --card-header-bg: #f8f9fa;
@@ -41,6 +45,16 @@
             --log-entry-bg: #f8f9fa;
             --connection-info-bg: #e9ecef;
             --shadow-color: rgba(0, 0, 0, 0.1);
+            /* Status and accent colors used as text. Bootstrap's own text-*
+               colors are background tones and fail contrast as text; these
+               pass 4.5:1 on paper, paper-raised and paper-sunk. */
+            --text-success: #146c43;
+            --text-warning: #7a5d02;
+            --text-danger: #b02a37;
+            --text-info: #0a6c80;
+            --text-primary: #0d6efd;
+            --link-color: #0d6efd;
+            --code-color: #ab296a;
         }
 
         /* CSS Variables for Dark Mode */
@@ -57,6 +71,14 @@
             --log-entry-bg: #2d2d2d;
             --connection-info-bg: #3d3d3d;
             --shadow-color: rgba(0, 0, 0, 0.3);
+            /* Pass 4.5:1 on night, night-raised and night-sunk. */
+            --text-success: #75b798;
+            --text-warning: #ffda6a;
+            --text-danger: #f1aeb5;
+            --text-info: #6edff6;
+            --text-primary: #6ea8fe;
+            --link-color: #6ea8fe;
+            --code-color: #e685b5;
         }
 
         /* Apply theme variables */
@@ -74,8 +96,103 @@
 
         .navbar-brand {
             font-weight: bold;
-            color: #007bff !important;
+            color: #0d6efd !important;
         }
+
+        /* Readout colors for stat tiles: each tile reads in its own hue so a
+           row of counts can be told apart at a glance. Text-safe on both
+           themes; a tile showing a problem uses --text-danger instead.
+           Tag chips set these on a 14% tint of themselves, so each holds 4.5:1
+           on its own tint over paper, paper-sunk, night-raised and night-sunk. */
+        :root {
+            --readout-blue: #0a53be;
+            --readout-teal: #0a6650;
+            --readout-violet: #6d28d9;
+            --readout-orange: #9a4316;
+        }
+
+        [data-theme="dark"] {
+            --readout-blue: #9ec5fe;
+            --readout-teal: #6fdcbf;
+            --readout-violet: #d0c4fe;
+            --readout-orange: #f6b384;
+        }
+
+        .readout-blue { color: var(--readout-blue); }
+        .readout-teal { color: var(--readout-teal); }
+        .readout-violet { color: var(--readout-violet); }
+        .readout-orange { color: var(--readout-orange); }
+        .readout-muted { color: var(--text-muted); }
+        .readout-danger { color: var(--text-danger); }
+
+        /* Row actions shared by table pages: each action keeps its own color
+           and a light outline, so a row's actions are found and told apart at
+           a glance without a wall of solid buttons. */
+        :root {
+            --action-star: #a36b00;
+            --action-geo: #0f7a5f;
+            --action-play: #146c43;
+            --action-pause: #8a5a00;
+        }
+
+        [data-theme="dark"] {
+            --action-star: #ffd65a;
+            --action-geo: #4fd1ae;
+            --action-play: #75b798;
+            --action-pause: #ffda6a;
+        }
+
+        .row-action {
+            --action: var(--link-color);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.35rem;
+            min-width: 2rem;
+            height: 2rem;
+            padding: 0 0.45rem;
+            font-size: 0.875rem;
+            white-space: nowrap;
+            color: var(--action);
+            background-color: color-mix(in srgb, var(--action) 8%, transparent);
+            border: 1px solid color-mix(in srgb, var(--action) 35%, transparent);
+            border-radius: 0.25rem;
+            transition: background-color 0.12s ease-out, border-color 0.12s ease-out;
+        }
+
+        .row-action:hover,
+        .row-action:focus-visible {
+            color: var(--action);
+            background-color: color-mix(in srgb, var(--action) 18%, transparent);
+            border-color: color-mix(in srgb, var(--action) 60%, transparent);
+        }
+
+        .row-action:focus-visible {
+            outline: 2px solid var(--action);
+            outline-offset: 1px;
+        }
+
+        .row-action--view { --action: var(--text-info); }
+        .row-action--edit { --action: var(--link-color); }
+        .row-action--play { --action: var(--action-play); }
+        .row-action--pause { --action: var(--action-pause); }
+        .row-action--danger { --action: var(--text-danger); }
+
+        /* Category chips: tinted, readable, not the status lamps */
+        .tag-chip {
+            display: inline-block;
+            padding: 0.05rem 0.5rem;
+            font-size: 0.875rem;
+            font-weight: 600;
+            white-space: nowrap;
+            border-radius: 999px;
+            color: var(--chip-ink, var(--readout-blue));
+            background-color: color-mix(in srgb, var(--chip-ink, var(--readout-blue)) 14%, transparent);
+        }
+
+        .tag-chip--violet { --chip-ink: var(--readout-violet); }
+        .tag-chip--teal { --chip-ink: var(--readout-teal); }
+        .tag-chip--orange { --chip-ink: var(--readout-orange); }
 
         .status-indicator {
             width: 12px;
@@ -86,7 +203,7 @@
         }
 
         .status-connected {
-            background-color: #28a745;
+            background-color: #198754;
         }
 
         .status-disconnected {
@@ -97,24 +214,6 @@
             background-color: #ffc107;
         }
 
-        .log-entry {
-            font-family: 'Courier New', monospace;
-            font-size: 0.9em;
-            margin-bottom: 5px;
-            padding: 8px;
-            border-left: 3px solid #007bff;
-            background-color: var(--log-entry-bg);
-            border-radius: 0 5px 5px 0;
-            color: var(--text-color);
-        }
-
-        .command-entry {
-            border-left-color: #28a745;
-        }
-
-        .packet-entry {
-            border-left-color: #ffc107;
-        }
 
         .connection-info {
             background-color: var(--connection-info-bg);
@@ -243,7 +342,7 @@
         [data-theme="dark"] .form-control:focus,
         [data-theme="dark"] .form-select:focus {
             background-color: var(--bg-tertiary);
-            border-color: #007bff;
+            border-color: #0d6efd;
             color: var(--text-color);
         }
 
@@ -255,9 +354,86 @@
             color: var(--text-muted);
         }
 
-        /* Dark mode text muted */
-        [data-theme="dark"] .text-muted {
+        /* Muted and status text follow the theme in both themes */
+        .text-muted,
+        .form-text {
             color: var(--text-muted) !important;
+        }
+
+        /* On the console-black table headers and navbar, muted text uses the
+           night tone in either theme. */
+        .table-dark .text-muted,
+        .navbar-dark .text-muted {
+            color: #adb5bd !important;
+        }
+
+        .alert code { color: inherit; }
+
+        .text-success { color: var(--text-success) !important; }
+        .text-warning { color: var(--text-warning) !important; }
+        .text-danger { color: var(--text-danger) !important; }
+        .text-info { color: var(--text-info) !important; }
+        .text-primary { color: var(--text-primary) !important; }
+        code { color: var(--code-color); }
+
+        /* Solid info and warning fills are light, so they carry dark text
+           (Bootstrap 5.1 gives every badge white text). */
+        .badge.bg-info,
+        .badge.bg-warning {
+            color: #212529 !important;
+        }
+
+        [data-theme="dark"] a:not(.btn):not(.nav-link):not(.navbar-brand):not(.dropdown-item) {
+            color: var(--link-color);
+        }
+
+        /* Outline buttons: Bootstrap's outline text colors are its fill tones,
+           which fail as text on raised surfaces and on the dark theme. */
+        .btn-outline-secondary {
+            color: var(--text-muted);
+        }
+        .btn-outline-secondary:hover,
+        .btn-outline-secondary.active {
+            color: #fff;
+            background-color: #6c757d;
+        }
+        .btn-outline-danger {
+            color: var(--text-danger);
+        }
+        .btn-outline-danger:hover,
+        .btn-outline-danger.active {
+            color: #fff;
+        }
+        [data-theme="dark"] .btn-outline-primary {
+            color: var(--text-primary);
+        }
+        [data-theme="dark"] .btn-outline-primary:hover,
+        [data-theme="dark"] .btn-outline-primary.active {
+            color: #fff;
+        }
+        .btn-outline-info {
+            color: var(--text-info);
+        }
+        .btn-outline-info:hover,
+        .btn-outline-info.active {
+            color: #212529;
+        }
+        .btn-outline-success {
+            color: var(--text-success);
+        }
+        .btn-outline-success:hover,
+        .btn-outline-success.active {
+            color: #fff;
+        }
+        .btn-outline-warning {
+            color: var(--text-warning);
+        }
+        .btn-outline-warning:hover,
+        .btn-outline-warning.active {
+            color: #212529;
+        }
+        [data-theme="dark"] .btn-link {
+            color: var(--link-color);
         }
 
         /* Dark mode borders. The directional utilities need naming too — the
@@ -391,12 +567,180 @@
         }
 
         [data-theme="dark"] .accordion-button:focus {
-            box-shadow: 0 0 0 0.25rem rgba(0, 123, 255, 0.25);
+            box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
         }
 
         [data-theme="dark"] .accordion-body {
             background-color: var(--card-bg);
             color: var(--text-color);
+        }
+
+        /* Status banners: the "Since" time sits beside the message on wide
+           screens and on its own line on phones. d-none still wins. */
+        .banner-since {
+            margin-left: 1rem;
+        }
+        @media (max-width: 575.98px) {
+            .banner-since {
+                display: block;
+                margin-left: 0;
+            }
+        }
+
+        /* Card headers that pair a title with controls wrap the controls onto
+           their own row when both don't fit, instead of squeezing the title
+           into a column. */
+        .card-header.d-flex {
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+
+        /* Touch screens: Bootstrap's compact controls are 29-38px tall and its
+           checkboxes 16px, too small to hit reliably. On a coarse pointer the
+           standard controls grow to 44px and the small ones to 36px, keeping
+           the dense layout on desktop untouched. */
+        @media (pointer: coarse) {
+            .btn,
+            .form-control,
+            .form-select {
+                padding-top: 0.625rem;
+                padding-bottom: 0.625rem;
+            }
+            .btn:not(.btn-link) {
+                min-width: 44px;
+            }
+            .btn-sm,
+            .btn-group-sm > .btn,
+            .input-group-sm > .btn,
+            .form-control-sm,
+            .form-select-sm,
+            .input-group-sm > .form-control,
+            .input-group-sm > .form-select,
+            .input-group-sm > .input-group-text {
+                padding-top: 0.45rem;
+                padding-bottom: 0.45rem;
+            }
+            .btn-sm:not(.btn-link),
+            .btn-group-sm > .btn:not(.btn-link) {
+                min-width: 36px;
+            }
+            .input-group-text {
+                padding-top: 0.625rem;
+                padding-bottom: 0.625rem;
+            }
+
+            .form-check {
+                min-height: 1.5rem;
+                padding-left: 2rem;
+            }
+            .form-check .form-check-input {
+                margin-left: -2rem;
+            }
+            .form-check-input {
+                width: 1.5rem;
+                height: 1.5rem;
+                margin-top: 0;
+                vertical-align: middle;
+            }
+            .form-check-label {
+                line-height: 1.5rem;
+            }
+            .form-switch {
+                padding-left: 3.25rem;
+            }
+            .form-switch .form-check-input {
+                width: 2.75rem;
+                margin-left: -3.25rem;
+            }
+            .form-check-inline {
+                margin-right: 1.25rem;
+            }
+
+            .dropdown-item {
+                padding-top: 0.625rem;
+                padding-bottom: 0.625rem;
+            }
+            .navbar-nav .nav-link {
+                padding-top: 0.75rem;
+                padding-bottom: 0.75rem;
+            }
+            .btn-close {
+                padding: 0.75rem;
+            }
+            summary {
+                padding-top: 0.5rem;
+                padding-bottom: 0.5rem;
+            }
+            .leaflet-container.leaflet-touch .leaflet-bar a {
+                width: 40px;
+                height: 40px;
+                line-height: 40px;
+            }
+        }
+
+        /* Toasts float over the page in one stack, so a message never pushes
+           the content down and several messages don't pile on each other. */
+        .viewer-toasts {
+            position: fixed;
+            top: 4.5rem;
+            right: 1rem;
+            z-index: 1090;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            width: min(24rem, calc(100vw - 2rem));
+            pointer-events: none;
+        }
+
+        .viewer-toasts .alert {
+            margin: 0;
+            pointer-events: auto;
+            box-shadow: 0 0.5rem 1rem var(--shadow-color);
+            animation: viewer-toast-in 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        @keyframes viewer-toast-in {
+            from { opacity: 0; transform: translateY(-4px); }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .viewer-toasts .alert { animation: none; }
+        }
+
+        @media (max-width: 575.98px) {
+            .viewer-toasts {
+                top: auto;
+                right: 1rem;
+                bottom: 1rem;
+                left: 1rem;
+                width: auto;
+            }
+        }
+    </style>
+
+    <style>
+        /* Off-screen until focused: the first Tab stop on every page */
+        .skip-link {
+            position: absolute;
+            top: 0.5rem;
+            left: 0.5rem;
+            z-index: 2000;
+            padding: 0.5rem 0.75rem;
+            border-radius: 0.375rem;
+            background: var(--bs-primary);
+            color: #fff;
+            font-weight: 600;
+            text-decoration: none;
+            transform: translateY(-200%);
+        }
+        .skip-link:focus {
+            transform: none;
+            color: #fff;
+            outline: 2px solid #fff;
+            outline-offset: 2px;
+        }
+        #main-content:focus {
+            outline: none;
         }
     </style>
 
@@ -404,14 +748,57 @@
 </head>
 
 <body data-is-admin="{{ 'true' if (not auth_enabled or is_admin) else 'false' }}">
+    <a class="skip-link" href="#main-content">Skip to content</a>
+    <script nonce="{{ g.csp_nonce }}">
+        // Font Awesome draws its glyphs as CSS content, which screen readers
+        // otherwise read into the name of the heading or button around them.
+        // Hide every icon from assistive tech unless it carries its own label,
+        // including icons pages build later. This is what Font Awesome's own JS
+        // does; the viewer loads only its CSS.
+        (function () {
+            const ICON = 'i.fas, i.far, i.fab, i.fa';
+            function mark(icon) {
+                if (icon.hasAttribute('aria-label')) {
+                    if (!icon.hasAttribute('role')) icon.setAttribute('role', 'img');
+                    // A label added after the icon was hidden un-hides it
+                    if (icon.dataset.iconHidden) {
+                        icon.removeAttribute('aria-hidden');
+                        delete icon.dataset.iconHidden;
+                    }
+                } else if (!icon.hasAttribute('aria-hidden')) {
+                    icon.setAttribute('aria-hidden', 'true');
+                    icon.dataset.iconHidden = '1';
+                }
+            }
+            function scan(root) {
+                if (root.nodeType !== 1) return;
+                if (root.matches(ICON)) mark(root);
+                root.querySelectorAll(ICON).forEach(mark);
+            }
+            new MutationObserver((records) => {
+                records.forEach((record) => {
+                    if (record.type === 'attributes') {
+                        if (record.target.matches(ICON)) mark(record.target);
+                    } else {
+                        record.addedNodes.forEach(scan);
+                    }
+                });
+            }).observe(document.body, {
+                childList: true, subtree: true, attributes: true, attributeFilter: ['aria-label'],
+            });
+            document.addEventListener('DOMContentLoaded', () => scan(document.body));
+        })();
+    </script>
+    <div class="viewer-toasts" id="viewer-toasts" aria-live="polite"></div>
+
     <!-- Navigation -->
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark" aria-label="Main">
         <div class="container-fluid">
             <a class="navbar-brand" href="/">
                 <i class="fas fa-satellite-dish"></i> {{ bot_name|default('MeshCore Bot') }}
             </a>
 
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
                 <span class="navbar-toggler-icon"></span>
             </button>
 
@@ -422,11 +809,13 @@
                             <i class="fas fa-tachometer-alt"></i> Dashboard
                         </a>
                     </li>
+                    {% if not auth_enabled or is_admin %}
                     <li class="nav-item">
                         <a class="nav-link {{ 'active' if request.path == '/realtime' }}" href="/realtime">
                             <i class="fas fa-broadcast-tower"></i> Real-time
                         </a>
                     </li>
+                    {% endif %}
                     <li class="nav-item">
                         <a class="nav-link {{ 'active' if request.path == '/contacts' }}" href="/contacts">
                             <i class="fas fa-users"></i> Contacts
@@ -551,24 +940,23 @@
 
     <!-- Zombie Radio Banner (persistent — shown on all pages when radio is in zombie state) -->
     <div id="zombie-banner"
-        class="alert alert-danger mb-0 rounded-0 border-0 border-bottom border-danger{% if not radio_zombie %} d-none{% endif %}"
+        class="alert alert-danger mb-0 rounded-0 border-0 border-bottom border-danger py-2 py-sm-3{% if not radio_zombie %} d-none{% endif %}"
         role="alert" style="border-width: 2px !important;">
         <div class="container-fluid">
             <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
                 <div>
                     <i class="fas fa-skull-crossbones me-2"></i>
-                    <strong>Radio Zombie State Detected</strong> — The bot radio firmware is unresponsive.
+                    <strong>Radio Zombie State Detected</strong> —<span class="d-none d-sm-inline"> The bot radio firmware is unresponsive.</span>
                     A physical <strong>power cycle</strong> of the radio hardware is required.
                     Disconnect/reconnect will <em>not</em> fix this.
                     <span id="zombie-since-span"
-                        class="ms-3 text-danger-emphasis small opacity-75{% if not radio_zombie_since %} d-none{% endif %}">
-                        <i class="fas fa-clock me-1"></i>Since: <span id="zombie-since-text">{{ radio_zombie_since or ''
-                            }}</span>
+                        class="banner-since text-danger-emphasis small{% if not radio_zombie_since %} d-none{% endif %}">
+                        <i class="fas fa-clock me-1"></i>Since: <time id="zombie-since-text" class="js-since" datetime="{{ radio_zombie_since or '' }}">{{ radio_zombie_since or '' }}</time>
                     </span>
                 </div>
                 {% if not auth_enabled or is_admin %}
                 <div class="d-flex gap-2 align-items-center flex-shrink-0">
-                    <span class="small opacity-75">After power cycling:</span>
+                    <span class="small d-none d-sm-inline">After power cycling:</span>
                     <button id="zombie-recover-btn" class="btn btn-warning btn-sm fw-semibold"
                         type="button">
                         <i class="fas fa-power-off me-1"></i>Restart Bot Processing
@@ -581,23 +969,22 @@
 
     <!-- Radio Offline Banner (shown when repeated send timeouts have entered the offline state) -->
     <div id="offline-banner"
-        class="alert alert-warning mb-0 rounded-0 border-0 border-bottom border-warning{% if not radio_offline %} d-none{% endif %}"
+        class="alert alert-warning mb-0 rounded-0 border-0 border-bottom border-warning py-2 py-sm-3{% if not radio_offline %} d-none{% endif %}"
         role="alert" style="border-width: 2px !important;">
         <div class="container-fluid">
             <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
                 <div>
                     <i class="fas fa-plug me-2"></i>
                     <strong>Radio Offline</strong> — the bot cannot send outbound messages to the mesh.
-                    Check radio power and connection. Inbound packets may still be arriving normally.
+                    <span class="d-none d-sm-inline">Check radio power and connection. Inbound packets may still be arriving normally.</span>
                     <span id="offline-since-span"
-                        class="ms-3 text-warning-emphasis small opacity-75{% if not radio_offline_since %} d-none{% endif %}">
-                        <i class="fas fa-clock me-1"></i>Since: <span id="offline-since-text">{{ radio_offline_since or
-                            '' }}</span>
+                        class="banner-since text-warning-emphasis small{% if not radio_offline_since %} d-none{% endif %}">
+                        <i class="fas fa-clock me-1"></i>Since: <time id="offline-since-text" class="js-since" datetime="{{ radio_offline_since or '' }}">{{ radio_offline_since or '' }}</time>
                     </span>
                 </div>
                 {% if not auth_enabled or is_admin %}
                 <div class="d-flex gap-2 align-items-center flex-shrink-0">
-                    <span class="small opacity-75">Once radio is fixed:</span>
+                    <span class="small d-none d-sm-inline">Once radio is fixed:</span>
                     <button id="offline-clear-btn" class="btn btn-dark btn-sm fw-semibold"
                         type="button">
                         <i class="fas fa-check me-1"></i>Clear Offline Flag
@@ -608,7 +995,46 @@
         </div>
     </div>
 
+    <!-- Recovery banner: shown when a poll sees the radio or bot come back -->
+    <div id="recovery-banner"
+        class="alert alert-success mb-0 rounded-0 border-0 border-bottom border-success py-2 d-none"
+        role="status">
+        <div class="container-fluid d-flex align-items-center justify-content-between gap-2">
+            <div>
+                <i class="fas fa-check-circle me-2"></i>
+                <strong id="recovery-title"></strong>
+                <span id="recovery-detail"></span>
+            </div>
+            <button type="button" class="btn-close" id="recovery-close" aria-label="Dismiss"></button>
+        </div>
+    </div>
+
     <script nonce="{{ g.csp_nonce }}">
+        // One toast stack for every page. `message` is a string or a node the
+        // caller has already filled with text; nothing is parsed as HTML.
+        window.viewerToast = function (message, kind, timeout) {
+            var host = document.getElementById('viewer-toasts');
+            if (!host) return;
+            var safeKind = ['info', 'success', 'warning', 'danger'].indexOf(kind) >= 0 ? kind : 'info';
+            var toast = document.createElement('div');
+            toast.className = 'alert alert-' + safeKind + ' alert-dismissible fade show';
+            if (safeKind === 'danger') toast.setAttribute('role', 'alert');
+            var body = message;
+            if (!(message instanceof Node)) {
+                body = document.createElement('span');
+                body.textContent = String(message === undefined || message === null ? '' : message);
+            }
+            var close = document.createElement('button');
+            close.type = 'button';
+            close.className = 'btn-close';
+            close.setAttribute('data-bs-dismiss', 'alert');
+            close.setAttribute('aria-label', 'Close');
+            toast.append(body, close);
+            host.appendChild(toast);
+            while (host.children.length > 4) host.firstElementChild.remove();
+            setTimeout(function () { toast.remove(); }, timeout || (safeKind === 'danger' ? 6000 : 3500));
+        };
+
         // Global 401 interceptor: redirect to login when session expires mid-page.
         // Wraps window.fetch so all AJAX calls in every template are covered.
         (function () {
@@ -633,10 +1059,10 @@
                 .then(function (r) { return r.json(); })
                 .then(function (data) {
                     if (data.success) {
-                        var b = document.getElementById('zombie-banner');
-                        b.className = 'alert alert-success mb-0 rounded-0 border-0 border-bottom border-success';
-                        b.innerHTML = '<div class="container-fluid"><i class="fas fa-check-circle me-2"></i>' +
-                            '<strong>Reconnect scheduled.</strong> Refresh this page in a few seconds to confirm the radio is back online.</div>';
+                        // The banner poll confirms the recovery; the banner itself
+                        // stays intact so it can show again if the radio drops later.
+                        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Reconnecting\u2026';
+                        window.pollBannersSoon && window.pollBannersSoon();
                     } else {
                         btn.disabled = false;
                         btn.innerHTML = '<i class="fas fa-power-off me-1"></i>Restart Bot Processing';
@@ -659,10 +1085,8 @@
                 .then(function (r) { return r.json(); })
                 .then(function (data) {
                     if (data.success) {
-                        var b = document.getElementById('offline-banner');
-                        b.className = 'alert alert-success mb-0 rounded-0 border-0 border-bottom border-success';
-                        b.innerHTML = '<div class="container-fluid"><i class="fas fa-check-circle me-2"></i>' +
-                            '<strong>Offline flag cleared.</strong> The bot will resume outbound sends. Refresh to confirm.</div>';
+                        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Waiting for the bot\u2026';
+                        window.pollBannersSoon && window.pollBannersSoon();
                     } else {
                         btn.disabled = false;
                         btn.innerHTML = '<i class="fas fa-check me-1"></i>Clear Offline Flag';
@@ -679,18 +1103,168 @@
         document.getElementById('zombie-recover-btn')?.addEventListener('click', zombieRecover);
         document.getElementById('offline-clear-btn')?.addEventListener('click', radioOfflineClear);
 
+        // Banner "Since" times arrive as UTC ISO strings. Show them in the
+        // viewer's own time zone with a relative age ("Oct 15, 7:42 AM · 2 days
+        // ago"), keeping the exact value in datetime= and the tooltip.
+        function formatSince(el, iso) {
+            if (!el) return;
+            el.setAttribute('datetime', iso || '');
+            var d = iso ? new Date(iso) : null;
+            if (!d || isNaN(d.getTime())) { el.textContent = iso || ''; el.removeAttribute('title'); return; }
+            var now = new Date();
+            var sameDay = d.toDateString() === now.toDateString();
+            var abs = d.toLocaleString(undefined, sameDay
+                ? { hour: 'numeric', minute: '2-digit' }
+                : { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+            var secs = Math.round((d.getTime() - now.getTime()) / 1000);
+            var units = [['day', 86400], ['hour', 3600], ['minute', 60]];
+            var rel = 'just now';
+            for (var i = 0; i < units.length; i++) {
+                if (Math.abs(secs) >= units[i][1]) {
+                    rel = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' })
+                        .format(Math.round(secs / units[i][1]), units[i][0]);
+                    break;
+                }
+            }
+            el.textContent = abs + ' \u00b7 ' + rel;
+            el.title = d.toLocaleString(undefined, { dateStyle: 'full', timeStyle: 'long' });
+        }
+        document.querySelectorAll('.js-since').forEach(function (el) {
+            formatSince(el, el.getAttribute('datetime'));
+        });
+
+        // One verdict on the station for every page that shows it (dashboard
+        // strip, Real-time strip), from /api/banner-status. Lamp colors mean
+        // what DESIGN.md says: green listening, amber degraded, red not working.
+        // Returns null until the first poll answers.
+        window.stationVerdict = function (d) {
+            if (!d || d.bot_running === undefined || d.bot_running === null) return null;
+            var lastSeen = d.bot_last_seen ? new Date(d.bot_last_seen * 1000) : null;
+            if (d.bot_initializing) {
+                return { lamp: 'warning', text: 'Bot starting', radio: 'radio —',
+                         title: 'The bot is connecting to its radio.' };
+            }
+            if (!d.bot_running) {
+                return { lamp: 'disconnected', text: 'Bot not running', radio: 'radio —',
+                         title: lastSeen
+                             ? 'No word from the bot since ' + lastSeen.toLocaleString() + '. Nothing is being heard or sent.'
+                             : 'The bot hasn\'t run against this database yet. Nothing is being heard or sent.' };
+            }
+            if (d.radio_zombie) {
+                return { lamp: 'disconnected', text: 'Radio not responding', radio: 'radio not responding',
+                         title: 'The radio stopped answering. It needs a power cycle.' };
+            }
+            if (d.radio_connected === false) {
+                return { lamp: 'disconnected', text: 'Radio disconnected', radio: 'radio disconnected',
+                         title: 'The bot is running but has no link to its radio.' };
+            }
+            if (d.radio_offline) {
+                return { lamp: 'warning', text: 'Radio can\'t transmit', radio: 'radio can\'t transmit',
+                         title: 'Sends are failing. Packets may still be arriving.' };
+            }
+            return { lamp: 'connected', text: 'Listening',
+                     radio: d.radio_connected === true ? 'radio connected' : 'radio —', title: '' };
+        };
+
         // Live banner polling — updates all banners every 10s without a page reload
         (function () {
+            var BUTTON_LABELS = {
+                'zombie-recover-btn': '<i class="fas fa-power-off me-1"></i>Restart Bot Processing',
+                'offline-clear-btn': '<i class="fas fa-check me-1"></i>Clear Offline Flag'
+            };
+            function resetButton(id) {
+                var btn = document.getElementById(id);
+                if (btn && btn.disabled) { btn.disabled = false; btn.innerHTML = BUTTON_LABELS[id]; }
+            }
+
+            function bannerShown(id) {
+                var el = document.getElementById(id);
+                return !!el && !el.classList.contains('d-none');
+            }
+            function sinceOf(id) {
+                var el = document.getElementById(id);
+                return el && el.getAttribute('datetime') ? el.getAttribute('datetime') : null;
+            }
+            // What the server rendered, so a problem that clears on the first
+            // poll after page load still gets its recovery notice.
+            var previous = {
+                radio_offline: bannerShown('offline-banner'),
+                radio_offline_since: sinceOf('offline-since-text'),
+                radio_zombie: bannerShown('zombie-banner'),
+                radio_zombie_since: sinceOf('zombie-since-text')
+            };
+
+            function clock(date) {
+                return date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+            }
+            function span(seconds) {
+                var m = Math.round(seconds / 60);
+                if (m < 1) return 'under a minute';
+                if (m < 60) return m + ' min';
+                var h = Math.floor(m / 60), rest = m % 60;
+                if (h < 24) return h + ' h' + (rest ? ' ' + rest + ' min' : '');
+                var days = Math.round(h / 24);
+                return days + (days === 1 ? ' day' : ' days');
+            }
+
+            var recoveryTimer = null;
+            function showRecovery(title, since, what) {
+                var banner = document.getElementById('recovery-banner');
+                if (!banner) return;
+                var now = new Date();
+                var sinceDate = since ? new Date(since) : null;
+                if (sinceDate && isNaN(sinceDate.getTime())) sinceDate = null;
+                document.getElementById('recovery-title').textContent = title + ' at ' + clock(now);
+                document.getElementById('recovery-detail').textContent = sinceDate
+                    ? '\u00b7 ' + what + ' for ' + span((now - sinceDate) / 1000) + ', since ' + clock(sinceDate)
+                    : '';
+                banner.classList.remove('d-none');
+                clearTimeout(recoveryTimer);
+                recoveryTimer = setTimeout(function () { banner.classList.add('d-none'); }, 20000);
+                window.dispatchEvent(new CustomEvent('station-recovered', {
+                    detail: { title: title, since: sinceDate ? sinceDate.getTime() / 1000 : null, what: what }
+                }));
+            }
+            document.getElementById('recovery-close')?.addEventListener('click', function () {
+                clearTimeout(recoveryTimer);
+                document.getElementById('recovery-banner').classList.add('d-none');
+            });
+
+            // One notice per poll, the most fundamental recovery first
+            function noticeRecovery(prev, d) {
+                if (prev.bot_running === false && d.bot_running === true) {
+                    var last = prev.bot_last_seen ? new Date(prev.bot_last_seen * 1000).toISOString() : null;
+                    showRecovery('Bot running again', last, 'stopped');
+                } else if (prev.radio_zombie && !d.radio_zombie) {
+                    showRecovery('Radio responding again', prev.radio_zombie_since, 'unresponsive');
+                } else if (prev.radio_connected === false && d.radio_connected === true) {
+                    showRecovery('Radio reconnected', radioDownSince, 'disconnected');
+                } else if (prev.radio_offline && !d.radio_offline) {
+                    showRecovery('Radio back online', prev.radio_offline_since, 'offline');
+                }
+            }
+
+            // The server keeps no "since" for a dropped radio link, so note when
+            // this page first saw it down.
+            var radioDownSince = null;
+
             function applyBannerStatus(d) {
+                noticeRecovery(previous, d);
+                if (d.radio_connected === false && previous.radio_connected !== false) {
+                    radioDownSince = new Date().toISOString();
+                }
+                previous = d;
+                if (!d.radio_zombie) resetButton('zombie-recover-btn');
+                if (!d.radio_offline) resetButton('offline-clear-btn');
+
                 var show = function (id) { var el = document.getElementById(id); if (el) el.classList.remove('d-none'); };
                 var hide = function (id) { var el = document.getElementById(id); if (el) el.classList.add('d-none'); };
-                var setText = function (id, v) { var el = document.getElementById(id); if (el) el.textContent = v || ''; };
 
                 d.bot_initializing ? show('init-banner') : hide('init-banner');
 
                 if (d.radio_zombie) {
                     show('zombie-banner');
-                    if (d.radio_zombie_since) { setText('zombie-since-text', d.radio_zombie_since); show('zombie-since-span'); }
+                    if (d.radio_zombie_since) { formatSince(document.getElementById('zombie-since-text'), d.radio_zombie_since); show('zombie-since-span'); }
                     else { hide('zombie-since-span'); }
                 } else {
                     hide('zombie-banner');
@@ -698,11 +1272,16 @@
 
                 if (d.radio_offline) {
                     show('offline-banner');
-                    if (d.radio_offline_since) { setText('offline-since-text', d.radio_offline_since); show('offline-since-span'); }
+                    if (d.radio_offline_since) { formatSince(document.getElementById('offline-since-text'), d.radio_offline_since); show('offline-since-span'); }
                     else { hide('offline-since-span'); }
                 } else {
                     hide('offline-banner');
                 }
+
+                // Pages that show radio state (Realtime) read it from here
+                // rather than polling a second time.
+                window.lastBannerStatus = d;
+                window.dispatchEvent(new CustomEvent('banner-status', { detail: d }));
             }
 
             function pollBanners() {
@@ -712,14 +1291,22 @@
                     .catch(function () { });  // silent — server may be restarting
             }
 
+            // After an admin action, confirm sooner than the next 10 s tick
+            window.pollBannersSoon = function () {
+                setTimeout(pollBanners, 1500);
+                setTimeout(pollBanners, 5000);
+            };
+
+            // Once now, so pages showing the station verdict don't wait 10 s for it
+            pollBanners();
             setInterval(pollBanners, 10000);
         })();
     </script>
 
-    <!-- Main Content -->
-    <div class="container-fluid mt-4">
+    <!-- Main Content. tabindex lets the skip link move focus here, not just scroll. -->
+    <main id="main-content" class="container-fluid mt-4" tabindex="-1">
         {% block content %}{% endblock %}
-    </div>
+    </main>
 
     <!-- Footer links (bottom of page, visible when scrolled down) -->
     <footer class="text-center py-2" style="font-size: 0.7rem;">
@@ -739,19 +1326,14 @@
     </footer>
 
     <!-- Bootstrap JS -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ url_for('static', filename='vendor/bootstrap/bootstrap.bundle.min.js') }}"></script>
 
     <!-- Socket.IO Client -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+    <script src="{{ url_for('static', filename='vendor/socket.io/socket.io.min.js') }}"></script>
 
-    <!-- Moment.js for date formatting -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.4/moment.min.js"></script>
-
-    <!-- Chart.js for graphs -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-
-    <!-- SHA-256 for channel key derivation (works in non-HTTPS contexts) -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/js-sha256/0.11.0/sha256.min.js"></script>
+    <!-- Page-specific libraries (Chart.js, js-sha256) load from the pages that
+         use them, through the page_libs block. -->
+    {% block page_libs %}{% endblock %}
 
     <!-- Base JavaScript -->
     <script nonce="{{ g.csp_nonce }}">
@@ -837,8 +1419,13 @@
                 const statusElement = document.getElementById('connection-text');
                 const indicatorElement = document.getElementById('connection-status');
 
-                if (statusElement) {
+                if (statusElement && statusElement.textContent !== text) {
                     statusElement.textContent = text;
+                    // Announce later changes (a dropped or restored link), but
+                    // not the first connect every page load makes.
+                    if (!statusElement.hasAttribute('role')) {
+                        statusElement.setAttribute('role', 'status');
+                    }
                 }
                 if (indicatorElement) {
                     indicatorElement.className = `status-indicator status-${status}`;
@@ -849,37 +1436,18 @@
                 if (this.lastActivity) {
                     const lastUpdateElement = document.getElementById('last-update');
                     if (lastUpdateElement) {
-                        lastUpdateElement.textContent = moment(this.lastActivity).format('YYYY-MM-DD HH:mm:ss');
+                        const d = new Date(this.lastActivity);
+                        const pad = (n) => String(n).padStart(2, '0');
+                        lastUpdateElement.textContent = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
                     }
                 }
             }
 
             showNotification(message, type = 'info') {
                 // Create notification element
-                const notification = document.createElement('div');
-                const safeType = ['info', 'success', 'warning', 'danger'].includes(type)
-                    ? type
-                    : 'info';
-                notification.className = `alert alert-${safeType} alert-dismissible fade show position-fixed`;
-                notification.style.cssText = 'top: 20px; right: 20px; z-index: 9999; max-width: 300px;';
-
                 const notificationText = document.createElement('span');
                 notificationText.textContent = String(message ?? '');
-                const closeButton = document.createElement('button');
-                closeButton.type = 'button';
-                closeButton.className = 'btn-close';
-                closeButton.setAttribute('data-bs-dismiss', 'alert');
-                closeButton.setAttribute('aria-label', 'Close');
-                notification.append(notificationText, closeButton);
-
-                document.body.appendChild(notification);
-
-                // Auto-remove after 3 seconds
-                setTimeout(() => {
-                    if (notification.parentNode) {
-                        notification.parentNode.removeChild(notification);
-                    }
-                }, 3000);
+                window.viewerToast(notificationText, type, 3000);
             }
         }
 
