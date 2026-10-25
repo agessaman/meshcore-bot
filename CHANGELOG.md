@@ -6,6 +6,15 @@ semantic versioning.
 
 ## [Unreleased]
 
+### Added
+
+- Packet capture's guide and `config.ini.example` include a working waev.app
+  MQTT broker: `mqtt-a.waev.app` on port 443 over TLS websockets, with a
+  one-hour JWT (TTL 3600, renewal 3500). The example leaves it commented out
+  on the next broker slot. Brokers are read from `mqtt1` upward, and a missing
+  `mqttN_server` ends the list, so a config that already uses brokers 1–4
+  puts the same keys on `mqtt5`.
+
 ## [1.1.0] - 2026-09-20
 
 ### Added
