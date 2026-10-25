@@ -94,6 +94,8 @@ mqtt2_username = user
 mqtt2_password = pass
 ```
 
+A working waev.app broker is in [waev.app](#waevapp).
+
 #### Connection tuning
 
 | Key | Default | What it does |
@@ -175,11 +177,40 @@ jwt_renewal_interval = 43200      # Default proactive refresh cadence (12 hours)
 # mqtt1_jwt_renewal_interval = 1800
 ```
 
-**Note**: When connecting to waev.app brokers the default settings will cause the connection not to authenticate properly. Please use the following settings on the MQTT connection for the waev.app brokers.
+### waev.app
+
+`mqtt-a.waev.app` connects with the block below: TLS websockets on port 443,
+path `/mqtt`, a JWT whose audience is the broker hostname, and the usual
+MeshCore status and packet topics. waev.app accepts a token for one hour, so
+the TTL is 3600 seconds and renewal is 3500. Leave `client_id` empty and the
+bot generates one for this broker.
+
+Brokers are numbered from 1 with no gaps. The bot reads `mqtt1_server`, then
+`mqtt2_server`, and stops at the first number with no server line, so the `5`
+below is the next slot only when brokers 1–4 each have a server. On a copy of
+`config.ini.example` the next slot is `mqtt3_`, where the same keys are
+commented out. `mqttN_enabled` defaults to true when the server line is
+present; the block sets it so the slot is on.
+
+When `jwt_ttl_seconds` and `jwt_renewal_interval` are present, a waev.app
+broker uses those values. The example config sets both to 86400, which
+waev.app rejects, so the block sets the two per-broker timings. With both
+globals absent, a `waev.app` hostname already gets 3600 and 3500.
 
 ```ini
-mqttN_jwt_ttl_seconds = 3600
-mqttN_jwt_renewal_interval = 3500
+mqtt5_enabled = true
+mqtt5_server = mqtt-a.waev.app
+mqtt5_port = 443
+mqtt5_transport = websockets
+mqtt5_use_tls = true
+mqtt5_use_auth_token = true
+mqtt5_token_audience = mqtt-a.waev.app
+mqtt5_topic_status = meshcore/{IATA}/{PUBLIC_KEY}/status
+mqtt5_topic_packets = meshcore/{IATA}/{PUBLIC_KEY}/packets
+mqtt5_websocket_path = /mqtt
+mqtt5_jwt_ttl_seconds = 3600
+mqtt5_jwt_renewal_interval = 3500
+mqtt5_client_id =
 ```
 
 ---
@@ -321,7 +352,7 @@ Note that `rc=` on a *disconnect* is a paho `MQTT_ERR_*` code, not a CONNACK cod
 `rc=7` is a lost connection and `rc=2` is a protocol error. They do not mean the same
 thing as the numbers in a `Failed to connect` line.
 
-**Note**: If the MQTT connection that is failing is attempting to connect to waev.app brokers, please see the [Status Publishing and MQTT auth (JWT)](#status-publishing-and-mqtt-auth-jwt) section.
+A waev.app broker that fails to authenticate needs the block in [waev.app](#waevapp).
 
 ### No Packets Being Published
 
