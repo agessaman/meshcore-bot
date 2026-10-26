@@ -1261,6 +1261,41 @@ recency_weight = 0.4
 # Default: 24 hours. For 48-72 hour advert intervals, use 36-48 hours.
 recency_decay_half_life_hours = 24
 
+# How a path's hops are resolved to repeaters
+# greedy (default) = resolve each hop on its own, against the most recently heard
+#                    node sharing the neighbouring prefix
+# joint            = score the path as a whole: every hop's candidates are tried
+#                    together, hops are charged for the distance between them,
+#                    the route is anchored at this node (and at the sender when
+#                    its position is known), and one node cannot take two hops
+# 'joint' is worth enabling on 1-byte prefix meshes, where many repeaters share
+# each prefix and a greedy pick can produce absurd hop distances. It costs one
+# extra pass over the candidates, no extra queries.
+# One switch covers the path command, the test command's distance placeholders
+# and the web viewer's path decoding. See docs/path-command-config.md.
+path_inference_mode = greedy
+
+# Joint inference tuning (only used when path_inference_mode = joint)
+# Kilometres of ordinary propagation per unit of hop cost
+joint_cost_km_per_unit = 50
+# Hops beyond this distance are charged at the steeper rate below
+joint_long_hop_knee_km = 100
+# How much dearer each kilometre past the knee is
+joint_long_hop_multiplier = 4
+# Cost multiplier for a hop pair the mesh graph has already observed
+# (needs min_edge_observations; 1.0 disables the discount)
+joint_graph_edge_discount = 0.5
+# Flat cost of leaving a hop unresolved, in the same units
+# The default (1.6) is about one 80km hop: a candidate further than that from
+# its neighbours loses to "unknown" rather than inflating the path distance
+joint_unlisted_hop_cost = 1.6
+# Confidence at or above which a hop counts as settled rather than a guess
+joint_confident_threshold = 0.7
+# Softmax temperature for hop confidence (lower = more decisive)
+joint_confidence_temperature = 1.0
+# Most candidates considered per hop, after recency filtering
+joint_max_candidates_per_hop = 12
+
 # Enable graph-based path validation
 # When enabled, uses observed mesh connections to improve path guessing accuracy
 # The graph learns from message paths to validate repeater selections
@@ -1737,6 +1772,8 @@ require_path_bytes_failure_response =
 # mi             = always miles
 # An invalid value falls back to auto with a startup warning. This only changes
 # what is printed; repeater-selection distances are always computed in km.
+# Which repeater each hop is taken to be follows [Path_Command] path_inference_mode;
+# on a 1-byte prefix mesh 'joint' gives far steadier distances than the default.
 distance_unit = auto
 
 # Optional: full ack template for test/t. When set, overrides [Keywords] test for this command only.
