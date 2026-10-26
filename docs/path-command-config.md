@@ -136,6 +136,104 @@ The graph stores edges using the bot’s prefix length ([Bot] `prefix_bytes`). P
 - Stored keys indicate high confidence (+0.4 bonus)
 - Default: `true`
 
+## Joint Path Inference (1-byte meshes)
+
+Everything above resolves **one hop at a time**. The neighbour a hop is judged
+against is itself a guess — the most recently heard node sharing that
+neighbour's prefix — so with 1-byte prefixes, where many repeaters collide on
+each prefix, a hop is disambiguated against a coin flip. Nothing checks that the
+chosen nodes form a route a packet could actually take, and a prefix appearing
+twice in one path resolves to the same node both times. The visible symptom is a
+`{path_distance}` on a `test` reply that swings wildly between messages, or a
+short local path reported as hundreds of kilometres.
+
+**`path_inference_mode`** (`greedy` | `joint`)
+- `greedy` (default): the per-hop selection described above
+- `joint`: score the path as a whole
+- Default: `greedy`
+
+In `joint` mode every hop's surviving candidates become states in a chain:
+
+- **Link cost** grows with the distance between two consecutive hops, and
+  steepens past a knee, so an implausible hop is expensive rather than merely
+  worse.
+- **Observed links are cheaper.** When the mesh graph has seen a link between
+  two specific nodes, that link's cost is discounted. The lookup uses each
+  candidate's own public key, not the hop's prefix, so an edge recorded against
+  a known key cannot be claimed by another node that merely shares its prefix.
+  This is what lets the graph tell colliding candidates apart at 1-byte width.
+- **Anchors.** The last hop is tied to this node's own position (it is the hop we
+  heard); the first hop is tied to the sender's position when it is known.
+- **One node per path.** The firmware forwards a packet once, so a node that
+  wins two positions keeps the one it would be dearer to lose and is banned from
+  the other.
+- **Unlisted hops.** Any hop may instead be left unresolved for a flat cost, so a
+  candidate further from its neighbours than that penalty loses to "unknown"
+  rather than inflating the reported distance. An unlisted hop is counted as a
+  gap (`no-loc` in a `test` reply), never bridged.
+
+A min-cost pass over the chain picks the cheapest whole sequence, and each hop's
+confidence is its share of the probability over its own candidates — so a hop
+with one plausible node still scores high on a path that is poor overall.
+
+This costs one extra pass over the candidates already gathered and runs no extra
+queries.
+
+### Tuning
+
+These only apply when `path_inference_mode = joint`.
+
+**`joint_cost_km_per_unit`** (km, default `50`)
+- Kilometres of ordinary propagation per unit of hop cost
+
+**`joint_long_hop_knee_km`** (km, default `100`)
+- Hops beyond this distance are charged at the steeper rate below
+
+**`joint_long_hop_multiplier`** (default `4`)
+- How much dearer each kilometre past the knee is
+
+**`joint_graph_edge_discount`** (0.0 to 1.0, default `0.5`)
+- Cost multiplier for a hop pair the mesh graph has observed
+- Needs `min_edge_observations`; `1.0` disables the discount
+
+**`joint_unlisted_hop_cost`** (default `1.6`)
+- Flat cost of leaving a hop unresolved, in the same units
+- The default is about one 80 km hop
+
+**`joint_confident_threshold`** (0.0 to 1.0, default `0.7`)
+- Confidence at or above which a hop counts as settled rather than a guess
+
+**`joint_confidence_temperature`** (default `1.0`)
+- Softmax temperature for hop confidence; lower is more decisive
+
+**`joint_max_candidates_per_hop`** (default `12`)
+- Most candidates considered per hop, after recency filtering
+
+### Scope
+
+One switch covers every path decode: the `path` command, the `test` command's
+`{path_distance}` and `{firstlast_distance}`, and the web viewer's
+`/api/decode-path` and `/api/mesh/resolve-path`.
+
+Two things change in the output when it is on:
+
+- The `path` command's hop list is keyed by **hop position** rather than by node
+  id, which is what lets a repeated 1-byte prefix show a different repeater at
+  each hop. In `greedy` mode it resolved the prefix once and printed that one
+  repeater at both.
+- A jointly resolved hop that had colliding candidates carries `joint_guess` and
+  a `confidence`, so the reply shows a confidence symbol as a geographic or
+  graph guess does. The web decode adds a `confidence` field per hop; the
+  per-hop path has none.
+
+A hop no node fits is reported as unknown — or as a collision when several
+candidates shared the prefix and none of them fit — rather than being named on a
+guess. `{path_distance}` is already blank whenever a hop in the chain has no
+usable coordinates, so an unresolved hop blanks it as a collision always has.
+
+It applies to **heard** paths only. A `trace` reply carries a planned route
+rather than a route a packet took, so trace handling is left alone.
+
 ## Graph vs Geographic Selection
 
 **`graph_geographic_combined`** (boolean)

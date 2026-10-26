@@ -88,8 +88,43 @@ class PathInferenceConfig:
     graph_path_validation_obs_divisor: float = 50.0
     star_bias_multiplier: float = 2.5
 
+    # Joint (whole-path) inference -- see `infer_path_nodes`. 'greedy' keeps the
+    # per-hop selection above; 'joint' scores the path as a whole.
+    path_inference_mode: str = 'greedy'
+    joint_cost_km_per_unit: float = 50.0
+    joint_long_hop_knee_km: float = 100.0
+    joint_long_hop_multiplier: float = 4.0
+    joint_graph_edge_discount: float = 0.5
+    joint_unlisted_hop_cost: float = 1.6
+    joint_confident_threshold: float = 0.7
+    joint_confidence_temperature: float = 1.0
+    joint_max_candidates_per_hop: int = 12
+
     # Master switch enabling the bot `path` command's extra behaviors (see module docstring).
     bot_command: bool = False
+
+    @classmethod
+    def joint_fields_from_config(cls, config) -> dict[str, Any]:
+        """The ``joint_*`` fields and ``path_inference_mode``, read from ``[Path_Command]``.
+
+        Shared so the two config paths cannot drift: :meth:`from_config` (web) and
+        ``PathCommand._inference_config``, which builds the snapshot field by field.
+        """
+        mode = config.get('Path_Command', 'path_inference_mode', fallback='greedy')
+        mode = mode.strip().lower() if mode else 'greedy'
+        if mode not in ('greedy', 'joint'):
+            mode = 'greedy'
+        return {
+            'path_inference_mode': mode,
+            'joint_cost_km_per_unit': max(1.0, config.getfloat('Path_Command', 'joint_cost_km_per_unit', fallback=50.0)),
+            'joint_long_hop_knee_km': max(1.0, config.getfloat('Path_Command', 'joint_long_hop_knee_km', fallback=100.0)),
+            'joint_long_hop_multiplier': max(1.0, config.getfloat('Path_Command', 'joint_long_hop_multiplier', fallback=4.0)),
+            'joint_graph_edge_discount': max(0.0, min(1.0, config.getfloat('Path_Command', 'joint_graph_edge_discount', fallback=0.5))),
+            'joint_unlisted_hop_cost': max(0.0, config.getfloat('Path_Command', 'joint_unlisted_hop_cost', fallback=1.6)),
+            'joint_confident_threshold': max(0.0, min(1.0, config.getfloat('Path_Command', 'joint_confident_threshold', fallback=0.7))),
+            'joint_confidence_temperature': max(0.01, config.getfloat('Path_Command', 'joint_confidence_temperature', fallback=1.0)),
+            'joint_max_candidates_per_hop': max(2, config.getint('Path_Command', 'joint_max_candidates_per_hop', fallback=12)),
+        }
 
     @classmethod
     def from_config(cls, config) -> "PathInferenceConfig":
@@ -174,6 +209,7 @@ class PathInferenceConfig:
             graph_path_validation_max_bonus=graph_path_validation_max_bonus,
             graph_path_validation_obs_divisor=config.getfloat('Path_Command', 'graph_path_validation_obs_divisor', fallback=50.0),
             star_bias_multiplier=star_bias_multiplier,
+            **cls.joint_fields_from_config(config),
             bot_command=False,
         )
 
@@ -1031,8 +1067,495 @@ def _combine_selection(node_id, node_ids, cfg, graph_repeater, graph_confidence,
 
 
 # ---------------------------------------------------------------------------
+# Candidate gathering (shared)
+# ---------------------------------------------------------------------------
+
+def gather_hop_candidates(node_id, cfg: PathInferenceConfig, *, db_manager,
+                          lookup_func: Optional[Callable[[str], list[dict[str, Any]]]] = None,
+                          ) -> list[dict[str, Any]]:
+    """Candidate repeaters/room servers whose public key starts with ``node_id``.
+
+    Extracted verbatim from ``decode_path_nodes`` so the joint inference path and the
+    web decode share one query and one row shape. ``lookup_func``, when given, replaces
+    the database query (callers and tests that inject candidates).
+    """
+    if lookup_func is not None:
+        results = lookup_func(node_id)
+    elif cfg.max_repeater_age_days > 0:
+        query = f'''
+            SELECT name, public_key, device_type, last_heard, last_heard as last_seen,
+                   last_advert_timestamp, latitude, longitude, city, state, country,
+                   advert_count, signal_strength, hop_count, role, is_starred
+            FROM complete_contact_tracking
+            WHERE public_key LIKE ? AND role IN ('repeater', 'roomserver')
+            AND (
+                (last_advert_timestamp IS NOT NULL AND last_advert_timestamp >= datetime('now', 'localtime', '-{cfg.max_repeater_age_days} days'))
+                OR (last_advert_timestamp IS NULL AND last_heard >= datetime('now', 'localtime', '-{cfg.max_repeater_age_days} days'))
+            )
+            ORDER BY COALESCE(last_advert_timestamp, last_heard) DESC
+        '''
+        results = db_manager.execute_query(query, (f"{node_id}%",))
+    else:
+        query = '''
+            SELECT name, public_key, device_type, last_heard, last_heard as last_seen,
+                   last_advert_timestamp, latitude, longitude, city, state, country,
+                   advert_count, signal_strength, hop_count, role, is_starred
+            FROM complete_contact_tracking
+            WHERE public_key LIKE ? AND role IN ('repeater', 'roomserver')
+            ORDER BY COALESCE(last_advert_timestamp, last_heard) DESC
+        '''
+        results = db_manager.execute_query(query, (f"{node_id}%",))
+
+    if not results:
+        return []
+
+    return [
+        {
+            'name': row['name'],
+            'public_key': row['public_key'],
+            'device_type': row['device_type'],
+            'last_seen': row['last_seen'],
+            'last_heard': row.get('last_heard', row['last_seen']),
+            'last_advert_timestamp': row.get('last_advert_timestamp'),
+            'is_active': True,
+            'latitude': row['latitude'],
+            'longitude': row['longitude'],
+            'city': row['city'],
+            'state': row['state'],
+            'country': row['country'],
+            'hop_count': row.get('hop_count'),
+            'is_starred': bool(row.get('is_starred', 0)),
+        } for row in results
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Joint (whole-path) inference
+# ---------------------------------------------------------------------------
+#
+# The per-hop selection above resolves each hop on its own, and the neighbour
+# context it leans on is itself a guess: `get_node_location` takes the most
+# recently heard node sharing the neighbour's prefix. With 1-byte prefixes many
+# repeaters share each prefix, so hop N is disambiguated against a coin flip at
+# hop N+-1, nothing checks that the chosen nodes form a route a packet could
+# actually take, and a prefix appearing twice in one path resolves to the same
+# node both times.
+#
+# `infer_path_nodes` scores the path as a whole instead: every hop's candidates
+# become states in a chain, each link is charged a cost that grows with distance
+# and is discounted (halved by default) when the mesh graph has seen that link,
+# and a min-cost pass over the chain picks the cheapest sequence. The route is anchored at the observer
+# (the bot heard the last hop) and, when known, at the sender. A node that wins
+# two positions is banned from whichever one is cheaper to give up, because the
+# firmware forwards a packet once.
+
+
+@dataclass
+class HopInference:
+    """One hop of a jointly inferred path.
+
+    ``repeater`` is None when the hop is *unlisted*: no known node fits there
+    better than the flat ``joint_unlisted_hop_cost`` penalty. ``confidence`` is
+    this hop's share of the probability mass over its own candidates, so a hop
+    with one plausible node scores high even on a path that is poor overall.
+    """
+
+    node_id: str
+    repeater: Optional[dict[str, Any]] = None
+    confidence: float = 0.0
+    confident: bool = False
+    unlisted: bool = True
+    matches: int = 0
+    alternatives: list[dict[str, Any]] = None  # type: ignore[assignment]
+
+
+def _hop_location(repeater: Optional[dict[str, Any]]) -> Optional[tuple[float, float]]:
+    """A candidate's coordinates, or None when it has none worth using."""
+    if not repeater:
+        return None
+    lat = repeater.get('latitude')
+    lon = repeater.get('longitude')
+    if lat is None or lon is None:
+        return None
+    try:
+        lat = float(lat)
+        lon = float(lon)
+    except (TypeError, ValueError):
+        return None
+    if lat == 0.0 and lon == 0.0:
+        return None
+    return (lat, lon)
+
+
+def _candidate_key(repeater: Optional[dict[str, Any]]) -> Optional[str]:
+    """Identity used for the forward-once constraint, or None when unknowable."""
+    if not repeater:
+        return None
+    key = (repeater.get('public_key') or '').strip().lower()
+    return key or None
+
+
+def _distance_cost(km: float, cfg: PathInferenceConfig) -> float:
+    """Cost of covering ``km`` in one hop, rising steeply past the knee.
+
+    One unit is ``joint_cost_km_per_unit`` of ordinary propagation. Past
+    ``joint_long_hop_knee_km`` each further kilometre costs
+    ``joint_long_hop_multiplier`` times as much, so an implausible hop is
+    expensive rather than merely worse.
+    """
+    knee = cfg.joint_long_hop_knee_km
+    raw = km if km <= knee else knee + (km - knee) * cfg.joint_long_hop_multiplier
+    return raw / cfg.joint_cost_km_per_unit
+
+
+def _graph_query_prefix(candidate_key: str) -> str:
+    """The most specific prefix MeshGraph accepts for a candidate (6, else 4, else 2 chars).
+
+    Edges are stored at 2, 4 or 6 hex chars and ``get_edge`` prefix-matches, longest
+    first, so querying at full width still finds a coarse edge while letting a
+    wider one win. Querying at the *path's* width instead would match every
+    candidate sharing the hop's prefix, which is exactly what has to be told apart.
+    """
+    for width in (6, 4, 2):
+        if len(candidate_key) >= width:
+            return candidate_key[:width]
+    return ''
+
+
+def _edge_endpoint_fits(edge: dict[str, Any], endpoint: str, candidate_key: str) -> bool:
+    """True unless the edge records a *different* node at ``endpoint``.
+
+    An edge recorded against a known public key (adverts carry one) identifies its
+    endpoint exactly, so a candidate that merely shares the prefix must not claim
+    it. An edge with no recorded key is only as specific as its prefix, and the
+    prefix match that found it stands.
+    """
+    stored = (edge.get(f'{endpoint}_public_key') or '').strip().lower()
+    if not stored:
+        return True
+    return stored.startswith(candidate_key) or candidate_key.startswith(stored)
+
+
+def _graph_link_discount(cost: float, a, b, cfg: PathInferenceConfig, mesh_graph) -> float:
+    """Discount ``cost`` when the mesh graph has observed a link between ``a`` and ``b``."""
+    if not mesh_graph:
+        return cost
+    key_a = _candidate_key(a)
+    key_b = _candidate_key(b)
+    if not key_a or not key_b:
+        return cost
+    prefix_a = _graph_query_prefix(key_a)
+    prefix_b = _graph_query_prefix(key_b)
+    if not prefix_a or not prefix_b:
+        return cost
+    try:
+        for frm, to, frm_key, to_key in (
+            (prefix_a, prefix_b, key_a, key_b),
+            (prefix_b, prefix_a, key_b, key_a),
+        ):
+            edge = mesh_graph.get_edge(frm, to)
+            if not edge or edge.get('observation_count', 0) < cfg.min_edge_observations:
+                continue
+            if _edge_endpoint_fits(edge, 'from', frm_key) and _edge_endpoint_fits(edge, 'to', to_key):
+                return cost * cfg.joint_graph_edge_discount
+    except Exception:
+        return cost
+    return cost
+
+
+def _transition_cost(a, b, cfg: PathInferenceConfig, mesh_graph) -> float:
+    """Cost of ``a`` forwarding to ``b``; either being unlisted costs the flat penalty."""
+    if a is None or b is None:
+        return cfg.joint_unlisted_hop_cost
+    loc_a = _hop_location(a)
+    loc_b = _hop_location(b)
+    if loc_a is None or loc_b is None:
+        # No geometry to judge, but a known link is still evidence.
+        return _graph_link_discount(cfg.joint_unlisted_hop_cost, a, b, cfg, mesh_graph)
+    cost = _distance_cost(calculate_distance(loc_a[0], loc_a[1], loc_b[0], loc_b[1]), cfg)
+    return _graph_link_discount(cost, a, b, cfg, mesh_graph)
+
+
+def _anchor_cost(repeater, anchor: Optional[tuple[float, float]], cfg: PathInferenceConfig) -> float:
+    """Cost of tying an end of the path to a known position (sender or observer)."""
+    if repeater is None:
+        return cfg.joint_unlisted_hop_cost
+    if anchor is None:
+        return 0.0
+    loc = _hop_location(repeater)
+    if loc is None:
+        return cfg.joint_unlisted_hop_cost
+    return _distance_cost(calculate_distance(loc[0], loc[1], anchor[0], anchor[1]), cfg)
+
+
+def _hop_states(candidates: list[dict[str, Any]], cfg: PathInferenceConfig) -> list[dict[str, Any]]:
+    """Recency-filter one hop's candidates, capped, in the greedy path's order.
+
+    A single candidate skips the recency filter, as ``select_node_repeater`` does.
+    """
+    if not candidates:
+        return []
+    if len(candidates) == 1:
+        kept = list(candidates)
+    else:
+        scored = calculate_recency_weighted_scores(candidates, cfg)
+        kept = [r for r, score in scored if score >= MIN_RECENCY_THRESHOLD]
+    return kept[:cfg.joint_max_candidates_per_hop]
+
+
+def _solve_chain(states, entry_costs, exit_costs, trans):
+    """Min-cost path through the chain, with per-state min-marginals.
+
+    ``entry_costs`` applies to hop 0 and ``exit_costs`` to the last hop: those are
+    the two ends the anchors tie down.
+
+    Returns ``(chosen, totals, best_total)`` where ``chosen[i]`` indexes the
+    winning state at hop ``i`` and ``totals[i][c]`` is the cost of the cheapest
+    whole path that uses state ``c`` at hop ``i`` (its min-marginal).
+    """
+    n = len(states)
+    inf = float('inf')
+
+    forward = [[inf] * len(states[i]) for i in range(n)]
+    parent = [[-1] * len(states[i]) for i in range(n)]
+    for c in range(len(states[0])):
+        forward[0][c] = entry_costs[c]
+    for i in range(1, n):
+        for c in range(len(states[i])):
+            best = inf
+            best_p = -1
+            for p in range(len(states[i - 1])):
+                if forward[i - 1][p] == inf:
+                    continue
+                cost = forward[i - 1][p] + trans(i - 1, p, i, c)
+                if cost < best:
+                    best = cost
+                    best_p = p
+            forward[i][c] = best
+            parent[i][c] = best_p
+
+    backward = [[inf] * len(states[i]) for i in range(n)]
+    for c in range(len(states[n - 1])):
+        backward[n - 1][c] = exit_costs[c]
+    for i in range(n - 2, -1, -1):
+        for c in range(len(states[i])):
+            best = inf
+            for nxt in range(len(states[i + 1])):
+                if backward[i + 1][nxt] == inf:
+                    continue
+                cost = trans(i, c, i + 1, nxt) + backward[i + 1][nxt]
+                if cost < best:
+                    best = cost
+            backward[i][c] = best
+
+    totals = [
+        [
+            forward[i][c] + backward[i][c]
+            if forward[i][c] != inf and backward[i][c] != inf else inf
+            for c in range(len(states[i]))
+        ]
+        for i in range(n)
+    ]
+
+    last = n - 1
+    end = min(range(len(states[last])), key=lambda c: totals[last][c])
+    best_total = totals[last][end]
+    chosen = [0] * n
+    chosen[last] = end
+    for i in range(last, 0, -1):
+        chosen[i - 1] = parent[i][chosen[i]]
+    return chosen, totals, best_total
+
+
+def _softmax_confidence(costs: list[float], chosen: int, cfg: PathInferenceConfig) -> list[float]:
+    """Turn a hop's min-marginal costs into probabilities over its states."""
+    inf = float('inf')
+    finite = [c for c in costs if c != inf]
+    if not finite:
+        probs = [0.0] * len(costs)
+        if 0 <= chosen < len(probs):
+            probs[chosen] = 1.0
+        return probs
+    floor = min(finite)
+    weights = [
+        0.0 if cost == inf else math.exp(-(cost - floor) / cfg.joint_confidence_temperature)
+        for cost in costs
+    ]
+    total = sum(weights)
+    if total <= 0:
+        probs = [0.0] * len(costs)
+        if 0 <= chosen < len(probs):
+            probs[chosen] = 1.0
+        return probs
+    return [w / total for w in weights]
+
+
+def infer_path_nodes(node_ids, candidates_by_hop, cfg: PathInferenceConfig, *,
+                     mesh_graph=None, logger,
+                     sender_location: Optional[tuple[float, float]] = None,
+                     observer_location: Optional[tuple[float, float]] = None,
+                     ) -> list[HopInference]:
+    """Infer the most likely node for every hop of one observed path, jointly.
+
+    Args:
+        node_ids: hop prefixes in path order (hop 0 heard the sender).
+        candidates_by_hop: candidate repeater dicts per hop, same order and length
+            as ``node_ids`` (see :func:`gather_hop_candidates`).
+        cfg: tuning; the ``joint_*`` fields and ``min_edge_observations`` apply here.
+        mesh_graph: MeshGraph for the link discount, or None to score on geometry alone.
+            Looked up by each candidate's own public key, not by the hop's prefix.
+        sender_location: the sender's position, anchoring hop 0 when known.
+        observer_location: the receiving node's position, anchoring the last hop.
+
+    Returns:
+        One :class:`HopInference` per hop, in path order.
+    """
+    if not node_ids:
+        return []
+
+    hop_candidates = [_hop_states(candidates_by_hop[i] if i < len(candidates_by_hop) else [], cfg)
+                      for i in range(len(node_ids))]
+
+    # Every hop may also be unlisted (the trailing None state), so an implausible
+    # candidate loses to the flat penalty instead of inventing a 950km hop.
+    trans_cache: dict[tuple[int, int, int, int], float] = {}
+    banned: set[tuple[int, str]] = set()
+
+    # Assigned on the first pass below, which always runs; typed up front so the
+    # reads after the loop are not reads of an Optional.
+    states: list[list[Optional[dict[str, Any]]]] = []
+    chosen: list[int] = []
+    totals: list[list[float]] = []
+    best_total = float('inf')
+    for _ in range(max(4, len(node_ids) * 2)):
+        states = [
+            [rep for rep in hop_candidates[i] if (i, _candidate_key(rep)) not in banned] + [None]
+            for i in range(len(node_ids))
+        ]
+        trans_cache.clear()
+
+        def trans(i, c, j, d, _states=states):
+            key = (i, c, j, d)
+            cached = trans_cache.get(key)
+            if cached is None:
+                cached = _transition_cost(_states[i][c], _states[j][d], cfg, mesh_graph)
+                trans_cache[key] = cached
+            return cached
+
+        entry_costs = [_anchor_cost(rep, sender_location, cfg) for rep in states[0]]
+        exit_costs = [_anchor_cost(rep, observer_location, cfg) for rep in states[-1]]
+
+        chosen, totals, best_total = _solve_chain(states, entry_costs, exit_costs, trans)
+
+        # Forward-once: a node that won two positions keeps the one it would be
+        # dearer to lose, and is banned from the other.
+        positions: dict[str, list[int]] = {}
+        for i, c in enumerate(chosen):
+            key = _candidate_key(states[i][c])
+            if key:
+                positions.setdefault(key, []).append(i)
+        duplicates = {k: v for k, v in positions.items() if len(v) > 1}
+        if not duplicates:
+            break
+
+        for key, where in duplicates.items():
+            regrets = []
+            for i in where:
+                rival_costs = [totals[i][c] for c in range(len(states[i])) if c != chosen[i]]
+                finite = [cost for cost in rival_costs if cost != float('inf')]
+                regrets.append((min(finite) - best_total if finite else float('inf'), i))
+            regrets.sort()
+            # Keep the costliest position to give up; ban the rest.
+            for _regret, i in regrets[:-1]:
+                banned.add((i, key))
+
+    results: list[HopInference] = []
+    for i, node_id in enumerate(node_ids):
+        probs = _softmax_confidence(totals[i], chosen[i], cfg)
+        repeater = states[i][chosen[i]]
+        confidence = probs[chosen[i]] if chosen[i] < len(probs) else 0.0
+        alternatives: list[dict[str, Any]] = [
+            {'repeater': states[i][c], 'probability': probs[c]}
+            for c in range(len(states[i])) if c != chosen[i] and probs[c] > 0.0
+        ]
+        alternatives.sort(key=lambda a: a['probability'], reverse=True)
+        results.append(HopInference(
+            node_id=node_id,
+            repeater=repeater,
+            confidence=confidence,
+            confident=confidence >= cfg.joint_confident_threshold,
+            unlisted=repeater is None,
+            matches=len(hop_candidates[i]),
+            alternatives=alternatives,
+        ))
+
+    logger.debug(
+        "Joint path inference: %s hops, cost %.2f, %s unlisted, %s confident",
+        len(results), best_total,
+        sum(1 for r in results if r.unlisted),
+        sum(1 for r in results if r.confident),
+    )
+    return results
+
+
+# ---------------------------------------------------------------------------
 # Public entrypoint (web viewer)
 # ---------------------------------------------------------------------------
+
+def _joint_hop_entry(hop: HopInference, *, include_location: bool) -> dict[str, Any]:
+    """One :class:`HopInference` in ``decode_path_nodes``'s output shape.
+
+    ``geographic_guess`` is the web's "this is a guess" flag, so it follows
+    ``confident`` rather than the greedy path's hardcoded 0.8, and ``collision``
+    says the prefix had more than one candidate whether or not one was chosen.
+    ``confidence`` is additional: the greedy shape carries none.
+    """
+    if hop.repeater is None:
+        return {'node_id': hop.node_id, 'name': None, 'found': False}
+
+    repeater = hop.repeater
+    entry = {
+        'node_id': hop.node_id,
+        'name': repeater['name'],
+        'public_key': repeater['public_key'],
+        'device_type': repeater['device_type'],
+        'role': repeater.get('role', 'repeater'),
+        'found': True,
+        'geographic_guess': not hop.confident,
+        'collision': hop.matches > 1,
+        'matches': hop.matches,
+        'confidence': hop.confidence,
+    }
+    if include_location:
+        entry.update({
+            'latitude': repeater.get('latitude'),
+            'longitude': repeater.get('longitude'),
+            'last_seen': repeater.get('last_seen'),
+        })
+    return entry
+
+
+def _decode_path_nodes_joint(node_ids, cfg: PathInferenceConfig, *, db_manager, logger,
+                             mesh_graph, include_location: bool,
+                             lookup_func) -> list[dict[str, Any]]:
+    """``decode_path_nodes`` with the whole path resolved at once."""
+    try:
+        candidates = [
+            gather_hop_candidates(node_id, cfg, db_manager=db_manager, lookup_func=lookup_func)
+            for node_id in node_ids
+        ]
+        observer = None
+        if cfg.bot_latitude is not None and cfg.bot_longitude is not None:
+            observer = (cfg.bot_latitude, cfg.bot_longitude)
+        hops = infer_path_nodes(
+            node_ids, candidates, cfg,
+            mesh_graph=mesh_graph, logger=logger, observer_location=observer,
+        )
+    except Exception as e:
+        logger.error(f"Error decoding path: {e}", exc_info=True)
+        return []
+    return [_joint_hop_entry(hop, include_location=include_location) for hop in hops]
+
 
 def decode_path_nodes(
     path_hex: str,
@@ -1090,6 +1613,12 @@ def decode_path_nodes(
 
     node_ids = [match.upper() for match in hex_matches]
 
+    if cfg.path_inference_mode == 'joint':
+        return _decode_path_nodes_joint(
+            node_ids, cfg, db_manager=db_manager, logger=logger, mesh_graph=mesh_graph,
+            include_location=include_location, lookup_func=lookup_func,
+        )
+
     def _loc(rep):
         if not include_location:
             return {}
@@ -1102,53 +1631,11 @@ def decode_path_nodes(
     decoded_path = []
     try:
         for node_index, node_id in enumerate(node_ids):
-            if lookup_func is not None:
-                results = lookup_func(node_id)
-            elif cfg.max_repeater_age_days > 0:
-                query = f'''
-                    SELECT name, public_key, device_type, last_heard, last_heard as last_seen,
-                           last_advert_timestamp, latitude, longitude, city, state, country,
-                           advert_count, signal_strength, hop_count, role, is_starred
-                    FROM complete_contact_tracking
-                    WHERE public_key LIKE ? AND role IN ('repeater', 'roomserver')
-                    AND (
-                        (last_advert_timestamp IS NOT NULL AND last_advert_timestamp >= datetime('now', 'localtime', '-{cfg.max_repeater_age_days} days'))
-                        OR (last_advert_timestamp IS NULL AND last_heard >= datetime('now', 'localtime', '-{cfg.max_repeater_age_days} days'))
-                    )
-                    ORDER BY COALESCE(last_advert_timestamp, last_heard) DESC
-                '''
-                results = db_manager.execute_query(query, (f"{node_id}%",))
-            else:
-                query = '''
-                    SELECT name, public_key, device_type, last_heard, last_heard as last_seen,
-                           last_advert_timestamp, latitude, longitude, city, state, country,
-                           advert_count, signal_strength, hop_count, role, is_starred
-                    FROM complete_contact_tracking
-                    WHERE public_key LIKE ? AND role IN ('repeater', 'roomserver')
-                    ORDER BY COALESCE(last_advert_timestamp, last_heard) DESC
-                '''
-                results = db_manager.execute_query(query, (f"{node_id}%",))
+            repeaters_data = gather_hop_candidates(
+                node_id, cfg, db_manager=db_manager, lookup_func=lookup_func,
+            )
 
-            if results:
-                repeaters_data = [
-                    {
-                        'name': row['name'],
-                        'public_key': row['public_key'],
-                        'device_type': row['device_type'],
-                        'last_seen': row['last_seen'],
-                        'last_heard': row.get('last_heard', row['last_seen']),
-                        'last_advert_timestamp': row.get('last_advert_timestamp'),
-                        'is_active': True,
-                        'latitude': row['latitude'],
-                        'longitude': row['longitude'],
-                        'city': row['city'],
-                        'state': row['state'],
-                        'country': row['country'],
-                        'hop_count': row.get('hop_count'),
-                        'is_starred': bool(row.get('is_starred', 0)),
-                    } for row in results
-                ]
-
+            if repeaters_data:
                 selection = select_node_repeater(
                     node_id, repeaters_data, node_ids, cfg,
                     mesh_graph=mesh_graph, db_manager=db_manager, logger=logger,
