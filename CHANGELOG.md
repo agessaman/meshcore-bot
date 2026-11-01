@@ -51,6 +51,11 @@ semantic versioning.
 
 ### Fixed
 
+- The greeter's warmup (`rollout_days`) runs once, the first time the greeter starts. A restart more than a day after the previous warmup ended used to open another one, and anyone who spoke during it was marked greeted and never welcomed. Ending a warmup, or it expiring, no longer starts a new one on the next boot.
+- A greeting that is not actually sent no longer leaves the person marked greeted. That covers a send that fails, and a dead-air wait that ends while channel replies are paused. The next message tries again. A wait cancelled because someone else mentioned them still counts as greeted. Name fuzziness now catches a typo of the new user's name during that wait; previously it only ran when the exact name was already in the message, and could then reject that exact mention.
+
+- The greeter sends its welcome when `dead_air_delay_seconds` is greater than 0. It marked the new user as greeted before the wait, then the delayed sender saw that mark and skipped the message, so the user was recorded as greeted and never welcomed. The mark still stops a second message during the wait from starting another greeting. A wait cancelled because someone else mentioned them, or because channel replies are paused, still sends nothing. Anyone already recorded as greeted by this bug stays that way until marked ungreeted.
+
 - The web viewer no longer reports an all-clear it can't back up. The dashboard strip showed a green "Online · radio ok" and Real-time a green "Listening" whenever the viewer answered, even with no bot running. Both now show one verdict from the bot's 30-second health heartbeat, its radio link and the offline and zombie flags, and `/api/banner-status` reports `bot_running`, `bot_last_seen`, `bot_started` and `radio_connected`. Uptime shows a dash while the bot isn't running.
 - Dashboard change chips no longer show a day the bot recorded nothing as a 100% drop on every tile. When either compared day has no packets, adverts or messages, the chips stay neutral and a note names the day.
 - Clearing the radio-offline flag or restarting after a zombie state no longer overwrites the banner, which used to come back with the stale success message if the radio dropped again on the same page.

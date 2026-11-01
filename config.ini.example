@@ -1526,6 +1526,7 @@ mesh_info_format = \n\nMesh Info: {total_contacts} contacts, {repeaters} repeate
 # to greet new users. This prevents greeting everyone on an established mesh.
 # Set to 0 to disable rollout (will greet all new users immediately)
 # Note: Use auto_backfill to mark historical users and shorten/eliminate rollout period
+# The period runs once. A later restart does not start another one.
 rollout_days = 7
 
 # Auto-backfill from historical message_stats data

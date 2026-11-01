@@ -8,7 +8,7 @@ import asyncio
 import re
 import sqlite3
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from ..models import MeshMessage
@@ -110,7 +110,8 @@ class GreeterCommand(BaseCommand):
          ], blank_default=DEFAULT_GREETING, preview="greeting")},
         {"key": "rollout_days", "label": "Rollout period", "type": "int",
          "min": 0, "default": 7, "unit": "days",
-         "help": "Days the greeter rollout runs before auto-ending."},
+         "help": "Days to mark active users as already greeted before welcoming anyone. "
+                 "Runs once, the first time the greeter starts. 0 skips it."},
         {"key": "channel_greetings", "label": "Per-channel greetings", "type": "str",
          "default": "",
          "help": "channel:greeting,channel2:greeting2 — overrides the default per channel.",
@@ -204,45 +205,29 @@ class GreeterCommand(BaseCommand):
                             remaining = (end_date - current_time).total_seconds() / 86400
                             self.logger.info(f"Active rollout found (ID: {rollout_id}, {remaining:.1f} days remaining) - not starting new rollout")
                         else:
-                            # Rollout expired but not marked as completed - mark it and start new one
-                            self.logger.warning(f"Found expired rollout (ID: {rollout_id}) - marking as completed and starting new one")
+                            # Expired but still flagged active. Close it. A later boot
+                            # must not open another warmup over the one that just ended.
+                            self.logger.warning(f"Found expired rollout (ID: {rollout_id}) - marking as completed")
                             cursor.execute('''
                                 UPDATE greeter_rollout
                                 SET rollout_completed = 1
                                 WHERE id = ?
                             ''', (rollout_id,))
                             conn.commit()
-                            self.logger.info(f"Auto-starting greeter rollout for {self.rollout_days} days")
-                            self.start_rollout(backfill_first=self.auto_backfill)
                     else:
-                        # No active rollout - check if one was recently completed to prevent immediate restart
+                        # The warmup is once, when the greeter is first enabled.
+                        # A completed row means it already ran; starting another on
+                        # boot marks whoever speaks during it and never greets them.
                         cursor.execute('''
-                            SELECT id, rollout_started_at, rollout_days
-                            FROM greeter_rollout
+                            SELECT id FROM greeter_rollout
                             WHERE rollout_completed = 1
-                            ORDER BY rollout_started_at DESC
                             LIMIT 1
                         ''')
-                        recent_rollout = cursor.fetchone()
-
-                        if recent_rollout:
-                            recent_id, recent_started_at_str, recent_rollout_days = recent_rollout
-                            recent_started_at = datetime.fromisoformat(recent_started_at_str)
-                            # Calculate when this rollout would have ended
-                            recent_end_date = recent_started_at + timedelta(days=recent_rollout_days)
-                            cursor.execute("SELECT datetime('now')")
-                            current_time = datetime.fromisoformat(cursor.fetchone()[0])
-
-                            # If rollout ended less than 1 day ago, don't auto-start a new one
-                            # (prevents restart loops if there's a bug)
-                            if current_time < recent_end_date + timedelta(days=1):
-                                days_since_end = (current_time - recent_end_date).total_seconds() / 86400
-                                self.logger.info(f"Recent rollout completed {days_since_end:.1f} days ago (ID: {recent_id}) - skipping auto-start to prevent restart loop")
-                                return
-
-                        # No active rollout and no recent completed rollout - start one automatically
-                        self.logger.info(f"Auto-starting greeter rollout for {self.rollout_days} days")
-                        self.start_rollout(backfill_first=self.auto_backfill)
+                        if cursor.fetchone():
+                            self.logger.info("Greeter rollout already completed - not starting another")
+                        else:
+                            self.logger.info(f"Auto-starting greeter rollout for {self.rollout_days} days")
+                            self.start_rollout(backfill_first=self.auto_backfill)
             except Exception as e:
                 self.logger.error(f"Error checking for existing rollout: {e}")
                 import traceback
@@ -415,7 +400,7 @@ class GreeterCommand(BaseCommand):
                                 WHERE id = ?
                             ''', (rollout_id,))
                             conn.commit()
-                            self.logger.info(f"Greeter rollout period completed (ended {end_date}, {days_over:.1f} days ago) - will check for auto-restart")
+                            self.logger.info(f"Greeter rollout period completed (ended {end_date}, {days_over:.1f} days ago)")
 
         except Exception as e:
             self.logger.error(f"Error checking rollout period: {e}")
@@ -1206,6 +1191,56 @@ class GreeterCommand(BaseCommand):
             self.logger.error(traceback.format_exc())
             return False
 
+    def _mentions_user(self, content: str, sender_id: str) -> bool:
+        """Whether ``content`` mentions ``sender_id``.
+
+        An exact mention always counts. With name fuzziness on, a whole word
+        within the edit distance also counts, so a typo such as "Chemx" for
+        "Chemex" is a mention. Fuzziness does not require the exact name to
+        already be present.
+        """
+        if not content or not sender_id:
+            return False
+        text = content.lower()
+        name = sender_id.lower()
+        if name in text:
+            return True
+        if self.levenshtein_distance <= 0:
+            return False
+        for word in text.split():
+            word = word.strip('.,!?;:()[]{}@')
+            if word and self._levenshtein_distance(name, word) <= self.levenshtein_distance:
+                return True
+        return False
+
+    def _release_greeting_reservation(self, sender_id: str, channel: str) -> None:
+        """Drop the greeted row when this attempt did not send.
+
+        ``execute`` writes the row before sending so a second message does not
+        start another greeting. Leaving it in place after a skipped or failed
+        send makes the next message look already greeted.
+        """
+        try:
+            with self.bot.db_manager.connection() as conn:
+                cursor = conn.cursor()
+                if self.per_channel_greetings:
+                    cursor.execute(
+                        'DELETE FROM greeted_users WHERE sender_id = ? AND channel = ?',
+                        (sender_id, channel),
+                    )
+                else:
+                    cursor.execute(
+                        'DELETE FROM greeted_users WHERE sender_id = ? AND channel IS NULL',
+                        (sender_id,),
+                    )
+                conn.commit()
+                if cursor.rowcount:
+                    self.logger.info(
+                        f"Greeting for {sender_id} was not sent; cleared the greeted mark"
+                    )
+        except Exception as e:
+            self.logger.error(f"Error clearing greeted mark for {sender_id}: {e}")
+
     def _check_human_greeting(self, new_user_id: str, channel: str, since_timestamp: int) -> bool:
         """Check if a human has greeted the new user.
 
@@ -1236,7 +1271,7 @@ class GreeterCommand(BaseCommand):
                 cursor.execute('''
                     SELECT sender_id, content
                     FROM message_stats
-                    WHERE channel = ?
+                    WHERE lower(channel) = lower(?)
                       AND timestamp >= ?
                       AND is_dm = 0
                       AND sender_id != ?
@@ -1245,25 +1280,10 @@ class GreeterCommand(BaseCommand):
 
                 messages = cursor.fetchall()
 
-                # Check if any message contains the new user's name
-                new_user_id_lower = new_user_id.lower()
                 for sender_id, content in messages:
-                    if content and new_user_id_lower in content.lower():
-                        # Also check with Levenshtein distance if enabled
-                        if self.levenshtein_distance > 0:
-                            # Check if any word in the message is within Levenshtein distance
-                            words = content.lower().split()
-                            for word in words:
-                                # Remove common punctuation
-                                word = word.strip('.,!?;:()[]{}@')
-                                distance = self._levenshtein_distance(new_user_id_lower, word)
-                                if distance <= self.levenshtein_distance:
-                                    self.logger.info(f"Human greeting detected: {sender_id} mentioned {new_user_id} in channel {channel}")
-                                    return True
-                        else:
-                            # Simple substring match
-                            self.logger.info(f"Human greeting detected: {sender_id} mentioned {new_user_id} in channel {channel}")
-                            return True
+                    if self._mentions_user(content, new_user_id):
+                        self.logger.info(f"Human greeting detected: {sender_id} mentioned {new_user_id} in channel {channel}")
+                        return True
 
                 return False
         except Exception as e:
@@ -1307,19 +1327,19 @@ class GreeterCommand(BaseCommand):
                 )
                 if key in self.pending_greetings:
                     del self.pending_greetings[key]
+                self._release_greeting_reservation(message.sender_id, message.channel)
                 return
 
-            # Check if greeting was cancelled (user was already greeted or human responded)
+            # Check if greeting was cancelled (human responded, or a newer wait replaced this one)
             if key not in self.pending_greetings:
                 self.logger.debug(f"Greeting for {message.sender_id} on {message.channel} was cancelled")
                 return
 
-            # Check if we should still greet (user might have been greeted by another process)
-            if self.has_been_greeted(message.sender_id, message.channel):
-                self.logger.debug(f"User {message.sender_id} already greeted on {message.channel} - skipping")
-                if key in self.pending_greetings:
-                    del self.pending_greetings[key]
-                return
+            # execute() writes the greeted row before this wait so a later message
+            # does not start a second greeting. That row is this greeting's
+            # reservation: has_been_greeted() is already true here, and treating
+            # it as "already sent" drops the greeting. A human welcome is checked
+            # next.
 
             # If defer to human greeting is enabled, check if a human has greeted the user
             # Check messages from the original timestamp onwards (during the delay period)
@@ -1332,8 +1352,10 @@ class GreeterCommand(BaseCommand):
                         del self.pending_greetings[key]
                     return
 
-            # Send the greeting
-            await self._send_greeting(message)
+            # Send the greeting. A failed send drops the reservation so the
+            # next message can try again.
+            if not await self._send_greeting(message):
+                self._release_greeting_reservation(message.sender_id, message.channel)
 
             # Clean up
             if key in self.pending_greetings:
@@ -1348,6 +1370,7 @@ class GreeterCommand(BaseCommand):
             self.logger.error(f"Error in delayed greeting for {message.sender_id}: {e}")
             if key in self.pending_greetings:
                 del self.pending_greetings[key]
+            self._release_greeting_reservation(message.sender_id, message.channel)
 
     async def _send_greeting(self, message: MeshMessage) -> bool:
         """Actually send the greeting message.
@@ -1445,9 +1468,10 @@ class GreeterCommand(BaseCommand):
             if not self.should_execute(message):
                 return False
 
-            # Mark as greeted BEFORE scheduling greeting (to prevent duplicate greetings)
-            # This ensures we don't greet the same user twice even if there's a delay
-            # mark_as_greeted uses atomic INSERT OR IGNORE to handle race conditions
+            # Reserve the greeting before the wait. A second message during the
+            # delay then sees the user as greeted and does not schedule another
+            # one. The delayed sender still sends; this row is not a greeting
+            # already delivered.
             marked = self.mark_as_greeted(message.sender_id, message.channel)
             if not marked:
                 self.logger.warning(f"Failed to mark {message.sender_id} as greeted - aborting greeting")
@@ -1509,7 +1533,10 @@ class GreeterCommand(BaseCommand):
                 return True
             else:
                 # Send greeting immediately (original behavior)
-                return await self._send_greeting(message)
+                sent = await self._send_greeting(message)
+                if not sent:
+                    self._release_greeting_reservation(message.sender_id, message.channel)
+                return sent
 
         except Exception as e:
             self.logger.error(f"Error executing greeter command: {e}")
@@ -1530,25 +1557,14 @@ class GreeterCommand(BaseCommand):
         # Check all pending greetings for this channel
         keys_to_cancel = []
         for (sender_id, channel), _task in list(self.pending_greetings.items()):
-            if channel == message.channel and sender_id != message.sender_id:
-                # Check if this message mentions the pending user
-                if message.content and sender_id.lower() in message.content.lower():
-                    # Also check with Levenshtein distance if enabled
-                    should_cancel = False
-                    if self.levenshtein_distance > 0:
-                        words = message.content.lower().split()
-                        for word in words:
-                            word = word.strip('.,!?;:()[]{}@')
-                            distance = self._levenshtein_distance(sender_id.lower(), word)
-                            if distance <= self.levenshtein_distance:
-                                should_cancel = True
-                                break
-                    else:
-                        should_cancel = True
-
-                    if should_cancel:
-                        self.logger.info(f"Human greeting detected in real-time: {message.sender_id} mentioned {sender_id} - cancelling pending greeting")
-                        keys_to_cancel.append((sender_id, channel))
+            if (
+                message.channel
+                and channel.lower() == message.channel.lower()
+                and sender_id != message.sender_id
+                and self._mentions_user(message.content, sender_id)
+            ):
+                self.logger.info(f"Human greeting detected in real-time: {message.sender_id} mentioned {sender_id} - cancelling pending greeting")
+                keys_to_cancel.append((sender_id, channel))
 
         # Cancel the pending greetings
         for key in keys_to_cancel:
