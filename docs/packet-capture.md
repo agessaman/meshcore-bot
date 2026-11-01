@@ -282,8 +282,8 @@ independent of this setting.
   "radio": "915000000,250,9,8",
   "client_version": "meshcore-bot/v1.1.0",
   "stats": {
-    "rx_packets": 1234,
-    "tx_packets": 567
+    "packets_received": 1234,
+    "packets_sent": 567
   }
 }
 ```
