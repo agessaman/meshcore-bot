@@ -134,6 +134,7 @@ mctomqtt.py
 bot_cli.py
 bot_start_time.txt
 *.log.*
+*.bak*
 
 # Test files and development artifacts (root level)
 test_*.py
