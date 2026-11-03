@@ -2139,6 +2139,29 @@ mqtt2_websocket_path = /mqtt
 mqtt2_client_id =
 mqtt2_upload_packet_types =
 
+# MQTT Broker 3 - waev.app
+# Commented out. Uncomment to publish to mqtt-a.waev.app, or copy the keys
+# onto a later slot (mqtt4, mqtt5, ...) when this number is already in use.
+# Brokers are read from mqtt1 upward and a missing mqttN_server ends the list,
+# so the slot has to be the next number.
+# TLS websockets on port 443, path /mqtt. waev.app accepts a JWT for one hour.
+# jwt_ttl_seconds and jwt_renewal_interval below are 86400, and a waev.app host
+# inherits those when they are set, so the per-broker timings are what let it
+# authenticate. Leave client_id empty; one is generated for this broker.
+# mqtt3_enabled = true
+# mqtt3_server = mqtt-a.waev.app
+# mqtt3_port = 443
+# mqtt3_transport = websockets
+# mqtt3_use_tls = true
+# mqtt3_use_auth_token = true
+# mqtt3_token_audience = mqtt-a.waev.app
+# mqtt3_topic_status = meshcore/{IATA}/{PUBLIC_KEY}/status
+# mqtt3_topic_packets = meshcore/{IATA}/{PUBLIC_KEY}/packets
+# mqtt3_websocket_path = /mqtt
+# mqtt3_jwt_ttl_seconds = 3600
+# mqtt3_jwt_renewal_interval = 3500
+# mqtt3_client_id =
+
 # Stats and status publishing
 # Enable stats in status messages
 stats_in_status_enabled = true
