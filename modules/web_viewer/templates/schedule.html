@@ -2,11 +2,23 @@
 
 {% block title %}Scheduled Messages - MeshCore Bot{% endblock %}
 
+{% block extra_css %}
+<style>
+    /* Keep the parse-error text readable when the table scrolls sideways on a phone. */
+    .schedule-message-cell { min-width: 16rem; }
+    .limit-toggle .fa-chevron-right { transition: transform 0.15s ease-out; }
+    .limit-toggle[aria-expanded="true"] .fa-chevron-right { transform: rotate(90deg); }
+    @media (prefers-reduced-motion: reduce) {
+        .limit-toggle .fa-chevron-right { transition: none; }
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container-fluid">
     <div class="row">
         <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center mb-4">
+            <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-4">
                 <h1 class="mb-0">
                     <i class="fas fa-clock"></i> Scheduled Messages
                 </h1>
@@ -112,7 +124,7 @@
                                 <option value="day">day of the month</option>
                             </select>
                         </div>
-                        <div class="form-text">A month with no 5th one is skipped.</div>
+                        <div class="form-text d-none" id="monthlyFifthHint"></div>
                     </div>
                     <div class="col-12 d-none" id="fieldDays">
                         <label class="form-label">Days</label>
@@ -135,6 +147,46 @@
                 </div>
 
                 <div class="mb-3">
+                    <button type="button" class="btn btn-link p-0 text-decoration-none limit-toggle"
+                            id="limitToggle" aria-expanded="false" aria-controls="limitFields"
+                            aria-describedby="limitSummary">
+                        <i class="fas fa-chevron-right fa-fw small" aria-hidden="true"></i>
+                        Date range and weeks
+                    </button>
+                    <span class="small text-muted ms-1" id="limitSummary">Not limited</span>
+                    <div class="d-none border-start ps-3 mt-2" id="limitFields">
+                        <div class="row g-2 mb-1">
+                            <div class="col-sm-6">
+                                <label class="form-label" for="scheduleStart">Start date <span class="text-muted">(optional)</span></label>
+                                <input type="date" class="form-control" id="scheduleStart">
+                            </div>
+                            <div class="col-sm-6">
+                                <label class="form-label" for="scheduleEnd">End date <span class="text-muted">(optional)</span></label>
+                                <input type="date" class="form-control" id="scheduleEnd">
+                            </div>
+                        </div>
+                        <div class="form-text mb-3">
+                            The end date is included in full. Leave both blank to run indefinitely.
+                        </div>
+
+                        <label class="form-label" for="scheduleWeek">Weeks</label>
+                        <select class="form-select" id="scheduleWeek" aria-describedby="scheduleWeekHelp">
+                            <option value="">Every week</option>
+                            <option value="*/2">Every other week (odd ISO weeks)</option>
+                            <option value="2-53/2">Every other week (even ISO weeks)</option>
+                        </select>
+                        <div class="form-text text-warning d-none" id="weekMonthlyNote">
+                            With one day a month, Weeks keeps that day only in matching ISO weeks,
+                            so most months are skipped. It is not "every other month".
+                        </div>
+                        <div class="form-text" id="scheduleWeekHelp">
+                            For a fortnightly net. Weeks are ISO week numbers, so in a 53-week year
+                            the odd setting runs two weeks in a row at New Year.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mb-3">
                     <label class="form-label" for="scheduleChannel">Channel</label>
                     <input type="text" class="form-control" id="scheduleChannel" placeholder="Public">
                 </div>
@@ -143,38 +195,6 @@
                     <label class="form-label" for="scheduleScope">Flood scope <span class="text-muted">(optional)</span></label>
                     <input type="text" class="form-control" id="scheduleScope" placeholder="#sea">
                     <div class="form-text">Leave blank for global flood.</div>
-                </div>
-
-                <div class="row g-2 mb-3">
-                    <div class="col-sm-6">
-                        <label class="form-label" for="scheduleStart">Start date <span class="text-muted">(optional)</span></label>
-                        <input type="date" class="form-control" id="scheduleStart">
-                    </div>
-                    <div class="col-sm-6">
-                        <label class="form-label" for="scheduleEnd">End date <span class="text-muted">(optional)</span></label>
-                        <input type="date" class="form-control" id="scheduleEnd">
-                    </div>
-                    <div class="form-text">
-                        Limit this schedule to a date range. The end date is included in full.
-                        Leave both blank to run indefinitely.
-                    </div>
-                </div>
-
-                <div class="mb-3">
-                    <label class="form-label" for="scheduleWeek">Weeks</label>
-                    <select class="form-select" id="scheduleWeek" aria-describedby="scheduleWeekHelp">
-                        <option value="">Every week</option>
-                        <option value="*/2">Every other week (odd ISO weeks)</option>
-                        <option value="2-53/2">Every other week (even ISO weeks)</option>
-                    </select>
-                    <div class="form-text text-warning d-none" id="weekMonthlyNote">
-                        With one day a month, Weeks keeps that day only in matching ISO weeks,
-                        so most months are skipped. It is not "every other month".
-                    </div>
-                    <div class="form-text" id="scheduleWeekHelp">
-                        For a strict fortnightly net. Weeks are ISO week numbers, so in a year
-                        with 53 weeks the odd setting runs two weeks running at New Year.
-                    </div>
                 </div>
 
                 <div class="mb-3">
@@ -223,6 +243,7 @@
     let modal = null;
     let editingSchedule = null;
     let previewTimer = null;
+    let lastMode = null;
 
     const $ = (id) => document.getElementById(id);
 
@@ -308,12 +329,58 @@
         return minute + ' ' + hour + ' * * *';
     }
 
+    const WEEKDAY_NAMES = {
+        mon: 'Monday', tue: 'Tuesday', wed: 'Wednesday', thu: 'Thursday',
+        fri: 'Friday', sat: 'Saturday', sun: 'Sunday'
+    };
+
+    function weekLabel(week) {
+        return { '*/2': 'every other week (odd)', '2-53/2': 'every other week (even)' }[week]
+            || 'ISO weeks ' + week;
+    }
+
+    /** Date bounds as HTML, each date kept whole so it never breaks at a hyphen. */
+    function boundsHtml(start, end) {
+        const date = (d) => '<span class="text-nowrap">' + escapeHtml(d) + '</span>';
+        if (start && end) return date(start) + ' → ' + date(end);
+        if (start) return 'from ' + date(start);
+        return 'until ' + date(end);
+    }
+
+    function setLimitsOpen(open) {
+        $('limitToggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+        $('limitFields').classList.toggle('d-none', !open);
+    }
+
+    function syncLimitSummary() {
+        const start = $('scheduleStart').value;
+        const end = $('scheduleEnd').value;
+        const week = $('scheduleWeek').value;
+        const parts = [];
+        if (start || end) parts.push(boundsHtml(start, end));
+        if (week) parts.push(escapeHtml(weekLabel(week)));
+        $('limitSummary').innerHTML = parts.length ? parts.join(', ') : 'Not limited';
+    }
+
     function syncModeFields() {
         const mode = $('scheduleMode').value;
         const show = (id, on) => $(id).classList.toggle('d-none', !on);
         show('fieldTime', mode === 'daily' || mode === 'weekly' || mode === 'monthly');
         show('fieldMonthly', mode === 'monthly');
-        show('weekMonthlyNote', mode === 'monthly' && $('scheduleWeek').value !== '');
+        const weekday = $('scheduleWeekday').value;
+        const fifthWeekday = mode === 'monthly' && $('scheduleOrdinal').value === '5th' && weekday !== 'day';
+        $('monthlyFifthHint').textContent = fifthWeekday
+            ? 'Months with no 5th ' + WEEKDAY_NAMES[weekday] + ' are skipped.' : '';
+        show('monthlyFifthHint', fifthWeekday);
+        const weekMonthly = mode === 'monthly' && $('scheduleWeek').value !== '';
+        show('weekMonthlyNote', weekMonthly);
+        $('scheduleWeek').setAttribute('aria-describedby',
+            weekMonthly ? 'weekMonthlyNote scheduleWeekHelp' : 'scheduleWeekHelp');
+        // Weeks set earlier, then a switch to one day a month: open the section once so the
+        // warning is seen, without reopening it every time after the user collapses it.
+        if (weekMonthly && lastMode !== 'monthly') setLimitsOpen(true);
+        lastMode = mode;
+        syncLimitSummary();
         show('fieldTimes', mode === 'times');
         show('fieldEveryHours', mode === 'interval_hours');
         show('fieldEveryMinutes', mode === 'interval_minutes');
@@ -379,6 +446,8 @@
         // An existing entry opens in the friendly mode that reproduces it exactly, or in
         // Advanced, so the stored cron is never silently rewritten.
         $('scheduleMode').value = entry ? detectMode(entry.schedule) : 'daily';
+        setLimitsOpen(Boolean(entry && (entry.start || entry.end || entry.week)));
+        lastMode = null;
         syncModeFields();
         modal.show();
     }
@@ -397,7 +466,6 @@
         select.value = week || '';
     }
 
-    /** Pick the builder mode whose controls reproduce `schedule` exactly, else Advanced. */
     /** Put every builder control back to its default, so nothing carries over between opens. */
     function resetBuilder() {
         document.querySelectorAll('.day-toggle').forEach((el) => { el.checked = false; });
@@ -409,6 +477,7 @@
         $('scheduleEveryMinutes').value = '30';
     }
 
+    /** Pick the builder mode whose controls reproduce `schedule` exactly, else Advanced. */
     function detectMode(schedule) {
         const raw = schedule || '';
         let fixed;
@@ -518,7 +587,10 @@
             ? new Date(entry.next_runs[0]).toLocaleString()
             : '—';
 
-        let scheduleCell = '<span class="font-monospace">' + escapeHtml(entry.schedule) + '</span>';
+        // Wrap between cron fields only, never inside one at a hyphen (2nd-wed, 1st-tue,3rd-tue).
+        let scheduleCell = '<span class="font-monospace">' + String(entry.schedule).split(' ')
+            .map((field) => '<span class="text-nowrap">' + escapeHtml(field) + '</span>').join(' ')
+            + '</span>';
         if (entry.error) {
             scheduleCell += '<br><span class="badge bg-danger">Not scheduled</span>';
         } else if (entry.finished) {
@@ -527,13 +599,10 @@
             scheduleCell += '<br><span class="badge bg-warning text-dark">Deprecated format</span>';
         }
         if (entry.start || entry.end) {
-            scheduleCell += '<br><span class="small text-muted">'
-                + escapeHtml((entry.start || '…') + ' → ' + (entry.end || '…')) + '</span>';
+            scheduleCell += '<br><span class="small text-muted">' + boundsHtml(entry.start, entry.end) + '</span>';
         }
         if (entry.week) {
-            const weekLabel = { '*/2': 'every other week (odd)', '2-53/2': 'every other week (even)' }[entry.week]
-                || 'ISO weeks ' + entry.week;
-            scheduleCell += '<br><span class="small text-muted">' + escapeHtml(weekLabel) + '</span>';
+            scheduleCell += '<br><span class="small text-muted">' + escapeHtml(weekLabel(entry.week)) + '</span>';
         }
 
         const scopeBadge = entry.scope
@@ -543,7 +612,7 @@
             '<td>' + scheduleCell + '</td>'
             + '<td>' + escapeHtml(nextRun) + '</td>'
             + '<td>' + escapeHtml(entry.channel) + scopeBadge + '</td>'
-            + '<td class="text-break">' + escapeHtml(entry.message)
+            + '<td class="text-break schedule-message-cell">' + escapeHtml(entry.message)
             + (entry.error ? '<br><span class="small text-danger">' + escapeHtml(entry.error) + '</span>' : '')
             + '</td>'
             + '<td class="text-end text-nowrap">'
@@ -579,7 +648,10 @@
         $('addScheduleBtn').addEventListener('click', () => openModal(null));
         $('saveScheduleBtn').addEventListener('click', save);
         $('scheduleMode').addEventListener('change', syncModeFields);
-        $('scheduleWeek').addEventListener('change', syncModeFields);
+        ['scheduleWeek', 'scheduleOrdinal', 'scheduleWeekday', 'scheduleStart', 'scheduleEnd'].forEach((id) =>
+            $(id).addEventListener('change', syncModeFields));
+        $('limitToggle').addEventListener('click', () =>
+            setLimitsOpen($('limitToggle').getAttribute('aria-expanded') !== 'true'));
         ['scheduleTime', 'scheduleTimes', 'scheduleEveryHours', 'scheduleEveryMinutes',
          'scheduleCron', 'scheduleMessage', 'scheduleStart', 'scheduleEnd',
          'scheduleOrdinal', 'scheduleWeekday', 'scheduleWeek', 'scheduleChannel',
