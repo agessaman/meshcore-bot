@@ -4,7 +4,8 @@ Parse ``[Scheduled_Messages]`` option keys into APScheduler CronTrigger instance
 and option values into ``(channel, message, scope)`` for optional regional flood scope.
 
 Option values may carry optional ``start=YYYY-MM-DD`` / ``end=YYYY-MM-DD`` bounds
-ahead of the channel, which limit a schedule to a date range. They live on the value
+ahead of the channel, which limit a schedule to a date range, and ``week=`` with an
+ISO week-number expression (``week=*/2`` for every other week). They live on the value
 because crontab has no field for them, and ``=`` keeps them clear of the ``:`` that
 separates channel from message.
 
@@ -17,7 +18,7 @@ Supports (schedule keys):
 
 Day-of-week uses APScheduler numbering (0=Monday … 6=Sunday), not Vixie cron
 (0=Sunday; 7 often allowed). Prefer mon–sun names. ``@weekly`` expands to
-``0 0 * * 0`` (Monday 00:00). See docs/configuration.md and config.ini.example.
+``0 0 * * 0`` (Monday 00:00). See docs/scheduled-messages.md and config.ini.example.
 """
 
 from __future__ import annotations
@@ -31,22 +32,72 @@ from apscheduler.triggers.cron import CronTrigger
 
 # Leading "start=YYYY-MM-DD" / "end=YYYY-MM-DD" tokens on an option value. Anchored to
 # the front so a message body can never be mistaken for a bound, and keyed with "=" so
-# they do not disturb the "channel:message" split.
-_BOUND_RE = re.compile(r"^\s*(?P<key>start|end)=(?P<date>\S+)", re.IGNORECASE)
+# they do not disturb the "channel:message" split. A bound is a whole token ended by
+# whitespace with no ":" in it, so a channel that merely begins with "start=" (as in
+# "start=ops:Hello") stays a channel.
+_BOUND_RE = re.compile(r"^\s*(?P<key>start|end|week)=(?P<date>[^\s:]+)\s+", re.IGNORECASE)
+# A bound keyword with nothing usable after it ("start= Public:Hi", "start =2027-01-01
+# Public:Hi"). Rejected outright rather than read as a channel called "start= Public".
+_DANGLING_BOUND_RE = re.compile(r"^(?:start|end|week)(?:\s*=(?:\s|$)|\s+=)", re.IGNORECASE)
+# An ISO week-number expression in crontab syntax: numbers, *, ranges, steps and lists.
+_WEEK_EXPR_RE = re.compile(r"[\d*/,\-]+")
+# Exactly YYYY-MM-DD. date.fromisoformat() also takes 20270101 and 2027-W01-1 on newer
+# Pythons, which APScheduler then cannot parse as a start or end date.
+_ISO_DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 
-def split_schedule_bounds(raw: str) -> tuple[str | None, str | None, str]:
-    """Strip leading ``start=`` / ``end=`` tokens off an option value.
+def _is_iso_date(value: str) -> bool:
+    if not _ISO_DATE_RE.fullmatch(value or ""):
+        return False
+    try:
+        datetime.date.fromisoformat(value)
+    except ValueError:
+        return False
+    return True
+
+
+def bounds_error(start: str | None, end: str | None) -> str | None:
+    """Why a ``start``/``end`` pair is unusable, or None when it is fine (or absent)."""
+    for label, value in (("Start date", start), ("End date", end)):
+        if value and not _is_iso_date(value):
+            return f"{label} must be an ISO date (YYYY-MM-DD)"
+    # Both are strict YYYY-MM-DD here, so string order is date order.
+    if start and end and end < start:
+        return "End date is before the start date"
+    return None
+
+
+def week_error(week: str | None) -> str | None:
+    """Why a ``week=`` expression is unusable, or None when it is fine (or absent).
+
+    It is APScheduler's ISO week-number field: ``*/2`` is odd weeks (1, 3, 5 ...),
+    ``2-53/2`` even ones.
+    """
+    if not week:
+        return None
+    if not _WEEK_EXPR_RE.fullmatch(week):
+        return "Weeks must be ISO week numbers, ranges or steps, such as */2 or 2-53/2"
+    try:
+        CronTrigger(week=week, timezone="UTC")
+    except ValueError as exc:
+        return f"Weeks: {exc}"
+    return None
+
+
+def split_schedule_options(raw: str) -> tuple[str | None, str | None, str | None, str]:
+    """Strip leading ``start=`` / ``end=`` / ``week=`` tokens off an option value.
 
     Args:
-        raw: Config value, e.g. ``start=2027-01-01 Public:Hello`` or ``Public:Hello``.
+        raw: Config value, e.g. ``start=2027-01-01 week=*/2 Public:Hello`` or
+            ``Public:Hello``.
 
     Returns:
-        ``(start, end, rest)`` -- ISO date strings (or None) and the remaining value,
-        which is what :func:`parse_scheduled_message_value` expects.
+        ``(start, end, week, rest)`` -- ISO date strings and the week expression (each
+        or None) and the remaining value, which is what
+        :func:`parse_scheduled_message_value` expects.
 
     Raises:
-        ValueError: If a bound is repeated, is not an ISO date, or ends after it starts.
+        ValueError: If an option is repeated or malformed, or the end is before the start.
     """
     rest = raw or ""
     found: dict[str, str] = {}
@@ -57,18 +108,23 @@ def split_schedule_bounds(raw: str) -> tuple[str | None, str | None, str]:
         key = match.group("key").lower()
         if key in found:
             raise ValueError(f"{key}= given more than once")
-        try:
-            datetime.date.fromisoformat(match.group("date"))
-        except ValueError:
-            raise ValueError(
-                f"{key}={match.group('date')} is not an ISO date (YYYY-MM-DD)"
-            ) from None
-        found[key] = match.group("date")
+        value = match.group("date")
+        if key == "week":
+            problem = week_error(value)
+            if problem:
+                raise ValueError(f"week={value}: {problem}")
+        elif not _is_iso_date(value):
+            raise ValueError(f"{key}={value} is not an ISO date (YYYY-MM-DD)")
+        found[key] = value
         rest = rest[match.end():]
+    if _DANGLING_BOUND_RE.match(rest.strip()):
+        raise ValueError(
+            "start=/end=/week= needs a value, as in start=YYYY-MM-DD or week=*/2"
+        )
     start, end = found.get("start"), found.get("end")
     if start and end and end < start:
         raise ValueError(f"end={end} is before start={start}")
-    return start, end, rest.strip()
+    return start, end, found.get("week"), rest.strip()
 
 
 def parse_scheduled_message_value(raw: str) -> tuple[str, str, str | None]:
@@ -94,8 +150,8 @@ def parse_scheduled_message_value(raw: str) -> tuple[str, str, str | None]:
     if ":" not in s:
         raise ValueError("scheduled message value must be channel:message")
     if _BOUND_RE.match(s):
-        # split_schedule_bounds() removes these; reaching here means a caller skipped it.
-        raise ValueError("start=/end= bounds must be stripped before parsing the value")
+        # split_schedule_options() removes these; reaching here means a caller skipped it.
+        raise ValueError("start=/end=/week= must be stripped before parsing the value")
     parts = s.split(":", 2)
     if len(parts) == 3 and parts[1].strip().startswith("#"):
         channel = parts[0].strip()
@@ -130,6 +186,9 @@ class ScheduleParseResult:
     is_deprecated_hhmm: bool
     """True when the legacy HHMM daily form was used."""
 
+    error: Optional[str] = None
+    """Why the expression was rejected, when ``trigger`` is None and there is a reason."""
+
 
 # APScheduler's day-of-month field already understands positional expressions such as
 # "last fri" and "4th tue", but they contain a space, which is crontab's field separator
@@ -142,7 +201,34 @@ _POSITIONAL_DOM_RE = re.compile(
 )
 
 
-def _from_crontab(expr: str, timezone, start_date=None, end_date=None) -> CronTrigger:
+def _unescape_positional_dom(field: str) -> str:
+    """Restore the space in each escaped positional item of a day-of-month field.
+
+    Each comma-separated item must be a positional expression on its own or contain
+    none: APScheduler silently drops anything after one (``1st tue/2`` fires every
+    first Tuesday), so ``1st-tue-3rd-tue`` or ``last-fri/2`` would save and then not
+    do what it says.
+
+    Raises:
+        ValueError: If an item mixes a positional expression with anything else.
+    """
+    items = []
+    for item in field.split(","):
+        if _POSITIONAL_DOM_RE.search(item):
+            match = _POSITIONAL_DOM_RE.fullmatch(item)
+            if not match:
+                raise ValueError(
+                    f"{item!r}: a positional day such as last-fri or 4th-tue must stand "
+                    "alone between commas"
+                )
+            item = f"{match.group(1)} {match.group(2)}"
+        items.append(item)
+    return ",".join(items)
+
+
+def _from_crontab(
+    expr: str, timezone, start_date=None, end_date=None, week=None
+) -> CronTrigger:
     """``CronTrigger.from_crontab`` plus escaped positional day-of-month and date bounds.
 
     ``0 19 last-fri * *`` fires 19:00 on the last Friday of each month, and
@@ -160,13 +246,14 @@ def _from_crontab(expr: str, timezone, start_date=None, end_date=None) -> CronTr
 
     # Only the day-of-month field takes positional expressions; an escape anywhere else
     # is left in place so APScheduler rejects it.
-    fields[2] = _POSITIONAL_DOM_RE.sub(r"\1 \2", fields[2])
+    fields[2] = _unescape_positional_dom(fields[2])
     return CronTrigger(
         minute=fields[0],
         hour=fields[1],
         day=fields[2],
         month=fields[3],
         day_of_week=fields[4],
+        week=week,
         timezone=timezone,
         start_date=start_date,
         # An end date reads as "through this day", so run it to the end of that day
@@ -192,6 +279,7 @@ def parse_schedule_key(
     timezone,
     start_date: str | None = None,
     end_date: str | None = None,
+    week: str | None = None,
 ) -> ScheduleParseResult:
     """Parse a ``[Scheduled_Messages]`` option name into a :class:`CronTrigger`.
 
@@ -201,7 +289,8 @@ def parse_schedule_key(
         timezone: ``tzinfo`` or string accepted by APScheduler (same as scheduler).
         start_date: Optional ISO date; the schedule does not fire before it.
         end_date: Optional ISO date; the schedule does not fire after the end of it.
-            Both come from the option *value* via :func:`split_schedule_bounds`.
+        week: Optional ISO week-number expression, e.g. ``*/2`` for every other week.
+            All three come from the option *value* via :func:`split_schedule_options`.
 
     Returns:
         ScheduleParseResult with ``trigger`` set when valid, else ``trigger`` is None
@@ -217,9 +306,12 @@ def parse_schedule_key(
     if is_valid_legacy_hhmm(raw):
         hour = int(raw[:2])
         minute = int(raw[2:])
-        trigger = _from_crontab(
-            f"{minute} {hour} * * *", timezone, start_date, end_date
-        )
+        try:
+            trigger = _from_crontab(
+                f"{minute} {hour} * * *", timezone, start_date, end_date, week
+            )
+        except ValueError as exc:
+            return ScheduleParseResult(None, raw, True, str(exc))
         display = f"{hour:02d}:{minute:02d}"
         return ScheduleParseResult(trigger, display, True)
 
@@ -227,14 +319,14 @@ def parse_schedule_key(
     if lowered in _SPECIAL_PRESET_TO_CRON:
         cron_expr = _SPECIAL_PRESET_TO_CRON[lowered]
         try:
-            trigger = _from_crontab(cron_expr, timezone, start_date, end_date)
-        except ValueError:
-            return ScheduleParseResult(None, raw, False)
+            trigger = _from_crontab(cron_expr, timezone, start_date, end_date, week)
+        except ValueError as exc:
+            return ScheduleParseResult(None, raw, False, str(exc))
         return ScheduleParseResult(trigger, raw, False)
 
     # 3) Standard 5-field crontab (optionally with a positional day-of-month)
     try:
-        trigger = _from_crontab(raw, timezone, start_date, end_date)
-    except ValueError:
-        return ScheduleParseResult(None, raw, False)
+        trigger = _from_crontab(raw, timezone, start_date, end_date, week)
+    except ValueError as exc:
+        return ScheduleParseResult(None, raw, False, str(exc))
     return ScheduleParseResult(trigger, raw, False)

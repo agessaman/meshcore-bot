@@ -645,6 +645,12 @@ category.funfact = fun
 #   0 19 last-fri * * = start=2027-01-01 end=2027-03-31 Public:Winter net starts now
 #   0 8 * * *         = end=2026-12-25 Public:#sea:Countdown to the holidays
 #
+# Optional week= limits a schedule to ISO week numbers, for a strict fortnight:
+# week=*/2 is odd weeks, week=2-53/2 even ones. It sits with start=/end=.
+#   0 20 * * tue = week=*/2 Public:#sea:Fortnightly net
+# A 53-week year (2026, 2032) runs the odd setting two weeks running at New Year.
+# See docs/scheduled-messages.md.
+#
 # <schedule> is one of:
 #   - 5-field crontab (minute hour day-of-month month day-of-week), e.g.
 #       0 8 * * *     = every day at 08:00 (in [Bot] timezone)
@@ -658,7 +664,7 @@ category.funfact = fun
 #       0 19 last * *            = 19:00 on the last day of the month (no weekday)
 #     Prefixes are 1st 2nd 3rd 4th 5th last, followed by mon–sun. Note that a month
 #     may have no 5th Tuesday, and that "1st and 3rd" is a 14/14/21-day cadence, not
-#     a strict fortnight — crontab has no way to express "every 14 days".
+#     a strict fortnight. For one, add week= to the value (below).
 #   - Preset aliases (@yearly @annually @monthly @weekly @daily @midnight @hourly).
 #     These expand to the 5-field forms above; @weekly is Monday 00:00 (not Sunday).
 #   - Deprecated (still accepted, logs a warning): HHMM = daily at that 24h clock time

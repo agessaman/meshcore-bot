@@ -11,7 +11,7 @@ import pytest
 from modules.scheduled_message_cron import (
     parse_schedule_key,
     parse_scheduled_message_value,
-    split_schedule_bounds,
+    split_schedule_options,
 )
 from modules.scheduler import MessageScheduler
 
@@ -26,6 +26,13 @@ def scheduler(mock_logger):
     bot.config.set("Bot", "scheduled_message_max_stagger_seconds", "0")
     return MessageScheduler(bot)
 
+
+
+def split_schedule_bounds(raw):
+    """The start/end/rest view of split_schedule_options, for the bound-focused tests."""
+    start, end, week, rest = split_schedule_options(raw)
+    assert week is None
+    return start, end, rest
 
 class TestParseScheduleKey:
     """Tests for scheduled message cron / preset / legacy parsing."""
@@ -125,6 +132,11 @@ class TestPositionalDayOfMonth:
         "0 19 last-fri * * *",   # too many fields
         "last-fri",              # not a crontab expression
         "0 19 6th-tue * *",      # there is no 6th weekday
+        # APScheduler drops anything after a positional expression, so these would
+        # save and then fire only on the first Tuesday.
+        "0 19 1st-tue-3rd-tue * *",
+        "0 19 1st-tue/2 * *",
+        "0 19 last-fri-1 * *",
     ])
     def test_rejects_misplaced_or_malformed_expressions(self, expr):
         assert parse_schedule_key(expr, self.TZ).trigger is None
@@ -163,6 +175,42 @@ class TestScheduleBounds:
     def test_rejects_malformed_bounds(self, bad):
         with pytest.raises(ValueError):
             split_schedule_bounds(bad)
+
+    @pytest.mark.parametrize("raw", [
+        "start=ops:Hello",          # a channel that merely begins with start=
+        "end=west:Hello there",
+        "start=ops:#sea:Hi",
+    ])
+    def test_a_channel_starting_with_a_bound_keyword_stays_a_channel(self, raw):
+        assert split_schedule_bounds(raw) == (None, None, raw)
+
+    @pytest.mark.parametrize("bad", [
+        "start= Public:Hi",              # keyword with no date
+        "start =2027-01-01 Public:Hi",   # space before "="
+        "end=  Public:#sea:Hi",
+        "start=20270101 Public:Hi",      # fromisoformat takes it; APScheduler doesn't
+        "start=2027-W01-1 Public:Hi",
+    ])
+    def test_a_bound_without_a_usable_date_is_an_error_not_a_channel(self, bad):
+        with pytest.raises(ValueError):
+            split_schedule_bounds(bad)
+
+    def test_legacy_hhmm_with_a_bad_bound_is_invalid_not_an_exception(self):
+        result = parse_schedule_key("0900", self.TZ, "not-a-date")
+        assert result.trigger is None
+
+    def test_bounds_follow_the_bot_timezone_across_dst(self):
+        # US DST ended 2026-11-01: the window still starts and ends on local midnights.
+        tz = ZoneInfo("America/Los_Angeles")
+        trigger = parse_schedule_key("30 23 * * *", tz, "2026-10-31", "2026-11-02").trigger
+        runs, prev, now = [], None, datetime.datetime(2026, 10, 30, 12, tzinfo=tz)
+        while True:
+            fire = trigger.get_next_fire_time(prev, now)
+            if fire is None:
+                break
+            runs.append(fire.strftime("%m-%d %H:%M %Z"))
+            prev, now = fire, fire + datetime.timedelta(seconds=1)
+        assert runs == ["10-31 23:30 PDT", "11-01 23:30 PST", "11-02 23:30 PST"]
 
     def test_value_parser_refuses_unstripped_bounds(self):
         # A caller that forgets split_schedule_bounds() must fail loudly rather than
@@ -2038,3 +2086,59 @@ class TestDeviceModeSchedulerJobs:
 
         scheduler.bot.repeater_manager.sync_device_mode_favourites_pass1.assert_awaited_once()
         scheduler.bot.repeater_manager.sync_device_mode_favourites_pass2.assert_awaited_once()
+
+
+class TestWeekFilter:
+    """week= on the value: APScheduler's ISO week-number field, for strict alternate weeks."""
+
+    TZ = ZoneInfo("UTC")
+
+    def _runs(self, key, week, count=4):
+        trigger = parse_schedule_key(key, self.TZ, week=week).trigger
+        assert trigger is not None
+        runs, prev, now = [], None, datetime.datetime(2027, 1, 1, tzinfo=self.TZ)
+        for _ in range(count):
+            fire = trigger.get_next_fire_time(prev, now)
+            runs.append(fire.date().isoformat())
+            prev, now = fire, fire + datetime.timedelta(seconds=1)
+        return runs
+
+    def test_every_other_week(self):
+        # ISO weeks 1, 3, 5, 7 of 2027 start on Jan 4, 18, Feb 1, 15.
+        assert self._runs("0 19 * * tue", "*/2") == [
+            "2027-01-05", "2027-01-19", "2027-02-02", "2027-02-16",
+        ]
+
+    def test_even_weeks(self):
+        assert self._runs("0 19 * * tue", "2-53/2") == [
+            "2027-01-12", "2027-01-26", "2027-02-09", "2027-02-23",
+        ]
+
+    @pytest.mark.parametrize("raw, expected", [
+        ("week=*/2 Public:Net", (None, None, "*/2", "Public:Net")),
+        ("start=2027-01-01 week=2-53/2 end=2027-06-30 Public:#sea:Net",
+         ("2027-01-01", "2027-06-30", "2-53/2", "Public:#sea:Net")),
+    ])
+    def test_split_reads_the_week_option(self, raw, expected):
+        assert split_schedule_options(raw) == expected
+
+    @pytest.mark.parametrize("bad", [
+        "week=tue Public:Net",       # not a week number
+        "week=54 Public:Net",        # ISO weeks stop at 53
+        "week= Public:Net",          # no value
+        "week=*/2 week=*/3 Public:Net",
+    ])
+    def test_rejects_bad_week_options(self, bad):
+        with pytest.raises(ValueError):
+            split_schedule_options(bad)
+
+
+class TestParseErrorReasons:
+    def test_invalid_key_carries_the_reason(self):
+        result = parse_schedule_key("0 25 * * *", ZoneInfo("UTC"))
+        assert result.trigger is None
+        assert result.error and "25" in result.error
+
+    def test_misplaced_positional_reason_names_the_item(self):
+        result = parse_schedule_key("0 19 1st-tue-3rd-tue * *", ZoneInfo("UTC"))
+        assert "stand alone" in result.error

@@ -203,3 +203,43 @@ class TestDateBounds:
     def test_validate_entry_checks_the_dates(self, start, end, expected):
         assert validate_entry("Public", "Hi", None, start, end) == expected
 
+
+
+    def test_preview_rejects_an_inverted_window_like_saving_does(self):
+        result = describe_schedule("@daily", TZ, start="2027-03-31", end="2027-01-01")
+        assert result["valid"] is False
+        assert result["error"] == "End date is before the start date"
+
+    def test_channel_beginning_with_start_round_trips(self, tmp_path):
+        assert validate_entry("start=ops", "Hi", None) is None
+        config = tmp_path / "config.ini"
+        config.write_text(
+            f"[Scheduled_Messages]\n0 19 * * * = {compose_value('start=ops', 'Hi', None)}\n",
+            encoding="utf-8",
+        )
+        entry = read_entries(str(config), TZ)[0]
+        assert (entry["channel"], entry["message"], entry["start"]) == ("start=ops", "Hi", None)
+
+    def test_channel_that_reads_as_a_bound_is_refused(self):
+        assert validate_entry("start=2027-01-01 Public", "Hi", None) == (
+            "The channel name cannot start with start= or end="
+        )
+
+    def test_unscoped_message_that_reads_as_a_scope_is_refused(self):
+        # "Public:#net: tonight" would read back as scope #net, message "tonight".
+        error = validate_entry("Public", "#net: tonight", None)
+        assert error is not None and "read as a scope" in error
+        assert validate_entry("Public", "#net: tonight", "#west") is None
+
+    def test_week_option_round_trips_and_previews(self, tmp_path):
+        assert compose_value("Public", "Net", None, None, None, "*/2") == "week=*/2 Public:Net"
+        config = tmp_path / "config.ini"
+        config.write_text("[Scheduled_Messages]\n0 19 * * tue = week=*/2 Public:Net\n", encoding="utf-8")
+        entry = read_entries(str(config), TZ)[0]
+        assert entry["week"] == "*/2" and entry["valid"] is True
+        assert validate_entry("Public", "Net", None, week="54") is not None
+
+    def test_invalid_schedule_error_says_why(self):
+        result = describe_schedule("0 25 * * *", TZ)
+        assert result["valid"] is False
+        assert "25" in result["error"]

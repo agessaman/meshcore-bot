@@ -30,7 +30,7 @@ from .scheduled_message_cron import (
     is_valid_legacy_hhmm,
     parse_schedule_key,
     parse_scheduled_message_value,
-    split_schedule_bounds,
+    split_schedule_options,
 )
 from .security_utils import validate_external_url
 from .utils import (
@@ -130,13 +130,15 @@ class MessageScheduler:
             for schedule_key, message_info in self.bot.config.items('Scheduled_Messages'):
                 self.logger.info(f"Processing scheduled message: '{schedule_key}' -> '{message_info}'")
                 try:
-                    # Optional start=/end= bounds ride on the value, since crontab has
-                    # no field for them; strip them before reading channel:message.
-                    start_date, end_date, value = split_schedule_bounds(message_info)
-                    parsed = parse_schedule_key(schedule_key, tz, start_date, end_date)
+                    # Optional start=/end=/week= options ride on the value, since
+                    # crontab has no field for them; strip them before reading
+                    # channel:message.
+                    start_date, end_date, week, value = split_schedule_options(message_info)
+                    parsed = parse_schedule_key(schedule_key, tz, start_date, end_date, week)
                     if parsed.trigger is None:
+                        reason = f" ({parsed.error})" if parsed.error else ""
                         self.logger.warning(
-                            f"Invalid schedule '{schedule_key}' for scheduled message: {message_info}"
+                            f"Invalid schedule '{schedule_key}'{reason} for scheduled message: {message_info}"
                         )
                         continue
 
@@ -202,8 +204,8 @@ class MessageScheduler:
                     self.logger.info(
                         f"Scheduled message: {parsed.display_label} -> {channel}{scope_note}: {message}"
                     )
-                except ValueError:
-                    self.logger.warning(f"Invalid scheduled message format: {message_info}")
+                except ValueError as exc:
+                    self.logger.warning(f"Invalid scheduled message format: {message_info}: {exc}")
                 except Exception as e:
                     self.logger.warning(f"Error setting up scheduled message '{schedule_key}': {e}")
 

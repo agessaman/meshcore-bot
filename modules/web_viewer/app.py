@@ -4157,6 +4157,7 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
                 count=count,
                 start=(data.get('start') or '').strip() or None,
                 end=(data.get('end') or '').strip() or None,
+                week=(data.get('week') or '').strip() or None,
             ))
 
         def _save_scheduled_message(data, *, replacing=None):
@@ -4172,13 +4173,14 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
             # Optional date bounds; they live on the value, not the schedule key.
             start = (data.get('start') or '').strip() or None
             end = (data.get('end') or '').strip() or None
+            week = (data.get('week') or '').strip() or None
 
-            field_error = validate_entry(channel, message, scope, start, end)
+            field_error = validate_entry(channel, message, scope, start, end, week)
             if field_error:
                 return jsonify({'success': False, 'error': field_error}), 400
 
             described = describe_schedule(
-                schedule, _schedule_tz(), message=message, start=start, end=end
+                schedule, _schedule_tz(), message=message, start=start, end=end, week=week
             )
             if not described.get('valid'):
                 return jsonify({'success': False, 'error': described.get('error')}), 400
@@ -4206,7 +4208,7 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
 
             updates = {
                 SCHEDULED_MESSAGES_SECTION: {
-                    schedule: compose_value(channel, message, scope, start, end)
+                    schedule: compose_value(channel, message, scope, start, end, week)
                 }
             }
             deletes = None
@@ -4246,7 +4248,8 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
                     'It will pick the change up on next restart.'
                 ),
                 'entry': {'schedule': schedule, 'channel': channel,
-                          'scope': scope, 'message': message, **described},
+                          'scope': scope, 'message': message,
+                          'start': start, 'end': end, 'week': week, **described},
             })
 
         @self.app.route('/api/scheduled-messages', methods=['POST'])
