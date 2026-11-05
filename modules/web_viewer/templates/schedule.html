@@ -167,6 +167,10 @@
                         <option value="*/2">Every other week (odd ISO weeks)</option>
                         <option value="2-53/2">Every other week (even ISO weeks)</option>
                     </select>
+                    <div class="form-text text-warning d-none" id="weekMonthlyNote">
+                        With one day a month, Weeks keeps that day only in matching ISO weeks,
+                        so most months are skipped. It is not "every other month".
+                    </div>
                     <div class="form-text" id="scheduleWeekHelp">
                         For a strict fortnightly net. Weeks are ISO week numbers, so in a year
                         with 53 weeks the odd setting runs two weeks running at New Year.
@@ -309,6 +313,7 @@
         const show = (id, on) => $(id).classList.toggle('d-none', !on);
         show('fieldTime', mode === 'daily' || mode === 'weekly' || mode === 'monthly');
         show('fieldMonthly', mode === 'monthly');
+        show('weekMonthlyNote', mode === 'monthly' && $('scheduleWeek').value !== '');
         show('fieldTimes', mode === 'times');
         show('fieldEveryHours', mode === 'interval_hours');
         show('fieldEveryMinutes', mode === 'interval_minutes');
@@ -340,6 +345,8 @@
                     start: $('scheduleStart').value,
                     end: $('scheduleEnd').value,
                     week: $('scheduleWeek').value,
+                    channel: $('scheduleChannel').value,
+                    scope: $('scheduleScope').value,
                     count: 5
                 })
             });
@@ -350,6 +357,7 @@
                 $('previewRuns').textContent = '—';
                 $('previewError').textContent = data.error || 'Invalid schedule';
             }
+            if (data.entry_error) $('previewError').textContent = data.entry_error;
             if (data.warning) $('previewWarning').textContent = data.warning;
         } catch (err) {
             $('previewRuns').textContent = '—';
@@ -365,6 +373,7 @@
         $('scheduleMessage').value = entry ? entry.message : '';
         $('scheduleStart').value = entry && entry.start ? entry.start : '';
         $('scheduleEnd').value = entry && entry.end ? entry.end : '';
+        resetBuilder();
         setWeek(entry && entry.week ? entry.week : '');
         $('scheduleCron').value = entry ? entry.schedule : '';
         // An existing entry opens in the friendly mode that reproduces it exactly, or in
@@ -389,7 +398,35 @@
     }
 
     /** Pick the builder mode whose controls reproduce `schedule` exactly, else Advanced. */
+    /** Put every builder control back to its default, so nothing carries over between opens. */
+    function resetBuilder() {
+        document.querySelectorAll('.day-toggle').forEach((el) => { el.checked = false; });
+        $('scheduleOrdinal').value = '1st';
+        $('scheduleWeekday').value = 'mon';
+        $('scheduleTime').value = '08:00';
+        $('scheduleTimes').value = '6,12,18';
+        $('scheduleEveryHours').value = '2';
+        $('scheduleEveryMinutes').value = '30';
+    }
+
     function detectMode(schedule) {
+        const raw = schedule || '';
+        let fixed;
+        if ((fixed = /^\*\/(\d{1,2}) \* \* \* \*$/.exec(raw))) {
+            $('scheduleEveryMinutes').value = fixed[1];
+            $('scheduleMode').value = 'interval_minutes';
+            return composeCron() === raw ? 'interval_minutes' : 'advanced';
+        }
+        if ((fixed = /^0 \*\/(\d{1,2}) \* \* \*$/.exec(raw))) {
+            $('scheduleEveryHours').value = fixed[1];
+            $('scheduleMode').value = 'interval_hours';
+            return composeCron() === raw ? 'interval_hours' : 'advanced';
+        }
+        if ((fixed = /^0 (\d{1,2}(?:,\d{1,2})+) \* \* \*$/.exec(raw))) {
+            $('scheduleTimes').value = fixed[1];
+            $('scheduleMode').value = 'times';
+            return composeCron() === raw ? 'times' : 'advanced';
+        }
         const m = /^(\d{1,2}) (\d{1,2}) (\S+) \* (\S+)$/.exec(schedule || '');
         if (!m) return 'advanced';
         const [, minute, hour, dom, dow] = m;
@@ -542,9 +579,11 @@
         $('addScheduleBtn').addEventListener('click', () => openModal(null));
         $('saveScheduleBtn').addEventListener('click', save);
         $('scheduleMode').addEventListener('change', syncModeFields);
+        $('scheduleWeek').addEventListener('change', syncModeFields);
         ['scheduleTime', 'scheduleTimes', 'scheduleEveryHours', 'scheduleEveryMinutes',
          'scheduleCron', 'scheduleMessage', 'scheduleStart', 'scheduleEnd',
-         'scheduleOrdinal', 'scheduleWeekday', 'scheduleWeek'].forEach((id) =>
+         'scheduleOrdinal', 'scheduleWeekday', 'scheduleWeek', 'scheduleChannel',
+         'scheduleScope'].forEach((id) =>
             $(id).addEventListener('input', schedulePreview));
         syncModeFields();
         load();

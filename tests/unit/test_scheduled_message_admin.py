@@ -222,7 +222,7 @@ class TestDateBounds:
 
     def test_channel_that_reads_as_a_bound_is_refused(self):
         assert validate_entry("start=2027-01-01 Public", "Hi", None) == (
-            "The channel name cannot start with start= or end="
+            "The channel name cannot start with start=, end= or week="
         )
 
     def test_unscoped_message_that_reads_as_a_scope_is_refused(self):
@@ -243,3 +243,13 @@ class TestDateBounds:
         result = describe_schedule("0 25 * * *", TZ)
         assert result["valid"] is False
         assert "25" in result["error"]
+
+    def test_channel_that_reads_as_a_week_option_is_refused(self):
+        assert validate_entry("week=2 Public", "Hi", None) == (
+            "The channel name cannot start with start=, end= or week="
+        )
+
+    def test_a_schedule_that_never_fires_is_invalid(self):
+        result = describe_schedule("0 0 30 feb *", TZ)
+        assert result["valid"] is False
+        assert "never fires" in result["error"]

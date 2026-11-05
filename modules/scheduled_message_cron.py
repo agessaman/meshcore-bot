@@ -29,6 +29,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.util import astimezone, convert_to_datetime
 
 # Leading "start=YYYY-MM-DD" / "end=YYYY-MM-DD" tokens on an option value. Anchored to
 # the front so a message body can never be mistaken for a bound, and keyed with "=" so
@@ -39,6 +40,8 @@ _BOUND_RE = re.compile(r"^\s*(?P<key>start|end|week)=(?P<date>[^\s:]+)\s+", re.I
 # A bound keyword with nothing usable after it ("start= Public:Hi", "start =2027-01-01
 # Public:Hi"). Rejected outright rather than read as a channel called "start= Public".
 _DANGLING_BOUND_RE = re.compile(r"^(?:start|end|week)(?:\s*=(?:\s|$)|\s+=)", re.IGNORECASE)
+# An option with nothing after it ("start=2027-01-01"): the value has no channel.
+_TRAILING_OPTION_RE = re.compile(r"(?:start|end|week)=[^\s:]+", re.IGNORECASE)
 # An ISO week-number expression in crontab syntax: numbers, *, ranges, steps and lists.
 _WEEK_EXPR_RE = re.compile(r"[\d*/,\-]+")
 # Exactly YYYY-MM-DD. date.fromisoformat() also takes 20270101 and 2027-W01-1 on newer
@@ -117,6 +120,8 @@ def split_schedule_options(raw: str) -> tuple[str | None, str | None, str | None
             raise ValueError(f"{key}={value} is not an ISO date (YYYY-MM-DD)")
         found[key] = value
         rest = rest[match.end():]
+    if _TRAILING_OPTION_RE.fullmatch(rest.strip()):
+        raise ValueError(f"{rest.strip()} needs a channel:message after it")
     if _DANGLING_BOUND_RE.match(rest.strip()):
         raise ValueError(
             "start=/end=/week= needs a value, as in start=YYYY-MM-DD or week=*/2"
@@ -201,6 +206,25 @@ _POSITIONAL_DOM_RE = re.compile(
 )
 
 
+def _end_of_local_day(end_date: str, timezone) -> datetime.datetime:
+    """The last second before ``end_date``'s following local day begins.
+
+    Worked out in UTC from the start of the next day rather than as ``23:59:59``,
+    which a DST change that skips the day's last hour (America/Nuuk, 2027-03-27)
+    would push past midnight and let the schedule fire on the following date.
+    """
+    tz = astimezone(timezone)
+    next_day = datetime.date.fromisoformat(end_date) + datetime.timedelta(days=1)
+    next_midnight = convert_to_datetime(
+        datetime.datetime.combine(next_day, datetime.time()), tz, "end_date"
+    )
+    utc_end = next_midnight.astimezone(datetime.timezone.utc) - datetime.timedelta(seconds=1)
+    return utc_end.astimezone(tz)
+
+
+_ORDINAL_PREFIXES = ("1st", "2nd", "3rd", "4th", "5th", "last")
+
+
 def _unescape_positional_dom(field: str) -> str:
     """Restore the space in each escaped positional item of a day-of-month field.
 
@@ -214,6 +238,14 @@ def _unescape_positional_dom(field: str) -> str:
     """
     items = []
     for item in field.split(","):
+        # APScheduler matches "last" and the ordinals as prefixes, so "last--fri",
+        # "lastfri" or "last-" would quietly mean the last day of the month.
+        lowered = item.lower()
+        if lowered.startswith(_ORDINAL_PREFIXES) and lowered != "last" and not _POSITIONAL_DOM_RE.fullmatch(item):
+            raise ValueError(
+                f"{item!r} is not a day-of-month: use last, or an ordinal and a weekday "
+                "such as last-fri or 2nd-wed"
+            )
         if _POSITIONAL_DOM_RE.search(item):
             match = _POSITIONAL_DOM_RE.fullmatch(item)
             if not match:
@@ -221,7 +253,7 @@ def _unescape_positional_dom(field: str) -> str:
                     f"{item!r}: a positional day such as last-fri or 4th-tue must stand "
                     "alone between commas"
                 )
-            item = f"{match.group(1)} {match.group(2)}"
+            item = f"{match.group(1).lower()} {match.group(2).lower()}"
         items.append(item)
     return ",".join(items)
 
@@ -246,7 +278,14 @@ def _from_crontab(
 
     # Only the day-of-month field takes positional expressions; an escape anywhere else
     # is left in place so APScheduler rejects it.
-    fields[2] = _unescape_positional_dom(fields[2])
+    day = _unescape_positional_dom(fields[2])
+    if day != fields[2] and fields[4] != "*":
+        # APScheduler requires both fields to match, so "1st-tue * mon" never fires.
+        raise ValueError(
+            "a positional day such as last-fri already names the weekday; "
+            "leave day-of-week as *"
+        )
+    fields[2] = day
     return CronTrigger(
         minute=fields[0],
         hour=fields[1],
@@ -258,7 +297,7 @@ def _from_crontab(
         start_date=start_date,
         # An end date reads as "through this day", so run it to the end of that day
         # rather than stopping at its midnight.
-        end_date=f"{end_date} 23:59:59" if end_date else None,
+        end_date=_end_of_local_day(end_date, timezone) if end_date else None,
     )
 
 

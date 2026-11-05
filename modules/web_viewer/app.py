@@ -4150,15 +4150,30 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
                 return jsonify({'error': 'count must be an integer'}), 400
             if not 1 <= count <= 20:
                 return jsonify({'error': 'count must be between 1 and 20'}), 400
-            return jsonify(describe_schedule(
+            start = (data.get('start') or '').strip() or None
+            end = (data.get('end') or '').strip() or None
+            week = (data.get('week') or '').strip() or None
+            result = describe_schedule(
                 data.get('schedule', ''),
                 _schedule_tz(),
                 message=data.get('message', ''),
                 count=count,
-                start=(data.get('start') or '').strip() or None,
-                end=(data.get('end') or '').strip() or None,
-                week=(data.get('week') or '').strip() or None,
-            ))
+                start=start,
+                end=end,
+                week=week,
+            )
+            # Once the form has a channel and message, run the checks saving runs too,
+            # so the preview does not call valid what saving would refuse.
+            channel = (data.get('channel') or '').strip()
+            message = (data.get('message') or '').strip()
+            if result.get('valid') and channel and message:
+                entry_error = validate_entry(
+                    channel, message, (data.get('scope') or '').strip() or None,
+                    start, end, week,
+                )
+                if entry_error:
+                    result['entry_error'] = entry_error
+            return jsonify(result)
 
         def _save_scheduled_message(data, *, replacing=None):
             """Shared create/update: validate, write config.ini, queue a reload."""

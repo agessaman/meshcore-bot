@@ -294,3 +294,10 @@ class TestDateBoundsThroughTheApi:
                      {"schedule": "@daily", "channel": "Public", "message": "x", "start": bad})
         assert resp.status_code == 400
         assert "ISO date" in resp.get_json()["error"]
+
+    def test_preview_reports_what_saving_would_refuse(self, viewer):
+        payload = {"schedule": "@daily", "channel": "Public", "message": "#net: tonight"}
+        preview = _post(_client(viewer), "/api/scheduled-messages/preview", payload).get_json()
+        assert preview["valid"] is True
+        assert "read as a scope" in preview["entry_error"]
+        assert _post(_client(viewer), "/api/scheduled-messages", payload).status_code == 400

@@ -97,9 +97,8 @@ Plain crontab cannot say "every other Tuesday", and `1st-tue,3rd-tue` drifts to 
 ```ini
 [Scheduled_Messages]
 0 20 * * tue = week=*/2 Public:#sea:Fortnightly net
-0 20 * * tue = week=2-53/2 Public:#sea:The other fortnight
 ```
 
-`week=*/2` runs in odd ISO weeks (1, 3, 5 …) and `week=2-53/2` in even ones; any APScheduler week expression works, such as `week=1-26` for the first half of the year. It goes with `start=` and `end=` ahead of the channel, in any order. The web viewer's **Weeks** setting offers both alternations.
+`week=*/2` runs in odd ISO weeks (1, 3, 5 …) and `week=2-53/2` in even ones (a schedule key can appear only once in the section, so the two alternations need different keys); any APScheduler week expression works, such as `week=1-26` for the first half of the year. It goes with `start=` and `end=` ahead of the channel, in any order. The web viewer's **Weeks** setting offers both alternations.
 
 ISO years have 52 or 53 weeks, so in a 53-week year (2026, 2032) the odd setting runs in week 53 and again in week 1, two weeks running at New Year. The even setting skips from week 52 to week 2, a three-week gap.

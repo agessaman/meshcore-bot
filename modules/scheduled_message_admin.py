@@ -125,13 +125,21 @@ def describe_schedule(
             f"{raw} is the deprecated HHMM form and will stop working in a future "
             "release. Use 5-field cron instead."
         )
-    if (start or end) and not result["next_runs"]:
-        # Well-formed, just outside its window -- distinct from a malformed schedule.
-        result["finished"] = True
-        warnings.append(
-            f"This schedule has no runs left: it is bounded to "
-            f"{start or 'any date'} .. {end or 'any date'}."
-        )
+    if not result["next_runs"]:
+        if start or end:
+            # Well-formed, just outside its window -- distinct from a malformed schedule.
+            result["finished"] = True
+            warnings.append(
+                f"This schedule has no runs left: it is bounded to "
+                f"{start or 'any date'} .. {end or 'any date'}."
+            )
+        else:
+            # e.g. "0 0 30 feb *": parses, but no date ever matches.
+            return {
+                "valid": False,
+                "error": "This schedule never fires: no date matches every field.",
+                "next_runs": [],
+            }
     if warnings:
         result["warning"] = " ".join(warnings)
 
@@ -233,7 +241,7 @@ def validate_entry(
         )
         read_back = (read_start, read_end, *parse_scheduled_message_value(rest))
         if read_week != (weeks or None):
-            return "The week filter would not read back as written"
+            return "The channel name cannot start with start=, end= or week="
     except ValueError as exc:
         return f"This entry would not read back as written: {exc}"
     expected_scope = None
@@ -244,7 +252,7 @@ def validate_entry(
     expected = (starts_on or None, ends_on or None, channel.strip(), message.strip(), expected_scope)
     if read_back != expected:
         if read_back[2] != expected[2] or read_back[:2] != expected[:2]:
-            return "The channel name cannot start with start= or end="
+            return "The channel name cannot start with start=, end= or week="
         return (
             "With no scope set, the message cannot start with #name: "
             "(it would be read as a scope). Set the scope, or reword the start."

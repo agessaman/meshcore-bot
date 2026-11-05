@@ -142,17 +142,25 @@ class MessageScheduler:
                         )
                         continue
 
-                    if (start_date or end_date) and parsed.trigger.get_next_fire_time(
+                    if parsed.trigger.get_next_fire_time(
                         None, datetime.datetime.now(tz)
                     ) is None:
-                        self.logger.warning(
-                            "Scheduled_Messages key %r is bounded to %s..%s and has no "
-                            "runs left; not scheduled: %s",
-                            schedule_key,
-                            start_date or "any date",
-                            end_date or "any date",
-                            message_info,
-                        )
+                        if start_date or end_date:
+                            self.logger.warning(
+                                "Scheduled_Messages key %r is bounded to %s..%s and has no "
+                                "runs left; not scheduled: %s",
+                                schedule_key,
+                                start_date or "any date",
+                                end_date or "any date",
+                                message_info,
+                            )
+                        else:
+                            self.logger.warning(
+                                "Scheduled_Messages key %r never fires (no date matches "
+                                "every field); not scheduled: %s",
+                                schedule_key,
+                                message_info,
+                            )
                         continue
 
                     if parsed.is_deprecated_hhmm:

@@ -137,6 +137,14 @@ class TestPositionalDayOfMonth:
         "0 19 1st-tue-3rd-tue * *",
         "0 19 1st-tue/2 * *",
         "0 19 last-fri-1 * *",
+        # APScheduler reads "last" as a prefix, so these used to mean the last day.
+        "0 19 last--fri * *",
+        "0 19 lastfri * *",
+        "0 19 last- * *",
+        "0 19 2nd * *",
+        # A positional day already names its weekday; with a DOW it can never match.
+        "0 19 1st-tue * mon",
+        "0 19 last-fri * fri",
     ])
     def test_rejects_misplaced_or_malformed_expressions(self, expr):
         assert parse_schedule_key(expr, self.TZ).trigger is None
@@ -198,6 +206,15 @@ class TestScheduleBounds:
     def test_legacy_hhmm_with_a_bad_bound_is_invalid_not_an_exception(self):
         result = parse_schedule_key("0900", self.TZ, "not-a-date")
         assert result.trigger is None
+
+    def test_end_date_holds_when_dst_skips_the_last_hour(self):
+        # America/Nuuk springs forward at 23:00 on 2027-03-27, so "23:59:59" that day
+        # does not exist; the window must still close before March 28 begins.
+        tz = ZoneInfo("America/Nuuk")
+        trigger = parse_schedule_key("30 23 * * *", tz, None, "2027-03-27").trigger
+        fire = trigger.get_next_fire_time(None, datetime.datetime(2027, 3, 27, 12, tzinfo=tz))
+        assert fire is None or fire.date() <= datetime.date(2027, 3, 27)
+        assert trigger.end_date < datetime.datetime(2027, 3, 28, tzinfo=tz)
 
     def test_bounds_follow_the_bot_timezone_across_dst(self):
         # US DST ended 2026-11-01: the window still starts and ends on local midnights.
@@ -2127,6 +2144,8 @@ class TestWeekFilter:
         "week=54 Public:Net",        # ISO weeks stop at 53
         "week= Public:Net",          # no value
         "week=*/2 week=*/3 Public:Net",
+        "week=*/2",                  # an option and no channel:message
+        "start=2027-01-01",
     ])
     def test_rejects_bad_week_options(self, bad):
         with pytest.raises(ValueError):
@@ -2141,4 +2160,4 @@ class TestParseErrorReasons:
 
     def test_misplaced_positional_reason_names_the_item(self):
         result = parse_schedule_key("0 19 1st-tue-3rd-tue * *", ZoneInfo("UTC"))
-        assert "stand alone" in result.error
+        assert "1st-tue-3rd-tue" in result.error
