@@ -309,12 +309,12 @@ def test_realtime_mesh_user_message_path_and_error_values_use_dom_text_nodes() -
     source = _source("realtime.html")
     for safe_sink in (
         "element.textContent = String(text)",
-        "data.channel\n            )",
-        "makeElement('strong', '', data.sender || '?')",
-        "entry.append(header, makeElement('div', 'text-break', bodyRaw))",
-        "makeElement('strong', 'text-primary me-2', data.user || 'Unknown')",
-        "makeElement('div', 'response-text', data.response || 'No response')",
-        "document.createTextNode(` ${String(pathDisplay)}",
+        "chip.appendChild(document.createTextNode(String(channel)))",
+        "makeElement('span', 'rt-who', msg.sender || '?')",
+        "makeElement('span', 'rt-text', stripLeadingChannelBracketTag(msg.content || '', isDm))",
+        "makeElement('span', 'rt-who', cmd.user || 'Unknown')",
+        "makeElement('p', 'rt-reply-text', cmd.response || 'No response')",
+        "makeElement('span', 'rt-path', path.join(' › '))",
         "document.getElementById('decoder-error-message').textContent = decodeError",
     ):
         assert safe_sink in source

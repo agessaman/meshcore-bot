@@ -4,6 +4,7 @@ var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
 var __require = /* @__PURE__ */ ((x) => typeof require !== "undefined" ? require : typeof Proxy !== "undefined" ? new Proxy(x, {
   get: (a, b) => (typeof require !== "undefined" ? require : a)[b]
 }) : x)(function(x) {
@@ -33,6 +34,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
   mod
 ));
+var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
 
 // (disabled):crypto
 var require_crypto = __commonJS({
@@ -52,7 +54,7 @@ var require_core = __commonJS({
         root.CryptoJS = factory();
       }
     })(exports, function() {
-      var CryptoJS2 = CryptoJS2 || (function(Math2, undefined2) {
+      var CryptoJS2 = CryptoJS2 || function(Math2, undefined2) {
         var crypto;
         if (typeof window !== "undefined" && window.crypto) {
           crypto = window.crypto;
@@ -92,7 +94,7 @@ var require_core = __commonJS({
           }
           throw new Error("Native crypto module could not be used to get secure random number.");
         };
-        var create = Object.create || /* @__PURE__ */ (function() {
+        var create = Object.create || /* @__PURE__ */ function() {
           function F() {
           }
           return function(obj) {
@@ -102,10 +104,10 @@ var require_core = __commonJS({
             F.prototype = null;
             return subtype;
           };
-        })();
+        }();
         var C2 = {};
         var C_lib = C2.lib = {};
-        var Base = C_lib.Base = /* @__PURE__ */ (function() {
+        var Base = C_lib.Base = /* @__PURE__ */ function() {
           return {
             /**
              * Creates a new object that inherits from this object.
@@ -204,7 +206,7 @@ var require_core = __commonJS({
               return this.init.prototype.extend(this);
             }
           };
-        })();
+        }();
         var WordArray = C_lib.WordArray = Base.extend({
           /**
            * Initializes a newly created word array.
@@ -642,7 +644,7 @@ var require_core = __commonJS({
         });
         var C_algo = C2.algo = {};
         return C2;
-      })(Math);
+      }(Math);
       return CryptoJS2;
     });
   }
@@ -1612,7 +1614,7 @@ var require_sha256 = __commonJS({
           }
         })();
         var W2 = [];
-        var SHA2562 = C_algo.SHA256 = Hasher.extend({
+        var SHA2564 = C_algo.SHA256 = Hasher.extend({
           _doReset: function() {
             this._hash = new WordArray.init(H.slice(0));
           },
@@ -1678,8 +1680,8 @@ var require_sha256 = __commonJS({
             return clone;
           }
         });
-        C2.SHA256 = Hasher._createHelper(SHA2562);
-        C2.HmacSHA256 = Hasher._createHmacHelper(SHA2562);
+        C2.SHA256 = Hasher._createHelper(SHA2564);
+        C2.HmacSHA256 = Hasher._createHmacHelper(SHA2564);
       })(Math);
       return CryptoJS2.SHA256;
     });
@@ -1703,8 +1705,8 @@ var require_sha224 = __commonJS({
         var C_lib = C2.lib;
         var WordArray = C_lib.WordArray;
         var C_algo = C2.algo;
-        var SHA2562 = C_algo.SHA256;
-        var SHA224 = C_algo.SHA224 = SHA2562.extend({
+        var SHA2564 = C_algo.SHA256;
+        var SHA224 = C_algo.SHA224 = SHA2564.extend({
           _doReset: function() {
             this._hash = new WordArray.init([
               3238371032,
@@ -1718,13 +1720,13 @@ var require_sha224 = __commonJS({
             ]);
           },
           _doFinalize: function() {
-            var hash = SHA2562._doFinalize.call(this);
+            var hash = SHA2564._doFinalize.call(this);
             hash.sigBytes -= 4;
             return hash;
           }
         });
-        C2.SHA224 = SHA2562._createHelper(SHA224);
-        C2.HmacSHA224 = SHA2562._createHmacHelper(SHA224);
+        C2.SHA224 = SHA2564._createHelper(SHA224);
+        C2.HmacSHA224 = SHA2564._createHmacHelper(SHA224);
       })();
       return CryptoJS2.SHA224;
     });
@@ -2857,7 +2859,7 @@ var require_pbkdf2 = __commonJS({
         var Base = C_lib.Base;
         var WordArray = C_lib.WordArray;
         var C_algo = C2.algo;
-        var SHA2562 = C_algo.SHA256;
+        var SHA2564 = C_algo.SHA256;
         var HMAC = C_algo.HMAC;
         var PBKDF2 = C_algo.PBKDF2 = Base.extend({
           /**
@@ -2869,7 +2871,7 @@ var require_pbkdf2 = __commonJS({
            */
           cfg: Base.extend({
             keySize: 128 / 32,
-            hasher: SHA2562,
+            hasher: SHA2564,
             iterations: 25e4
           }),
           /**
@@ -3040,7 +3042,7 @@ var require_cipher_core = __commonJS({
         factory(root.CryptoJS);
       }
     })(exports, function(CryptoJS2) {
-      CryptoJS2.lib.Cipher || (function(undefined2) {
+      CryptoJS2.lib.Cipher || function(undefined2) {
         var C2 = CryptoJS2;
         var C_lib = C2.lib;
         var Base = C_lib.Base;
@@ -3174,7 +3176,7 @@ var require_cipher_core = __commonJS({
            *
            *     var AES = CryptoJS.lib.Cipher._createHelper(CryptoJS.algo.AES);
            */
-          _createHelper: /* @__PURE__ */ (function() {
+          _createHelper: /* @__PURE__ */ function() {
             function selectCipherStrategy(key) {
               if (typeof key == "string") {
                 return PasswordBasedCipher;
@@ -3192,7 +3194,7 @@ var require_cipher_core = __commonJS({
                 }
               };
             };
-          })()
+          }()
         });
         var StreamCipher = C_lib.StreamCipher = Cipher.extend({
           _doFinalize: function() {
@@ -3248,7 +3250,7 @@ var require_cipher_core = __commonJS({
             this._iv = iv;
           }
         });
-        var CBC = C_mode.CBC = (function() {
+        var CBC = C_mode.CBC = function() {
           var CBC2 = BlockCipherMode.extend();
           CBC2.Encryptor = CBC2.extend({
             /**
@@ -3303,7 +3305,7 @@ var require_cipher_core = __commonJS({
             }
           }
           return CBC2;
-        })();
+        }();
         var C_pad = C2.pad = {};
         var Pkcs7 = C_pad.Pkcs7 = {
           /**
@@ -3667,7 +3669,7 @@ var require_cipher_core = __commonJS({
             return plaintext;
           }
         });
-      })();
+      }();
     });
   }
 });
@@ -3684,7 +3686,7 @@ var require_mode_cfb = __commonJS({
         factory(root.CryptoJS);
       }
     })(exports, function(CryptoJS2) {
-      CryptoJS2.mode.CFB = (function() {
+      CryptoJS2.mode.CFB = function() {
         var CFB = CryptoJS2.lib.BlockCipherMode.extend();
         CFB.Encryptor = CFB.extend({
           processBlock: function(words, offset) {
@@ -3718,7 +3720,7 @@ var require_mode_cfb = __commonJS({
           }
         }
         return CFB;
-      })();
+      }();
       return CryptoJS2.mode.CFB;
     });
   }
@@ -3736,7 +3738,7 @@ var require_mode_ctr = __commonJS({
         factory(root.CryptoJS);
       }
     })(exports, function(CryptoJS2) {
-      CryptoJS2.mode.CTR = (function() {
+      CryptoJS2.mode.CTR = function() {
         var CTR = CryptoJS2.lib.BlockCipherMode.extend();
         var Encryptor = CTR.Encryptor = CTR.extend({
           processBlock: function(words, offset) {
@@ -3758,7 +3760,7 @@ var require_mode_ctr = __commonJS({
         });
         CTR.Decryptor = Encryptor;
         return CTR;
-      })();
+      }();
       return CryptoJS2.mode.CTR;
     });
   }
@@ -3776,7 +3778,7 @@ var require_mode_ctr_gladman = __commonJS({
         factory(root.CryptoJS);
       }
     })(exports, function(CryptoJS2) {
-      CryptoJS2.mode.CTRGladman = (function() {
+      CryptoJS2.mode.CTRGladman = function() {
         var CTRGladman = CryptoJS2.lib.BlockCipherMode.extend();
         function incWord(word) {
           if ((word >> 24 & 255) === 255) {
@@ -3833,7 +3835,7 @@ var require_mode_ctr_gladman = __commonJS({
         });
         CTRGladman.Decryptor = Encryptor;
         return CTRGladman;
-      })();
+      }();
       return CryptoJS2.mode.CTRGladman;
     });
   }
@@ -3851,7 +3853,7 @@ var require_mode_ofb = __commonJS({
         factory(root.CryptoJS);
       }
     })(exports, function(CryptoJS2) {
-      CryptoJS2.mode.OFB = (function() {
+      CryptoJS2.mode.OFB = function() {
         var OFB = CryptoJS2.lib.BlockCipherMode.extend();
         var Encryptor = OFB.Encryptor = OFB.extend({
           processBlock: function(words, offset) {
@@ -3871,7 +3873,7 @@ var require_mode_ofb = __commonJS({
         });
         OFB.Decryptor = Encryptor;
         return OFB;
-      })();
+      }();
       return CryptoJS2.mode.OFB;
     });
   }
@@ -3889,7 +3891,7 @@ var require_mode_ecb = __commonJS({
         factory(root.CryptoJS);
       }
     })(exports, function(CryptoJS2) {
-      CryptoJS2.mode.ECB = (function() {
+      CryptoJS2.mode.ECB = function() {
         var ECB = CryptoJS2.lib.BlockCipherMode.extend();
         ECB.Encryptor = ECB.extend({
           processBlock: function(words, offset) {
@@ -3902,7 +3904,7 @@ var require_mode_ecb = __commonJS({
           }
         });
         return ECB;
-      })();
+      }();
       return CryptoJS2.mode.ECB;
     });
   }
@@ -6603,7 +6605,7 @@ var require_orlp_ed25519 = __commonJS({
     "use strict";
     var OrlpEd255192 = (() => {
       var _scriptName = typeof document != "undefined" ? document.currentScript?.src : void 0;
-      return (async function(moduleArg = {}) {
+      return async function(moduleArg = {}) {
         var moduleRtn;
         var Module = moduleArg;
         var ENVIRONMENT_IS_WEB = typeof window == "object";
@@ -6831,14 +6833,14 @@ var require_orlp_ed25519 = __commonJS({
               });
             });
           }
-          wasmBinaryFile ??= findWasmBinary();
+          wasmBinaryFile ?? (wasmBinaryFile = findWasmBinary());
           var result = await instantiateAsync(wasmBinary, wasmBinaryFile, info);
           var exports2 = receiveInstantiationResult(result);
           return exports2;
         }
         class ExitStatus {
-          name = "ExitStatus";
           constructor(status) {
+            __publicField(this, "name", "ExitStatus");
             this.message = `Program terminated with exit(${status})`;
             this.status = status;
           }
@@ -7071,7 +7073,7 @@ var require_orlp_ed25519 = __commonJS({
           });
         }
         return moduleRtn;
-      });
+      };
     })();
     if (typeof exports === "object" && typeof module === "object") {
       module.exports = OrlpEd255192;
@@ -7080,6 +7082,9 @@ var require_orlp_ed25519 = __commonJS({
       define([], () => OrlpEd255192);
   }
 });
+
+// src/browser/index.ts
+var import_crypto_js4 = __toESM(require_crypto_js());
 
 // node_modules/@noble/ed25519/index.js
 var ed25519_exports = {};
@@ -7190,14 +7195,12 @@ var callHash = (name) => {
 };
 var apoint = (p) => p instanceof Point ? p : err("Point expected");
 var B256 = 2n ** 256n;
-var Point = class _Point {
-  static BASE;
-  static ZERO;
-  ex;
-  ey;
-  ez;
-  et;
+var _Point = class _Point {
   constructor(ex, ey, ez, et) {
+    __publicField(this, "ex");
+    __publicField(this, "ey");
+    __publicField(this, "ez");
+    __publicField(this, "et");
     const max = B256;
     this.ex = arange(ex, 0n, max);
     this.ey = arange(ey, 0n, max);
@@ -7380,6 +7383,9 @@ var Point = class _Point {
     return this.toBytes();
   }
 };
+__publicField(_Point, "BASE");
+__publicField(_Point, "ZERO");
+var Point = _Point;
 var G = new Point(Gx, Gy, 1n, M(Gx * Gy));
 var I = new Point(0n, 1n, 1n, 0n);
 Point.BASE = G;
@@ -7582,9 +7588,6 @@ var wNAF = (n) => {
   return { p, f };
 };
 
-// src/browser/index.ts
-var import_crypto_js2 = __toESM(require_crypto_js());
-
 // src/types/enums.ts
 var RouteType = /* @__PURE__ */ ((RouteType2) => {
   RouteType2[RouteType2["TransportFlood"] = 0] = "TransportFlood";
@@ -7642,11 +7645,25 @@ var RequestType = /* @__PURE__ */ ((RequestType2) => {
   RequestType2[RequestType2["GetTelemetryData"] = 3] = "GetTelemetryData";
   RequestType2[RequestType2["GetMinMaxAvgData"] = 4] = "GetMinMaxAvgData";
   RequestType2[RequestType2["GetAccessList"] = 5] = "GetAccessList";
+  RequestType2[RequestType2["GetNeighbours"] = 6] = "GetNeighbours";
+  RequestType2[RequestType2["GetOwnerInfo"] = 7] = "GetOwnerInfo";
+  RequestType2[RequestType2["Subscribe"] = 8] = "Subscribe";
+  RequestType2[RequestType2["Unsubscribe"] = 9] = "Unsubscribe";
   return RequestType2;
 })(RequestType || {});
-
-// src/crypto/channel-crypto.ts
-var import_crypto_js = __toESM(require_crypto_js());
+var AnonRequestType = /* @__PURE__ */ ((AnonRequestType2) => {
+  AnonRequestType2[AnonRequestType2["Regions"] = 1] = "Regions";
+  AnonRequestType2[AnonRequestType2["OwnerInfo"] = 2] = "OwnerInfo";
+  AnonRequestType2[AnonRequestType2["Basic"] = 3] = "Basic";
+  return AnonRequestType2;
+})(AnonRequestType || {});
+var TextType = /* @__PURE__ */ ((TextType2) => {
+  TextType2[TextType2["Plain"] = 0] = "Plain";
+  TextType2[TextType2["CliData"] = 1] = "CliData";
+  TextType2[TextType2["SignedPlain"] = 2] = "SignedPlain";
+  TextType2[TextType2["CliCommand"] = 3] = "CliCommand";
+  return TextType2;
+})(TextType || {});
 
 // src/utils/hex.ts
 function byteToHex(byte) {
@@ -7672,136 +7689,6 @@ function hexToBytes2(hex) {
   }
   return bytes;
 }
-
-// src/crypto/channel-crypto.ts
-var ChannelCrypto = class {
-  /**
-   * Decrypt GroupText message using MeshCore algorithm:
-   * - HMAC-SHA256 verification with 2-byte MAC
-   * - AES-128 ECB decryption
-   */
-  static decryptGroupTextMessage(ciphertext, cipherMac, channelKey) {
-    try {
-      const channelKey16 = hexToBytes2(channelKey);
-      const macBytes = hexToBytes2(cipherMac);
-      const channelSecret = new Uint8Array(32);
-      channelSecret.set(channelKey16, 0);
-      const calculatedMac = (0, import_crypto_js.HmacSHA256)(import_crypto_js.enc.Hex.parse(ciphertext), import_crypto_js.enc.Hex.parse(bytesToHex2(channelSecret)));
-      const calculatedMacBytes = hexToBytes2(calculatedMac.toString(import_crypto_js.enc.Hex));
-      const calculatedMacFirst2 = calculatedMacBytes.slice(0, 2);
-      if (calculatedMacFirst2[0] !== macBytes[0] || calculatedMacFirst2[1] !== macBytes[1]) {
-        return { success: false, error: "MAC verification failed" };
-      }
-      const keyWords = import_crypto_js.enc.Hex.parse(channelKey);
-      const ciphertextWords = import_crypto_js.enc.Hex.parse(ciphertext);
-      const decrypted = import_crypto_js.AES.decrypt(
-        import_crypto_js.lib.CipherParams.create({ ciphertext: ciphertextWords }),
-        keyWords,
-        { mode: import_crypto_js.mode.ECB, padding: import_crypto_js.pad.NoPadding }
-      );
-      const decryptedBytes = hexToBytes2(decrypted.toString(import_crypto_js.enc.Hex));
-      if (!decryptedBytes || decryptedBytes.length < 5) {
-        return { success: false, error: "Decrypted content too short" };
-      }
-      const timestamp = decryptedBytes[0] | decryptedBytes[1] << 8 | decryptedBytes[2] << 16 | decryptedBytes[3] << 24;
-      const flagsAndAttempt = decryptedBytes[4];
-      const messageBytes = decryptedBytes.slice(5);
-      const decoder = new TextDecoder("utf-8");
-      let messageText = decoder.decode(messageBytes);
-      const nullIndex = messageText.indexOf("\0");
-      if (nullIndex >= 0) {
-        messageText = messageText.substring(0, nullIndex);
-      }
-      const colonIndex = messageText.indexOf(": ");
-      let sender;
-      let content;
-      if (colonIndex > 0 && colonIndex < 50) {
-        const potentialSender = messageText.substring(0, colonIndex);
-        if (!/[:\[\]]/.test(potentialSender)) {
-          sender = potentialSender;
-          content = messageText.substring(colonIndex + 2);
-        } else {
-          content = messageText;
-        }
-      } else {
-        content = messageText;
-      }
-      return {
-        success: true,
-        data: {
-          timestamp,
-          flags: flagsAndAttempt,
-          sender,
-          message: content
-        }
-      };
-    } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : "Decryption failed" };
-    }
-  }
-  /**
-   * Calculate MeshCore channel hash from secret key
-   * Returns the first byte of SHA256(secret) as hex string
-   */
-  static calculateChannelHash(secretKeyHex) {
-    const hash = (0, import_crypto_js.SHA256)(import_crypto_js.enc.Hex.parse(secretKeyHex));
-    const hashBytes = hexToBytes2(hash.toString(import_crypto_js.enc.Hex));
-    return hashBytes[0].toString(16).padStart(2, "0");
-  }
-};
-
-// src/crypto/key-manager.ts
-var MeshCoreKeyStore = class {
-  constructor(initialKeys) {
-    this.nodeKeys = /* @__PURE__ */ new Map();
-    // internal map for hash -> multiple keys (collision handling)
-    this.channelHashToKeys = /* @__PURE__ */ new Map();
-    if (initialKeys?.channelSecrets) {
-      this.addChannelSecrets(initialKeys.channelSecrets);
-    }
-    if (initialKeys?.nodeKeys) {
-      Object.entries(initialKeys.nodeKeys).forEach(([pubKey, privKey]) => {
-        this.addNodeKey(pubKey, privKey);
-      });
-    }
-  }
-  addNodeKey(publicKey, privateKey) {
-    const normalizedPubKey = publicKey.toUpperCase();
-    this.nodeKeys.set(normalizedPubKey, privateKey);
-  }
-  hasChannelKey(channelHash) {
-    const normalizedHash = channelHash.toLowerCase();
-    return this.channelHashToKeys.has(normalizedHash);
-  }
-  hasNodeKey(publicKey) {
-    const normalizedPubKey = publicKey.toUpperCase();
-    return this.nodeKeys.has(normalizedPubKey);
-  }
-  /**
-   * Get all channel keys that match the given channel hash (handles collisions)
-   */
-  getChannelKeys(channelHash) {
-    const normalizedHash = channelHash.toLowerCase();
-    return this.channelHashToKeys.get(normalizedHash) || [];
-  }
-  getNodeKey(publicKey) {
-    const normalizedPubKey = publicKey.toUpperCase();
-    return this.nodeKeys.get(normalizedPubKey);
-  }
-  /**
-   * Add channel keys by secret keys (new simplified API)
-   * Automatically calculates channel hashes
-   */
-  addChannelSecrets(secretKeys) {
-    for (const secretKey of secretKeys) {
-      const channelHash = ChannelCrypto.calculateChannelHash(secretKey).toLowerCase();
-      if (!this.channelHashToKeys.has(channelHash)) {
-        this.channelHashToKeys.set(channelHash, []);
-      }
-      this.channelHashToKeys.get(channelHash).push(secretKey);
-    }
-  }
-};
 
 // src/utils/enum-names.ts
 function getRouteTypeName(routeType) {
@@ -7892,8 +7779,42 @@ function getRequestTypeName(requestType) {
       return "Get Min/Max/Avg Data";
     case 5 /* GetAccessList */:
       return "Get Access List";
+    case 6 /* GetNeighbours */:
+      return "Get Neighbours";
+    case 7 /* GetOwnerInfo */:
+      return "Get Owner Info";
+    case 8 /* Subscribe */:
+      return "Subscribe";
+    case 9 /* Unsubscribe */:
+      return "Unsubscribe";
     default:
       return `Unknown (${requestType})`;
+  }
+}
+function getAnonRequestTypeName(requestType) {
+  switch (requestType) {
+    case 1 /* Regions */:
+      return "Regions";
+    case 2 /* OwnerInfo */:
+      return "Owner Info";
+    case 3 /* Basic */:
+      return "Clock/Status";
+    default:
+      return `Unknown (${requestType})`;
+  }
+}
+function getTextTypeName(textType) {
+  switch (textType) {
+    case 0 /* Plain */:
+      return "Plain Text";
+    case 1 /* CliData */:
+      return "CLI Data";
+    case 2 /* SignedPlain */:
+      return "Signed Plain Text";
+    case 3 /* CliCommand */:
+      return "CLI Command";
+    default:
+      return `Unknown (${textType})`;
   }
 }
 function getControlSubTypeName(subType) {
@@ -7906,6 +7827,203 @@ function getControlSubTypeName(subType) {
       return `Unknown (0x${subType.toString(16)})`;
   }
 }
+
+// src/crypto/channel-crypto.ts
+var import_crypto_js = __toESM(require_crypto_js());
+var ChannelCrypto = class {
+  /**
+   * Verify the MAC and decrypt a channel (GRP_TXT / GRP_DATA) ciphertext.
+   * Matches firmware Utils::MACThenDecrypt() with a GroupChannel secret:
+   * - the secret is 16 bytes (128-bit channel) or 32 bytes (256-bit channel),
+   *   zero-padded to PUB_KEY_SIZE (32) for the HMAC-SHA256 key
+   * - the 2-byte MAC is the first 2 bytes of the HMAC over the ciphertext
+   * - AES-128 ECB using the first 16 bytes of the secret
+   * - ciphertext must be a non-empty multiple of the 16-byte block size
+   */
+  static decryptChannelPayload(ciphertext, cipherMac, channelKey) {
+    try {
+      const keyBytes = hexToBytes2(channelKey);
+      if (keyBytes.length !== 16 && keyBytes.length !== 32) {
+        return { success: false, error: "Channel key must be 16 or 32 bytes" };
+      }
+      const ciphertextBytes = hexToBytes2(ciphertext);
+      if (ciphertextBytes.length === 0 || ciphertextBytes.length % 16 !== 0) {
+        return { success: false, error: "Ciphertext is not block-aligned" };
+      }
+      const macBytes = hexToBytes2(cipherMac);
+      const channelSecret = new Uint8Array(32);
+      channelSecret.set(keyBytes, 0);
+      const calculatedMac = (0, import_crypto_js.HmacSHA256)(import_crypto_js.enc.Hex.parse(ciphertext), import_crypto_js.enc.Hex.parse(bytesToHex2(channelSecret)));
+      const calculatedMacBytes = hexToBytes2(calculatedMac.toString(import_crypto_js.enc.Hex));
+      if (calculatedMacBytes[0] !== macBytes[0] || calculatedMacBytes[1] !== macBytes[1]) {
+        return { success: false, error: "MAC verification failed" };
+      }
+      const aesKey = import_crypto_js.enc.Hex.parse(bytesToHex2(keyBytes.subarray(0, 16)));
+      const decrypted = import_crypto_js.AES.decrypt(
+        import_crypto_js.lib.CipherParams.create({ ciphertext: import_crypto_js.enc.Hex.parse(ciphertext) }),
+        aesKey,
+        { mode: import_crypto_js.mode.ECB, padding: import_crypto_js.pad.NoPadding }
+      );
+      return { success: true, data: hexToBytes2(decrypted.toString(import_crypto_js.enc.Hex)) };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : "Decryption failed" };
+    }
+  }
+  /**
+   * Decrypt GroupText message using MeshCore algorithm:
+   * - HMAC-SHA256 verification with 2-byte MAC
+   * - AES-128 ECB decryption
+   */
+  static decryptGroupTextMessage(ciphertext, cipherMac, channelKey) {
+    try {
+      const result = this.decryptChannelPayload(ciphertext, cipherMac, channelKey);
+      if (!result.success) {
+        return { success: false, error: result.error };
+      }
+      const decryptedBytes = result.data;
+      if (decryptedBytes.length < 5) {
+        return { success: false, error: "Decrypted content too short" };
+      }
+      const timestamp = (decryptedBytes[0] | decryptedBytes[1] << 8 | decryptedBytes[2] << 16 | decryptedBytes[3] << 24) >>> 0;
+      const flagsAndAttempt = decryptedBytes[4];
+      const messageBytes = decryptedBytes.slice(5);
+      const decoder = new TextDecoder("utf-8");
+      let messageText = decoder.decode(messageBytes);
+      const nullIndex = messageText.indexOf("\0");
+      if (nullIndex >= 0) {
+        messageText = messageText.substring(0, nullIndex);
+      }
+      const colonIndex = messageText.indexOf(": ");
+      let sender;
+      let content;
+      if (colonIndex > 0 && colonIndex < 50) {
+        const potentialSender = messageText.substring(0, colonIndex);
+        if (!/[:\[\]]/.test(potentialSender)) {
+          sender = potentialSender;
+          content = messageText.substring(colonIndex + 2);
+        } else {
+          content = messageText;
+        }
+      } else {
+        content = messageText;
+      }
+      return {
+        success: true,
+        data: {
+          timestamp,
+          flags: flagsAndAttempt,
+          txtType: flagsAndAttempt >> 2,
+          attempt: flagsAndAttempt & 3,
+          sender,
+          message: content
+        }
+      };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : "Decryption failed" };
+    }
+  }
+  /**
+   * Calculate MeshCore channel hash from secret key
+   * Returns the first byte of SHA256(secret) as hex string
+   */
+  static decryptGroupData(ciphertext, cipherMac, channelKey) {
+    const result = this.decryptChannelPayload(ciphertext, cipherMac, channelKey);
+    if (!result.success) {
+      return { success: false, error: result.error };
+    }
+    const bytes = result.data;
+    if (bytes.length < 3) {
+      return { success: false, authenticated: true, error: "Decrypted group data too short" };
+    }
+    const dataType = bytes[0] | bytes[1] << 8;
+    const dataLength = bytes[2];
+    if (dataLength > bytes.length - 3) {
+      return { success: false, authenticated: true, error: `Group data length ${dataLength} exceeds available ${bytes.length - 3} bytes` };
+    }
+    return {
+      success: true,
+      data: {
+        dataType,
+        dataLength,
+        data: bytesToHex2(bytes.subarray(3, 3 + dataLength))
+      }
+    };
+  }
+  static calculateChannelHash(secretKeyHex) {
+    const hash = (0, import_crypto_js.SHA256)(import_crypto_js.enc.Hex.parse(secretKeyHex));
+    const hashBytes = hexToBytes2(hash.toString(import_crypto_js.enc.Hex));
+    return hashBytes[0].toString(16).padStart(2, "0");
+  }
+  /**
+   * All channel hashes a secret may appear under on air. Firmware hashes the decoded
+   * key length in BaseChatMesh::addChannel(), but BaseChatMesh::setChannel() hashes only
+   * the first 16 bytes of a 32-byte buffer whose upper half is zero. A zero-padded
+   * 32-byte secret is therefore registered under both hashes.
+   */
+  static calculateChannelHashes(secretKeyHex) {
+    const hashes = [this.calculateChannelHash(secretKeyHex)];
+    if (secretKeyHex.length === 64 && /^0+$/.test(secretKeyHex.slice(32))) {
+      const shortHash = this.calculateChannelHash(secretKeyHex.slice(0, 32));
+      if (shortHash !== hashes[0]) hashes.push(shortHash);
+    }
+    return hashes;
+  }
+};
+
+// src/crypto/key-manager.ts
+var MeshCoreKeyStore = class {
+  constructor(initialKeys) {
+    this.nodeKeys = /* @__PURE__ */ new Map();
+    // internal map for hash -> multiple keys (collision handling)
+    this.channelHashToKeys = /* @__PURE__ */ new Map();
+    if (initialKeys?.channelSecrets) {
+      this.addChannelSecrets(initialKeys.channelSecrets);
+    }
+    if (initialKeys?.nodeKeys) {
+      Object.entries(initialKeys.nodeKeys).forEach(([pubKey, privKey]) => {
+        this.addNodeKey(pubKey, privKey);
+      });
+    }
+  }
+  addNodeKey(publicKey, privateKey) {
+    const normalizedPubKey = publicKey.toUpperCase();
+    this.nodeKeys.set(normalizedPubKey, privateKey);
+  }
+  hasChannelKey(channelHash) {
+    const normalizedHash = channelHash.toLowerCase();
+    return this.channelHashToKeys.has(normalizedHash);
+  }
+  hasNodeKey(publicKey) {
+    const normalizedPubKey = publicKey.toUpperCase();
+    return this.nodeKeys.has(normalizedPubKey);
+  }
+  /**
+   * Get all channel keys that match the given channel hash (handles collisions)
+   */
+  getChannelKeys(channelHash) {
+    const normalizedHash = channelHash.toLowerCase();
+    return this.channelHashToKeys.get(normalizedHash) || [];
+  }
+  getNodeKey(publicKey) {
+    const normalizedPubKey = publicKey.toUpperCase();
+    return this.nodeKeys.get(normalizedPubKey);
+  }
+  /**
+   * Add channel keys by secret keys (new simplified API)
+   * Automatically calculates channel hashes
+   */
+  addChannelSecrets(secretKeys) {
+    for (const secretKey of secretKeys) {
+      for (const hash of ChannelCrypto.calculateChannelHashes(secretKey)) {
+        const channelHash = hash.toLowerCase();
+        if (!this.channelHashToKeys.has(channelHash)) {
+          this.channelHashToKeys.set(channelHash, []);
+        }
+        this.channelHashToKeys.get(channelHash).push(secretKey);
+      }
+    }
+  }
+};
 
 // src/crypto/orlp-ed25519-wasm.ts
 var OrlpEd25519 = require_orlp_ed25519();
@@ -8111,6 +8229,8 @@ var Ed25519SignatureVerifier = class {
 };
 
 // src/decoder/payload-decoders/advert.ts
+var MAX_ADVERT_DATA_SIZE = 32;
+var APP_DATA_START = 100;
 var AdvertPayloadDecoder = class {
   static decode(payload, options) {
     try {
@@ -8125,9 +8245,11 @@ var AdvertPayloadDecoder = class {
           signature: "",
           appData: {
             flags: 0,
-            deviceRole: 1 /* ChatNode */,
+            deviceRole: 0 /* Unknown */,
             hasLocation: false,
-            hasName: false
+            hasName: false,
+            hasFeature1: false,
+            hasFeature2: false
           }
         };
         if (options?.includeSegments) {
@@ -8183,7 +8305,8 @@ var AdvertPayloadDecoder = class {
         const binaryStr = flags.toString(2).padStart(8, "0");
         const deviceRole = this.parseDeviceRole(flags);
         const roleName = getDeviceRoleName(deviceRole);
-        const flagDesc = ` | Bits 0-3 (Role): ${roleName} | Bit 4 (Location): ${!!(flags & 16 /* HasLocation */) ? "Yes" : "No"} | Bit 7 (Name): ${!!(flags & 128 /* HasName */) ? "Yes" : "No"}`;
+        const yn = (mask) => flags & mask ? "Yes" : "No";
+        const flagDesc = ` | Bits 0-3 (Role): ${roleName} | Bit 4 (Location): ${yn(16 /* HasLocation */)} | Bit 5 (Feature 1): ${yn(32 /* HasFeature1 */)} | Bit 6 (Feature 2): ${yn(64 /* HasFeature2 */)} | Bit 7 (Name): ${yn(128 /* HasName */)}`;
         segments.push({
           name: "App Flags",
           description: `Binary: ${binaryStr}${flagDesc}`,
@@ -8204,51 +8327,91 @@ var AdvertPayloadDecoder = class {
           flags,
           deviceRole: this.parseDeviceRole(flags),
           hasLocation: !!(flags & 16 /* HasLocation */),
-          hasName: !!(flags & 128 /* HasName */)
+          hasName: !!(flags & 128 /* HasName */),
+          hasFeature1: !!(flags & 32 /* HasFeature1 */),
+          hasFeature2: !!(flags & 64 /* HasFeature2 */)
         }
       };
+      const appDataErrors = [];
       let offset = currentOffset;
-      if (flags & 16 /* HasLocation */ && payload.length >= offset + 8) {
-        const lat = this.readInt32LE(payload, offset) / 1e6;
-        const lon = this.readInt32LE(payload, offset + 4) / 1e6;
-        advert.appData.location = {
-          latitude: Math.round(lat * 1e6) / 1e6,
-          // Keep precision
-          longitude: Math.round(lon * 1e6) / 1e6
-        };
-        if (options?.includeSegments) {
-          segments.push({
-            name: "Latitude",
-            description: `${lat}\xB0 (${lat})`,
-            startByte: segmentOffset + offset,
-            endByte: segmentOffset + offset + 3,
-            value: bytesToHex2(payload.subarray(offset, offset + 4))
-          });
-          segments.push({
-            name: "Longitude",
-            description: `${lon}\xB0 (${lon})`,
-            startByte: segmentOffset + offset + 4,
-            endByte: segmentOffset + offset + 7,
-            value: bytesToHex2(payload.subarray(offset + 4, offset + 8))
-          });
+      if (flags & 16 /* HasLocation */) {
+        if (payload.length >= offset + 8) {
+          const lat = this.readInt32LE(payload, offset) / 1e6;
+          const lon = this.readInt32LE(payload, offset + 4) / 1e6;
+          advert.appData.location = {
+            latitude: Math.round(lat * 1e6) / 1e6,
+            longitude: Math.round(lon * 1e6) / 1e6
+          };
+          if (options?.includeSegments) {
+            segments.push({
+              name: "Latitude",
+              description: `${lat}\xB0 (${lat})`,
+              startByte: segmentOffset + offset,
+              endByte: segmentOffset + offset + 3,
+              value: bytesToHex2(payload.subarray(offset, offset + 4))
+            });
+            segments.push({
+              name: "Longitude",
+              description: `${lon}\xB0 (${lon})`,
+              startByte: segmentOffset + offset + 4,
+              endByte: segmentOffset + offset + 7,
+              value: bytesToHex2(payload.subarray(offset + 4, offset + 8))
+            });
+          }
+        } else {
+          appDataErrors.push("App data too short for location");
         }
         offset += 8;
       }
-      if (flags & 32 /* HasFeature1 */) offset += 2;
-      if (flags & 64 /* HasFeature2 */) offset += 2;
-      if (flags & 128 /* HasName */ && payload.length > offset) {
-        const nameBytes = payload.subarray(offset);
-        const rawName = new TextDecoder("utf-8").decode(nameBytes).replace(/\0.*$/, "");
+      for (const [mask, key, label] of [
+        [32 /* HasFeature1 */, "feature1", "Feature 1"],
+        [64 /* HasFeature2 */, "feature2", "Feature 2"]
+      ]) {
+        if (!(flags & mask)) continue;
+        if (payload.length >= offset + 2) {
+          const value = payload[offset] | payload[offset + 1] << 8;
+          advert.appData[key] = value;
+          if (options?.includeSegments) {
+            segments.push({
+              name: label,
+              description: `Reserved for future use: ${value} (0x${value.toString(16).padStart(4, "0")})`,
+              startByte: segmentOffset + offset,
+              endByte: segmentOffset + offset + 1,
+              value: bytesToHex2(payload.subarray(offset, offset + 2))
+            });
+          }
+        } else {
+          appDataErrors.push(`App data too short for ${label.toLowerCase()}`);
+        }
+        offset += 2;
+      }
+      if (appDataErrors.length > 0) {
+        advert.isValid = false;
+        advert.errors = appDataErrors;
+      }
+      const appDataEnd = Math.min(payload.length, APP_DATA_START + MAX_ADVERT_DATA_SIZE);
+      if (flags & 128 /* HasName */ && appDataEnd > offset) {
+        const nameBytes = payload.subarray(offset, appDataEnd);
+        const rawName = new TextDecoder("utf-8").decode(nameBytes).replace(/\0[\s\S]*$/, "");
         advert.appData.name = this.sanitizeControlCharacters(rawName) || rawName;
         if (options?.includeSegments) {
           segments.push({
             name: "Node Name",
             description: `Node name: "${advert.appData.name}"`,
             startByte: segmentOffset + offset,
-            endByte: segmentOffset + payload.length - 1,
+            endByte: segmentOffset + appDataEnd - 1,
             value: bytesToHex2(nameBytes)
           });
         }
+      }
+      if (options?.includeSegments && payload.length > appDataEnd && appDataEnd >= offset) {
+        segments.push({
+          name: "Excess App Data",
+          description: `Bytes beyond the ${MAX_ADVERT_DATA_SIZE}-byte app data limit (ignored by firmware)`,
+          startByte: segmentOffset + appDataEnd,
+          endByte: segmentOffset + payload.length - 1,
+          value: bytesToHex2(payload.subarray(appDataEnd))
+        });
       }
       if (options?.includeSegments) {
         advert.segments = segments;
@@ -8265,9 +8428,11 @@ var AdvertPayloadDecoder = class {
         signature: "",
         appData: {
           flags: 0,
-          deviceRole: 1 /* ChatNode */,
+          deviceRole: 0 /* Unknown */,
           hasLocation: false,
-          hasName: false
+          hasName: false,
+          hasFeature1: false,
+          hasFeature2: false
         }
       };
     }
@@ -8281,8 +8446,7 @@ var AdvertPayloadDecoder = class {
       return advert;
     }
     try {
-      const appDataStart = 32 + 4 + 64;
-      const appDataBytes = payload.subarray(appDataStart);
+      const appDataBytes = payload.subarray(APP_DATA_START, APP_DATA_START + MAX_ADVERT_DATA_SIZE);
       const appDataHex = bytesToHex2(appDataBytes);
       const signatureValid = await Ed25519SignatureVerifier.verifyAdvertisementSignature(
         advert.publicKey,
@@ -8310,23 +8474,13 @@ var AdvertPayloadDecoder = class {
     }
     return advert;
   }
+  // ADV_TYPE_* is the lower 4 bits; 0 is ADV_TYPE_NONE and 5..15 are reserved
+  // for future types, so the raw value is preserved rather than guessed.
   static parseDeviceRole(flags) {
-    const roleValue = flags & 15;
-    switch (roleValue) {
-      case 1:
-        return 1 /* ChatNode */;
-      case 2:
-        return 2 /* Repeater */;
-      case 3:
-        return 3 /* RoomServer */;
-      case 4:
-        return 4 /* Sensor */;
-      default:
-        return 1 /* ChatNode */;
-    }
+    return flags & 15;
   }
   static readUint32LE(buffer, offset) {
-    return buffer[offset] | buffer[offset + 1] << 8 | buffer[offset + 2] << 16 | buffer[offset + 3] << 24;
+    return (buffer[offset] | buffer[offset + 1] << 8 | buffer[offset + 2] << 16 | buffer[offset + 3] << 24) >>> 0;
   }
   static readInt32LE(buffer, offset) {
     const value = this.readUint32LE(buffer, offset);
@@ -8352,6 +8506,7 @@ var TracePayloadDecoder = class {
           traceTag: "00000000",
           authCode: 0,
           flags: 0,
+          pathHashSize: 1,
           pathHashes: []
         };
         if (options?.includeSegments) {
@@ -8402,11 +8557,12 @@ var TracePayloadDecoder = class {
         });
       }
       offset += 1;
+      const pathHashSize = 1 << (flags & 3);
       const pathHashes = [];
       const pathHashesStart = offset;
-      while (offset < payload.length) {
-        pathHashes.push(byteToHex(payload[offset]));
-        offset++;
+      while (offset + pathHashSize <= payload.length) {
+        pathHashes.push(bytesToHex2(payload.subarray(offset, offset + pathHashSize)));
+        offset += pathHashSize;
       }
       if (options?.includeSegments && pathHashes.length > 0) {
         const pathHashesDisplay = pathHashes.join(" ");
@@ -8414,8 +8570,17 @@ var TracePayloadDecoder = class {
           name: "Path Hashes",
           description: `Node hashes in trace path: ${pathHashesDisplay}`,
           startByte: segmentOffset + pathHashesStart,
+          endByte: segmentOffset + offset - 1,
+          value: bytesToHex2(payload.slice(pathHashesStart, offset))
+        });
+      }
+      if (options?.includeSegments && offset < payload.length) {
+        segments.push({
+          name: "Trailing Path Bytes",
+          description: `${payload.length - offset} byte(s) that do not form a complete ${pathHashSize}-byte hash`,
+          startByte: segmentOffset + offset,
           endByte: segmentOffset + payload.length - 1,
-          value: bytesToHex2(payload.slice(pathHashesStart))
+          value: bytesToHex2(payload.slice(offset))
         });
       }
       let snrValues;
@@ -8433,6 +8598,7 @@ var TracePayloadDecoder = class {
         traceTag,
         authCode,
         flags,
+        pathHashSize,
         pathHashes,
         snrValues
       };
@@ -8449,25 +8615,33 @@ var TracePayloadDecoder = class {
         traceTag: "00000000",
         authCode: 0,
         flags: 0,
+        pathHashSize: 1,
         pathHashes: []
       };
     }
   }
   static readUint32LE(buffer, offset) {
-    return buffer[offset] | buffer[offset + 1] << 8 | buffer[offset + 2] << 16 | buffer[offset + 3] << 24;
+    return (buffer[offset] | buffer[offset + 1] << 8 | buffer[offset + 2] << 16 | buffer[offset + 3] << 24) >>> 0;
   }
 };
+
+// src/decoder/payload-decoders/cipher-checks.ts
+var CIPHER_BLOCK_SIZE = 16;
+function cipherBlockError(ciphertextLength) {
+  if (ciphertextLength % CIPHER_BLOCK_SIZE === 0) return void 0;
+  return `Ciphertext length ${ciphertextLength} is not a multiple of the ${CIPHER_BLOCK_SIZE}-byte AES block`;
+}
 
 // src/decoder/payload-decoders/group-text.ts
 var GroupTextPayloadDecoder = class {
   static decode(payload, options) {
     try {
-      if (payload.length < 3) {
+      if (payload.length < 4) {
         const result = {
           type: 5 /* GroupText */,
           version: 0 /* Version1 */,
           isValid: false,
-          errors: ["GroupText payload too short (need at least channel_hash(1) + MAC(2))"],
+          errors: ["GroupText payload too short (need at least channel_hash(1) + MAC(2) + ciphertext)"],
           channelHash: "",
           cipherMac: "",
           ciphertext: "",
@@ -8476,7 +8650,7 @@ var GroupTextPayloadDecoder = class {
         if (options?.includeSegments) {
           result.segments = [{
             name: "Invalid GroupText Data",
-            description: "GroupText payload too short (minimum 3 bytes required)",
+            description: "GroupText payload too short (minimum 4 bytes required)",
             startByte: options.segmentOffset || 0,
             endByte: (options.segmentOffset || 0) + payload.length - 1,
             value: bytesToHex2(payload)
@@ -8519,10 +8693,12 @@ var GroupTextPayloadDecoder = class {
           value: ciphertext
         });
       }
+      const blockError = cipherBlockError(payload.length - offset);
       const groupText = {
         type: 5 /* GroupText */,
         version: 0 /* Version1 */,
-        isValid: true,
+        isValid: !blockError,
+        ...blockError ? { errors: [blockError] } : {},
         channelHash,
         cipherMac,
         ciphertext,
@@ -8540,6 +8716,8 @@ var GroupTextPayloadDecoder = class {
             groupText.decrypted = {
               timestamp: decryptionResult.data.timestamp,
               flags: decryptionResult.data.flags,
+              txtType: decryptionResult.data.txtType,
+              attempt: decryptionResult.data.attempt,
               sender: decryptionResult.data.sender,
               message: decryptionResult.data.message
             };
@@ -8570,12 +8748,12 @@ var GroupTextPayloadDecoder = class {
 var RequestPayloadDecoder = class {
   static decode(payload, options) {
     try {
-      if (payload.length < 4) {
+      if (payload.length < 5) {
         const result2 = {
           type: 0 /* Request */,
           version: 0 /* Version1 */,
           isValid: false,
-          errors: ["Request payload too short (minimum 4 bytes: dest hash + source hash + MAC)"],
+          errors: ["Request payload too short (minimum 5 bytes: dest hash + source hash + MAC + ciphertext)"],
           timestamp: 0,
           requestType: 1 /* GetStats */,
           requestData: "",
@@ -8587,7 +8765,7 @@ var RequestPayloadDecoder = class {
         if (options?.includeSegments) {
           result2.segments = [{
             name: "Invalid Request Data",
-            description: "Request payload too short (minimum 4 bytes required: 1 for dest hash + 1 for source hash + 2 for MAC)",
+            description: "Request payload too short (minimum 5 bytes required: 1 for dest hash + 1 for source hash + 2 for MAC + ciphertext)",
             startByte: options.segmentOffset || 0,
             endByte: (options.segmentOffset || 0) + payload.length - 1,
             value: bytesToHex2(payload)
@@ -8644,10 +8822,12 @@ var RequestPayloadDecoder = class {
           value: ciphertext
         });
       }
+      const blockError = cipherBlockError(payload.length - offset);
       const result = {
         type: 0 /* Request */,
         version: 0 /* Version1 */,
-        isValid: true,
+        isValid: !blockError,
+        ...blockError ? { errors: [blockError] } : {},
         timestamp: 0,
         // Encrypted, cannot be parsed without decryption
         requestType: 1 /* GetStats */,
@@ -8684,12 +8864,12 @@ var RequestPayloadDecoder = class {
 var ResponsePayloadDecoder = class {
   static decode(payload, options) {
     try {
-      if (payload.length < 4) {
+      if (payload.length < 5) {
         const result2 = {
           type: 1 /* Response */,
           version: 0 /* Version1 */,
           isValid: false,
-          errors: ["Response payload too short (minimum 4 bytes: dest + source + MAC)"],
+          errors: ["Response payload too short (minimum 5 bytes: dest + source + MAC + ciphertext)"],
           destinationHash: "",
           sourceHash: "",
           cipherMac: "",
@@ -8699,7 +8879,7 @@ var ResponsePayloadDecoder = class {
         if (options?.includeSegments) {
           result2.segments = [{
             name: "Invalid Response Data",
-            description: "Response payload too short (minimum 4 bytes required)",
+            description: "Response payload too short (minimum 5 bytes required)",
             startByte: options.segmentOffset || 0,
             endByte: (options.segmentOffset || 0) + payload.length - 1,
             value: bytesToHex2(payload)
@@ -8753,10 +8933,12 @@ var ResponsePayloadDecoder = class {
           value: ciphertext
         });
       }
+      const blockError = cipherBlockError(payload.length - offset);
       const result = {
         type: 1 /* Response */,
         version: 0 /* Version1 */,
-        isValid: true,
+        isValid: !blockError,
+        ...blockError ? { errors: [blockError] } : {},
         destinationHash,
         sourceHash,
         cipherMac,
@@ -8787,12 +8969,12 @@ var ResponsePayloadDecoder = class {
 var AnonRequestPayloadDecoder = class {
   static decode(payload, options) {
     try {
-      if (payload.length < 35) {
+      if (payload.length < 36) {
         const result2 = {
           type: 7 /* AnonRequest */,
           version: 0 /* Version1 */,
           isValid: false,
-          errors: ["AnonRequest payload too short (minimum 35 bytes: dest + public key + MAC)"],
+          errors: ["AnonRequest payload too short (minimum 36 bytes: dest + public key + MAC + ciphertext)"],
           destinationHash: "",
           senderPublicKey: "",
           cipherMac: "",
@@ -8802,7 +8984,7 @@ var AnonRequestPayloadDecoder = class {
         if (options?.includeSegments) {
           result2.segments = [{
             name: "Invalid AnonRequest Data",
-            description: "AnonRequest payload too short (minimum 35 bytes required: 1 for dest hash + 32 for public key + 2 for MAC)",
+            description: "AnonRequest payload too short (minimum 36 bytes required: 1 for dest hash + 32 for public key + 2 for MAC + ciphertext)",
             startByte: options.segmentOffset || 0,
             endByte: (options.segmentOffset || 0) + payload.length - 1,
             value: bytesToHex2(payload)
@@ -8852,17 +9034,23 @@ var AnonRequestPayloadDecoder = class {
           name: "Ciphertext",
           description: `Encrypted message data (${payload.length - 35} bytes). Contains encrypted plaintext with this structure:
 \u2022 Timestamp (4 bytes) - send time as unix timestamp
-\u2022 Sync Timestamp (4 bytes) - room server only, sender's "sync messages SINCE x" timestamp  
-\u2022 Password (remaining bytes) - password for repeater/room`,
+Then, for a login:
+\u2022 Sync Timestamp (4 bytes) - room server only, sender's "sync messages SINCE x" timestamp
+\u2022 Password (remaining bytes) - password for repeater/room/sensor
+Or, for a repeater request (byte 4 = 0x01 regions, 0x02 owner info, 0x03 clock/status):
+\u2022 Request Type (1 byte)
+\u2022 Reply Path Length (1 byte) + Reply Path`,
           startByte: segmentOffset + offset,
           endByte: segmentOffset + payload.length - 1,
           value: ciphertext
         });
       }
+      const blockError = cipherBlockError(payload.length - offset);
       const result = {
         type: 7 /* AnonRequest */,
         version: 0 /* Version1 */,
-        isValid: true,
+        isValid: !blockError,
+        ...blockError ? { errors: [blockError] } : {},
         destinationHash,
         senderPublicKey,
         cipherMac,
@@ -8957,63 +9145,139 @@ var AckPayloadDecoder = class {
 
 // src/decoder/payload-decoders/path.ts
 var PathPayloadDecoder = class {
-  static decode(payload) {
+  static decode(payload, options) {
     try {
-      if (payload.length < 2) {
-        return {
+      if (payload.length < 5) {
+        const result2 = {
           type: 8 /* Path */,
           version: 0 /* Version1 */,
           isValid: false,
-          errors: ["Path payload too short (minimum 2 bytes: path length + extra type)"],
-          pathLength: 0,
-          pathHashes: [],
-          extraType: 0,
-          extraData: ""
+          errors: ["Path payload too short (minimum 5 bytes: dest + source + MAC + ciphertext)"],
+          destinationHash: "",
+          sourceHash: "",
+          cipherMac: "",
+          ciphertext: "",
+          ciphertextLength: 0
         };
+        if (options?.includeSegments) {
+          result2.segments = [{
+            name: "Invalid Path Data",
+            description: "Path payload too short (minimum 5 bytes required)",
+            startByte: options.segmentOffset || 0,
+            endByte: (options.segmentOffset || 0) + payload.length - 1,
+            value: bytesToHex2(payload)
+          }];
+        }
+        return result2;
       }
-      const pathLength = payload[0];
-      if (payload.length < 1 + pathLength + 1) {
-        return {
-          type: 8 /* Path */,
-          version: 0 /* Version1 */,
-          isValid: false,
-          errors: [`Path payload too short (need ${1 + pathLength + 1} bytes for path length + path + extra type)`],
-          pathLength,
-          pathHashes: [],
-          extraType: 0,
-          extraData: ""
-        };
+      const segments = [];
+      const segmentOffset = options?.segmentOffset || 0;
+      let offset = 0;
+      const destinationHash = byteToHex(payload[offset]);
+      if (options?.includeSegments) {
+        segments.push({
+          name: "Destination Hash",
+          description: "First byte of destination node public key",
+          startByte: segmentOffset + offset,
+          endByte: segmentOffset + offset,
+          value: destinationHash
+        });
       }
-      const pathHashes = [];
-      for (let i = 0; i < pathLength; i++) {
-        pathHashes.push(byteToHex(payload[1 + i]));
+      offset += 1;
+      const sourceHash = byteToHex(payload[offset]);
+      if (options?.includeSegments) {
+        segments.push({
+          name: "Source Hash",
+          description: "First byte of source node public key",
+          startByte: segmentOffset + offset,
+          endByte: segmentOffset + offset,
+          value: sourceHash
+        });
       }
-      const extraType = payload[1 + pathLength];
-      let extraData = "";
-      if (payload.length > 1 + pathLength + 1) {
-        extraData = bytesToHex2(payload.subarray(1 + pathLength + 1));
+      offset += 1;
+      const cipherMac = bytesToHex2(payload.subarray(offset, offset + 2));
+      if (options?.includeSegments) {
+        segments.push({
+          name: "Cipher MAC",
+          description: "MAC for encrypted data in next field",
+          startByte: segmentOffset + offset,
+          endByte: segmentOffset + offset + 1,
+          value: cipherMac
+        });
       }
-      return {
+      offset += 2;
+      const ciphertext = bytesToHex2(payload.subarray(offset));
+      if (options?.includeSegments) {
+        segments.push({
+          name: "Ciphertext",
+          description: `Encrypted returned path (${payload.length - offset} bytes). Contains encrypted plaintext with this structure:
+\u2022 Path Length (1 byte) - bits 7:6 = hash size - 1, bits 5:0 = hop count
+\u2022 Path (hop count \xD7 hash size bytes) - route from the original sender to this node
+\u2022 Extra Type (1 byte) - lower 4 bits: bundled payload type (e.g. ACK or RESPONSE, 0x0F = none)
+\u2022 Extra (remaining bytes) - bundled payload content`,
+          startByte: segmentOffset + offset,
+          endByte: segmentOffset + payload.length - 1,
+          value: ciphertext
+        });
+      }
+      const blockError = cipherBlockError(payload.length - offset);
+      const result = {
         type: 8 /* Path */,
         version: 0 /* Version1 */,
-        isValid: true,
-        pathLength,
-        pathHashes,
-        extraType,
-        extraData
+        isValid: !blockError,
+        ...blockError ? { errors: [blockError] } : {},
+        destinationHash,
+        sourceHash,
+        cipherMac,
+        ciphertext,
+        ciphertextLength: payload.length - 4
       };
+      if (options?.includeSegments) {
+        result.segments = segments;
+      }
+      return result;
     } catch (error) {
       return {
         type: 8 /* Path */,
         version: 0 /* Version1 */,
         isValid: false,
         errors: [error instanceof Error ? error.message : "Failed to decode Path payload"],
-        pathLength: 0,
-        pathHashes: [],
-        extraType: 0,
-        extraData: ""
+        destinationHash: "",
+        sourceHash: "",
+        cipherMac: "",
+        ciphertext: "",
+        ciphertextLength: 0
       };
     }
+  }
+  /**
+   * Parse the decrypted plaintext of a PATH payload.
+   * Firmware reference: Mesh::onRecvPacket() PAYLOAD_TYPE_PATH branch.
+   * Returns null if the encoding is invalid (reserved hash size, path longer
+   * than 64 bytes, or truncated data).
+   */
+  static parsePlaintext(data) {
+    if (data.length < 2) return null;
+    const pathLenByte = data[0];
+    const pathHashSize = (pathLenByte >> 6) + 1;
+    const pathHopCount = pathLenByte & 63;
+    const pathByteLength = pathHopCount * pathHashSize;
+    if (pathHashSize === 4 || pathByteLength > 64) return null;
+    if (data.length < 1 + pathByteLength + 1) return null;
+    const pathHashes = [];
+    for (let i = 0; i < pathHopCount; i++) {
+      const start = 1 + i * pathHashSize;
+      pathHashes.push(bytesToHex2(data.subarray(start, start + pathHashSize)));
+    }
+    const extraType = data[1 + pathByteLength] & 15;
+    const extraData = bytesToHex2(data.subarray(1 + pathByteLength + 1));
+    return {
+      pathLength: pathHopCount,
+      pathHashSize,
+      pathHashes,
+      extraType,
+      extraData
+    };
   }
 };
 
@@ -9021,12 +9285,12 @@ var PathPayloadDecoder = class {
 var TextMessagePayloadDecoder = class {
   static decode(payload, options) {
     try {
-      if (payload.length < 4) {
+      if (payload.length < 5) {
         const result2 = {
           type: 2 /* TextMessage */,
           version: 0 /* Version1 */,
           isValid: false,
-          errors: ["TextMessage payload too short (minimum 4 bytes: dest + source + MAC)"],
+          errors: ["TextMessage payload too short (minimum 5 bytes: dest + source + MAC + ciphertext)"],
           destinationHash: "",
           sourceHash: "",
           cipherMac: "",
@@ -9036,7 +9300,7 @@ var TextMessagePayloadDecoder = class {
         if (options?.includeSegments) {
           result2.segments = [{
             name: "Invalid TextMessage Data",
-            description: "TextMessage payload too short (minimum 4 bytes required)",
+            description: "TextMessage payload too short (minimum 5 bytes required)",
             startByte: options.segmentOffset || 0,
             endByte: (options.segmentOffset || 0) + payload.length - 1,
             value: bytesToHex2(payload)
@@ -9090,10 +9354,12 @@ var TextMessagePayloadDecoder = class {
           value: ciphertext
         });
       }
+      const blockError = cipherBlockError(payload.length - offset);
       const result = {
         type: 2 /* TextMessage */,
         version: 0 /* Version1 */,
-        isValid: true,
+        isValid: !blockError,
+        ...blockError ? { errors: [blockError] } : {},
         destinationHash,
         sourceHash,
         cipherMac,
@@ -9373,7 +9639,216 @@ var ControlPayloadDecoder = class {
   }
 };
 
+// src/decoder/payload-decoders/group-data.ts
+var GroupDataPayloadDecoder = class {
+  static decode(payload, options) {
+    try {
+      if (payload.length < 4) {
+        const result = {
+          type: 6 /* GroupData */,
+          version: 0 /* Version1 */,
+          isValid: false,
+          errors: ["GroupData payload too short (need at least channel_hash(1) + MAC(2) + ciphertext)"],
+          channelHash: "",
+          cipherMac: "",
+          ciphertext: "",
+          ciphertextLength: 0
+        };
+        if (options?.includeSegments) {
+          result.segments = [{
+            name: "Invalid GroupData Data",
+            description: "GroupData payload too short (minimum 4 bytes required)",
+            startByte: options.segmentOffset || 0,
+            endByte: (options.segmentOffset || 0) + payload.length - 1,
+            value: bytesToHex2(payload)
+          }];
+        }
+        return result;
+      }
+      const segments = [];
+      const segmentOffset = options?.segmentOffset || 0;
+      let offset = 0;
+      const channelHash = byteToHex(payload[offset]);
+      if (options?.includeSegments) {
+        segments.push({
+          name: "Channel Hash",
+          description: "First byte of SHA256 of channel's shared key",
+          startByte: segmentOffset + offset,
+          endByte: segmentOffset + offset,
+          value: channelHash
+        });
+      }
+      offset += 1;
+      const cipherMac = bytesToHex2(payload.subarray(offset, offset + 2));
+      if (options?.includeSegments) {
+        segments.push({
+          name: "Cipher MAC",
+          description: "MAC for encrypted data",
+          startByte: segmentOffset + offset,
+          endByte: segmentOffset + offset + 1,
+          value: cipherMac
+        });
+      }
+      offset += 2;
+      const ciphertext = bytesToHex2(payload.subarray(offset));
+      if (options?.includeSegments) {
+        segments.push({
+          name: "Ciphertext",
+          description: "Encrypted datagram (data type (2 bytes, LE) + data length (1 byte) + data)",
+          startByte: segmentOffset + offset,
+          endByte: segmentOffset + payload.length - 1,
+          value: ciphertext
+        });
+      }
+      const blockError = cipherBlockError(payload.length - offset);
+      const groupData = {
+        type: 6 /* GroupData */,
+        version: 0 /* Version1 */,
+        isValid: !blockError,
+        ...blockError ? { errors: [blockError] } : {},
+        channelHash,
+        cipherMac,
+        ciphertext,
+        ciphertextLength: payload.length - 3
+      };
+      if (options?.keyStore && options.keyStore.hasChannelKey(channelHash)) {
+        for (const channelKey of options.keyStore.getChannelKeys(channelHash)) {
+          const decryptionResult = ChannelCrypto.decryptGroupData(ciphertext, cipherMac, channelKey);
+          if (decryptionResult.success && decryptionResult.data) {
+            groupData.decrypted = decryptionResult.data;
+            break;
+          }
+          if (decryptionResult.authenticated) {
+            groupData.isValid = false;
+            groupData.errors = [...groupData.errors || [], decryptionResult.error || "Malformed group data"];
+            break;
+          }
+        }
+      }
+      if (options?.includeSegments) {
+        groupData.segments = segments;
+      }
+      return groupData;
+    } catch (error) {
+      return {
+        type: 6 /* GroupData */,
+        version: 0 /* Version1 */,
+        isValid: false,
+        errors: [error instanceof Error ? error.message : "Failed to decode GroupData payload"],
+        channelHash: "",
+        cipherMac: "",
+        ciphertext: "",
+        ciphertextLength: 0
+      };
+    }
+  }
+};
+
+// src/decoder/payload-decoders/multipart.ts
+var MultipartPayloadDecoder = class {
+  static decode(payload, options) {
+    const segmentOffset = options?.segmentOffset || 0;
+    if (payload.length < 3) {
+      const result2 = {
+        type: 10 /* Multipart */,
+        version: 0 /* Version1 */,
+        isValid: false,
+        errors: ["Multipart payload too short (minimum 3 bytes required)"],
+        remaining: 0,
+        innerType: 15 /* RawCustom */,
+        innerData: ""
+      };
+      if (options?.includeSegments) {
+        result2.segments = [{
+          name: "Invalid Multipart Data",
+          description: "Multipart payload too short (minimum 3 bytes required)",
+          startByte: segmentOffset,
+          endByte: segmentOffset + payload.length - 1,
+          value: bytesToHex2(payload)
+        }];
+      }
+      return result2;
+    }
+    const remaining = payload[0] >> 4;
+    const innerType = payload[0] & 15;
+    const innerBytes = payload.subarray(1);
+    const segments = [];
+    const errors = [];
+    if (options?.includeSegments) {
+      segments.push({
+        name: "Multipart Header",
+        description: `Remaining packets: ${remaining} | Inner type: ${getPayloadTypeName(innerType)} (0x${innerType.toString(16)})`,
+        startByte: segmentOffset,
+        endByte: segmentOffset,
+        value: payload[0].toString(16).padStart(2, "0").toUpperCase()
+      });
+    }
+    const result = {
+      type: 10 /* Multipart */,
+      version: 0 /* Version1 */,
+      isValid: true,
+      remaining,
+      innerType,
+      innerData: bytesToHex2(innerBytes)
+    };
+    if (innerType === 3 /* Ack */) {
+      if (innerBytes.length >= 4) {
+        result.ackChecksum = bytesToHex2(innerBytes.subarray(0, 4));
+        if (options?.includeSegments) {
+          segments.push({
+            name: "ACK Checksum",
+            description: `Multipart ACK checksum: 0x${result.ackChecksum}`,
+            startByte: segmentOffset + 1,
+            endByte: segmentOffset + 4,
+            value: result.ackChecksum
+          });
+          if (innerBytes.length > 4) {
+            segments.push({
+              name: "Additional Data",
+              description: "Extra data after ACK checksum",
+              startByte: segmentOffset + 5,
+              endByte: segmentOffset + payload.length - 1,
+              value: bytesToHex2(innerBytes.subarray(4))
+            });
+          }
+        }
+      } else {
+        errors.push("Multipart ACK too short (need 4-byte checksum)");
+      }
+    } else if (options?.includeSegments) {
+      segments.push({
+        name: "Inner Payload",
+        description: `${getPayloadTypeName(innerType)} payload fragment (${innerBytes.length} bytes)`,
+        startByte: segmentOffset + 1,
+        endByte: segmentOffset + payload.length - 1,
+        value: bytesToHex2(innerBytes)
+      });
+    }
+    if (errors.length > 0) {
+      result.isValid = false;
+      result.errors = errors;
+      if (options?.includeSegments && segments.length === 1) {
+        segments.push({
+          name: "Inner Payload",
+          description: `${getPayloadTypeName(innerType)} payload fragment (${innerBytes.length} bytes)`,
+          startByte: segmentOffset + 1,
+          endByte: segmentOffset + payload.length - 1,
+          value: bytesToHex2(innerBytes)
+        });
+      }
+    }
+    if (options?.includeSegments) {
+      result.segments = segments;
+    }
+    return result;
+  }
+};
+
 // src/decoder/packet-decoder.ts
+var import_crypto_js2 = __toESM(require_crypto_js());
+var MAX_PATH_SIZE = 64;
+var MAX_PACKET_PAYLOAD = 184;
+var MAX_HASH_SIZE = 8;
 var MeshCorePacketDecoder = class {
   /**
    * Decode a raw packet from hex string
@@ -9407,26 +9882,36 @@ var MeshCorePacketDecoder = class {
    * Internal unified parsing method
    */
   static parseInternal(hexData, includeStructure, options) {
-    const bytes = hexToBytes2(hexData);
+    let bytes;
+    let inputError;
+    try {
+      bytes = hexToBytes2(hexData);
+    } catch (error) {
+      bytes = new Uint8Array(0);
+      inputError = error instanceof Error ? error.message : "Invalid hex string";
+    }
     const segments = [];
-    if (bytes.length < 2) {
+    if (inputError || bytes.length < 2) {
       const errorPacket = {
         messageHash: "",
+        packetHash: "",
         routeType: 1 /* Flood */,
         payloadType: 15 /* RawCustom */,
         payloadVersion: 0 /* Version1 */,
         pathLength: 0,
+        pathHashSize: 1,
         path: null,
         payload: { raw: "", decoded: null },
         totalBytes: bytes.length,
         isValid: false,
-        errors: ["Packet too short (minimum 2 bytes required)"]
+        errors: [inputError || "Packet too short (minimum 2 bytes required)"]
       };
       const errorStructure = {
         segments: [],
         totalBytes: bytes.length,
         rawHex: hexData.toUpperCase(),
         messageHash: "",
+        packetHash: "",
         payload: {
           segments: [],
           hex: "",
@@ -9475,6 +9960,10 @@ var MeshCorePacketDecoder = class {
         });
       }
       offset = 1;
+      const firmwareErrors = [];
+      if (payloadVersion > 0 /* Version1 */) {
+        firmwareErrors.push(`Unsupported payload version ${payloadVersion + 1} (firmware only accepts version 1)`);
+      }
       let transportCodes;
       if (routeType === 0 /* TransportFlood */ || routeType === 3 /* TransportDirect */) {
         if (bytes.length < offset + 4) {
@@ -9484,13 +9973,19 @@ var MeshCorePacketDecoder = class {
         const code2 = bytes[offset + 2] | bytes[offset + 3] << 8;
         transportCodes = [code1, code2];
         if (includeStructure) {
-          const transportCode = bytes[offset] | bytes[offset + 1] << 8 | bytes[offset + 2] << 16 | bytes[offset + 3] << 24;
           segments.push({
-            name: "Transport Code",
-            description: "Used for Direct/Response routing",
+            name: "Region/Scope (transport code 0)",
+            description: code1 === 0 ? "Region scope: 0 (unscoped, matches the wildcard region)" : "Region scope for this packet (repeaters match this to named regions, e.g. #Europe)",
             startByte: offset,
+            endByte: offset + 1,
+            value: `0x${(bytes[offset] | bytes[offset + 1] << 8).toString(16).padStart(4, "0")} (${code1})`
+          });
+          segments.push({
+            name: "Reserved (transport code 1)",
+            description: "Reserved by the firmware (may later identify the sender's home region for replies)",
+            startByte: offset + 2,
             endByte: offset + 3,
-            value: `0x${transportCode.toString(16).padStart(8, "0")}`
+            value: `0x${(bytes[offset + 2] | bytes[offset + 3] << 8).toString(16).padStart(4, "0")} (${code2})`
           });
         }
         offset += 4;
@@ -9498,32 +9993,68 @@ var MeshCorePacketDecoder = class {
       if (bytes.length < offset + 1) {
         throw new Error("Packet too short for path length");
       }
-      const pathLength = bytes[offset];
+      const pathLenByte = bytes[offset];
+      const { hashSize: pathHashSize, hopCount: pathHopCount, byteLength: pathByteLength } = this.decodePathLenByte(pathLenByte);
+      if (pathHashSize === 4) {
+        firmwareErrors.push("Invalid path length byte: reserved hash size (bits 7:6 = 11)");
+      }
       if (includeStructure) {
-        let pathLengthDescription = `Path contains ${pathLength} bytes`;
-        if (routeType === 2 /* Direct */ || routeType === 3 /* TransportDirect */) {
-          pathLengthDescription = `For "Direct" packets, this contains routing instructions. ${pathLength} bytes of routing instructions (decreases as packet travels)`;
+        const hashDesc = pathHashSize > 1 ? ` \xD7 ${pathHashSize}-byte hashes (${pathByteLength} bytes)` : "";
+        let pathLengthDescription;
+        if (pathHopCount === 0) {
+          pathLengthDescription = pathHashSize > 1 ? `No path data (${pathHashSize}-byte hash mode)` : "No path data";
+        } else if (routeType === 2 /* Direct */ || routeType === 3 /* TransportDirect */) {
+          pathLengthDescription = `${pathHopCount} hops${hashDesc} of routing instructions (decreases as packet travels)`;
         } else if (routeType === 1 /* Flood */ || routeType === 0 /* TransportFlood */) {
-          pathLengthDescription = `${pathLength} bytes showing route taken (increases as packet floods)`;
+          pathLengthDescription = `${pathHopCount} hops${hashDesc} showing route taken (increases as packet floods)`;
+        } else {
+          pathLengthDescription = `Path contains ${pathHopCount} hops${hashDesc}`;
         }
         segments.push({
           name: "Path Length",
           description: pathLengthDescription,
           startByte: offset,
           endByte: offset,
-          value: `0x${pathLength.toString(16).padStart(2, "0")}`
+          value: `0x${pathLenByte.toString(16).padStart(2, "0")}`,
+          headerBreakdown: {
+            fullBinary: pathLenByte.toString(2).padStart(8, "0"),
+            fields: [
+              {
+                bits: "6-7",
+                field: "Hash Size",
+                value: `${pathHashSize} byte${pathHashSize > 1 ? "s" : ""} per hop`,
+                binary: (pathLenByte >> 6 & 3).toString(2).padStart(2, "0")
+              },
+              {
+                bits: "0-5",
+                field: "Hop Count",
+                value: `${pathHopCount} hop${pathHopCount !== 1 ? "s" : ""}`,
+                binary: (pathLenByte & 63).toString(2).padStart(6, "0")
+              }
+            ]
+          }
         });
       }
       offset += 1;
-      if (bytes.length < offset + pathLength) {
-        throw new Error("Packet too short for path data");
+      if (bytes.length < offset + pathByteLength) {
+        throw new Error(pathHashSize === 4 ? "Invalid path length byte: reserved hash size (bits 7:6 = 11)" : "Packet too short for path data");
       }
-      const pathBytes = bytes.subarray(offset, offset + pathLength);
-      const path = pathLength > 0 ? Array.from(pathBytes).map(byteToHex) : null;
-      if (includeStructure && pathLength > 0) {
+      if (pathByteLength > MAX_PATH_SIZE) {
+        firmwareErrors.push(`Path too long (${pathByteLength} bytes, maximum ${MAX_PATH_SIZE})`);
+      }
+      const pathBytes = bytes.subarray(offset, offset + pathByteLength);
+      let path = null;
+      if (pathHopCount > 0) {
+        path = [];
+        for (let i = 0; i < pathHopCount; i++) {
+          const hopBytes = pathBytes.subarray(i * pathHashSize, (i + 1) * pathHashSize);
+          path.push(bytesToHex2(hopBytes));
+        }
+      }
+      if (includeStructure && pathHopCount > 0) {
         if (payloadType === 9 /* Trace */) {
           const snrValues = [];
-          for (let i = 0; i < pathLength; i++) {
+          for (let i = 0; i < pathByteLength; i++) {
             const snrRaw = bytes[offset + i];
             const snrSigned = snrRaw > 127 ? snrRaw - 256 : snrRaw;
             const snrDb = snrSigned / 4;
@@ -9533,28 +10064,31 @@ var MeshCorePacketDecoder = class {
             name: "Path SNR Data",
             description: `SNR values collected during trace: ${snrValues.join(", ")}`,
             startByte: offset,
-            endByte: offset + pathLength - 1,
-            value: bytesToHex2(bytes.slice(offset, offset + pathLength))
+            endByte: offset + pathByteLength - 1,
+            value: bytesToHex2(bytes.slice(offset, offset + pathByteLength))
           });
         } else {
           let pathDescription = "Routing path information";
           if (routeType === 2 /* Direct */ || routeType === 3 /* TransportDirect */) {
-            pathDescription = "Routing instructions (bytes are stripped at each hop as packet travels to destination)";
+            pathDescription = `Routing instructions (${pathHashSize}-byte hashes stripped at each hop as packet travels to destination)`;
           } else if (routeType === 1 /* Flood */ || routeType === 0 /* TransportFlood */) {
-            pathDescription = "Historical route taken (bytes are added as packet floods through network)";
+            pathDescription = `Historical route taken (${pathHashSize}-byte hashes added as packet floods through network)`;
           }
           segments.push({
             name: "Path Data",
             description: pathDescription,
             startByte: offset,
-            endByte: offset + pathLength - 1,
-            value: bytesToHex2(bytes.slice(offset, offset + pathLength))
+            endByte: offset + pathByteLength - 1,
+            value: bytesToHex2(bytes.slice(offset, offset + pathByteLength))
           });
         }
       }
-      offset += pathLength;
+      offset += pathByteLength;
       const payloadBytes = bytes.subarray(offset);
       const payloadHex = bytesToHex2(payloadBytes);
+      if (payloadBytes.length > MAX_PACKET_PAYLOAD) {
+        firmwareErrors.push(`Payload too long (${payloadBytes.length} bytes, maximum ${MAX_PACKET_PAYLOAD})`);
+      }
       if (includeStructure && bytes.length > offset) {
         segments.push({
           name: "Payload",
@@ -9641,7 +10175,36 @@ var MeshCorePacketDecoder = class {
           delete result.segments;
         }
       } else if (payloadType === 8 /* Path */) {
-        decodedPayload = PathPayloadDecoder.decode(payloadBytes);
+        const result = PathPayloadDecoder.decode(payloadBytes, {
+          includeSegments: includeStructure,
+          segmentOffset: 0
+        });
+        decodedPayload = result;
+        if (result?.segments) {
+          payloadSegments.push(...result.segments);
+          delete result.segments;
+        }
+      } else if (payloadType === 6 /* GroupData */) {
+        const result = GroupDataPayloadDecoder.decode(payloadBytes, {
+          ...options,
+          includeSegments: includeStructure,
+          segmentOffset: 0
+        });
+        decodedPayload = result;
+        if (result?.segments) {
+          payloadSegments.push(...result.segments);
+          delete result.segments;
+        }
+      } else if (payloadType === 10 /* Multipart */) {
+        const result = MultipartPayloadDecoder.decode(payloadBytes, {
+          includeSegments: includeStructure,
+          segmentOffset: 0
+        });
+        decodedPayload = result;
+        if (result?.segments) {
+          payloadSegments.push(...result.segments);
+          delete result.segments;
+        }
       } else if (payloadType === 2 /* TextMessage */) {
         const result = TextMessagePayloadDecoder.decode(payloadBytes, {
           includeSegments: includeStructure,
@@ -9663,6 +10226,9 @@ var MeshCorePacketDecoder = class {
           delete result.segments;
         }
       }
+      const validPayloadSegments = this.withoutEmptySegments(payloadSegments);
+      payloadSegments.length = 0;
+      payloadSegments.push(...validPayloadSegments);
       if (includeStructure && payloadSegments.length === 0 && bytes.length > offset) {
         payloadSegments.push({
           name: `${getPayloadTypeName(payloadType)} Payload`,
@@ -9673,26 +10239,31 @@ var MeshCorePacketDecoder = class {
         });
       }
       const messageHash = this.calculateMessageHash(bytes, routeType, payloadType, payloadVersion);
+      const packetHash = this.calculatePacketHash(payloadType, pathLenByte, payloadBytes);
       const packet = {
         messageHash,
+        packetHash,
         routeType,
         payloadType,
         payloadVersion,
         transportCodes,
-        pathLength,
+        pathLength: pathHopCount,
+        pathHashSize,
         path,
         payload: {
           raw: payloadHex,
           decoded: decodedPayload
         },
         totalBytes: bytes.length,
-        isValid: true
+        isValid: firmwareErrors.length === 0,
+        ...firmwareErrors.length > 0 ? { errors: firmwareErrors } : {}
       };
       const structure = {
         segments,
         totalBytes: bytes.length,
         rawHex: hexData.toUpperCase(),
         messageHash,
+        packetHash,
         payload: {
           segments: payloadSegments,
           hex: payloadHex,
@@ -9704,10 +10275,12 @@ var MeshCorePacketDecoder = class {
     } catch (error) {
       const errorPacket = {
         messageHash: "",
+        packetHash: "",
         routeType: 1 /* Flood */,
         payloadType: 15 /* RawCustom */,
         payloadVersion: 0 /* Version1 */,
         pathLength: 0,
+        pathHashSize: 1,
         path: null,
         payload: { raw: "", decoded: null },
         totalBytes: bytes.length,
@@ -9719,6 +10292,7 @@ var MeshCorePacketDecoder = class {
         totalBytes: bytes.length,
         rawHex: hexData.toUpperCase(),
         messageHash: "",
+        packetHash: "",
         payload: {
           segments: [],
           hex: "",
@@ -9746,14 +10320,17 @@ var MeshCorePacketDecoder = class {
         );
         if (verifiedAdvert) {
           result.packet.payload.decoded = verifiedAdvert;
-          if (!verifiedAdvert.isValid) {
+          if (verifiedAdvert.signatureValid === false) {
             result.packet.isValid = false;
-            result.packet.errors = verifiedAdvert.errors || ["Invalid advertisement signature"];
+            result.packet.errors = [
+              ...result.packet.errors || [],
+              verifiedAdvert.signatureError || "Invalid advertisement signature"
+            ];
           }
           if (includeStructure && verifiedAdvert.segments) {
-            result.structure.payload.segments = verifiedAdvert.segments;
-            delete verifiedAdvert.segments;
+            result.structure.payload.segments = this.withoutEmptySegments(verifiedAdvert.segments);
           }
+          delete verifiedAdvert.segments;
         }
       } catch (error) {
         console.error("Signature verification failed:", error);
@@ -9765,7 +10342,12 @@ var MeshCorePacketDecoder = class {
    * Validate packet format without full decoding
    */
   static validate(hexData) {
-    const bytes = hexToBytes2(hexData);
+    let bytes;
+    try {
+      bytes = hexToBytes2(hexData);
+    } catch (error) {
+      return { isValid: false, errors: [error instanceof Error ? error.message : "Invalid hex string"] };
+    }
     const errors = [];
     if (bytes.length < 2) {
       errors.push("Packet too short (minimum 2 bytes required)");
@@ -9775,6 +10357,10 @@ var MeshCorePacketDecoder = class {
       let offset = 1;
       const header = bytes[0];
       const routeType = header & 3;
+      const payloadVersion = header >> 6 & 3;
+      if (payloadVersion > 0 /* Version1 */) {
+        errors.push(`Unsupported payload version ${payloadVersion + 1} (firmware only accepts version 1)`);
+      }
       if (routeType === 0 /* TransportFlood */ || routeType === 3 /* TransportDirect */) {
         if (bytes.length < offset + 4) {
           errors.push("Packet too short for transport codes");
@@ -9784,15 +10370,22 @@ var MeshCorePacketDecoder = class {
       if (bytes.length < offset + 1) {
         errors.push("Packet too short for path length");
       } else {
-        const pathLength = bytes[offset];
+        const pathLenByte = bytes[offset];
+        const { hashSize, byteLength } = this.decodePathLenByte(pathLenByte);
         offset += 1;
-        if (bytes.length < offset + pathLength) {
+        if (hashSize === 4) {
+          errors.push("Invalid path length byte: reserved hash size (bits 7:6 = 11)");
+        }
+        if (bytes.length < offset + byteLength) {
           errors.push("Packet too short for path data");
         }
-        offset += pathLength;
+        if (byteLength > MAX_PATH_SIZE) {
+          errors.push(`Path too long (${byteLength} bytes, maximum ${MAX_PATH_SIZE})`);
+        }
+        offset += byteLength;
       }
-      if (offset >= bytes.length) {
-        errors.push("No payload data found");
+      if (bytes.length - offset > MAX_PACKET_PAYLOAD) {
+        errors.push(`Payload too long (${bytes.length - offset} bytes, maximum ${MAX_PACKET_PAYLOAD})`);
       }
     } catch (error) {
       errors.push(error instanceof Error ? error.message : "Validation error");
@@ -9809,8 +10402,8 @@ var MeshCorePacketDecoder = class {
         offset2 += 4;
       }
       if (bytes.length > offset2) {
-        const pathLen = bytes[offset2];
-        offset2 += 1 + pathLen;
+        const { byteLength } = this.decodePathLenByte(bytes[offset2]);
+        offset2 += 1 + byteLength;
       }
       if (bytes.length >= offset2 + 4) {
         const traceTag = bytes[offset2] | bytes[offset2 + 1] << 8 | bytes[offset2 + 2] << 16 | bytes[offset2 + 3] << 24;
@@ -9823,8 +10416,8 @@ var MeshCorePacketDecoder = class {
       offset += 4;
     }
     if (bytes.length > offset) {
-      const pathLen = bytes[offset];
-      offset += 1 + pathLen;
+      const { byteLength } = this.decodePathLenByte(bytes[offset]);
+      offset += 1 + byteLength;
     }
     const payloadData = bytes.slice(offset);
     const hashInput = [constantHeader, ...Array.from(payloadData)];
@@ -9834,18 +10427,83 @@ var MeshCorePacketDecoder = class {
     }
     return numberToHex(hash, 8);
   }
+  static withoutEmptySegments(segments) {
+    return segments.filter((segment) => segment.endByte >= segment.startByte);
+  }
+  /**
+   * Calculate the packet hash exactly as the firmware does in
+   * Packet::calculatePacketHash(): SHA256 over the payload type byte, then (TRACE only)
+   * the path_len field as a little-endian uint16, then the payload; truncated to
+   * MAX_HASH_SIZE (8) bytes. This is the value the firmware uses for duplicate detection.
+   */
+  static calculatePacketHash(payloadType, pathLenByte, payload) {
+    const prefix = payloadType === 9 /* Trace */ ? [payloadType & 15, pathLenByte & 255, 0] : [payloadType & 15];
+    const input = new Uint8Array(prefix.length + payload.length);
+    input.set(prefix, 0);
+    input.set(payload, prefix.length);
+    const digest = (0, import_crypto_js2.SHA256)(import_crypto_js2.enc.Hex.parse(bytesToHex2(input))).toString(import_crypto_js2.enc.Hex);
+    return digest.slice(0, MAX_HASH_SIZE * 2).toUpperCase();
+  }
   /**
    * Create a key store for decryption
    */
   static createKeyStore(initialKeys) {
     return new MeshCoreKeyStore(initialKeys);
   }
+  /**
+   * Decode a path_len byte into hash size, hop count, and total byte length.
+   * Firmware reference: Packet.h lines 79-83
+   *   Bits 7:6 = hash size selector: (path_len >> 6) + 1 = 1, 2, or 3 bytes per hop
+   *   Bits 5:0 = hop count (0-63)
+   */
+  static decodePathLenByte(pathLenByte) {
+    const hashSize = (pathLenByte >> 6) + 1;
+    const hopCount = pathLenByte & 63;
+    return { hashSize, hopCount, byteLength: hopCount * hashSize };
+  }
 };
+
+// src/crypto/region-transport.ts
+var import_crypto_js3 = __toESM(require_crypto_js());
+var REGION_KEY_SIZE = 16;
+function normalizeRegionName(regionName) {
+  return regionName.startsWith("#") ? regionName : "#" + regionName;
+}
+function calcRegionKey(regionName) {
+  const name = normalizeRegionName(regionName);
+  const hashHex = (0, import_crypto_js3.SHA256)(import_crypto_js3.enc.Utf8.parse(name)).toString(import_crypto_js3.enc.Hex);
+  const keyHex = hashHex.slice(0, REGION_KEY_SIZE * 2);
+  return hexToBytes2(keyHex);
+}
+function calcTransportCode(regionKey, payloadType, payload) {
+  const keyHex = bytesToHex2(regionKey);
+  const keyWords = import_crypto_js3.enc.Hex.parse(keyHex);
+  const message = new Uint8Array(1 + payload.length);
+  message[0] = payloadType & 255;
+  message.set(payload, 1);
+  const messageHex = bytesToHex2(message);
+  const messageWords = import_crypto_js3.enc.Hex.parse(messageHex);
+  const hmac = (0, import_crypto_js3.HmacSHA256)(messageWords, keyWords).toString(import_crypto_js3.enc.Hex);
+  const firstTwoBytes = hexToBytes2(hmac.slice(0, 4));
+  let code = firstTwoBytes[0] | firstTwoBytes[1] << 8;
+  if (code === 0) code = 1;
+  else if (code === 65535) code = 65534;
+  return code & 65535;
+}
+function calcTransportCodeForRegion(regionName, payloadType, payload) {
+  const key = calcRegionKey(regionName);
+  return calcTransportCode(key, payloadType, payload);
+}
+function transportCodeMatchesRegion(regionName, payloadType, payloadRawHex, transportCode0) {
+  const payload = hexToBytes2(payloadRawHex);
+  const code = calcTransportCodeForRegion(regionName, payloadType, payload);
+  return (code & 65535) === (transportCode0 & 65535);
+}
 
 // src/browser/index.ts
 function sha512Pure(data) {
-  const wordArray = import_crypto_js2.default.lib.WordArray.create(data);
-  const hash = import_crypto_js2.default.SHA512(wordArray);
+  const wordArray = import_crypto_js4.default.lib.WordArray.create(data);
+  const hash = import_crypto_js4.default.SHA512(wordArray);
   const hashBytes = new Uint8Array(64);
   for (let i = 0; i < 16; i++) {
     const word = hash.words[i] || 0;
@@ -9856,8 +10514,8 @@ function sha512Pure(data) {
   }
   return hashBytes;
 }
-etc.sha512Sync = sha512Pure;
-etc.sha512Async = async (data) => sha512Pure(data);
+etc.sha512Sync = (...messages) => sha512Pure(etc.concatBytes(...messages));
+etc.sha512Async = async (...messages) => sha512Pure(etc.concatBytes(...messages));
 var Ed25519SignatureVerifier2 = class {
   /**
    * Verify an Ed25519 signature for MeshCore advertisement packets
@@ -9869,7 +10527,7 @@ var Ed25519SignatureVerifier2 = class {
       const signature = hexToBytes2(signatureHex);
       const appData = hexToBytes2(appDataHex);
       const message = this.constructAdvertSignedMessage(publicKeyHex, timestamp, appData);
-      return await verify(signature, message, publicKey);
+      return verify(signature, message, publicKey);
     } catch (error) {
       console.error("Ed25519 signature verification failed:", error);
       return false;
@@ -9890,8 +10548,7 @@ var Ed25519SignatureVerifier2 = class {
   }
   static getSignedMessageHex(publicKeyHex, timestamp, appDataHex) {
     const appData = hexToBytes2(appDataHex);
-    const message = this.constructAdvertSignedMessage(publicKeyHex, timestamp, appData);
-    return bytesToHex2(message);
+    return bytesToHex2(this.constructAdvertSignedMessage(publicKeyHex, timestamp, appData));
   }
 };
 function decodePacket(hexData, options) {
@@ -9914,6 +10571,7 @@ function hasWebCrypto() {
 }
 export {
   AdvertFlags,
+  AnonRequestType,
   ChannelCrypto,
   ControlSubType,
   DeviceRole,
@@ -9921,26 +10579,36 @@ export {
   MeshCorePacketDecoder as MeshCoreDecoder,
   MeshCoreKeyStore,
   MeshCorePacketDecoder,
+  PathPayloadDecoder,
   PayloadType,
   PayloadVersion,
+  REGION_KEY_SIZE,
   RequestType,
   RouteType,
+  TextType,
   analyzePacket,
   byteToHex,
   bytesToHex2 as bytesToHex,
+  calcRegionKey,
+  calcTransportCode,
+  calcTransportCodeForRegion,
   decodePacket,
   decodePacketWithVerification,
   ed25519_exports as ed25519,
+  getAnonRequestTypeName,
   getControlSubTypeName,
   getDeviceRoleName,
   getPayloadTypeName,
   getPayloadVersionName,
   getRequestTypeName,
   getRouteTypeName,
+  getTextTypeName,
   hasWebCrypto,
   hexToBytes2 as hexToBytes,
   isSecureContext,
-  numberToHex
+  normalizeRegionName,
+  numberToHex,
+  transportCodeMatchesRegion
 };
 /*! Bundled license information:
 

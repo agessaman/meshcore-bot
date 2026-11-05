@@ -21,6 +21,8 @@ class ChannelsCommand(BaseCommand):
 
     # Plugin metadata
     name = "channels"
+    honors_skip_channel_check = False
+    enabled_attr = "channels_enabled"
     keywords = ['channels', 'channel']
     description = "Lists hashtag channels with sub-categories. Use 'channels' for general, 'channels list' for all categories, 'channels <category>' for specific categories, 'channels #channel' for specific channel info."
     category = "basic"
@@ -61,20 +63,7 @@ class ChannelsCommand(BaseCommand):
         super().__init__(bot)
         self.channels_enabled = self.get_config_value('Channels_Command', 'enabled', fallback=True, value_type='bool')
 
-    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
-        """Check if this command can be executed with the given message.
-
-        Args:
-            message: The message triggering the command.
-
-        Returns:
-            bool: True if command is enabled and checks pass, False otherwise.
-        """
-        if not self.channels_enabled:
-            return False
-        return super().can_execute(message)
-
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         return self.translate('commands.channels.help')
 
     def matches_keyword(self, message: MeshMessage) -> bool:
@@ -89,35 +78,36 @@ class ChannelsCommand(BaseCommand):
         if not self.keywords:
             return False
 
-        content_lower = self.cleanup_message_for_matching(message)
+        def _matches(content_lower: str) -> bool:
+            # Don't match if this looks like a subcommand of another command
+            # (e.g., "stats channels" should not match "channels" command)
+            # First word must be one of our keywords (including config aliases).
+            if ' ' in content_lower:
+                parts = content_lower.split()
+                keyword_stems = {k.lower() for k in self.keywords}
+                if len(parts) > 1 and parts[0] not in keyword_stems:
+                    return False
 
-        # Don't match if this looks like a subcommand of another command
-        # (e.g., "stats channels" should not match "channels" command)
-        # First word must be one of our keywords (including config aliases).
-        if ' ' in content_lower:
-            parts = content_lower.split()
-            keyword_stems = {k.lower() for k in self.keywords}
-            if len(parts) > 1 and parts[0] not in keyword_stems:
-                return False
+            for keyword in self.keywords:
+                keyword_lower = keyword.lower()
 
-        for keyword in self.keywords:
-            keyword_lower = keyword.lower()
+                # Check for exact match first
+                if keyword_lower == content_lower:
+                    return True
 
-            # Check for exact match first
-            if keyword_lower == content_lower:
-                return True
+                # Check for word boundary matches using regex
+                # Create a regex pattern that matches the keyword at word boundaries
+                # Use custom word boundary that treats underscores as separators
+                # (?<![a-zA-Z0-9]) = negative lookbehind for alphanumeric characters (not underscore)
+                # (?![a-zA-Z0-9]) = negative lookahead for alphanumeric characters (not underscore)
+                # This allows underscores to act as word boundaries
+                pattern = r'(?<![a-zA-Z0-9])' + re.escape(keyword_lower) + r'(?![a-zA-Z0-9])'
+                if re.search(pattern, content_lower):
+                    return True
 
-            # Check for word boundary matches using regex
-            # Create a regex pattern that matches the keyword at word boundaries
-            # Use custom word boundary that treats underscores as separators
-            # (?<![a-zA-Z0-9]) = negative lookbehind for alphanumeric characters (not underscore)
-            # (?![a-zA-Z0-9]) = negative lookahead for alphanumeric characters (not underscore)
-            # This allows underscores to act as word boundaries
-            pattern = r'(?<![a-zA-Z0-9])' + re.escape(keyword_lower) + r'(?![a-zA-Z0-9])'
-            if re.search(pattern, content_lower):
-                return True
+            return False
 
-        return False
+        return self._cleaned_content_matches(message, _matches)
 
     async def execute(self, message: MeshMessage) -> bool:
         """Execute the channels command.

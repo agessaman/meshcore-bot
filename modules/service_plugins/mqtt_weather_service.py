@@ -17,7 +17,13 @@ try:
 except ImportError:
     pass
 
-from ..clients.mqtt_weather import MqttWeatherCache, iter_mqtt_weather_topics
+from ..clients.mqtt_weather import (
+    DEFAULT_JSON_TEMPLATE,
+    JSON_TEMPLATE_PLACEHOLDERS,
+    MqttWeatherCache,
+    iter_mqtt_weather_topics,
+)
+from ..template_reference import template_spec
 from .base_service import BaseServicePlugin
 
 
@@ -45,21 +51,33 @@ class MqttWeatherService(BaseServicePlugin):
         {"key": "password", "label": "Password", "type": "str", "default": "", "help": "Broker password (optional)."},
         {"key": "client_id", "label": "Client ID", "type": "str", "default": "", "help": "Optional MQTT client id."},
         {"key": "qos", "label": "QoS", "type": "int", "min": 0, "max": 2, "default": 0, "help": "MQTT quality of service."},
-        {"key": "max_payload_bytes", "label": "Max payload", "type": "int", "min": 1, "default": 65536, "unit": "bytes",
+        {"key": "max_payload_bytes", "label": "Max payload", "type": "int", "min": 256, "max": 1048576, "default": 65536, "unit": "bytes",
          "help": "Drop incoming payloads larger than this."},
-        {"key": "stale_after_seconds", "label": "Stale after", "type": "int", "min": 1, "default": 3600, "unit": "s",
+        {"key": "stale_after_seconds", "label": "Stale after", "type": "int", "min": 5, "max": 604800, "default": 3600, "unit": "s",
          "help": "Cached reading is stale after this long without a fresh message."},
         {"key": "output_mode", "label": "Output mode", "type": "enum",
          "options": [{"value": "passthrough", "label": "Passthrough"},
                      {"value": "json_template", "label": "JSON template"}],
          "default": "passthrough", "help": "How payloads are converted for mesh."},
-        {"key": "json_template", "label": "JSON template", "type": "str", "default": "",
-         "help": "Template for json_template mode. Placeholders: {time} {temperature_f} {temperature_c} {humidity} {device}."},
+        {"key": "json_template", "label": "JSON template", "type": "str", "default": DEFAULT_JSON_TEMPLATE,
+         "help": "Template for json_template mode.",
+         "template": template_spec(
+             "format",
+             dict.fromkeys(sorted(JSON_TEMPLATE_PLACEHOLDERS), ""),
+             notes=[
+                 "Names follow the station's JSON fields; the suffix is the unit (_f, _c, _kmh, _in).",
+                 "A format spec such as {temperature_f:.0f} works, but a missing reading then "
+                 "fails the whole template.",
+             ],
+             escapes=False,
+             blank_default=DEFAULT_JSON_TEMPLATE,
+             preview="mqtt_json",
+         )},
         {"key": "json_device_key", "label": "JSON device key", "type": "str", "default": "",
          "help": "Optional filter: JSON key to match."},
         {"key": "json_device_value", "label": "JSON device value", "type": "str", "default": "",
          "help": "Optional filter: required value for the device key."},
-        {"key": "passthrough_max_length", "label": "Passthrough max length", "type": "int", "min": 1, "default": 500, "unit": "chars",
+        {"key": "passthrough_max_length", "label": "Passthrough max length", "type": "int", "min": 64, "max": 4000, "default": 500, "unit": "chars",
          "help": "Max output length after sanitize."},
     ]
 
@@ -209,7 +227,7 @@ class MqttWeatherService(BaseServicePlugin):
             if broker["username"]:
                 self._client.username_pw_set(broker["username"], broker["password"])
 
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
 
             def do_connect() -> None:
                 self._client.connect(broker["host"], broker["port"], keepalive=60)

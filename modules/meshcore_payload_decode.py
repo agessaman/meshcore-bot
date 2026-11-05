@@ -161,8 +161,10 @@ class ChannelKeyStore:
 def decrypt_group_text(ciphertext: bytes, cipher_mac: bytes, key16: bytes) -> Optional[dict[str, Any]]:
     """Verify+decrypt a GRP_TXT ciphertext with a single channel key.
 
-    Returns ``{timestamp, flags, sender, text}`` on success, or ``None`` if the
-    MAC fails or the plaintext is malformed.
+    Returns ``{timestamp, flags, sender, text, message}`` on success, or
+    ``None`` if the MAC fails or the plaintext is malformed. ``message`` is
+    the complete decoded text while ``text`` retains the existing
+    sender-prefix-stripped value.
     """
     if len(ciphertext) < 16 or len(ciphertext) % 16 != 0:
         return None
@@ -202,7 +204,13 @@ def decrypt_group_text(ciphertext: bytes, cipher_mac: bytes, key16: bytes) -> Op
             sender = candidate
             content = text[colon + 2:]
 
-    return {"timestamp": timestamp, "flags": flags, "sender": sender, "text": content}
+    return {
+        "timestamp": timestamp,
+        "flags": flags,
+        "sender": sender,
+        "text": content,
+        "message": text,
+    }
 
 
 def _iso_utc(unix_ts: int) -> Optional[str]:
@@ -242,6 +250,26 @@ def decode_group_text(payload: bytes, key_store: Optional[ChannelKeyStore]) -> d
                 break
 
     return result
+
+
+def verify_meshcore_advert_ed25519(mesh_payload: bytes) -> bool:
+    """Verify MeshCore ADVERT Ed25519 signature (layout from ``Mesh::createAdvert``).
+
+    Signed message is ``pub_key (32) + timestamp (4, LE) + app_data``; signature is
+    ``payload[36:100]`` (64 bytes); ``app_data`` starts at byte 100.
+    """
+    if len(mesh_payload) < 100:
+        return False
+    try:
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+
+        pub = mesh_payload[:32]
+        msg = mesh_payload[:36] + mesh_payload[100:]
+        sig = mesh_payload[36:100]
+        Ed25519PublicKey.from_public_bytes(pub).verify(sig, msg)
+        return True
+    except Exception:
+        return False
 
 
 def parse_advert(payload: bytes) -> dict[str, Any]:

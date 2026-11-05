@@ -19,6 +19,7 @@ import requests
 
 from .region_capitals import REGION_DEFAULT_NOTE, region_capital_query
 from .utils import (
+    _reverse_cache_key,
     abbreviate_location,
     geocode_city_sync,
     geocode_zipcode_sync,
@@ -469,7 +470,7 @@ def _is_country_token(text: str) -> bool:
 
 def _address_from_result(bot: Any, lat: float, lon: float, timeout: int) -> dict:
     db = getattr(bot, "db_manager", None)
-    reverse_cache_key = f"reverse_{lat}_{lon}"
+    reverse_cache_key = _reverse_cache_key(bot, lat, lon)
     if db is not None:
         cached = db.get_cached_json(reverse_cache_key, "geolocation")
         if cached:
@@ -602,14 +603,16 @@ def geocode_zipcode_best_effort(
         return None, None, None
 
 
-def get_bot_lat_lon(bot: Any) -> Optional[tuple[float, float]]:
+def get_bot_lat_lon(bot: Any, logger: Any = None) -> Optional[tuple[float, float]]:
+    """[Bot] bot_latitude/bot_longitude when both are set and in range, else None."""
     try:
         lat = bot.config.getfloat("Bot", "bot_latitude", fallback=None)
         lon = bot.config.getfloat("Bot", "bot_longitude", fallback=None)
         if lat is not None and lon is not None and -90 <= lat <= 90 and -180 <= lon <= 180:
             return (lat, lon)
-    except Exception:
-        pass
+    except Exception as e:
+        if logger is not None:
+            logger.debug(f"Error getting bot location: {e}")
     return None
 
 
@@ -626,26 +629,83 @@ def get_config_default_lat_lon(bot: Any, section: str) -> Optional[tuple[float, 
     return None
 
 
-def get_companion_lat_lon(bot: Any, message: Any) -> Optional[tuple[float, float]]:
+ZeroRule = Literal["both", "either"]
+
+# How each caller drops a (0, 0)-style "no position" fix: "both" only when both
+# coordinates are zero, "either" when either one is (which also drops a real
+# position on the equator or the prime meridian).
+_ZERO_FILTERS: dict[str, str] = {
+    "both": "AND NOT (latitude = 0 AND longitude = 0)",
+    "either": "AND latitude != 0 AND longitude != 0",
+}
+
+
+def latest_contact_position_rows(bot: Any, public_key: str, *, zero_rule: ZeroRule = "both") -> Any:
+    """``execute_query`` rows (at most one) with the contact's most recent latitude/longitude."""
+    query = f"""
+        SELECT latitude, longitude
+        FROM complete_contact_tracking
+        WHERE public_key = ?
+        AND latitude IS NOT NULL AND longitude IS NOT NULL
+        {_ZERO_FILTERS[zero_rule]}
+        ORDER BY COALESCE(last_advert_timestamp, last_heard) DESC
+        LIMIT 1
+    """
+    return bot.db_manager.execute_query(query, (public_key,))
+
+
+def repeater_by_name_rows(bot: Any, repeater_name: str, *, zero_rule: ZeroRule = "both") -> Any:
+    """``execute_query`` rows (at most one) for the repeater or room server best matching a name.
+
+    Case-insensitive: an exact name first, then a prefix, then any substring;
+    ties go to the most recently heard.
+    """
+    query = f"""
+        SELECT latitude, longitude, name
+        FROM complete_contact_tracking
+        WHERE role IN ('repeater', 'roomserver')
+        AND latitude IS NOT NULL AND longitude IS NOT NULL
+        {_ZERO_FILTERS[zero_rule]}
+        AND LOWER(name) LIKE LOWER(?)
+        ORDER BY
+            CASE
+                WHEN LOWER(name) = LOWER(?) THEN 1
+                WHEN LOWER(name) LIKE LOWER(?) THEN 2
+                ELSE 3
+            END,
+            COALESCE(last_advert_timestamp, last_heard) DESC
+        LIMIT 1
+    """
+    exact = repeater_name.strip()
+    return bot.db_manager.execute_query(query, (f"%{exact}%", exact, f"{exact}%"))
+
+
+def get_companion_lat_lon(
+    bot: Any, message: Any, logger: Any = None, error_level: str = "debug", trace: bool = False
+) -> Optional[tuple[float, float]]:
+    """The sender's most recent advertised position from contact tracking, or None.
+
+    A lookup error is logged on ``logger`` at ``error_level`` and returns None.
+    With ``trace`` (wx and gwx), the lookup's outcome is also logged at DEBUG.
+    """
     try:
         sender_pubkey = getattr(message, "sender_pubkey", None)
-        if not sender_pubkey or not hasattr(bot, "db_manager"):
+        if not sender_pubkey:
+            if trace and logger is not None:
+                logger.debug("No sender_pubkey in message for companion location lookup")
             return None
-        query = """
-            SELECT latitude, longitude
-            FROM complete_contact_tracking
-            WHERE public_key = ?
-            AND latitude IS NOT NULL AND longitude IS NOT NULL
-            AND latitude != 0 AND longitude != 0
-            ORDER BY COALESCE(last_advert_timestamp, last_heard) DESC
-            LIMIT 1
-        """
-        results = bot.db_manager.execute_query(query, (sender_pubkey,))
+        results = latest_contact_position_rows(bot, sender_pubkey)
         if results:
             row = results[0]
-            return (float(row["latitude"]), float(row["longitude"]))
-    except Exception:
-        pass
+            lat, lon = float(row["latitude"]), float(row["longitude"])
+            if trace and logger is not None:
+                logger.debug(f"Found companion location: {lat}, {lon} for pubkey {sender_pubkey[:16]}...")
+            return (lat, lon)
+        if trace and logger is not None:
+            logger.debug(f"No location found in database for pubkey {sender_pubkey[:16]}...")
+    except Exception as e:
+        if logger is not None:
+            getattr(logger, error_level)(f"Error getting companion location: {e}")
     return None
 
 
@@ -655,26 +715,8 @@ def lookup_repeater_lat_lon(
     try:
         if not hasattr(bot, "db_manager"):
             return None
-        query = """
-            SELECT latitude, longitude, name
-            FROM complete_contact_tracking
-            WHERE role IN ('repeater', 'roomserver')
-            AND latitude IS NOT NULL AND longitude IS NOT NULL
-            AND latitude != 0 AND longitude != 0
-            AND LOWER(name) LIKE LOWER(?)
-            ORDER BY
-                CASE
-                    WHEN LOWER(name) = LOWER(?) THEN 1
-                    WHEN LOWER(name) LIKE LOWER(?) THEN 2
-                    ELSE 3
-                END,
-                COALESCE(last_advert_timestamp, last_heard) DESC
-            LIMIT 1
-        """
         exact = repeater_name.strip()
-        results = bot.db_manager.execute_query(
-            query, (f"%{exact}%", exact, f"{exact}%")
-        )
+        results = repeater_by_name_rows(bot, repeater_name)
         if results:
             row = results[0]
             lat, lon = row.get("latitude"), row.get("longitude")

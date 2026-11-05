@@ -68,9 +68,9 @@
                 <div class="mb-3">
                     <div class="input-group">
                         <span class="input-group-text">
-                            <i class="fas fa-search"></i>
+                            <i class="fas fa-search" aria-hidden="true"></i>
                         </span>
-                        <input type="text" class="form-control" id="greeted-users-search" 
+                        <input type="text" class="form-control" id="greeted-users-search" aria-label="Search greeted users" aria-describedby="search-results-count" 
                                placeholder="Search by username, channel, date, or last seen...">
                         <button class="btn btn-outline-secondary" type="button" id="clear-search-btn">
                             <i class="fas fa-times"></i> Clear
@@ -328,7 +328,7 @@ class GreeterManager {
             }
             const row = document.createElement('tr');
             const senderCell = document.createElement('td');
-            senderCell.appendChild(this.makeTextElement('code', user.sender_id));
+            senderCell.appendChild(this.makeTextElement('span', user.sender_id, 'greeter-name'));
             row.appendChild(senderCell);
             [
                 user.channel,
@@ -339,11 +339,11 @@ class GreeterManager {
             rolloutCell.appendChild(this.makeTextElement(
                 'span',
                 user.rollout_marked ? 'Rollout' : 'Manual',
-                `badge ${user.rollout_marked ? 'bg-warning' : 'bg-success'}`,
+                user.rollout_marked ? 'tag-chip tag-chip--violet' : 'tag-chip',
             ));
             row.appendChild(rolloutCell);
             const actionCell = document.createElement('td');
-            const button = this.makeTextElement('button', 'Mark Ungreeted', 'btn btn-sm btn-danger');
+            const button = this.makeTextElement('button', 'Mark ungreeted', 'row-action row-action--danger');
             button.type = 'button';
             button.addEventListener('click', () => this.ungreetUser(user.sender_id, user.channel));
             actionCell.appendChild(button);
@@ -540,9 +540,13 @@ document.addEventListener('DOMContentLoaded', () => {
 </script>
 
 <style>
+.greeter-name {
+    font-weight: 600;
+}
+
 .greeter-sample-text {
     white-space: pre-wrap;
-    font-family: monospace;
+    font-family: var(--font-mono);
 }
 
 /* Dark mode table styling with better contrast - matching contacts page */
@@ -574,9 +578,9 @@ document.addEventListener('DOMContentLoaded', () => {
     color: var(--text-color);
 }
 
-/* Ensure all text in table cells is light in dark mode */
-[data-theme="dark"] .table td,
-[data-theme="dark"] .table td * {
+/* Table cells take the light text color in dark mode; children with their
+   own color (badges, buttons, status text) keep it. */
+[data-theme="dark"] .table td {
     color: var(--text-color) !important;
 }
 

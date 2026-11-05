@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "meshcore-bot"
-version = "1.0.0"
+version = "1.1.0"
 description = "MeshCore Bot with commands for mesh testing, utilities, and service integration."
 readme = "README.md"
 # Table form rather than the SPDX string form: the string form needs
@@ -33,8 +33,8 @@ dependencies = [
     "maidenhead>=1.4.0",
     "pytz>=2023.3",
     "aiohttp>=3.8.0",
-    # 2.3.8+ required for zero-hop neighbour discovery (see requirements.txt)
-    "meshcore>=2.3.8",
+    # 2.3.14+ required for send_msg_with_retry's ACK handling (see requirements.txt)
+    "meshcore>=2.3.14",
     "openmeteo-requests>=1.7.2",
     "requests-cache>=1.1.1",
     "retry-requests>=1.0.0",
@@ -79,6 +79,8 @@ modules = [
     "web_viewer/static/*",
     "web_viewer/static/*/*",
     "web_viewer/static/*/*/*",
+    "web_viewer/static/*/*/*/*",
+    "templates/*.ini",
 ]
 translations = ["*.json"]
 "data.randomlines" = ["*.txt"]
@@ -146,6 +148,7 @@ strict_optional = true
 # New modules written with full type annotations get strict treatment.
 [[tool.mypy.overrides]]
 module = [
+    "modules.alert_format",
     "modules.commands.schedule_command",
     "modules.service_plugins.webhook_service",
     "modules.service_plugins.base_service",
@@ -155,6 +158,7 @@ module = [
     "modules.security_utils",
     "modules.commands.base_command",
     "modules.commands.rain_command",
+    "modules.region_warning",
 ]
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
@@ -197,6 +201,44 @@ module = [
     "modules.web_viewer.integration",
 ]
 ignore_errors = true
+
+# Modules split out of the large files by the maintainability refactor: their
+# untyped helper bodies are type-checked too, so a mixin's code is not silently
+# skipped where the original method was.
+[[tool.mypy.overrides]]
+module = [
+    "modules.admin_server",
+    "modules.channel_message",
+    "modules.config_reload",
+    "modules.contact_events",
+    "modules.contacts_repo",
+    "modules.device_setup",
+    "modules.feed_parse",
+    "modules.joke_text",
+    "modules.logging_setup",
+    "modules.mesh_graph_recorder",
+    "modules.mesh_paths",
+    "modules.packet_decode",
+    "modules.radio_link",
+    "modules.radio_offline",
+    "modules.rf_correlation",
+    "modules.rf_log",
+    "modules.rf_match",
+    "modules.scope_gate",
+    "modules.service_plugins.channel_bridge_utils",
+    "modules.service_supervisor",
+    "modules.web_viewer.channels",
+    "modules.web_viewer.cleanup",
+    "modules.web_viewer.dashboard",
+    "modules.web_viewer.database_admin",
+    "modules.web_viewer.feeds",
+    "modules.web_viewer.live_stream",
+    "modules.web_viewer.mesh_evidence",
+    "modules.web_viewer.multibyte_rollout",
+    "modules.web_viewer.socket_clients",
+    "modules.web_viewer.tracking",
+]
+check_untyped_defs = true
 
 # Pytest is configured in pytest.ini, not here. pytest.ini takes precedence over
 # pyproject.toml, so a [tool.pytest.ini_options] block in this file would be dead

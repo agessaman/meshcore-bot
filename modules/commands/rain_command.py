@@ -13,12 +13,13 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 import requests
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
 
+from ..http_retry import make_retry_session
 from ..location import (
     US_STATE_ABBRS,  # noqa: F401 — re-exported for weather_service/tests
     city_display_name,
+    get_bot_lat_lon,
+    get_companion_lat_lon,
     join_location,
     reverse_geocode_region,
     titlecase_location,  # noqa: F401 — re-exported for weather_service/tests
@@ -28,7 +29,7 @@ from ..location import (
 )
 from ..models import MeshMessage
 from ..region_capitals import REGION_DEFAULT_NOTE, region_capital_query
-from ..utils import geocode_city_sync, geocode_zipcode_sync
+from ..utils import geocode_city_sync, geocode_zipcode_sync, truncate_to_bytes
 from .base_command import BaseCommand
 
 # Re-exports for weather_service / tests that import display helpers from rain_command.
@@ -726,6 +727,8 @@ class RainCommand(BaseCommand):
     render_safe = True
 
     name = "rain"
+    honors_skip_channel_check = False
+    enabled_attr = "rain_enabled"
     keywords = ["rain", "nowcast", "snow"]
     description = "Rain/snow nowcast: when precip starts or stops in the next ~2h, with amount"
     category = "weather"
@@ -756,6 +759,26 @@ class RainCommand(BaseCommand):
          "default": "US", "help": "2-letter country code (e.g. US). Shared weather setting."},
         {"key": "weather_model", "label": "Open-Meteo model", "type": "str", "section": "Weather",
          "default": "", "help": "Open-Meteo model name; blank = best_match. Shared weather setting."},
+        {"key": "window_minutes", "label": "Look-ahead window", "type": "int",
+         "min": 1, "default": 120, "unit": "min",
+         "help": "How far ahead the nowcast looks."},
+        {"key": "precip_threshold_mm", "label": "Rain threshold", "type": "float",
+         "min": 0, "default": 0.1, "unit": "mm",
+         "help": "Precipitation per 15-minute bucket that counts as raining. Raise to ignore drizzle."},
+        {"key": "show_amount", "label": "Show amount", "type": "bool", "default": True,
+         "help": "Append an estimated precipitation amount, e.g. (est 0.2 in)."},
+        {"key": "amount_unit", "label": "Amount unit", "type": "enum",
+         "options": [{"value": "in", "label": "Inches"}, {"value": "mm", "label": "Millimeters"}],
+         "default": "in", "help": "Unit for the estimated amount."},
+        {"key": "show_probability", "label": "Show probability", "type": "bool", "default": True,
+         "help": "Show the precipitation probability, e.g. (…, 70%)."},
+        {"key": "show_temp", "label": "Show borderline temperature", "type": "bool", "default": True,
+         "help": "Show the temperature when it is near freezing, where rain, snow or ice is in doubt."},
+        {"key": "cache_seconds", "label": "Cache time", "type": "int",
+         "min": 0, "default": 300, "unit": "s",
+         "help": "Reuse a fetched forecast this long (shared with the weather service's nowcast). 0 disables."},
+        {"key": "zip_city_lookup", "label": "ZIP city lookup", "type": "bool", "default": True,
+         "help": "Name US ZIP codes via Zippopotam.us. Off falls back to reverse geocoding."},
     ]
 
     def __init__(self, bot: Any) -> None:
@@ -805,61 +828,17 @@ class RainCommand(BaseCommand):
         self._reverse_cache: dict[str, tuple[Optional[str], Optional[str]]] = {}
         self._zip_cache: dict[str, str] = {}
 
-    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
-        if not self.rain_enabled:
-            return False
-        return super().can_execute(message)
-
     def _create_retry_session(self) -> requests.Session:
         """Session with light retry/backoff for the Open-Meteo call."""
-        session = requests.Session()
-        retry_strategy = Retry(
-            total=2,
-            backoff_factor=0.3,
-            status_forcelist=[500, 502, 503, 504],
-            allowed_methods=["GET"],
-            raise_on_status=False,
-        )
-        adapter = HTTPAdapter(max_retries=retry_strategy, pool_connections=10, pool_maxsize=20)
-        session.mount("https://", adapter)
-        session.mount("http://", adapter)
-        return session
+        return make_retry_session()
 
     def _get_companion_location(self, message: MeshMessage) -> Optional[tuple[float, float]]:
         """Get companion/sender location from the contact-tracking database."""
-        try:
-            sender_pubkey = getattr(message, "sender_pubkey", None)
-            if not sender_pubkey:
-                return None
-            query = """
-                SELECT latitude, longitude
-                FROM complete_contact_tracking
-                WHERE public_key = ?
-                AND latitude IS NOT NULL AND longitude IS NOT NULL
-                AND latitude != 0 AND longitude != 0
-                ORDER BY COALESCE(last_advert_timestamp, last_heard) DESC
-                LIMIT 1
-            """
-            results = self.bot.db_manager.execute_query(query, (sender_pubkey,))
-            if results:
-                row = results[0]
-                return (float(row["latitude"]), float(row["longitude"]))
-            return None
-        except Exception as e:
-            self.logger.debug(f"Error getting companion location: {e}")
-            return None
+        return get_companion_lat_lon(self.bot, message, self.logger)
 
     def _get_bot_location(self) -> Optional[tuple[float, float]]:
         """Get bot location from config ([Bot] bot_latitude, bot_longitude)."""
-        try:
-            lat = self.bot.config.getfloat("Bot", "bot_latitude", fallback=None)
-            lon = self.bot.config.getfloat("Bot", "bot_longitude", fallback=None)
-            if lat is not None and lon is not None and -90 <= lat <= 90 and -180 <= lon <= 180:
-                return (lat, lon)
-            return None
-        except Exception as e:
-            self.logger.debug(f"Error getting bot location: {e}")
-            return None
+        return get_bot_lat_lon(self.bot, self.logger)
 
     def _reverse_geocode(self, lat: float, lon: float) -> tuple[Optional[str], Optional[str]]:
         """Reverse-geocode to (city, suffix), cached. suffix is the US state
@@ -1141,7 +1120,7 @@ class RainCommand(BaseCommand):
 
         try:
             self.record_execution(message.sender_id)
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             series = await loop.run_in_executor(None, lambda: self._fetch_series(lat, lon))
         except Exception as e:
             self.logger.error(f"Error fetching rain nowcast: {e}")
@@ -1184,10 +1163,17 @@ class RainCommand(BaseCommand):
             response = self._format_result(
                 result, label, asked_word=asked_word, mismatch=mismatch, prob=prob, temp_f=temp_f,
             )
-        if region_note:
-            response = f"{response} {region_note}"
+        # Byte budget, byte trim: these replies are dense with emoji (🌧️ ☀️ ⚠️) and
+        # an em dash, so a character count understates the frame by 20+ bytes and
+        # the "fits" branch would overrun the budget and spill into a second message.
         max_len = self.get_max_message_length(message)
-        if len(response) > max_len:
-            response = response[: max_len - 3] + "..."
+        if region_note:
+            # The note is context; the forecast is the answer. Append it only when
+            # it fits whole, rather than letting the trim below cut it mid-word.
+            with_note = f"{response} {region_note}"
+            if len(with_note.encode("utf-8")) <= max_len:
+                response = with_note
+        if len(response.encode("utf-8")) > max_len:
+            response = truncate_to_bytes(response, max_len - 3).rstrip() + "..."
         await self.send_response(message, response)
         return True

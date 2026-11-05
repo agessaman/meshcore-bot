@@ -18,6 +18,8 @@ class TraceCommand(BaseCommand):
     """Trace (manual path) and Tracer (reciprocal path) for link diagnostics."""
 
     name = "trace"
+    honors_skip_channel_check = False
+    enabled_attr = "trace_enabled"
     keywords = ["trace", "tracer"]
     description = "Run a trace along a path (trace=manual if path given, else round-trip; tracer=always round-trip)"
     requires_dm = False
@@ -59,6 +61,15 @@ class TraceCommand(BaseCommand):
         {"key": "update_graph_two_byte", "label": "Update graph (2-byte)", "type": "bool",
          "default": True,
          "help": "Add a 2-byte link identification to the mesh graph when supported."},
+        {"key": "timeout_base_seconds", "label": "Base timeout", "type": "float",
+         "min": 0.1, "default": 2.0, "unit": "s",
+         "help": "Per-attempt timeout before the per-hop allowance is added."},
+        {"key": "trace_retry_count", "label": "Attempts", "type": "int",
+         "min": 1, "default": 2,
+         "help": "Maximum trace attempts. A reply to an earlier attempt counts until the last one times out."},
+        {"key": "trace_retry_delay_seconds", "label": "Retry delay", "type": "float",
+         "min": 0, "default": 1.0, "unit": "s",
+         "help": "Wait before retrying a trace that got no reply."},
     ]
 
     def __init__(self, bot):
@@ -80,12 +91,7 @@ class TraceCommand(BaseCommand):
         output_fmt = (self.bot.config.get("Trace_Command", "output_format", fallback="inline") or "inline").strip().lower()
         self.output_format = output_fmt if output_fmt in ("inline", "vertical") else "inline"
 
-    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
-        if not self.trace_enabled:
-            return False
-        return super().can_execute(message)
-
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         return (
             "trace [path] — run trace along path (return may not be heard). No path = round-trip like tracer. "
             "tracer [path] — round-trip so bot hears return. Path: comma-separated hex nodes "
@@ -266,7 +272,10 @@ class TraceCommand(BaseCommand):
                 await asyncio.sleep(wait_s)
                 await self.send_response(message, response)
 
-        if result.success and self.update_graph_one_byte and result.path_nodes:
+        # 1-byte hashes follow update_graph_one_byte; 2-byte and wider, update_graph_two_byte
+        hash_bytes = 1 << ((result.flags or 0) & 3)
+        update_graph = self.update_graph_one_byte if hash_bytes == 1 else self.update_graph_two_byte
+        if result.success and update_graph and result.path_nodes:
             path_hashes = [n.get("hash") for n in result.path_nodes if n.get("hash")]
             if path_hashes and hasattr(self.bot, "mesh_graph") and self.bot.mesh_graph and self.bot.mesh_graph.capture_enabled:
                 update_mesh_graph_from_trace_data(

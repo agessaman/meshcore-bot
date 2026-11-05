@@ -1,0 +1,14 @@
+{
+ "day3-without-day2": {
+  "logs": [],
+  "text": "400W <commands.solarforecast.labels.today[('wh', 2848)]><commands.solarforecast.labels.hours_util[('hours', 11), ('util', 64.72727272727272)]> <commands.solarforecast.labels.peak[('time', '14:00'), ('watts', 346)]>\n<commands.solarforecast.labels.tomorrow[('wh', 1363)]><commands.solarforecast.labels.hours_percent[('hours', 11), ('percent', 30.977272727272727)]>\n<commands.solarforecast.labels.day_format[('day', '<common.date_time.day_abbreviations.Mon>'), ('wh', 1635.6)]><commands.solarforecast.labels.hours_percent[('hours', 11), ('percent', 37.17272727272727)]>"
+ },
+ "neither-today-nor-tomorrow": {
+  "logs": [],
+  "text": "<commands.solarforecast.labels.day_format[('day', '<common.date_time.day_abbreviations.Sun>'), ('wh', 1499.3000000000002)]><commands.solarforecast.labels.hours_percent[('hours', 11), ('percent', 34.075)]><commands.solarforecast.labels.separator><commands.solarforecast.labels.day_format[('day', '<common.date_time.day_abbreviations.Mon>'), ('wh', 1635.6)]><commands.solarforecast.labels.hours_percent[('hours', 11), ('percent', 37.17272727272727)]>"
+ },
+ "only-day2": {
+  "logs": [],
+  "text": "<commands.solarforecast.labels.day_format[('day', '<common.date_time.day_abbreviations.Sun>'), ('wh', 1499.3000000000002)]><commands.solarforecast.labels.hours_percent[('hours', 11), ('percent', 34.075)]>"
+ }
+}

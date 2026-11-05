@@ -47,7 +47,7 @@ The bot will not start without these sections. The validator reports them as **e
   - `[WebViewer]` → use `[Web_Viewer]`
   - `[FeedManager]` → use `[Feed_Manager]`
   - `[Jokes]` → use `[Joke_Command]` / `[DadJoke_Command]` (see [Configuration](configuration.md) and [Upgrade](upgrade.md) for legacy support).
-  - **`[Aliases]`** — Deprecated in v0.9. Move entries to per-command `aliases =` under each `*_Command` section. The validator may report this as **info**; see [Upgrade guide](upgrade.md#upgrading-from-v08--v09).
+  - **`[Aliases]`** — Deprecated in v0.9. Move entries to per-command `aliases =` under each `*_Command` section. The validator may report this as **info**; see [Upgrade guide](upgrade.md#upgrading-from-v08-v09).
 - **Unknown sections** (not in the canonical list and not a `*_Command` section) are reported as **info**; the validator may suggest a similar section name if it looks like a command.
 
 ### Optional sections (info only)

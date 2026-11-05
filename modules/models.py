@@ -7,8 +7,67 @@ Contains shared data structures used across modules
 from dataclasses import dataclass
 from typing import Any, Optional
 
+from .flood_scope import channel_scope_entry, is_global_marker, outgoing_override
+
 # Firmware reserves extra bytes for regional (non-global) TC_FLOOD scope on channel text.
 CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD = 10
+
+# A DM carries no username prefix, so the whole cipher block is body.
+DM_BODY_LIMIT = 158
+
+# Channel text budget in UTF-8 bytes, covering the whole "<username>: <body>".
+#
+# The firmware accepts up to MAX_TEXT_LEN (160) and silently truncates past it,
+# but 155 is the better ceiling. The firmware encrypts a 4-byte timestamp and a
+# 1-byte text type ahead of the text, and AES pads to 16-byte blocks: 5 + 155
+# fills the 160-byte block exactly (a 163-byte payload), while the last 5 bytes
+# up to 160 spill into another block (a 179-byte payload) and cost 16 bytes of
+# airtime for 5 bytes of text. Both sizes are legal packets that repeaters
+# forward; this is about airtime per byte, not whether the mesh relays it.
+CHANNEL_FRAME_TEXT_LIMIT = 155
+
+# Floor for the body once a long username has been charged against the frame
+# limit, so a verbose name cannot leave nothing to say. Only names over 121
+# bytes reach it.
+CHANNEL_BODY_FLOOR = 32
+
+
+def channel_body_limit(username: Optional[str]) -> int:
+    """Global-scope body budget in UTF-8 bytes for a channel message from ``username``.
+
+    Channel messages go out as ``"<username>: <body>"``, so the budget is
+    ``CHANNEL_FRAME_TEXT_LIMIT`` minus the name and the ``": "``. Regional scope
+    costs a further ``CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD``, which callers
+    subtract themselves once they know the outgoing scope.
+
+    Shared by the command layer and the web viewer, which computes the same
+    number in a process that has no bot object.
+    """
+    name = str(username or "Bot")
+    return max(CHANNEL_FRAME_TEXT_LIMIT - len(name.encode("utf-8")) - 2, CHANNEL_BODY_FLOOR)
+
+
+def self_info_name(self_info: Any, fields: tuple[str, ...], *, by_presence: bool = False) -> Any:
+    """The radio's own name from ``meshcore.self_info`` (a dict or an object).
+
+    Returns the first truthy value among ``fields``, or None. With
+    ``by_presence`` an *object* answers with the first field it has at all,
+    even when that value is empty, which is how BaseCommand has always read it;
+    dicts are always read by truthiness. Callers apply their own fallback.
+    """
+    if not self_info:
+        return None
+    if isinstance(self_info, dict):
+        return next((self_info.get(f) for f in fields if self_info.get(f)), None)
+    for field in fields:
+        if by_presence:
+            if hasattr(self_info, field):
+                return getattr(self_info, field)
+        else:
+            value = getattr(self_info, field, None)
+            if value:
+                return value
+    return None
 
 
 @dataclass
@@ -41,6 +100,13 @@ class MeshMessage:
     # can be run for its text alone (e.g. a {cmd:...} placeholder in a scheduled
     # message) without spending airtime. A synthetic message only.
     capture_sink: Optional[list[str]] = None
+    # On-air body at construction. Mention/prefix cleanup may rewrite ``content``
+    # for command matching; display and web-viewer capture must use this snapshot.
+    original_content: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.original_content:
+            self.original_content = self.content
 
     def effective_outgoing_flood_scope(self, bot: Any) -> str:
         """Resolve outbound flood scope the same way as ``CommandManager.send_channel_message``.
@@ -53,22 +119,12 @@ class MeshMessage:
             return ""
         if self.reply_scope is not None:
             return (self.reply_scope or "").strip()
-        if self.channel and bot.config.has_section("Channels"):
-            channel_key = self.channel.strip().removeprefix("#").lower()
-            for key, value in bot.config.items("Channels"):
-                if not key.startswith("flood_scope."):
-                    continue
-                configured_channel = key[len("flood_scope."):].strip().removeprefix("#").lower()
-                if configured_channel == channel_key:
-                    return (value or "").strip()
-        scope_cfg = ""
-        if bot.config.has_section("Channels") and bot.config.has_option(
-            "Channels", "outgoing_flood_scope_override"
-        ):
-            scope_cfg = (bot.config.get("Channels", "outgoing_flood_scope_override") or "").strip()
-        return scope_cfg
+        channel_scope = channel_scope_entry(bot.config, self.channel)
+        if channel_scope is not None:
+            return channel_scope
+        return outgoing_override(bot.config)
 
     @staticmethod
     def is_global_flood_scope(scope: str) -> bool:
         """Match ``send_channel_message`` global markers (before ``_normalize_scope_name``)."""
-        return scope in ("", "*", "0", "None") or scope.lower() == "none"
+        return is_global_marker(scope)

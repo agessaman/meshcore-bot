@@ -5,45 +5,68 @@ Provides worldwide weather information using Open-Meteo API
 """
 
 import asyncio
+import math
 import re
 from datetime import datetime, timedelta
 from typing import Any, Optional, Union
 
 import requests
 
-from ...models import MeshMessage
-from ...utils import (
-    format_temperature_high_low,
-    geocode_city_sync,
-    geocode_zipcode_sync,
-    get_nominatim_geocoder,
-    rate_limited_nominatim_reverse_sync,
-)
-from ..base_command import BaseCommand
-
-# Import WXSIM parser for custom weather sources
-try:
-    from ...clients.wxsim_parser import WXSIMParser
-    WXSIM_PARSER_AVAILABLE = True
-except ImportError:
-    WXSIM_PARSER_AVAILABLE = False
-    WXSIMParser = None
-
-from ...clients.mqtt_weather import (
+from ...clients.mqtt_weather import (  # noqa: F401  re-exported
     get_mqtt_weather_topic,
     load_mqtt_weather_format_config,
     mqtt_weather_display_for_topic,
 )
+from ...clients.wxsim_parser import WXSIMParser
+from ...location import get_bot_lat_lon, get_companion_lat_lon
+from ...models import MeshMessage
+from ...utils import (  # noqa: F401  format_temperature_high_low and get_nominatim_geocoder re-exported
+    format_temperature_high_low,
+    geocode_city_sync,
+    geocode_zipcode_sync,
+    get_nominatim_geocoder,
+    normalize_us_state,
+    rate_limited_nominatim_reverse_sync,
+)
+from ...weather_common import (
+    _ARROWS_8,
+    _COMPASS_16,
+    WeatherCommandMixin,
+    load_open_meteo_model,
+    load_open_meteo_units,
+)
+from ..base_command import BaseCommand
+
+# Kept for code that checked them; these imports used to be optional.
+WXSIM_PARSER_AVAILABLE = True
 
 # Multiday: plain digits, 7day/7-day, or suffix form 7d/10d (min 2, max below). Open-Meteo allows up to 16 forecast days.
 GWX_MULTIDAY_MAX_DAYS = 16
 
+MI_TO_KM = 1.609344
+HPA_TO_MMHG = 0.750062
+# Past ~20 mi / 32 km, visibility is reported as unlimited anyway.
+VISIBILITY_CAP_MI = 20
+VISIBILITY_CAP_KM = 32
 
-class GlobalWxCommand(BaseCommand):
+
+
+def _int_or_none(value: Any) -> Optional[int]:
+    """int(value), or None for a missing or null field."""
+    return None if value is None else int(value)
+
+class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
     """Handles global weather commands with city/location support"""
 
+    _COORDINATES_RE = re.compile(r'^\s*-?\d+\.?\d*\s*,\s*-?\d+\.?\d*\s*$')
+    _ZIP_RE = re.compile(r'^\d{5}$')
+
     # Plugin metadata
+    # Every reply goes through send_response, so a scheduled {cmd:gwx ...} renders
+    # without transmitting, as wx (which can delegate here) already does.
+    render_safe = True
     name = "gwx"
+    translation_ns = "commands.gwx"
     keywords = ['gwx', 'globalweather', 'gwxa']
     description = "Get weather information for any global location (usage: gwx Tokyo)"
     category = "weather"
@@ -73,11 +96,7 @@ class GlobalWxCommand(BaseCommand):
         super().__init__(bot)
         self.url_timeout = 10  # seconds
 
-        # Initialize WXSIM parser if available
-        if WXSIM_PARSER_AVAILABLE:
-            self.wxsim_parser = WXSIMParser()
-        else:
-            self.wxsim_parser = None
+        self.wxsim_parser = WXSIMParser()
 
         self.weather_model = self._load_weather_model()
 
@@ -85,22 +104,12 @@ class GlobalWxCommand(BaseCommand):
         self.default_city = self.bot.config.get('Weather', 'default_city', fallback='').strip()
         self.default_state = self.bot.config.get('Weather', 'default_state', fallback='')
         self.default_country = self.bot.config.get('Weather', 'default_country', fallback='US')
+        self.always_show_location = self.bot.config.getboolean('Weather', 'always_show_location', fallback=False)
 
-        # Get unit preferences from config
-        self.temperature_unit = self.bot.config.get('Weather', 'temperature_unit', fallback='fahrenheit').lower()
-        self.wind_speed_unit = self.bot.config.get('Weather', 'wind_speed_unit', fallback='mph').lower()
-        self.precipitation_unit = self.bot.config.get('Weather', 'precipitation_unit', fallback='inch').lower()
-
-        # Validate units
-        if self.temperature_unit not in ['fahrenheit', 'celsius']:
-            self.logger.warning(f"Invalid temperature_unit '{self.temperature_unit}', using 'fahrenheit'")
-            self.temperature_unit = 'fahrenheit'
-        if self.wind_speed_unit not in ['mph', 'kmh', 'ms']:
-            self.logger.warning(f"Invalid wind_speed_unit '{self.wind_speed_unit}', using 'mph'")
-            self.wind_speed_unit = 'mph'
-        if self.precipitation_unit not in ['inch', 'mm']:
-            self.logger.warning(f"Invalid precipitation_unit '{self.precipitation_unit}', using 'inch'")
-            self.precipitation_unit = 'inch'
+        # Get unit preferences from config (validated)
+        self.temperature_unit, self.wind_speed_unit, self.precipitation_unit = load_open_meteo_units(
+            self.bot.config, self.logger
+        )
 
         # Initialize geocoder (will use rate-limited helpers for actual calls)
         self.geolocator = get_nominatim_geocoder()
@@ -108,9 +117,16 @@ class GlobalWxCommand(BaseCommand):
         # Get database manager for geocoding cache
         self.db_manager = bot.db_manager
 
-    def _format_high_low(self, high: Optional[Union[int, float]], low: Optional[Union[int, float]], temp_symbol: str) -> str:
-        """Format high/low using [Weather] temperature_*_format templates."""
-        return format_temperature_high_low(self.bot.config, high, low, temp_symbol, self.logger)
+    @property
+    def metric_distance(self) -> bool:
+        """Whether distances should be shown in kilometers.
+
+        Derived from [Weather] temperature_unit rather than the response
+        language so every unit in one reply agrees: a bot configured for
+        Fahrenheit should not print kilometers just because it answers in
+        Russian.
+        """
+        return self.temperature_unit == 'celsius'
 
     def _load_weather_model(self) -> Optional[str]:
         """Load and normalize Open-Meteo model selection from config.
@@ -118,22 +134,9 @@ class GlobalWxCommand(BaseCommand):
         Returns:
             Optional[str]: Model string, or None to omit the models parameter.
         """
-        if self.bot.config.has_option('Weather', 'weather_model'):
-            model = self.bot.config.get('Weather', 'weather_model', fallback='').strip().lower()
-            if not model:
-                # Explicitly blank means "let Open-Meteo auto-select".
-                return None
-        else:
-            # Unset falls back to Open-Meteo's best_match model.
-            model = 'best_match'
+        return load_open_meteo_model(self.bot.config, self.logger)
 
-        if not re.fullmatch(r'[a-z0-9_,.-]+', model):
-            self.logger.warning(f"Invalid weather_model '{model}', using 'best_match'")
-            return 'best_match'
-
-        return model
-
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         """Get help text for the command.
 
         Returns:
@@ -150,95 +153,21 @@ class GlobalWxCommand(BaseCommand):
         Returns:
             bool: True if message matches a keyword, False otherwise.
         """
-        content_lower = self.cleanup_message_for_matching(message)
-        return any(content_lower.startswith(keyword + ' ') or content_lower == keyword for keyword in self.keywords)
+        return self._cleaned_content_matches(
+            message,
+            lambda content_lower: any(
+                content_lower.startswith(keyword + ' ') or content_lower == keyword
+                for keyword in self.keywords
+            ),
+        )
 
     def _get_companion_location(self, message: MeshMessage) -> Optional[tuple[float, float]]:
-        """Get companion/sender location from database.
-
-        Args:
-            message: The message object.
-
-        Returns:
-            Optional[Tuple[float, float]]: Tuple of (latitude, longitude) or None.
-        """
-        try:
-            sender_pubkey = message.sender_pubkey
-            if not sender_pubkey:
-                self.logger.debug("No sender_pubkey in message for companion location lookup")
-                return None
-
-            query = '''
-                SELECT latitude, longitude
-                FROM complete_contact_tracking
-                WHERE public_key = ?
-                AND latitude IS NOT NULL AND longitude IS NOT NULL
-                AND latitude != 0 AND longitude != 0
-                ORDER BY COALESCE(last_advert_timestamp, last_heard) DESC
-                LIMIT 1
-            '''
-
-            results = self.bot.db_manager.execute_query(query, (sender_pubkey,))
-
-            if results:
-                row = results[0]
-                lat = row['latitude']
-                lon = row['longitude']
-                self.logger.debug(f"Found companion location: {lat}, {lon} for pubkey {sender_pubkey[:16]}...")
-                return (lat, lon)
-            else:
-                self.logger.debug(f"No location found in database for pubkey {sender_pubkey[:16]}...")
-            return None
-        except Exception as e:
-            self.logger.warning(f"Error getting companion location: {e}")
-            return None
+        """Get companion/sender location from the contact-tracking database."""
+        return get_companion_lat_lon(self.bot, message, self.logger, error_level="warning", trace=True)
 
     def _get_bot_location(self) -> Optional[tuple[float, float]]:
-        """Get bot location from config.
-
-        Returns:
-            Optional[Tuple[float, float]]: Tuple of (latitude, longitude) or None.
-        """
-        try:
-            lat = self.bot.config.getfloat('Bot', 'bot_latitude', fallback=None)
-            lon = self.bot.config.getfloat('Bot', 'bot_longitude', fallback=None)
-
-            if lat is not None and lon is not None:
-                # Validate coordinates
-                if -90 <= lat <= 90 and -180 <= lon <= 180:
-                    return (lat, lon)
-            return None
-        except Exception as e:
-            self.logger.debug(f"Error getting bot location: {e}")
-            return None
-
-    def _get_custom_mqtt_weather_topic(self, location: Optional[str] = None) -> Optional[str]:
-        return get_mqtt_weather_topic(self.bot.config, location)
-
-    def _mqtt_weather_line(
-        self,
-        topic: str,
-        forecast_type: str,
-        location_name: Optional[str],
-    ) -> str:
-        if forecast_type != "default":
-            return self.translate("commands.gwx.mqtt_forecast_not_supported")
-
-        fmt = load_mqtt_weather_format_config(self.bot.config)
-        cache = getattr(self.bot, "mqtt_weather_cache", None)
-        text, err = mqtt_weather_display_for_topic(topic, cache, fmt)
-        if text is not None:
-            if location_name:
-                return f"{location_name}: {text}"
-            return text
-        if err == "no_cache":
-            return self.translate("commands.gwx.mqtt_weather_no_subscriber")
-        if err in ("no_data", "empty_payload", "empty_after_sanitize"):
-            return self.translate("commands.gwx.mqtt_weather_no_data")
-        if err == "stale":
-            return self.translate("commands.gwx.mqtt_weather_stale")
-        detail = (err or "unknown").replace("_", " ")
-        return self.translate("commands.gwx.mqtt_weather_payload_error", detail=detail)
+        """Get bot location from config ([Bot] bot_latitude, bot_longitude)."""
+        return get_bot_lat_lon(self.bot, self.logger)
 
     def _get_custom_wxsim_source(self, location: Optional[str] = None) -> Optional[str]:
         """Get custom WXSIM source URL from config.
@@ -252,8 +181,6 @@ class GlobalWxCommand(BaseCommand):
         Returns:
             Optional[str]: Source URL or None if not found
         """
-        if not self.wxsim_parser:
-            return None
 
         section = 'Weather'
         if not self.bot.config.has_section(section):
@@ -280,6 +207,16 @@ class GlobalWxCommand(BaseCommand):
 
         return None
 
+    async def _fetch_wxsim(
+        self, source: str, forecast_type: str, num_days: int, message: MeshMessage, location: Optional[str]
+    ) -> str:
+        # Blocking HTTP fetch of the WXSIM plaintext file.
+        if location is None:
+            return await asyncio.to_thread(self._get_wxsim_weather, source, forecast_type, num_days, message)
+        return await asyncio.to_thread(
+            self._get_wxsim_weather, source, forecast_type, num_days, message, location
+        )
+
     def _get_wxsim_weather(self, source_url: str, forecast_type: str = "default",
                                 num_days: int = 7, message: MeshMessage = None,
                                 location_name: Optional[str] = None) -> str:
@@ -295,8 +232,9 @@ class GlobalWxCommand(BaseCommand):
         Returns:
             str: Formatted weather string
         """
-        if not self.wxsim_parser:
-            return self.translate('commands.gwx.error', error="WXSIM parser not available")
+
+        if forecast_type in ("hourly", "alerts"):
+            return self.translate('commands.gwx.source_option_not_available')
 
         # Fetch WXSIM data
         text = self.wxsim_parser.fetch_from_url(source_url, timeout=self.url_timeout)
@@ -305,6 +243,11 @@ class GlobalWxCommand(BaseCommand):
 
         # Parse the data
         forecast = self.wxsim_parser.parse(text)
+
+        # Validate forecast is not stale (as wx does)
+        is_stale, stale_reason = self.wxsim_parser.is_forecast_stale(forecast, max_age_hours=48)
+        if is_stale:
+            self.logger.warning(f"WXSIM forecast appears stale: {stale_reason}")
 
         # Get unit preferences from config
         temp_unit = self.bot.config.get('Weather', 'temperature_unit', fallback='fahrenheit').lower()
@@ -315,8 +258,8 @@ class GlobalWxCommand(BaseCommand):
             # Get tomorrow's forecast
             if len(forecast.periods) > 1:
                 tomorrow = forecast.periods[1]
-                high = self.wxsim_parser._convert_temp(tomorrow.high_temp, temp_unit) if tomorrow.high_temp else None
-                low = self.wxsim_parser._convert_temp(tomorrow.low_temp, temp_unit) if tomorrow.low_temp else None
+                high = self.wxsim_parser._convert_temp(tomorrow.high_temp, temp_unit) if tomorrow.high_temp is not None else None
+                low = self.wxsim_parser._convert_temp(tomorrow.low_temp, temp_unit) if tomorrow.low_temp is not None else None
                 temp_symbol = "°F" if temp_unit == 'fahrenheit' else "°C"
 
                 result = f"Tomorrow: {tomorrow.conditions}"
@@ -347,8 +290,8 @@ class GlobalWxCommand(BaseCommand):
             # Add today's high/low if available
             if forecast.periods:
                 today = forecast.periods[0]
-                high = self.wxsim_parser._convert_temp(today.high_temp, temp_unit) if today.high_temp else None
-                low = self.wxsim_parser._convert_temp(today.low_temp, temp_unit) if today.low_temp else None
+                high = self.wxsim_parser._convert_temp(today.high_temp, temp_unit) if today.high_temp is not None else None
+                low = self.wxsim_parser._convert_temp(today.low_temp, temp_unit) if today.low_temp is not None else None
                 temp_symbol = "°F" if temp_unit == 'fahrenheit' else "°C"
 
                 hl_today = self._format_high_low(high, low, temp_symbol)
@@ -358,8 +301,8 @@ class GlobalWxCommand(BaseCommand):
                 # Add tomorrow if available
                 if len(forecast.periods) > 1:
                     tomorrow = forecast.periods[1]
-                    tomorrow_high = self.wxsim_parser._convert_temp(tomorrow.high_temp, temp_unit) if tomorrow.high_temp else None
-                    tomorrow_low = self.wxsim_parser._convert_temp(tomorrow.low_temp, temp_unit) if tomorrow.low_temp else None
+                    tomorrow_high = self.wxsim_parser._convert_temp(tomorrow.high_temp, temp_unit) if tomorrow.high_temp is not None else None
+                    tomorrow_low = self.wxsim_parser._convert_temp(tomorrow.low_temp, temp_unit) if tomorrow.low_temp is not None else None
 
                     hl_tom = self._format_high_low(tomorrow_high, tomorrow_low, temp_symbol)
                     if hl_tom:
@@ -420,129 +363,40 @@ class GlobalWxCommand(BaseCommand):
         # Parse the command to extract location and forecast type
         parts = content.split()
 
+        # An option alone ("gwx hourly") applies to the no-location fallbacks below.
+        parts, option_word, option_type, option_days = self._split_option_only(parts, GWX_MULTIDAY_MAX_DAYS)
+
         # If no location specified, check custom MQTT then WXSIM default sources
         if len(parts) < 2:
             mqtt_topic = self._get_custom_mqtt_weather_topic(None)
             if mqtt_topic:
-                try:
-                    self.record_execution(message.sender_id)
-                    weather_data = self._mqtt_weather_line(mqtt_topic, "default", None)
-                    await self.send_response(message, weather_data)
-                    return True
-                except Exception as e:
-                    self.logger.error(f"Error reading MQTT weather: {e}")
-                    await self.send_response(message, self.translate("commands.gwx.error", error=str(e)))
-                    return True
+                return await self._reply_from_mqtt(message, mqtt_topic, option_type, None, split_multiday=False)
 
             wxsim_source = self._get_custom_wxsim_source(None)  # Check for default
             if wxsim_source:
-                # Use custom WXSIM default source
-                try:
-                    self.record_execution(message.sender_id)
-                    # Blocking HTTP fetch of the WXSIM plaintext file.
-                    weather_data = await asyncio.to_thread(
-                        self._get_wxsim_weather, wxsim_source, "default", 7, message
-                    )
-                    await self.send_response(message, weather_data)
-                    return True
-                except Exception as e:
-                    self.logger.error(f"Error fetching WXSIM weather: {e}")
-                    await self.send_response(message, self.translate('commands.gwx.error', error=str(e)))
-                    return True
+                return await self._reply_from_wxsim(message, wxsim_source, option_type, option_days)
 
-            # No custom source, try companion location
-            companion_location = self._get_companion_location(message)
-            if companion_location:
-                # Convert coordinates to location string
-                # Blocking reverse geocode.
-                location_str = await asyncio.to_thread(
-                    self._coordinates_to_location_string,
-                    companion_location[0], companion_location[1],
-                )
-                if location_str:
-                    # Use the location string as if user provided it
-                    parts = [parts[0], location_str]
-                    self.logger.info(f"Using companion location: {location_str} ({companion_location[0]}, {companion_location[1]})")
-                else:
-                    # If reverse geocoding fails, use coordinates directly (geocode_location can handle "lat,lon" format)
-                    location_str = f"{companion_location[0]},{companion_location[1]}"
-                    parts = [parts[0], location_str]
-                    self.logger.info(f"Using companion coordinates: {location_str}")
-            else:
-                # No companion location: use default city if configured, then bot location fallback
-                if self.default_city:
-                    location_parts = [self.default_city]
-                    if self.default_state:
-                        location_parts.append(self.default_state)
-                    if self.default_country:
-                        location_parts.append(self.default_country)
-                    location_str = ", ".join(location_parts)
-                    parts = [parts[0], location_str]
-                    self.logger.info(f"Using default city (no args): {location_str}")
-                else:
-                    # No default city: optionally use bot's configured coordinates
-                    use_bot = self.get_config_value(
-                        'Wx_Command',
-                        'use_bot_location_when_no_location',
-                        fallback=False,
-                        value_type='bool',
-                    )
-                    bot_loc = self._get_bot_location() if use_bot else None
-                    if bot_loc:
-                        # Blocking reverse geocode.
-                        location_str = await asyncio.to_thread(
-                            self._coordinates_to_location_string, bot_loc[0], bot_loc[1]
-                        )
-                        if location_str:
-                            parts = [parts[0], location_str]
-                            self.logger.info(
-                                f"Using bot location (no args): {location_str} "
-                                f"({bot_loc[0]}, {bot_loc[1]})"
-                            )
-                        else:
-                            location_str = f"{bot_loc[0]},{bot_loc[1]}"
-                            parts = [parts[0], location_str]
-                            self.logger.info(f"Using bot coordinates (no args): {location_str}")
-                    else:
-                        if use_bot:
-                            self.logger.debug(
-                                "use_bot_location_when_no_location enabled but bot_latitude/bot_longitude "
-                                "not set; showing usage"
-                            )
-                        else:
-                            self.logger.debug("No companion/default city location found, showing usage")
-                        await self.send_response(message, self.translate('commands.gwx.usage'))
-                        return True
+            # No custom source: the sender's position, default city, then the bot's position.
+            # Positions are forecast as coordinates: re-geocoding a reverse-geocoded
+            # place name could move it to that town's center; the reply's label
+            # comes from one reverse lookup in geocode_location.
+            location_str, _ = await self._no_location_fallback(message)
+            if location_str is None:
+                await self.send_response(message, self.translate('commands.gwx.usage'))
+                return True
+            parts = [parts[0], location_str]
 
-        # Check for forecast type options: "tomorrow", Nd (7d, 10d), or plain digit days 2–GWX_MULTIDAY_MAX_DAYS
-        forecast_type = "default"
-        num_days = 7  # Default for multi-day forecast
-        location_parts = parts[1:]
+        if option_word:
+            parts.append(option_word)
 
-        # Check last part for forecast type
-        if len(location_parts) > 0:
-            last_part = location_parts[-1].lower()
-            if last_part == "tomorrow":
-                forecast_type = "tomorrow"
-                location_parts = location_parts[:-1]
-            elif last_part in ["7day", "7-day"]:
-                forecast_type = "multiday"
-                num_days = 7
-                location_parts = location_parts[:-1]
-            else:
-                nd_match = re.fullmatch(r"(\d+)d", last_part)
-                if nd_match:
-                    days = int(nd_match.group(1))
-                    if 2 <= days <= GWX_MULTIDAY_MAX_DAYS:
-                        forecast_type = "multiday"
-                        num_days = days
-                        location_parts = location_parts[:-1]
-                elif last_part.isdigit():
-                    days = int(last_part)
-                    if 2 <= days <= GWX_MULTIDAY_MAX_DAYS:
-                        forecast_type = "multiday"
-                        num_days = days
-                        location_parts = location_parts[:-1]
+        if len(parts) == 2 and self._is_custom_source_name(parts[1]):
+            location_parts, forecast_type, num_days = parts[1:], "default", 7
+        else:
+            location_parts, forecast_type, num_days = self._parse_forecast_suffix(
+                parts[1:], GWX_MULTIDAY_MAX_DAYS, allow_hourly=True
+            )
+        if len(parts) > 2 and parts[-1].lower() == "alerts":
+            location_parts, forecast_type = parts[1:-1], "alerts"
 
         # Join remaining parts to handle "city, country" format
         location = ' '.join(location_parts).strip()
@@ -555,39 +409,16 @@ class GlobalWxCommand(BaseCommand):
         mqtt_topic = self._get_custom_mqtt_weather_topic(location)
         if mqtt_topic:
             self.logger.info(f"Using custom MQTT weather topic for location '{location}': {mqtt_topic}")
-            try:
-                self.record_execution(message.sender_id)
-                weather_data = self._mqtt_weather_line(mqtt_topic, forecast_type, location)
-                if forecast_type == "multiday":
-                    await self._send_multiday_forecast(message, weather_data)
-                else:
-                    await self.send_response(message, weather_data)
-                return True
-            except Exception as e:
-                self.logger.error(f"Error reading MQTT weather: {e}")
-                await self.send_response(message, self.translate("commands.gwx.error", error=str(e)))
-                return True
+            return await self._reply_from_mqtt(message, mqtt_topic, forecast_type, location)
 
         # Check for custom WXSIM source first (before normal geocoding)
         wxsim_source = self._get_custom_wxsim_source(location)
         if wxsim_source:
-            # Use custom WXSIM source
-            try:
-                self.record_execution(message.sender_id)
-                # Blocking HTTP fetch of the WXSIM plaintext file.
-                weather_data = await asyncio.to_thread(
-                    self._get_wxsim_weather, wxsim_source, forecast_type, num_days,
-                    message, location,
-                )
-                if forecast_type == "multiday":
-                    await self._send_multiday_forecast(message, weather_data)
-                else:
-                    await self.send_response(message, weather_data)
-                return True
-            except Exception as e:
-                self.logger.error(f"Error fetching WXSIM weather: {e}")
-                await self.send_response(message, self.translate('commands.gwx.error', error=str(e)))
-                return True
+            return await self._reply_from_wxsim(message, wxsim_source, forecast_type, num_days, location)
+
+        if forecast_type == "alerts":
+            await self.send_response(message, self.translate('commands.gwx.source_option_not_available'))
+            return True
 
         try:
             # Record execution for this user
@@ -596,25 +427,7 @@ class GlobalWxCommand(BaseCommand):
             # Get weather data for the location
             weather_data = await self.get_weather_for_location(location, forecast_type, num_days, message)
 
-            # Check if we need to send multiple messages (for alerts)
-            if isinstance(weather_data, tuple) and weather_data[0] == "multi_message":
-                # Send weather data first
-                await self.send_response(message, weather_data[1])
-
-                # Wait for bot TX rate limiter
-                rate_limit = self.bot.config.getfloat('Bot', 'bot_tx_rate_limit_seconds', fallback=1.0)
-                sleep_time = max(rate_limit + 1.0, 2.0)
-                await asyncio.sleep(sleep_time)
-
-                # Send alerts
-                await self.send_response(message, weather_data[2])
-            elif forecast_type == "multiday":
-                # Use message splitting for multi-day forecasts
-                await self._send_multiday_forecast(message, weather_data)
-            else:
-                await self.send_response(message, weather_data)
-
-            return True
+            return await self._send_weather_reply(message, weather_data, forecast_type)
 
         except Exception as e:
             self.logger.error(f"Error in global weather command: {e}")
@@ -626,7 +439,7 @@ class GlobalWxCommand(BaseCommand):
 
         Args:
             location: The location (city name, etc.).
-            forecast_type: "default", "tomorrow", or "multiday".
+            forecast_type: "default", "tomorrow", "multiday", or "hourly".
             num_days: Number of days for multiday forecast (2–16).
             message: The MeshMessage for dynamic length calculation.
 
@@ -656,41 +469,68 @@ class GlobalWxCommand(BaseCommand):
                 return self.translate('commands.gwx.no_location', location=location)
 
             lat, lon, address_info, geocode_result = result
-
-            # Format location name for display
-            location_display = self._format_location_display(address_info, geocode_result, location)
-            self.logger.debug(f"Formatted location_display: '{location_display}' from location: '{location}'")
-
-            # Calculate the length of the location prefix (location_display + ": ")
-            location_prefix_len = len(f"{location_display}: ")
-
-            # Get weather forecast from Open-Meteo based on type
-            # Pass location_prefix_len so weather formatting can account for it
-            if forecast_type == "tomorrow":
-                weather_text = self.get_open_meteo_weather(lat, lon, forecast_type="tomorrow", message=message, location_prefix_len=location_prefix_len)
-            elif forecast_type == "multiday":
-                weather_text = self.get_open_meteo_weather(lat, lon, forecast_type="multiday", num_days=num_days, message=message, location_prefix_len=location_prefix_len)
-            else:
-                weather_text = self.get_open_meteo_weather(lat, lon, message=message, location_prefix_len=location_prefix_len)
-
-            # Check if it's an error (translated error message)
-            error_fetching = self.translate('commands.gwx.error_fetching')
-            if weather_text == error_fetching or weather_text == self.ERROR_FETCHING_DATA:
-                return self.translate('commands.gwx.error_fetching_api')
-
-            # Check for severe weather warnings (only for default forecast type)
-            if forecast_type == "default":
-                alert_text = self._check_extreme_conditions(weather_text)
-
-                if alert_text:
-                    # Return multi-message format
-                    return ("multi_message", f"{location_display}: {weather_text}", alert_text)
-
-            return f"{location_display}: {weather_text}"
+            return self._weather_for_point(
+                location, lat, lon, address_info, geocode_result, forecast_type, num_days, message
+            )
 
         except Exception as e:
             self.logger.error(f"Error getting weather for {location}: {e}")
             return self.translate('commands.gwx.error', error=str(e))
+
+    def _weather_for_point(
+        self,
+        location: str,
+        lat: float,
+        lon: float,
+        address_info: Optional[dict],
+        geocode_result: Any,
+        forecast_type: str = "default",
+        num_days: int = 7,
+        message: MeshMessage = None,
+    ) -> Union[str, tuple[str, str, str]]:
+        """The Open-Meteo reply for a place already geocoded, labeled when the label adds information.
+
+        Also wx's answer for a place outside NWS coverage ([Weather] openmeteo_fallback).
+        """
+        # Format location name for display, when it tells the user something
+        location_display = ""
+        if self._location_label_adds_information(location, address_info):
+            location_display = self._format_location_display(address_info, geocode_result, location)
+        self.logger.debug(f"Formatted location_display: '{location_display}' from location: '{location}'")
+        prefix = f"{location_display}: " if location_display else ""
+
+        # Calculate the length of the location prefix (location_display + ": ").
+        # In UTF-8 bytes, not characters: the budget it is subtracted from is a
+        # byte budget, and a non-ASCII city name ("München, DE: ") costs more
+        # bytes than it has characters.
+        location_prefix_len = self._count_display_width(prefix)
+
+        # Get weather forecast from Open-Meteo based on type
+        # Pass location_prefix_len so weather formatting can account for it
+        current = {}
+        if forecast_type == "tomorrow":
+            weather_text = self.get_open_meteo_weather(lat, lon, forecast_type="tomorrow", message=message, location_prefix_len=location_prefix_len)
+        elif forecast_type == "multiday":
+            weather_text = self.get_open_meteo_weather(lat, lon, forecast_type="multiday", num_days=num_days, message=message, location_prefix_len=location_prefix_len)
+        elif forecast_type == "hourly":
+            weather_text = self.get_open_meteo_weather(lat, lon, forecast_type="hourly", message=message, location_prefix_len=location_prefix_len)
+        else:
+            weather_text, current = self._get_open_meteo_weather_with_conditions(lat, lon, message=message, location_prefix_len=location_prefix_len)
+
+        # Check if it's an error (translated error message)
+        error_fetching = self.translate('commands.gwx.error_fetching')
+        if weather_text == error_fetching or weather_text == self.ERROR_FETCHING_DATA:
+            return self.translate('commands.gwx.error_fetching_api')
+
+        # Check for severe weather warnings (only for default forecast type)
+        if forecast_type == "default":
+            alert_text = self._check_extreme_conditions(current)
+
+            if alert_text:
+                # Return multi-message format
+                return ("multi_message", f"{prefix}{weather_text}", alert_text)
+
+        return f"{prefix}{weather_text}"
 
     def geocode_location(self, location: str) -> tuple:
         """Convert location string to lat/lon with address details.
@@ -708,80 +548,38 @@ class GlobalWxCommand(BaseCommand):
         try:
             # Check if location is coordinates (decimal numbers separated by comma, with optional spaces)
             # Handle formats like: "47.6,-122.3", "47.6, -122.3", "47.980525, -122.150649", " -47.6 , 122.3 "
-            if re.match(r'^\s*-?\d+\.?\d*\s*,\s*-?\d+\.?\d*\s*$', location):
-                # Parse lat,lon coordinates
-                try:
-                    lat_str, lon_str = location.split(',')
-                    lat = float(lat_str.strip())
-                    lon = float(lon_str.strip())
-
-                    # Validate coordinate ranges
-                    if not (-90 <= lat <= 90):
-                        self.logger.warning(f"Invalid latitude: {lat}. Must be between -90 and 90.")
-                        return None, None, None, None
-                    if not (-180 <= lon <= 180):
-                        self.logger.warning(f"Invalid longitude: {lon}. Must be between -180 and 180.")
-                        return None, None, None, None
-
-                    # Get address info via reverse geocoding
-                    address_info = None
-                    geocode_result = None
-                    try:
-                        reverse_location = rate_limited_nominatim_reverse_sync(
-                            self.bot, f"{lat}, {lon}", timeout=10
-                        )
-                        if reverse_location:
-                            geocode_result = reverse_location
-                            address_info = reverse_location.raw.get('address', {})
-                    except Exception as e:
-                        self.logger.debug(f"Reverse geocoding failed for coordinates: {e}")
-                        address_info = {}
-
-                    return lat, lon, address_info or {}, geocode_result
-                except ValueError:
-                    self.logger.warning(f"Invalid coordinates format: {location}")
-                    return None, None, None, None
+            if self._COORDINATES_RE.match(location):
+                return self._geocode_coordinates(location)
 
             # US ZIP code (5 digits): use geocode_zipcode_sync so the query is "zip, US"
             # and we don't get non‑US matches (e.g. "98104" -> Lithuania) from Nominatim.
-            if re.match(r'^\d{5}$', location.strip()):
-                lat, lon = geocode_zipcode_sync(
-                    self.bot, location,
-                    default_country=self.default_country,
-                    timeout=10
-                )
-                if lat is not None and lon is not None:
-                    address_info = {}
-                    geocode_result = None
-                    try:
-                        reverse_location = rate_limited_nominatim_reverse_sync(
-                            self.bot, f"{lat}, {lon}", timeout=10
-                        )
-                        if reverse_location:
-                            geocode_result = reverse_location
-                            address_info = reverse_location.raw.get('address', {})
-                    except Exception as e:
-                        self.logger.debug(f"Reverse geocoding failed for zip {location}: {e}")
-                    return lat, lon, address_info or {}, geocode_result
-                # Invalid or unknown US ZIP; do not fall through to city (avoids foreign matches)
+            if self._ZIP_RE.match(location.strip()):
+                return self._geocode_zipcode(location)
+
+            return self._geocode_city(location)
+
+        except Exception as e:
+            self.logger.error(f"Error geocoding location {location}: {e}")
+            return None, None, None, None
+
+    def _geocode_coordinates(self, location: str) -> tuple:
+        """geocode_location for a "lat,lon" string: validate, then reverse geocode for a label."""
+        # Parse lat,lon coordinates
+        try:
+            lat_str, lon_str = location.split(',')
+            lat = float(lat_str.strip())
+            lon = float(lon_str.strip())
+
+            # Validate coordinate ranges
+            if not (-90 <= lat <= 90):
+                self.logger.warning(f"Invalid latitude: {lat}. Must be between -90 and 90.")
+                return None, None, None, None
+            if not (-180 <= lon <= 180):
+                self.logger.warning(f"Invalid longitude: {lon}. Must be between -180 and 180.")
                 return None, None, None, None
 
-            # Use the shared geocode_city_sync function which properly handles
-            # default state and country for city disambiguation
-            # This ensures "olympia" matches Olympia, WA (not Greece) when default_state=WA
-            lat, lon, address_info = geocode_city_sync(
-                self.bot, location,
-                default_state=self.default_state,
-                default_country=self.default_country,
-                include_address_info=True,
-                timeout=10
-            )
-
-            if lat is None or lon is None:
-                return None, None, None, None
-
-            # Get full geocode result for display name formatting
-            # Try reverse geocoding to get the full result object
+            # Get address info via reverse geocoding
+            address_info = None
             geocode_result = None
             try:
                 reverse_location = rate_limited_nominatim_reverse_sync(
@@ -789,15 +587,107 @@ class GlobalWxCommand(BaseCommand):
                 )
                 if reverse_location:
                     geocode_result = reverse_location
-            except Exception:
-                # If reverse geocoding fails, we still have lat/lon and address_info
-                pass
+                    address_info = reverse_location.raw.get('address', {})
+            except Exception as e:
+                self.logger.debug(f"Reverse geocoding failed for coordinates: {e}")
+                address_info = {}
 
             return lat, lon, address_info or {}, geocode_result
-
-        except Exception as e:
-            self.logger.error(f"Error geocoding location {location}: {e}")
+        except ValueError:
+            self.logger.warning(f"Invalid coordinates format: {location}")
             return None, None, None, None
+
+    def _geocode_zipcode(self, location: str) -> tuple:
+        """geocode_location for a US ZIP code (never falls through to a city lookup)."""
+        lat, lon = geocode_zipcode_sync(
+            self.bot, location,
+            default_country=self.default_country,
+            timeout=10
+        )
+        if lat is not None and lon is not None:
+            # A ZIP code is not named in the reply (as in wx), so no reverse lookup,
+            # unless [Weather] always_show_location asks for every place to be named.
+            if not self.always_show_location:
+                return lat, lon, {}, None
+            try:
+                reverse_location = rate_limited_nominatim_reverse_sync(
+                    self.bot, f"{lat}, {lon}", timeout=10
+                )
+            except Exception as e:
+                self.logger.debug(f"Reverse geocoding failed for ZIP code {location}: {e}")
+                reverse_location = None
+            if reverse_location:
+                return lat, lon, reverse_location.raw.get('address', {}) or {}, reverse_location
+            return lat, lon, {}, None
+        # Invalid or unknown US ZIP; do not fall through to city (avoids foreign matches)
+        return None, None, None, None
+
+    def _geocode_city(self, location: str) -> tuple:
+        """geocode_location for a place name, preferring the default state and country."""
+        # Use the shared geocode_city_sync function which properly handles
+        # default state and country for city disambiguation
+        # This ensures "olympia" matches Olympia, WA (not Greece) when default_state=WA
+        lat, lon, address_info = geocode_city_sync(
+            self.bot, location,
+            default_state=self.default_state,
+            default_country=self.default_country,
+            include_address_info=True,
+            timeout=10
+        )
+
+        if lat is None or lon is None:
+            return None, None, None, None
+
+        # Get full geocode result for display name formatting
+        # Try reverse geocoding to get the full result object
+        geocode_result = None
+        try:
+            reverse_location = rate_limited_nominatim_reverse_sync(
+                self.bot, f"{lat}, {lon}", timeout=10
+            )
+            if reverse_location:
+                geocode_result = reverse_location
+        except Exception:
+            # If reverse geocoding fails, we still have lat/lon and address_info
+            pass
+
+        return lat, lon, address_info or {}, geocode_result
+
+    def _location_label_adds_information(self, location: str, address_info: Optional[dict]) -> bool:
+        """Whether the reply should name the place, as wx decides: only when it adds information.
+
+        Coordinates (typed, or the sender's or bot's own position) are named when a
+        place was found for them. A ZIP code is not named. A city is named when it
+        resolved to another country than [Weather] default_country or, in the US, to
+        another state than default_state (or no default_state is set).
+
+        With [Weather] always_show_location, any place a lookup found is named.
+        """
+        if not address_info:
+            return False
+        is_zip = bool(self._ZIP_RE.match(location.strip()))
+        if is_zip and not self.always_show_location:
+            return False
+        if is_zip or self._COORDINATES_RE.match(location):
+            # Without a place name the label would only repeat the ZIP code or coordinates.
+            return any(address_info.get(field) for field in ('city', 'town', 'village', 'municipality', 'city_district'))
+        if self.always_show_location:
+            return True
+        country = (address_info.get('country_code') or '').upper()
+        default_country = (self.default_country or '').strip().upper()
+        if country and default_country and country != default_country:
+            return True
+        if country != 'US':
+            return False
+        state = address_info.get('state') or ''
+        if not state or not self.default_state:
+            return bool(state)
+        return self._state_key(state) != self._state_key(self.default_state)
+
+    def _state_key(self, state: str) -> str:
+        """A US state as its abbreviation, for comparing "Washington" with "WA"."""
+        abbreviation, _ = normalize_us_state(state)
+        return (abbreviation or self._get_state_abbreviation(state.strip())).upper()
 
     def _format_location_display(self, address_info: dict, geocode_result: Any, fallback: str) -> str:
         """Format location name for display from address info - returns 'City, CountryCode' format.
@@ -815,6 +705,37 @@ class GlobalWxCommand(BaseCommand):
         if address_info:
             country_code = address_info.get('country_code', '').upper()
 
+        city = self._display_city(address_info, geocode_result)
+
+        # For US locations, include state abbreviation
+        if country_code == 'US':
+            state = None
+            if address_info:
+                state = address_info.get('state')
+            if city and state:
+                state_abbrev = self._get_state_abbreviation(state)
+                return f"{city}, {state_abbrev}"
+            elif city:
+                return f"{city}, US"
+
+        # For international locations, always use country code if available
+        if city:
+            if country_code:
+                return f"{city}, {country_code}"
+            elif address_info and address_info.get('country'):
+                # Fallback to country name if no code available
+                country = address_info.get('country')
+                # Shorten very long country names
+                if len(country) > 15:
+                    return f"{city}, {country[:15]}"
+                return f"{city}, {country}"
+            else:
+                return city
+
+        return self._fallback_location_label(fallback, country_code)
+
+    def _display_city(self, address_info: dict, geocode_result: Any) -> Optional[str]:
+        """The city part of _format_location_display: address fields, then display_name."""
         # Try to get city name from address_info (this is more reliable than display_name)
         city = None
         if address_info:
@@ -854,31 +775,10 @@ class GlobalWxCommand(BaseCommand):
                             first_part = first_part.replace(suffix, '').strip()
                     city = first_part
 
-        # For US locations, include state abbreviation
-        if country_code == 'US':
-            state = None
-            if address_info:
-                state = address_info.get('state')
-            if city and state:
-                state_abbrev = self._get_state_abbreviation(state)
-                return f"{city}, {state_abbrev}"
-            elif city:
-                return f"{city}, US"
+        return city
 
-        # For international locations, always use country code if available
-        if city:
-            if country_code:
-                return f"{city}, {country_code}"
-            elif address_info and address_info.get('country'):
-                # Fallback to country name if no code available
-                country = address_info.get('country')
-                # Shorten very long country names
-                if len(country) > 15:
-                    return f"{city}, {country[:15]}"
-                return f"{city}, {country}"
-            else:
-                return city
-
+    def _fallback_location_label(self, fallback: str, country_code: str) -> str:
+        """_format_location_display's label when no city was found: built from the input."""
         # Final fallback: try to extract from input and capitalize
         if fallback:
             # Try to extract city name from input (before first comma if present)
@@ -931,7 +831,7 @@ class GlobalWxCommand(BaseCommand):
         Args:
             lat: Latitude.
             lon: Longitude.
-            forecast_type: "default", "tomorrow", or "multiday".
+            forecast_type: "default", "tomorrow", "multiday", or "hourly".
             num_days: Number of days for multiday forecast (2–16).
             message: The MeshMessage for dynamic length calculation.
             location_prefix_len: Length of location prefix (e.g., "City, CC: ") that will be added later.
@@ -939,6 +839,13 @@ class GlobalWxCommand(BaseCommand):
         Returns:
             str: Formatted weather string or error message.
         """
+        weather, _ = self._get_open_meteo_weather_with_conditions(
+            lat, lon, forecast_type, num_days, message, location_prefix_len
+        )
+        return weather
+
+    def _get_open_meteo_weather_with_conditions(self, lat: float, lon: float, forecast_type: str = "default", num_days: int = 7, message: MeshMessage = None, location_prefix_len: int = 0) -> tuple[str, dict]:
+        """Return the reply and current conditions from the same Open-Meteo request."""
         # Get max message length dynamically, then subtract location prefix length
         max_length = self.get_max_message_length(message) if message else 130
         max_length = max_length - location_prefix_len  # Account for location prefix
@@ -948,7 +855,9 @@ class GlobalWxCommand(BaseCommand):
 
             # Determine forecast_days based on type
             if forecast_type == "multiday":
-                forecast_days = min(num_days, 16)  # Open-Meteo supports up to 16 days
+                # Index 0 is today and the forecast starts tomorrow, so N days need N+1
+                # (Open-Meteo returns at most 16).
+                forecast_days = min(num_days + 1, 16)
             elif forecast_type == "tomorrow":
                 forecast_days = 2  # Need today and tomorrow
             else:
@@ -957,7 +866,7 @@ class GlobalWxCommand(BaseCommand):
             params = {
                 'latitude': lat,
                 'longitude': lon,
-                'current': 'temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure',
+                'current': 'temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure,is_day',
                 'daily': 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max',
                 'hourly': 'temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m',
                 'temperature_unit': self.temperature_unit,
@@ -968,189 +877,310 @@ class GlobalWxCommand(BaseCommand):
             }
             if self.weather_model:
                 params['models'] = self.weather_model
-
-            # For tomorrow or multiday, return raw data for formatting
-            if forecast_type in ["tomorrow", "multiday"]:
-                response = requests.get(api_url, params=params, timeout=self.url_timeout)
-
-                if not response.ok:
-                    self.logger.warning(f"Error fetching weather from Open-Meteo: {response.status_code}")
-                    return self.translate('commands.gwx.error_fetching')
-
-                data = response.json()
-
-                if forecast_type == "tomorrow":
-                    return self.format_tomorrow_forecast(data)
-                elif forecast_type == "multiday":
-                    return self.format_multiday_forecast(data, num_days)
+            if forecast_type == "hourly":
+                params['hourly'] += ',precipitation_probability,is_day'
 
             response = requests.get(api_url, params=params, timeout=self.url_timeout)
 
             if not response.ok:
                 self.logger.warning(f"Error fetching weather from Open-Meteo: {response.status_code}")
-                return self.translate('commands.gwx.error_fetching')
+                return self.translate('commands.gwx.error_fetching'), {}
 
             data = response.json()
 
-            # Check units in response to verify API is respecting our unit requests
-            current_units = data.get('current_units', {})
-            current_units.get('temperature_2m', '°F')
-            visibility_unit = current_units.get('visibility', 'm')
+            if forecast_type == "tomorrow":
+                return self.format_tomorrow_forecast(data, max_length), {}
+            if forecast_type == "multiday":
+                return self.format_multiday_forecast(data, num_days), {}
+            if forecast_type == "hourly":
+                return self._open_meteo_hourly(data, max_length), {}
 
-            # Extract current conditions
-            current = data.get('current', {})
-            daily = data.get('daily', {})
-            data.get('hourly', {})
-
-            # Current conditions - API should return in Fahrenheit when requested
-            temp = int(current.get('temperature_2m', 0))
-            feels_like = int(current.get('apparent_temperature', temp))
-            dewpoint = current.get('dewpoint_2m')
-            humidity = int(current.get('relative_humidity_2m', 0))
-            wind_speed = int(current.get('wind_speed_10m', 0))
-            wind_direction = self._degrees_to_direction(current.get('wind_direction_10m', 0))
-            wind_gusts = int(current.get('wind_gusts_10m', 0))
-            visibility = current.get('visibility')
-            pressure = current.get('surface_pressure')
-            weather_code = current.get('weather_code', 0)
-
-            # Convert visibility to miles based on actual unit from API
-            # API returns visibility in feet when using imperial units
-            if visibility is not None:
-                if visibility_unit == 'ft' or 'ft' in str(visibility_unit).lower():
-                    # Convert from feet to miles (1 mile = 5280 feet)
-                    visibility_mi = visibility / 5280.0
-                else:
-                    # Assume meters, convert to miles (1 mile = 1609.34 meters)
-                    visibility_mi = visibility / 1609.34
-            else:
-                visibility_mi = None
-
-            # Pressure validation - account for high elevation locations
-            # Normal sea level pressure is 1013 hPa, range is typically 950-1050 hPa
-            # At high elevations (e.g., 2500m), pressure can be 750-800 hPa, which is normal
-            # Only filter out extremely low pressures (< 600 hPa) which would be invalid
-            if pressure is not None and pressure < 600:
-                self.logger.warning(f"Extremely low pressure value: {pressure} hPa - might be invalid")
-                pressure = None
-
-            # Get weather description and emoji
-            weather_desc = self._get_weather_description(weather_code)
-            weather_emoji = self._get_weather_emoji(weather_code)
-
-            # Determine temperature unit symbol
             temp_symbol = "°F" if self.temperature_unit == 'fahrenheit' else "°C"
-
-            # Determine if it's day or night for forecast period name
-            now = datetime.now()
-            hour = now.hour
-            if 6 <= hour < 18:
-                period_name = self.translate('commands.gwx.periods.today')
-            else:
-                period_name = self.translate('commands.gwx.periods.tonight')
-
-            # Build current weather string
-            weather = f"{period_name}: {weather_emoji}{weather_desc} {temp}{temp_symbol}"
-
-            # Add feels like if significantly different
-            if abs(feels_like - temp) >= 5:
-                weather += f" (feels {feels_like}{temp_symbol})"
-
-            # Add wind info (always show if >= 3 mph, show gusts if significant)
-            if wind_speed >= 3:
-                weather += f" {wind_direction}{wind_speed}"
-                if wind_gusts > wind_speed + 3:
-                    weather += f"G{wind_gusts}"
-
-            # Add humidity
-            weather += f" {humidity}%RH"
-
-            # Add additional conditions if space allows
-            conditions = []
-
-            # Add dew point
-            if dewpoint is not None:
-                dewpoint_val = int(dewpoint)
-                conditions.append(f"💧{dewpoint_val}{temp_symbol}")
-
-            # Add visibility (already converted to miles above)
-            if visibility_mi is not None and visibility_mi > 0:
-                # Cap visibility at 20 miles for display (beyond that is essentially unlimited)
-                visibility_display = int(visibility_mi)
-                if visibility_display > 20:
-                    visibility_display = 20
-                conditions.append(f"👁️{visibility_display}mi")
-
-            # Add pressure (convert from hPa to display format)
-            if pressure is not None:
-                pressure_hpa = int(pressure)
-                conditions.append(f"📊{pressure_hpa}hPa")
-
-            # Add conditions to weather string if space allows
-            # Reserve space for forecast data (high/low and tomorrow)
-            conditions_max_length = max_length - 80  # Reserve ~80 chars for forecast data
-            if conditions and len(weather) < conditions_max_length:
-                weather += " " + " ".join(conditions)
-
-            # Add forecast high/low for today (without repeating period name since current conditions already show it)
-            # API should return temperatures in Fahrenheit when requested
+            weather = self._open_meteo_current(data, max_length, temp_symbol)
+            if weather is None:
+                return self.translate('commands.gwx.error_fetching'), {}
+            # Forecast high/low for today (the current conditions already name the period).
+            daily = data.get('daily', {})
             if daily:
-                today_high = int(daily['temperature_2m_max'][0])
-                today_low = int(daily['temperature_2m_min'][0])
-
-                weather += f" | {self._format_high_low(today_high, today_low, temp_symbol)}"
-
-                # Add tomorrow if space allows (check length more carefully)
-                if len(daily['temperature_2m_max']) > 1:
-                    tomorrow_high = int(daily['temperature_2m_max'][1])
-                    tomorrow_low = int(daily['temperature_2m_min'][1])
-
-                    tomorrow_code = daily['weather_code'][1]
-                    tomorrow_emoji = self._get_weather_emoji(tomorrow_code)
-
-                    # Get tomorrow's period name
-                    tomorrow_period = self.translate('commands.gwx.periods.tomorrow')
-                    tomorrow_str = f" | {tomorrow_period}: {tomorrow_emoji} {self._format_high_low(tomorrow_high, tomorrow_low, temp_symbol)}"
-
-                    # Only add if we have space (leave room for potential precipitation)
-                    # Use display width to account for emojis
-                    if self._count_display_width(weather + tomorrow_str) <= max_length - 10:  # Leave 10 chars buffer
-                        weather += tomorrow_str
-
-                        # Add precipitation probability and amount if significant and space allows
-                        if len(daily.get('precipitation_probability_max', [])) > 1:
-                            precip_prob = daily['precipitation_probability_max'][1]
-                            if precip_prob >= 30:
-                                # Get precipitation amount if available
-                                precip_amount = None
-                                if len(daily.get('precipitation_sum', [])) > 1:
-                                    precip_amount = daily['precipitation_sum'][1]
-
-                                # Format precipitation info
-                                if precip_amount is not None and precip_amount > 0:
-                                    # Show both probability and amount
-                                    precip_unit = "in" if self.precipitation_unit == 'inch' else "mm"
-                                    precip_str = f" 🌦️{precip_prob}% {precip_amount:.2f}{precip_unit}"
-                                else:
-                                    # Only show probability if no amount available
-                                    precip_str = f" 🌦️{precip_prob}%"
-
-                                # Use display width to check if we have space, with buffer to avoid cutting emojis
-                                # Add buffer of 5 chars to ensure we don't truncate in middle of emoji
-                                if self._count_display_width(weather + precip_str) <= max_length - 5:
-                                    weather += precip_str
-
-            return weather
+                weather = self._open_meteo_daily_tail(weather, daily, max_length, temp_symbol)
+            return weather, data.get('current', {})
 
         except Exception as e:
             self.logger.error(f"Error fetching Open-Meteo weather: {e}")
-            return self.translate('commands.gwx.error_fetching')
+            return self.translate('commands.gwx.error_fetching'), {}
 
-    def format_tomorrow_forecast(self, data: dict) -> str:
+    def _open_meteo_hourly(self, data: dict, max_length: int) -> str:
+        """Hours after Open-Meteo's current local hour, packed into one reply."""
+        try:
+            current_time = datetime.fromisoformat(data.get('current', {}).get('time', ''))
+        except (ValueError, TypeError):
+            return self.translate('commands.gwx.hourly_not_available')
+        next_hour = current_time.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+        hourly = data.get('hourly', {})
+        lines = []
+        for i, time_str in enumerate(hourly.get('time', [])):
+            try:
+                start_time = datetime.fromisoformat(time_str)
+            except (ValueError, TypeError):
+                continue
+            if start_time < next_hour:
+                continue
+
+            def value(field: str) -> Any:
+                values = hourly.get(field, [])
+                return values[i] if i < len(values) else None
+
+            temperature = value('temperature_2m')
+            code = value('weather_code')
+            if temperature is None or code is None:
+                break
+            is_day = value('is_day')
+            daytime = bool(is_day) if is_day is not None else 6 <= start_time.hour < 18
+            parts = [f"{self._hour_label(time_str)}:", self._get_weather_emoji(code, is_day=daytime)]
+            probability = value('precipitation_probability')
+            if probability is not None and probability > 0:
+                parts.append(f"{int(probability)}%")
+            parts.append(self._short_hourly_description(self._get_weather_description(code)))
+            parts.append(f"{int(temperature)}°")
+            speed = value('wind_speed_10m')
+            direction = value('wind_direction_10m')
+            if speed is not None and direction is not None:
+                parts.append(f"{self._without_arrow(self._degrees_to_direction(direction))}{int(speed)}")
+            lines.append(" ".join(parts))
+        return self._pack_hourly_lines(lines, max_length)
+
+    def _open_meteo_current(self, data: dict, max_length: int, temp_symbol: str) -> Optional[str]:
+        """Current conditions for the default gwx reply, with extra conditions when they fit.
+
+        None when the response has no current temperature: a reply built from
+        defaults would invent "0°, 0%RH" weather. Other missing or null
+        current fields are left out of the reply one by one.
+        """
+        # Check units in response to verify API is respecting our unit requests
+        current_units = data.get('current_units', {})
+        visibility_unit = current_units.get('visibility', 'm')
+
+        # Extract current conditions
+        current = data.get('current', {})
+
+        # Current conditions - API should return in Fahrenheit when requested
+        if current.get('temperature_2m') is None:
+            self.logger.warning("Open-Meteo response has no current temperature")
+            return None
+        temp = int(current['temperature_2m'])
+        feels_like = _int_or_none(current.get('apparent_temperature'))
+        if feels_like is None:
+            feels_like = temp
+        dewpoint = current.get('dewpoint_2m')
+        humidity = _int_or_none(current.get('relative_humidity_2m'))
+        wind_speed = _int_or_none(current.get('wind_speed_10m'))
+        wind_direction = self._degrees_to_direction(current.get('wind_direction_10m'))
+        wind_gusts = _int_or_none(current.get('wind_gusts_10m'))
+        visibility = current.get('visibility')
+        pressure = current.get('surface_pressure')
+        weather_code = current.get('weather_code')
+
+        visibility_mi = self._visibility_miles(visibility, visibility_unit)
+
+        # Pressure validation - account for high elevation locations
+        # Normal sea level pressure is 1013 hPa, range is typically 950-1050 hPa
+        # At high elevations (e.g., 2500m), pressure can be 750-800 hPa, which is normal
+        # Only filter out extremely low pressures (< 600 hPa) which would be invalid
+        if pressure is not None and pressure < 600:
+            self.logger.warning(f"Extremely low pressure value: {pressure} hPa - might be invalid")
+            pressure = None
+
+        # Get weather description and emoji (none for a missing code, rather than "clear")
+        if weather_code is None:
+            condition = ""
+        else:
+            emoji = self._get_weather_emoji(weather_code, is_day=self._open_meteo_daytime(current))
+            condition = f"{emoji}{self._get_weather_description(weather_code)} "
+
+        period_name = self.translate(f'commands.gwx.periods.{self._open_meteo_period_key(current)}')
+
+        # Build current weather string
+        weather = f"{period_name}: {condition}{temp}{temp_symbol}"
+
+        # Add feels like if significantly different
+        if abs(feels_like - temp) >= 5:
+            feels_str = self.translate('commands.gwx.feels_like', value=feels_like, unit=temp_symbol)
+            weather += f" {feels_str}"
+
+        # Add wind info (always show if >= 3 mph, show gusts if significant)
+        if wind_speed is not None and wind_speed >= 3:
+            weather += f" {wind_direction}{wind_speed}"
+            if wind_gusts is not None and wind_gusts > wind_speed + 3:
+                gust_str = self.translate('commands.gwx.gust', value=wind_gusts)
+                weather += gust_str
+
+        # Add humidity
+        if humidity is not None:
+            humidity_str = self.translate('commands.gwx.humidity', value=humidity)
+            weather += f" {humidity_str}"
+
+        # Add additional conditions if space allows
+        conditions = self._open_meteo_extra_conditions(dewpoint, visibility_mi, pressure, temp_symbol)
+
+        # Add conditions to weather string if space allows
+        # Reserve space for forecast data (high/low and tomorrow)
+        conditions_max_length = max_length - 80  # Reserve ~80 chars for forecast data
+        if conditions and self._count_display_width(weather) < conditions_max_length:
+            weather += " " + " ".join(conditions)
+        return weather
+
+    def _visibility_miles(self, visibility, visibility_unit) -> Optional[float]:
+        """Open-Meteo's visibility in miles, from feet or meters as current_units says."""
+        # Convert visibility to miles based on actual unit from API
+        # API returns visibility in feet when using imperial units
+        if visibility is not None:
+            if visibility_unit == 'ft' or 'ft' in str(visibility_unit).lower():
+                # Convert from feet to miles (1 mile = 5280 feet)
+                visibility_mi = visibility / 5280.0
+            else:
+                # Assume meters, convert to miles (1 mile = 1609.34 meters)
+                visibility_mi = visibility / 1609.34
+        else:
+            visibility_mi = None
+        return visibility_mi
+
+    def _open_meteo_extra_conditions(self, dewpoint, visibility_mi, pressure, temp_symbol: str) -> list:
+        """Dew point, visibility and pressure strings, each only when its value is present."""
+        conditions = []
+
+        # Add dew point
+        if dewpoint is not None:
+            dewpoint_val = int(dewpoint)
+            dew_str = self.translate('commands.gwx.dew_point', value=dewpoint_val, unit=temp_symbol)
+            conditions.append(dew_str)
+
+        # Add visibility (already converted to miles above)
+        if visibility_mi is not None and visibility_mi > 0:
+            # Beyond ~20 mi visibility is essentially unlimited, so cap the
+            # display at that in whichever unit we are showing.
+            if self.metric_distance:
+                visibility_display = min(int(visibility_mi * MI_TO_KM), VISIBILITY_CAP_KM)
+                vis_str = self.translate('commands.gwx.visibility_km', value=visibility_display)
+            else:
+                visibility_display = min(int(visibility_mi), VISIBILITY_CAP_MI)
+                vis_str = self.translate('commands.gwx.visibility', value=visibility_display)
+            conditions.append(vis_str)
+
+        # Add pressure (convert from hPa to display format)
+        if pressure is not None:
+            pressure_hpa = int(pressure)
+            # Which pressure unit reads as normal is a locale convention, not
+            # a metric/imperial split: Russia uses mmHg, most of metric
+            # Europe uses hPa. The catalog names its own.
+            if self.translate('commands.gwx.pressure_unit').strip().lower() == 'mmhg':
+                press_str = self.translate('commands.gwx.pressure_mmhg',
+                                           value=round(pressure_hpa * HPA_TO_MMHG))
+            else:
+                press_str = self.translate('commands.gwx.pressure', value=pressure_hpa)
+            conditions.append(press_str)
+        return conditions
+
+    def _open_meteo_daily_tail(self, weather: str, daily: dict, max_length: int, temp_symbol: str) -> str:
+        """Append today's high/low, then tomorrow and its precipitation while they fit."""
+        today_high = int(daily['temperature_2m_max'][0])
+        today_low = int(daily['temperature_2m_min'][0])
+
+        weather += f" | {self._format_high_low(today_high, today_low, temp_symbol)}"
+
+        # Add tomorrow if space allows (check length more carefully)
+        if len(daily['temperature_2m_max']) > 1:
+            tomorrow_high = int(daily['temperature_2m_max'][1])
+            tomorrow_low = int(daily['temperature_2m_min'][1])
+
+            tomorrow_code = daily['weather_code'][1]
+            tomorrow_emoji = self._get_weather_emoji(tomorrow_code)
+
+            # Get tomorrow's period name
+            tomorrow_period = self.translate('commands.gwx.periods.tomorrow')
+            tomorrow_hl = self._format_high_low(tomorrow_high, tomorrow_low, temp_symbol)
+            tomorrow_str = f" | {tomorrow_period}: {tomorrow_emoji} {tomorrow_hl}"
+            # Name tomorrow's weather when it fits; the emoji alone is ambiguous.
+            if tomorrow_code is not None:
+                described = (f" | {tomorrow_period}: {tomorrow_emoji}"
+                             f"{self._get_weather_description(tomorrow_code)} {tomorrow_hl}")
+                if self._count_display_width(weather + described) <= max_length - 10:
+                    tomorrow_str = described
+
+            # Only add if we have space (leave room for potential precipitation)
+            # Use display width to account for emojis
+            if self._count_display_width(weather + tomorrow_str) <= max_length - 10:  # Leave 10 chars buffer
+                weather += tomorrow_str
+
+                # Add precipitation probability and amount if significant and space allows
+                if len(daily.get('precipitation_probability_max', [])) > 1:
+                    precip_prob = daily['precipitation_probability_max'][1]
+                    if precip_prob is not None and precip_prob >= 30:
+                        # Get precipitation amount if available
+                        precip_amount = None
+                        if len(daily.get('precipitation_sum', [])) > 1:
+                            precip_amount = daily['precipitation_sum'][1]
+
+                        # Format precipitation info
+                        if precip_amount is not None and precip_amount > 0:
+                            # Show both probability and amount
+                            precip_unit = "in" if self.precipitation_unit == 'inch' else "mm"
+                            precip_str = f" 🌦️{precip_prob}% {precip_amount:.2f}{precip_unit}"
+                        else:
+                            # Only show probability if no amount available
+                            precip_str = f" 🌦️{precip_prob}%"
+
+                        # Use display width to check if we have space, with buffer to avoid cutting emojis
+                        # Add buffer of 5 chars to ensure we don't truncate in middle of emoji
+                        if self._count_display_width(weather + precip_str) <= max_length - 5:
+                            weather += precip_str
+        return weather
+
+    def _open_meteo_daytime(self, current: dict) -> bool:
+        """Whether the sun is up at the location: Open-Meteo's is_day, else 06:00-18:00 local."""
+        flag = current.get('is_day') if isinstance(current, dict) else None
+        if flag is not None:
+            return bool(flag)
+        return 6 <= self._open_meteo_local_hour(current) < 18
+
+    def _open_meteo_period_key(self, current: dict) -> str:
+        """Period label key for the current conditions: today while the sun is up,
+        overnight from midnight to sunrise, tonight from sunset to midnight.
+
+        Open-Meteo's current time is local to the location (timezone=auto); the
+        bot's own clock is only the fallback.
+        """
+        if self._open_meteo_daytime(current):
+            return 'today'
+        return 'overnight' if self._open_meteo_local_hour(current) < 12 else 'tonight'
+
+    @staticmethod
+    def _open_meteo_local_hour(current: dict) -> int:
+        """Hour of day at the location from Open-Meteo's current time ("2026-10-01T19:45"), else the bot's."""
+        stamp = current.get('time') if isinstance(current, dict) else None
+        if isinstance(stamp, str):
+            try:
+                return datetime.fromisoformat(stamp).hour
+            except ValueError:
+                pass
+        return datetime.now().hour
+
+    @staticmethod
+    def _open_meteo_date(dates: list, index: int):
+        """The date at *index* of Open-Meteo's daily time array, or None."""
+        if index < len(dates) and isinstance(dates[index], str):
+            try:
+                return datetime.strptime(dates[index][:10], '%Y-%m-%d')
+            except ValueError:
+                return None
+        return None
+
+    def format_tomorrow_forecast(self, data: dict, max_length: Optional[int] = None) -> str:
         """Format a detailed forecast for tomorrow.
 
         Args:
             data: Weather data dictionary from Open-Meteo.
+            max_length: UTF-8 byte budget; details are left out, least important
+                first, until the reply fits. None keeps every detail.
 
         Returns:
             str: Formatted tomorrow forecast string.
@@ -1158,6 +1188,8 @@ class GlobalWxCommand(BaseCommand):
         try:
             daily = data.get('daily', {})
             if not daily or len(daily.get('temperature_2m_max', [])) < 2:
+                return self.translate('commands.gwx.tomorrow_not_available')
+            if daily['temperature_2m_max'][1] is None or daily['temperature_2m_min'][1] is None:
                 return self.translate('commands.gwx.tomorrow_not_available')
 
             temp_symbol = "°F" if self.temperature_unit == 'fahrenheit' else "°C"
@@ -1169,6 +1201,7 @@ class GlobalWxCommand(BaseCommand):
 
             # Get wind info if available
             wind_info = ""
+            gust_info = ""
             if len(daily.get('wind_speed_10m_max', [])) > 1:
                 wind_speed = int(daily['wind_speed_10m_max'][1])
                 if wind_speed >= 3:
@@ -1176,19 +1209,21 @@ class GlobalWxCommand(BaseCommand):
                     if len(daily.get('wind_gusts_10m_max', [])) > 1:
                         wind_gusts = int(daily['wind_gusts_10m_max'][1])
                         if wind_gusts > wind_speed + 3:
-                            wind_info += f"G{wind_gusts}"
+                            gust_info = self.translate('commands.gwx.gust', value=wind_gusts)
 
             # Get precipitation probability and amount
             precip_info = ""
+            precip_chance = ""
             if len(daily.get('precipitation_probability_max', [])) > 1:
                 precip_prob = daily['precipitation_probability_max'][1]
-                if precip_prob >= 30:
+                if precip_prob is not None and precip_prob >= 30:
                     # Get precipitation amount if available
                     precip_amount = None
                     if len(daily.get('precipitation_sum', [])) > 1:
                         precip_amount = daily['precipitation_sum'][1]
 
                     # Format precipitation info
+                    precip_chance = f" 🌦️{precip_prob}%"
                     if precip_amount is not None and precip_amount > 0:
                         # Show both probability and amount
                         precip_unit = "in" if self.precipitation_unit == 'inch' else "mm"
@@ -1199,7 +1234,22 @@ class GlobalWxCommand(BaseCommand):
 
             tomorrow_period = self.translate('commands.gwx.periods.tomorrow')
             hl = self._format_high_low(tomorrow_high, tomorrow_low, temp_symbol)
-            return f"{tomorrow_period}: {tomorrow_emoji}{tomorrow_desc} {hl}{wind_info}{precip_info}"
+            head = f"{tomorrow_period}: {tomorrow_emoji}"
+            # Least important detail first: precipitation amount, gusts, wind, chance, description.
+            candidates = [
+                f"{head}{tomorrow_desc} {hl}{wind_info}{gust_info}{precip_info}",
+                f"{head}{tomorrow_desc} {hl}{wind_info}{gust_info}{precip_chance}",
+                f"{head}{tomorrow_desc} {hl}{wind_info}{precip_chance}",
+                f"{head}{tomorrow_desc} {hl}{precip_chance}",
+                f"{head}{tomorrow_desc} {hl}",
+                f"{head} {hl}",
+            ]
+            if max_length is None:
+                return candidates[0]
+            for candidate in candidates:
+                if self._count_display_width(candidate) <= max_length:
+                    return candidate
+            return candidates[-1]
 
         except Exception as e:
             self.logger.error(f"Error formatting tomorrow forecast: {e}")
@@ -1230,21 +1280,27 @@ class GlobalWxCommand(BaseCommand):
 
             # Map day names to 1-2 letter abbreviations
             day_abbrev_map = {
-                'Monday': 'M',
-                'Tuesday': 'T',
-                'Wednesday': 'W',
-                'Thursday': 'Th',
-                'Friday': 'F',
-                'Saturday': 'Sa',
-                'Sunday': 'Su'
+                'Monday': self.translate('commands.gwx.day_abbrev.Monday'),
+                'Tuesday': self.translate('commands.gwx.day_abbrev.Tuesday'),
+                'Wednesday': self.translate('commands.gwx.day_abbrev.Wednesday'),
+                'Thursday': self.translate('commands.gwx.day_abbrev.Thursday'),
+                'Friday': self.translate('commands.gwx.day_abbrev.Friday'),
+                'Saturday': self.translate('commands.gwx.day_abbrev.Saturday'),
+                'Sunday': self.translate('commands.gwx.day_abbrev.Sunday')
             }
 
             parts = []
             today = datetime.now()
+            day_dates = daily.get('time') or []
 
             # Start from tomorrow (index 1)
             for i in range(1, min(num_days + 1, len(temps_max))):
-                day_date = today + timedelta(days=i)
+                # Open-Meteo pads the days past a model's horizon with nulls
+                # (up to 9 of 16 with icon_seamless), so the forecast ends there.
+                if temps_max[i] is None or i >= len(temps_min) or temps_min[i] is None:
+                    break
+                # Label from Open-Meteo's own (location-local) date when present.
+                day_date = self._open_meteo_date(day_dates, i) or (today + timedelta(days=i))
                 day_name = day_date.strftime('%A')
                 day_abbrev = day_abbrev_map.get(day_name, day_name[:2])
 
@@ -1270,109 +1326,29 @@ class GlobalWxCommand(BaseCommand):
             self.logger.error(f"Error formatting {num_days}-day forecast: {e}")
             return self.translate('commands.gwx.multiday_error', num_days=num_days)
 
-    def _count_display_width(self, text: str) -> int:
-        """Count UTF-8 byte length of text. Matches RF packet byte limit from get_max_message_length()."""
-        return len(text.encode('utf-8'))
-
-    async def _send_multiday_forecast(self, message: MeshMessage, forecast_text: str) -> None:
-        """Send multi-day forecast response, splitting into multiple messages if needed.
-
-        Args:
-            message: The original message (for reply context).
-            forecast_text: The full forecast text (lines separated by \n).
-        """
-        import asyncio
-
-        # Get max message length dynamically
-        max_length = self.get_max_message_length(message)
-
-        lines = forecast_text.split('\n')
-
-        # Remove empty lines
-        lines = [line.strip() for line in lines if line.strip()]
-
-        if not lines:
-            return
-
-        # If single line and under max_length chars, send as-is
-        if self._count_display_width(forecast_text) <= max_length:
-            await self.send_response(message, forecast_text)
-            return
-
-        # Multi-line message - try to fit as many days as possible in one message
-        # Only split when necessary (message would exceed max_length chars)
-        current_message = ""
-        message_count = 0
-
-        for i, line in enumerate(lines):
-            if not line:
-                continue
-
-            # Check if adding this line would exceed max_length characters (using display width)
-            test_message = current_message + "\n" + line if current_message else line
-
-            # Only split if message would exceed max_length chars (using display width)
-            if self._count_display_width(test_message) > max_length:
-                # Send current message and start new one
-                if current_message:
-                    # Per-user rate limit applies only to first message (trigger); skip for continuations
-                    await self.send_response(
-                        message, current_message,
-                        skip_user_rate_limit=(message_count > 0)
-                    )
-                    message_count += 1
-                    # Wait between messages (same as other commands)
-                    if i < len(lines):
-                        await asyncio.sleep(2.0)
-
-                    current_message = line
-                else:
-                    # Single line is too long, send it anyway (will be truncated by bot)
-                    await self.send_response(
-                        message, line,
-                        skip_user_rate_limit=(message_count > 0)
-                    )
-                    message_count += 1
-                    if i < len(lines) - 1:
-                        await asyncio.sleep(2.0)
-                    current_message = ""
-            else:
-                # Add line to current message (fits within max_length)
-                if current_message:
-                    current_message += "\n" + line
-                else:
-                    current_message = line
-
-        # Send the last message if there's content (continuation; skip per-user rate limit)
-        if current_message:
-            await self.send_response(message, current_message, skip_user_rate_limit=True)
-
     def _degrees_to_direction(self, degrees: float) -> str:
         """Convert wind direction in degrees to compass direction with emoji.
+
+        Uses the nearest of the 16 compass points (as NOAA's own labels do) and
+        the nearest 8-point arrow: 22.5° is NNE, 350° is N. Letters come from the
+        translation catalog.
 
         Args:
             degrees: Wind direction in degrees.
 
         Returns:
-            str: Compass direction string with emoji (e.g., "⬆️N").
+            str: Compass direction string with emoji (e.g., "↗️NNE").
         """
         if degrees is None:
             return ""
-
-        directions = [
-            (0, "⬆️N"), (22.5, "↗️NE"), (45, "↗️NE"), (67.5, "➡️E"),
-            (90, "➡️E"), (112.5, "↘️SE"), (135, "↘️SE"), (157.5, "⬇️S"),
-            (180, "⬇️S"), (202.5, "↙️SW"), (225, "↙️SW"), (247.5, "⬅️W"),
-            (270, "⬅️W"), (292.5, "↖️NW"), (315, "↖️NW"), (337.5, "⬆️N"),
-            (360, "⬆️N")
-        ]
-
-        # Find closest direction
-        for i in range(len(directions) - 1):
-            if directions[i][0] <= degrees < directions[i + 1][0]:
-                return directions[i][1]
-
-        return "⬆️N"  # Default to North
+        degrees = float(degrees)
+        if not math.isfinite(degrees):
+            return ""
+        index = int((degrees % 360) / 22.5 + 0.5) % 16
+        key = _COMPASS_16[index]
+        arrow = _ARROWS_8[int(index / 2 + 0.5) % 8]
+        translated = self.translate(f"common.wind_directions.{key}")
+        return f"{arrow}{translated}"
 
     def _get_weather_description(self, code: int) -> str:
         """Convert WMO weather code to description.
@@ -1418,17 +1394,19 @@ class GlobalWxCommand(BaseCommand):
                 86: "Snow Showers",
                 95: "Thunderstorm",
                 96: "T-Storm w/Hail",
+                97: "Heavy T-Storm",
                 99: "Severe T-Storm"
             }
             return weather_codes.get(code, self.translate('commands.gwx.weather_descriptions.unknown'))
 
         return description
 
-    def _get_weather_emoji(self, code: int) -> str:
+    def _get_weather_emoji(self, code: int, is_day: Optional[bool] = True) -> str:
         """Convert WMO weather code to emoji.
 
         Args:
             code: WMO weather code.
+            is_day: False at night, when clear skies show a moon instead of a sun.
 
         Returns:
             str: Weather emoji.
@@ -1461,66 +1439,52 @@ class GlobalWxCommand(BaseCommand):
             86: "🌨️",    # Snow Showers
             95: "⛈️",     # Thunderstorm
             96: "⛈️",     # Thunderstorm with Hail
+            97: "⛈️",     # Heavy Thunderstorm
             99: "⛈️"      # Severe Thunderstorm
         }
 
+        if is_day is False and code in (0, 1):
+            return "🌙"
         return emoji_map.get(code, "🌤️")
 
-    def _check_extreme_conditions(self, weather_text: str) -> Optional[str]:
+    def _check_extreme_conditions(self, current: dict) -> Optional[str]:
         """Check for extreme weather conditions that warrant warnings.
 
         Args:
-            weather_text: The formatted weather text to check.
+            current: Open-Meteo current conditions in the configured units.
 
         Returns:
             Optional[str]: Warning text if conditions found, None otherwise.
         """
         warnings = []
 
-        # Extract temperature from weather text
-        temp_match = re.search(r'(\d+)°F', weather_text)
-        if temp_match:
-            temp = int(temp_match.group(1))
+        # Keep the thresholds in Fahrenheit and mph, regardless of reply units.
+        temp = current.get('temperature_2m')
+        if temp is not None:
+            if self.temperature_unit == 'celsius':
+                temp = temp * 9 / 5 + 32
             if temp >= 95:
                 warnings.append(self.translate('commands.gwx.warnings.extreme_heat'))
             elif temp <= 20:
                 warnings.append(self.translate('commands.gwx.warnings.extreme_cold'))
 
-        # Check for severe weather indicators
-        # Note: We check for English strings here since weather descriptions might be in English
-        # In a fully localized version, we'd need to check translated strings too
-        heavy_rain_en = "Heavy Rain"
-        heavy_showers_en = "Heavy Showers"
-        thunderstorm_en = "Thunderstorm"
-        t_storm_en = "T-Storm"
-        heavy_snow_en = "Heavy Snow"
-        snow_showers_en = "Snow Showers"
-
-        # Also get translated versions for checking
-        heavy_rain_trans = self.translate('commands.gwx.weather_descriptions.65')
-        heavy_showers_trans = self.translate('commands.gwx.weather_descriptions.82')
-        thunderstorm_trans = self.translate('commands.gwx.weather_descriptions.95')
-        t_storm_trans = self.translate('commands.gwx.weather_descriptions.96')
-        heavy_snow_trans = self.translate('commands.gwx.weather_descriptions.75')
-        snow_showers_trans = self.translate('commands.gwx.weather_descriptions.86')
-
-        if (heavy_rain_en in weather_text or heavy_showers_en in weather_text or
-            heavy_rain_trans in weather_text or heavy_showers_trans in weather_text):
+        code = current.get('weather_code')
+        if code in (65, 82):
             warnings.append(self.translate('commands.gwx.warnings.heavy_rain'))
 
-        if (thunderstorm_en in weather_text or t_storm_en in weather_text or
-            thunderstorm_trans in weather_text or t_storm_trans in weather_text):
+        if code in (95, 96, 97, 99):
             warnings.append(self.translate('commands.gwx.warnings.thunderstorms'))
 
-        if (heavy_snow_en in weather_text or snow_showers_en in weather_text or
-            heavy_snow_trans in weather_text or snow_showers_trans in weather_text):
+        # The old "Snow Showers" match also covered light snow showers (85).
+        if code in (75, 85, 86):
             warnings.append(self.translate('commands.gwx.warnings.heavy_snow'))
 
-        # Check for high winds
-        wind_match = re.search(r'[NESW]{1,2}(\d+)', weather_text)
-        if wind_match:
-            wind_speed = int(wind_match.group(1))
-            if wind_speed >= 30:
-                warnings.append(self.translate('commands.gwx.warnings.high_winds', wind_speed=wind_speed))
+        # Sustained wind only, as before. The threshold is 30 mph; the warning shows the
+        # speed in the configured unit, like the wind in the reply it follows.
+        wind_factor = {'mph': 1, 'kmh': MI_TO_KM, 'ms': 0.44704, 'kn': 0.868976}[self.wind_speed_unit]
+        wind = current.get('wind_speed_10m') or 0
+        if wind / wind_factor >= 30:
+            unit = self.translate(f'services.weather_service.wind_speed_units.{self.wind_speed_unit}')
+            warnings.append(self.translate('commands.gwx.warnings.high_winds', wind_speed=int(wind), unit=unit))
 
         return " | ".join(warnings) if warnings else None

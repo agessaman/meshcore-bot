@@ -1,0 +1,77 @@
+name: Refresh vendored front-end libraries
+
+# Dependabot bumps scripts/web-vendor/package.json and its lockfile but can't
+# regenerate the files vendored under modules/web_viewer/static/. This adds
+# them to its pull request as a second commit, so the PR diff shows the actual
+# library change.
+#
+# pull_request_target runs with a write token, so nothing from the pull
+# request's own code runs: sync.mjs comes from the base branch, the commands are
+# spelled out here rather than taken from the PR's package.json scripts, and npm
+# installs from the PR's lockfile with install scripts disabled. Packages are
+# only downloaded and copied, never executed.
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+    paths:
+      - scripts/web-vendor/package.json
+      - scripts/web-vendor/package-lock.json
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  refresh:
+    if: >-
+      github.event.pull_request.user.login == 'dependabot[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Use the base branch's sync script
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: git checkout "origin/$BASE_REF" -- scripts/web-vendor/sync.mjs
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+
+      - name: Re-run the sync
+        working-directory: scripts/web-vendor
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          node sync.mjs
+
+      - name: Commit the vendored files
+        id: commit
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          git checkout HEAD -- scripts/web-vendor/sync.mjs
+          git add -A -- modules/web_viewer/static
+          if git diff --cached --quiet; then
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit --quiet -m "build(vendor): sync vendored files with the lockfile"
+          git push origin "HEAD:$HEAD_REF"
+          echo "pushed=true" >> "$GITHUB_OUTPUT"
+
+      # A push made with GITHUB_TOKEN doesn't trigger workflows, but a dispatch
+      # does, so run the tests against the commit that now holds the files.
+      - name: Run the tests on the new commit
+        if: steps.commit.outputs.pushed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: gh workflow run test.yml --ref "$HEAD_REF"

@@ -12,10 +12,16 @@
 #
 # The last two gaps are not missing builds - they are version skew. pip prefers the newest
 # release across all configured indexes, and for these two the newest PyPI release is one
-# step ahead of piwheels' current cp311 build:
+# step ahead of a usable piwheels wheel:
 #
-#     brotli   PyPI 1.2.0   piwheels 1.1.0
+#     brotli   PyPI 1.2.0   piwheels 1.1.0 (working)
 #     ephem    PyPI 4.2.1   piwheels 4.2
+#
+# Trixie / CPython 3.13 still needs the brotli pin. piwheels lists a
+# brotli-1.2.0-cp313-*-linux_armv6l.whl on archive1.piwheels.org, but that URL
+# returns HTTP 403. pip does not fall back to PyPI, so an unconstrained install
+# aborts (issue #269). The 1.1.0 cp313 wheel is on the live www.piwheels.org index
+# and downloads normally.
 #
 # Holding them one version back lets the whole install resolve to wheels. Measured in a
 # linux/arm/v7 container against requirements.txt:
@@ -29,15 +35,17 @@
 #
 # HOW IT IS APPLIED
 # -----------------
-# install-service.sh passes this file together with the piwheels index, but only when it
-# detects a 32-bit ARM host. The Dockerfile does the same for the linux/arm/v7 build leg
-# only. The environment markers below are a second layer of safety: if this file is ever
-# applied on another platform, it becomes a no-op rather than needlessly pinning it.
+# scripts/armv7_pip_args.sh passes this file together with the piwheels index, but only
+# when it detects a 32-bit ARM host. install-service.sh and the .deb postinst both source
+# that helper. The Dockerfile does the same for the linux/arm/v7 build leg only. The
+# environment markers below are a second layer of safety: if this file is ever applied on
+# another platform, it becomes a no-op rather than needlessly pinning it.
 #
 # MAINTENANCE
 # -----------
-# These pins are only needed until piwheels catches up. Re-check periodically - if piwheels
-# has published the newer version, delete that line. To verify current state:
+# These pins are only needed until a newer piwheels wheel actually downloads. Re-check
+# periodically. Do not drop a pin just because a newer version appears in the HTML index
+# - confirm the wheel URL returns 200. To verify current state:
 #
 #   docker run --rm --platform linux/arm/v7 \
 #     -v "$PWD/requirements.txt:/req.txt:ro" python:3.11-slim \

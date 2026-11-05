@@ -14,6 +14,7 @@ from typing import Any, Optional
 
 import aiohttp
 
+from ..location import repeater_by_name_rows
 from ..models import MeshMessage
 from ..utils import abbreviate_location, calculate_distance, format_location_for_display, geocode_city, geocode_zipcode
 from .base_command import BaseCommand
@@ -26,6 +27,8 @@ class PrefixCommand(BaseCommand):
     # Read-only informational output; safe for scheduled {cmd:...} rendering.
     render_safe = True
     name = "prefix"
+    honors_skip_channel_check = False
+    enabled_attr = "prefix_enabled"
     keywords = ['prefix', 'lookup']
     description = "Look up repeaters by prefix (2, 4, or 6 hex chars = 1–3 bytes; longer input truncated)"
     category = "meshcore_info"
@@ -154,20 +157,7 @@ class PrefixCommand(BaseCommand):
             self.prefix_best_location_radius_km = 50.0
             self.prefix_best_do_not_suggest = []
 
-    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
-        """Check if this command can be executed with the given message.
-
-        Args:
-            message: The message triggering the command.
-
-        Returns:
-            bool: True if command is enabled and checks pass, False otherwise.
-        """
-        if not self.prefix_enabled:
-            return False
-        return super().can_execute(message)
-
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         """Get help text for the prefix command.
 
         Returns:
@@ -237,33 +227,8 @@ class PrefixCommand(BaseCommand):
             # Query complete_contact_tracking table for matching name
             # Use case-insensitive matching and allow partial matches
             # Filter for repeaters and roomservers only
-            query = '''
-                SELECT latitude, longitude, name
-                FROM complete_contact_tracking
-                WHERE role IN ('repeater', 'roomserver')
-                AND latitude IS NOT NULL
-                AND longitude IS NOT NULL
-                AND latitude != 0
-                AND longitude != 0
-                AND LOWER(name) LIKE LOWER(?)
-                ORDER BY
-                    CASE
-                        WHEN LOWER(name) = LOWER(?) THEN 1
-                        WHEN LOWER(name) LIKE LOWER(?) THEN 2
-                        ELSE 3
-                    END,
-                    COALESCE(last_advert_timestamp, last_heard) DESC
-                LIMIT 1
-            '''
-
-            # Try exact match first, then partial match
-            exact_pattern = repeater_name.strip()
-            partial_pattern = f"%{exact_pattern}%"
-
-            results = self.bot.db_manager.execute_query(
-                query,
-                (partial_pattern, exact_pattern, f"{exact_pattern}%")
-            )
+            # Exact match first, then prefix, then substring (see repeater_by_name_rows)
+            results = repeater_by_name_rows(self.bot, repeater_name, zero_rule="either")
 
             if results:
                 row = results[0]
@@ -1389,7 +1354,6 @@ class PrefixCommand(BaseCommand):
         include_all = data.get('include_all', True)  # Default to True for API responses
 
         # Get bot name for database responses
-        self.bot.config.get('Bot', 'bot_name', fallback='Bot')
 
         # Handle pluralization
         plural = 's' if node_count != 1 else ''

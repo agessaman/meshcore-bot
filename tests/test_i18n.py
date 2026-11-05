@@ -204,3 +204,51 @@ class TestTranslatorWithRealFiles:
         t = Translator(language="xx", translation_path=str(tmp_path))
         result = t.get_value("grp.val")
         assert result == "found"
+
+
+class TestLocalCatalogOverlay:
+    """The local catalog overlays the distributed one, key by key."""
+
+    def _write(self, path, data):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data), encoding="utf-8")
+
+    def test_local_overrides_single_string(self, tmp_path):
+        dist, local = tmp_path / "dist", tmp_path / "local"
+        self._write(dist / "en.json", {"commands": {"a": "shipped", "b": "keep"}})
+        self._write(local / "en.json", {"commands": {"a": "overridden"}})
+        t = Translator("en", str(dist), str(local))
+        assert t.translate("commands.a") == "overridden"
+        # Sibling keys the local file does not mention survive.
+        assert t.translate("commands.b") == "keep"
+
+    def test_local_adds_keys_for_local_commands(self, tmp_path):
+        dist, local = tmp_path / "dist", tmp_path / "local"
+        self._write(dist / "en.json", {"commands": {"ping": "pong"}})
+        self._write(local / "en.json", {"commands": {"whois": "Looking up {call}"}})
+        t = Translator("en", str(dist), str(local))
+        assert t.translate("commands.whois", call="K7ABC") == "Looking up K7ABC"
+        assert t.translate("commands.ping") == "pong"
+
+    def test_local_only_catalog_is_used(self, tmp_path):
+        dist, local = tmp_path / "dist", tmp_path / "local"
+        dist.mkdir()
+        self._write(local / "en.json", {"commands": {"whois": "local only"}})
+        t = Translator("en", str(dist), str(local))
+        assert t.translate("commands.whois") == "local only"
+
+    def test_missing_local_dir_is_harmless(self, tmp_path):
+        dist = tmp_path / "dist"
+        self._write(dist / "en.json", {"commands": {"ping": "pong"}})
+        t = Translator("en", str(dist), str(tmp_path / "nope"))
+        assert t.translate("commands.ping") == "pong"
+
+    def test_merge_does_not_mutate_fallback(self):
+        """_merge_translations must not write through into its fallback's sub-dicts."""
+        t = Translator.__new__(Translator)
+        fallback = {"grp": {"x": "orig", "y": "keep"}}
+        result = t._merge_translations({"grp": {"x": "new"}}, fallback)
+        assert result["grp"]["x"] == "new"
+        # The caller's catalog is left exactly as it was.
+        assert fallback == {"grp": {"x": "orig", "y": "keep"}}
+        assert result["grp"] is not fallback["grp"]

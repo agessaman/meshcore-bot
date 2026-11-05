@@ -8,10 +8,7 @@ A web-based interface for viewing and analyzing data from your MeshCore Bot.
 - **Repeater Contacts**: View active repeater contacts with location and status information
 - **Contact Tracking**: Complete history of all heard contacts with signal strength and routing data
 - **Config panel**: Structured settings with categorized topics and database tools
-- **Plugins page**: Toggle every command and service on/off and edit their settings
-  from the browser. Changes are validated, written to `config.ini` with comments
-  preserved and a timestamped backup, and the bot hot-reloads command settings
-  within a few seconds (service on/off still needs a restart)
+- **Plugins page**: Toggle every command and service on/off and edit their settings from the browser. Changes are validated, written to `config.ini` with comments preserved and a timestamped backup, and the bot hot-reloads command settings within a few seconds (service on/off still needs a restart). Template fields (test reply, path reply prefix, greeter messages, multitest result, MQTT weather template) have a `{ }` button that lists the placeholders they take; every one previews the template as you type against sample data, showing what the bot would send (or that it would send nothing) when the template has a mistake; the test reply and path prefix, which take filters, also list them and preview against a 2-byte, a 1-byte and a direct sample message
 - **Purging Log**: Audit trail of contact purging operations
 - **Real-time Updates**: Auto-refreshes every 30 seconds
 - **API Endpoints**: JSON API for programmatic access
@@ -256,6 +253,20 @@ reconstructed from it — nearly half the observation volume would be attributed
 to the wrong day. Each refresh recomputes today plus a three-day trailing
 window; older days stay frozen at the value recorded then.
 
+### Real-time
+
+One tape of what the bot's radio is hearing, newest first. It needs an admin session when `web_viewer_password` is set, because it shows decrypted channel traffic.
+
+- **Receiver strip.** Whether the bot is listening (or reconnecting, or the radio is offline or not responding), when it last heard a packet, packets per minute, and a bar per 30 seconds for the last 10 minutes. Time before the page saw its first packet is drawn as a hairline, not as quiet.
+- **One row per transmission.** A packet, the message decrypted from it and a command it triggered share one row, joined by packet hash. The bot's reply hangs under the command with how many times a repeater was heard echoing it back; those echoes don't get rows of their own. A packet heard several times is one row with a count, and opening it lists every reception with its SNR, RSSI, hops and path. Where no hash ties a command to its message (rows stored before the hashes existed), they are joined only when sender, channel and text match exactly within 20 seconds.
+- **Color.** The chip at the left of each row is the packet type's icon in the color the dashboard's packet-type chart uses; decoded messages get a speech bubble on a stronger tint, and the bot's own commands a solid violet robot, with its reply in a violet panel underneath.
+- **Decoding in the browser.** Advert names, and group-text messages on channels with a configured key (including `decode_hashtag_channels`), are decoded on the page and marked "decoded in this browser". Other group text shows its channel hash and "no key here".
+- **Holding still.** New rows queue behind an "N new" button while the tape is paused (`P`), scrolled down, under a moving mouse pointer (for up to 5 seconds of stillness) or holding keyboard focus.
+- **Keep, filter, search.** The star keeps a row in a tray above the tape, safe from the 300-row limit and from **Clear tape**. Filters narrow to messages or commands, a packet type or a channel; `/` jumps to search across sender, text, repeater prefixes and hash.
+- **Inspect bytes** on an opened row shows the color-coded byte breakdown, with header bits, the path (hop count × bytes per hop), and GroupText or advert fields.
+
+Rows replayed from the database when the page opens sit under "Heard before you opened this page". The page keeps 300 rows; the server replays the newest 50 of each kind.
+
 ### Repeater Contacts
 - Active repeater contacts
 - Location information (city/coordinates)
@@ -283,6 +294,16 @@ window; older days stay frozen at the value recorded then.
   - *Response Path Hashing*: the path hash size the firmware uses for each hop
     when building outgoing/response paths (mode 0–2 = 1–3 bytes per hop; larger
     hashes avoid relay collisions but need firmware 1.14+ mesh-wide)
+  - *Default Region Scope*: the radio's own default region, stored in firmware
+    (`NodePrefs.default_scope_name` / `default_scope_key`) and used for any send
+    the bot does not scope itself. Max 30 ASCII characters including the `#`,
+    which is added if you omit it; blank clears it and the radio floods
+    unscoped. Firmware without the setting is reported as such rather than
+    shown as an empty field, and a stored key that is not the stored name's
+    hash is flagged, because the radio routes by the key. Note that once the
+    bot sends a scoped message it leaves the radio in forced-unscoped mode, so
+    this default stops applying until the bot scopes another send — to have the
+    bot post under a region, use Region Scopes below
   - *Identity & Adverts*: node name, advertised latitude/longitude, advert
     location policy, and buttons to send a zero-hop or flood advert. The name
     field is locked when the bot manages it (`[Bot] bot_name` with
@@ -294,6 +315,33 @@ window; older days stay frozen at the value recorded then.
     device itself
   - *Advanced Tuning*: RX delay base and airtime factor (write-only; the device
     does not report current values)
+- **Region Scopes**: the bot's own regional flood scopes, edited here rather
+  than by hand in `config.ini`. Unlike the cards above it, this writes
+  `[Channels]` in `config.ini` and queues a hot config reload — nothing is read
+  from or written to the radio. This is a different setting from the radio's
+  Default Region Scope above: this one decides what the bot sends and answers,
+  that one is the radio's fallback for anything the bot leaves unscoped
+  - *Which scopes the bot replies to*: `flood_scopes`. Left empty (the default),
+    the bot still answers channel commands, but replies go out as ordinary
+    global FLOOD and do not mirror the sender's region. An allowlist of named
+    regions enables mirroring for those names (for example `*,#home`); the
+    "also reply to unscoped messages" box is the `*` entry that keeps unscoped
+    FLOOD allowed. The bot matches inbound transport codes by HMAC against
+    those names and cannot recover a region name from the 16-bit code alone
+  - *Default outgoing scope*: `outgoing_flood_scope_override`, used for sends
+    that carry no scope of their own (scheduled messages, feeds, webhooks) and
+    for replies whose incoming scope could not be matched. Blank means global
+    flood. A mirrored reply scope still wins over it
+  - Per-channel `flood_scope.<channel>` entries are listed read-only, because
+    they override the default on their own channel; edit those in `config.ini`
+  - Names are normalized the way the bot normalizes them, so `west` is stored
+    as `#west`. A name containing `,`, `%` or an inner `#` is refused: the
+    first separates the list, the second breaks every later read of the section
+    (config.ini is parsed with interpolation on), and the third is the scope
+    marker itself
+  - The page reports what the bot did with the edit, not just that the file was
+    written — it polls the queued reload and says so plainly when nothing
+    picked it up
 - Device writes are queued through the bot process (`channel_operations` table),
   so the bot must be running and connected to the radio for reads/writes to
   complete
@@ -307,6 +355,22 @@ window; older days stay frozen at the value recorded then.
 
 The viewer also provides JSON API endpoints:
 
+- `GET /api/region-warnings` - Region-code settings, per-channel scope tallies,
+  the daily series, today's warning budget, and recent warning decisions
+- `POST /api/region-warnings/settings` - Save `[Region_Warnings]` and queue a
+  hot config reload
+- `GET /api/region-scopes` - Regional flood scopes as the bot resolves them:
+  the `[Channels] flood_scopes` allowlist split into named scopes and the
+  global flag, the default outgoing scope, any per-channel overrides, and which
+  file a save would write
+- `POST /api/radio/firmware/config/write` - Queue a firmware write.
+  `path_hash_mode` (0-2) and `default_flood_scope` (a region name, or empty to
+  clear the radio's default) may be sent together or alone.
+  `GET`-side values come back from `POST /api/radio/firmware/config/read`
+- `POST /api/region-scopes` - Save `[Channels] flood_scopes` and
+  `outgoing_flood_scope_override`, and queue a hot config reload. Returns the
+  reload's `channel_operations` id so the caller can poll
+  `/api/channel-operations/<id>` for what the bot actually did
 - `GET /api/dashboard/summary` - Snapshot-backed dashboard payload, including
   30-day sparkline series and change figures, plus `packet_encoding`: 30 days of
   raw per-payload-type multibyte/total counts for the stacked encoding chart.
@@ -465,8 +529,6 @@ chmod +x restart_viewer.sh
 
 ## Future Enhancements
 
-- Live packet streaming
-- Real-time message monitoring
 - Interactive contact management
 - Export functionality
 - Additional authentication options

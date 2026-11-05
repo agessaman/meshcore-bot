@@ -9,6 +9,8 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
+from modules.models import MeshMessage
+
 # ---------------------------------------------------------------------------
 # Factory helpers
 # ---------------------------------------------------------------------------
@@ -282,6 +284,49 @@ class TestCaptureCommand:
         assert parsed["command"] == "ping"
         assert parsed["success"] is True
 
+    def test_user_input_prefers_original_content(self):
+        """#267: command stream must show the on-air body, not mention-stripped content."""
+        bi = _make_bot_integration()
+        msg = MeshMessage(
+            content="hi",
+            original_content="@[AlphaBot👾] hi",
+            sender_id="Howl 🦾",
+            channel="#alphabot",
+        )
+        bi.capture_command(msg, "hello", "Dobryy vecher, earthling.", True)
+        _, data, row_type, *_dims = bi._write_queue.get_nowait()
+        assert row_type == "command"
+        parsed = json.loads(data)
+        assert parsed["user_input"] == "@[AlphaBot👾] hi"
+        assert parsed["command"] == "hello"
+
+    def test_carries_trigger_and_reply_packet_hashes(self):
+        """The realtime tape joins a command to the packet that triggered it and to its heard-back reply."""
+        bi = _make_bot_integration()
+        bi.bot.transmission_tracker = Mock()
+        bi.bot.transmission_tracker.get_repeat_info.return_value = {
+            "repeat_count": 2, "repeater_prefixes": ["7e"], "repeater_counts": {"7e": 2},
+            "packet_hash": "FEEDFACE00112233",
+        }
+        msg = MeshMessage(
+            content="wx", sender_id="Kim", channel="#bot",
+            routing_info={"packet_hash": "ABCDEF0123456789"},
+        )
+        bi.capture_command(msg, "wx", "54F", True, command_id="cmd-1")
+        parsed = json.loads(bi._write_queue.get_nowait()[1])
+        assert parsed["trigger_packet_hash"] == "ABCDEF0123456789"
+        assert parsed["reply_packet_hash"] == "FEEDFACE00112233"
+
+    def test_omits_packet_hashes_it_does_not_have(self):
+        bi = _make_bot_integration()
+        bi.bot.transmission_tracker = None
+        msg = MeshMessage(content="wx", sender_id="Kim", channel="#bot",
+                          routing_info={"packet_hash": "0000000000000000"})
+        bi.capture_command(msg, "wx", "54F", True)
+        parsed = json.loads(bi._write_queue.get_nowait()[1])
+        assert "trigger_packet_hash" not in parsed
+        assert "reply_packet_hash" not in parsed
+
     def test_no_transmission_tracker(self):
         bi = _make_bot_integration()
         bi.bot.transmission_tracker = None
@@ -319,6 +364,23 @@ class TestCaptureChannelMessage:
         assert parsed["type"] == "message"
         assert parsed["content"] == "hello"
 
+    def test_prefers_original_content_over_stripped_body(self):
+        """#267: capture must store the on-air body, not mention-stripped content."""
+        bi = _make_bot_integration()
+        msg = MeshMessage(
+            content="ack | 9d12,aa11,4039 (3 hops)",
+            original_content="ack @[IU1IPB-1] | 9d12,aa11,4039 (3 hops)",
+            sender_id="IW1PTV-BOT-Savona",
+            channel="#bot",
+            hops=4,
+            is_dm=False,
+        )
+        bi.capture_channel_message(msg)
+        _, data, row_type, *_dims = bi._write_queue.get_nowait()
+        assert row_type == "message"
+        parsed = json.loads(data)
+        assert parsed["content"] == "ack @[IU1IPB-1] | 9d12,aa11,4039 (3 hops)"
+
     def test_dm_message_captured(self):
         bi = _make_bot_integration()
         msg = Mock()
@@ -329,10 +391,46 @@ class TestCaptureChannelMessage:
         msg.hops = 0
         msg.path = ""
         msg.is_dm = True
+        msg.routing_info = None
         bi.capture_channel_message(msg)
         ts, data, _, *_dims = bi._write_queue.get_nowait()
         parsed = json.loads(data)
         assert parsed["is_dm"] is True
+        assert "packet_hash" not in parsed
+
+    def test_stores_packet_hash_from_routing_info(self):
+        """#270: message rows carry packet_hash so routes can link back to the packet."""
+        bi = _make_bot_integration()
+        msg = MeshMessage(
+            content="hello",
+            sender_id="aa",
+            channel="general",
+            hops=1,
+            is_dm=False,
+            routing_info={"packet_hash": "ABCDEF0123456789", "path_length": 1},
+        )
+        bi.capture_channel_message(msg)
+        _, data, row_type, *_dims = bi._write_queue.get_nowait()
+        assert row_type == "message"
+        parsed = json.loads(data)
+        assert parsed["packet_hash"] == "ABCDEF0123456789"
+
+    def test_omits_missing_or_all_zero_packet_hash(self):
+        """#270: do not invent a hash when routing_info lacks a real one."""
+        bi = _make_bot_integration()
+        for routing_info in (None, {}, {"packet_hash": ""}, {"packet_hash": "0000000000000000"}):
+            msg = MeshMessage(
+                content="hello",
+                sender_id="aa",
+                channel="general",
+                hops=0,
+                is_dm=False,
+                routing_info=routing_info,
+            )
+            bi.capture_channel_message(msg)
+            _, data, _, *_dims = bi._write_queue.get_nowait()
+            parsed = json.loads(data)
+            assert "packet_hash" not in parsed, routing_info
 
 
 # ---------------------------------------------------------------------------

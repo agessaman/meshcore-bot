@@ -12,7 +12,7 @@
         border: 1px solid #30363d;
         border-radius: 0.375rem;
         padding: 0.75rem 1rem;
-        font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+        font-family: var(--font-mono);
         font-size: 0.82rem;
         line-height: 1.6;
     }
@@ -43,10 +43,11 @@
     .log-line.level-error   { color: #f85149; }
     .log-line.level-critical{ color: #ff79c6; font-weight: bold; }
 
-    [data-theme="light"] .log-line.level-debug   { color: #0d9488; }
-    [data-theme="light"] .log-line.level-info    { color: #0d6efd; }
-    [data-theme="light"] .log-line.level-warning { color: #fd7e14; }
-    [data-theme="light"] .log-line.level-error   { color: #dc3545; }
+    /* Light set: each passes 4.5:1 on the light log well (#f8f9fa). */
+    [data-theme="light"] .log-line.level-debug   { color: #0f766e; }
+    [data-theme="light"] .log-line.level-info    { color: #0a58ca; }
+    [data-theme="light"] .log-line.level-warning { color: #a85300; }
+    [data-theme="light"] .log-line.level-error   { color: #b02a37; }
     [data-theme="light"] .log-line.level-critical{ color: #6610f2; font-weight: bold; }
 
     .log-controls {
@@ -76,6 +77,13 @@
         transition: opacity 0.15s ease, transform 0.1s ease;
     }
 
+    @media (pointer: coarse) {
+        .log-level-toggle {
+            min-height: 36px;
+            padding: 0.4rem 0.7rem;
+        }
+    }
+
     .log-level-toggle:focus {
         outline: 2px solid #58a6ff;
         outline-offset: 2px;
@@ -97,14 +105,14 @@
     .log-level-toggle[data-level="DEBUG"].is-on    { background: #2dd4bf; color: #0d1117; border-color: #2dd4bf; }
     .log-level-toggle[data-level="INFO"].is-on     { background: #58a6ff; color: #0d1117; border-color: #58a6ff; }
     .log-level-toggle[data-level="WARNING"].is-on  { background: #d29922; color: #0d1117; border-color: #d29922; }
-    .log-level-toggle[data-level="ERROR"].is-on    { background: #f85149; color: #fff; border-color: #f85149; }
+    .log-level-toggle[data-level="ERROR"].is-on    { background: #f85149; color: #0d1117; border-color: #f85149; }
     .log-level-toggle[data-level="CRITICAL"].is-on { background: #ff79c6; color: #0d1117; border-color: #ff79c6; }
 
     /* Light theme — on */
-    [data-theme="light"] .log-level-toggle[data-level="DEBUG"].is-on    { background: #0d9488; color: #fff; border-color: #0d9488; }
-    [data-theme="light"] .log-level-toggle[data-level="INFO"].is-on     { background: #0d6efd; color: #fff; border-color: #0d6efd; }
+    [data-theme="light"] .log-level-toggle[data-level="DEBUG"].is-on    { background: #0f766e; color: #fff; border-color: #0f766e; }
+    [data-theme="light"] .log-level-toggle[data-level="INFO"].is-on     { background: #0a58ca; color: #fff; border-color: #0a58ca; }
     [data-theme="light"] .log-level-toggle[data-level="WARNING"].is-on  { background: #fd7e14; color: #212529; border-color: #fd7e14; }
-    [data-theme="light"] .log-level-toggle[data-level="ERROR"].is-on    { background: #dc3545; color: #fff; border-color: #dc3545; }
+    [data-theme="light"] .log-level-toggle[data-level="ERROR"].is-on    { background: #b02a37; color: #fff; border-color: #b02a37; }
     [data-theme="light"] .log-level-toggle[data-level="CRITICAL"].is-on { background: #6610f2; color: #fff; border-color: #6610f2; }
 </style>
 {% endblock %}
@@ -124,7 +132,7 @@
 <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center">
         <div class="d-flex align-items-center gap-2">
-            <h6 class="mb-0"><i class="fas fa-terminal"></i> Bot Log Stream</h6>
+            <h2 class="h6 mb-0"><i class="fas fa-terminal"></i> Bot Log Stream</h2>
             <span class="badge bg-success" id="log-status">Connecting…</span>
         </div>
         <div class="log-controls">
@@ -149,7 +157,7 @@
         </div>
     </div>
     <div class="card-body p-0">
-        <div id="log-container" class="log-container">
+        <div id="log-container" class="log-container" tabindex="0" role="region" aria-label="Bot log stream">
             <div class="text-muted py-3 text-center" id="log-placeholder">
                 <i class="fas fa-hourglass-half"></i> Waiting for log data…
             </div>

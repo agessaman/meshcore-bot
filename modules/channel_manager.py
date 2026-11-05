@@ -49,15 +49,26 @@ class ChannelManager:
         """Lowercase channel name without a leading # for cache lookups."""
         return name.removeprefix("#").lower()
 
-    async def fetch_channels(self):
-        """Fetch channels from the MeshCore node using enhanced concurrent fetching"""
+    async def fetch_channels(self, max_attempts: int = 3, retry_delay: float = 2.0) -> bool:
+        """Fetch configured channels, retrying when the node returns no usable data."""
         self.logger.info("Fetching channels from MeshCore node using enhanced concurrent method...")
-        try:
-            # Wait a moment for the device to be ready
-            await asyncio.sleep(2)
+        if max_attempts < 1:
+            raise ValueError("max_attempts must be at least 1")
 
-            # Fetch all channels concurrently
-            channels = await self.fetch_all_channels(force_refresh=True)
+        # Give the companion protocol a moment to settle after transport connect.
+        await asyncio.sleep(2)
+
+        for attempt in range(1, max_attempts + 1):
+            try:
+                channels = await self.fetch_all_channels(force_refresh=True)
+            except Exception as e:
+                channels = []
+                self.logger.warning(
+                    "Channel fetch attempt %d/%d failed: %s",
+                    attempt,
+                    max_attempts,
+                    e,
+                )
 
             if channels:
                 self.logger.info(f"Successfully fetched {len(channels)} channels from MeshCore node")
@@ -68,13 +79,25 @@ class ChannelManager:
                         self.logger.info(f"  Channel {channel_idx}: {channel_name}")
                     else:
                         self.logger.debug(f"  Channel {channel_idx}: (empty)")
-            else:
-                self.logger.warning("No channels found on MeshCore node")
-                self.bot.meshcore.channels = {}
+                return True
 
-        except Exception as e:
-            self.logger.error(f"Failed to fetch channels: {e}")
+            self._cache_valid = False
             self.bot.meshcore.channels = {}
+            if attempt < max_attempts:
+                self.logger.warning(
+                    "No channels received from MeshCore node on attempt %d/%d; "
+                    "retrying in %.1fs",
+                    attempt,
+                    max_attempts,
+                    retry_delay,
+                )
+                await asyncio.sleep(retry_delay)
+
+        self.logger.error(
+            "No channels received from MeshCore node after %d attempt(s)",
+            max_attempts,
+        )
+        return False
 
     async def fetch_all_channels(self, force_refresh: bool = False) -> list[dict[str, Any]]:
         """
@@ -136,14 +159,15 @@ class ChannelManager:
                     break
                 continue
 
-        self._cache_valid = True
+        self._cache_valid = bool(valid_channels)
         self.logger.info(f"Successfully fetched {len(valid_channels)} channels")
 
         # Update the bot's meshcore channels for compatibility
         self.bot.meshcore.channels = self._channels_cache
 
-        # Store channels in database for web viewer access
-        self._store_channels_in_db(valid_channels)
+        # Do not erase the last known channel table on a transient all-empty scan.
+        if valid_channels:
+            self._store_channels_in_db(valid_channels)
 
         return valid_channels
 
@@ -208,57 +232,22 @@ class ChannelManager:
             Channel info dictionary or None if not configured
         """
         try:
-            # Use the native library API if available — avoids the CLI wrapper overhead
-            # that was causing rapid-fire requests to crash the device.
-            if hasattr(self.bot.meshcore, 'commands') and hasattr(self.bot.meshcore.commands, 'get_channel'):
-                try:
-                    res = await asyncio.wait_for(
-                        self.bot.meshcore.commands.get_channel(channel_idx),
-                        timeout=self._fetch_timeout,
-                    )
-                except asyncio.TimeoutError:
-                    self.logger.debug(f"Timeout waiting for channel {channel_idx} response")
-                    return None
+            # The native library API; the old CLI wrapper's overhead crashed the
+            # device under rapid-fire requests.
+            try:
+                res = await asyncio.wait_for(
+                    self.bot.meshcore.commands.get_channel(channel_idx),
+                    timeout=self._fetch_timeout,
+                )
+            except asyncio.TimeoutError:
+                self.logger.debug(f"Timeout waiting for channel {channel_idx} response")
+                return None
 
-                if not hasattr(res, 'payload') or not res.payload:
-                    self.logger.debug(f"No channel {channel_idx} found")
-                    return None
+            if not hasattr(res, 'payload') or not res.payload:
+                self.logger.debug(f"No channel {channel_idx} found")
+                return None
 
-                payload = res.payload
-            else:
-                # Fallback: CLI wrapper (legacy path)
-                channel_event = None
-                event_received = asyncio.Event()
-
-                async def on_channel_info(event):
-                    nonlocal channel_event
-                    if event.payload.get('channel_idx') == channel_idx:
-                        channel_event = event
-                        event_received.set()
-
-                subscription = self.bot.meshcore.subscribe(EventType.CHANNEL_INFO, on_channel_info)
-                try:
-                    from meshcore_cli.meshcore_cli import next_cmd
-                    with open(os.devnull, 'w') as devnull:
-                        old_stdout = sys.stdout
-                        sys.stdout = devnull
-                        try:
-                            await next_cmd(self.bot.meshcore, ["get_channel", str(channel_idx)])
-                        finally:
-                            sys.stdout = old_stdout
-
-                    try:
-                        await asyncio.wait_for(event_received.wait(), timeout=self._fetch_timeout)
-                    except asyncio.TimeoutError:
-                        self.logger.debug(f"Timeout waiting for channel {channel_idx} response")
-                        return None
-
-                    if not channel_event or not channel_event.payload:
-                        self.logger.debug(f"No channel {channel_idx} found")
-                        return None
-                    payload = channel_event.payload
-                finally:
-                    self.bot.meshcore.unsubscribe(subscription)
+            payload = res.payload
 
             # Store channel key as hex for decryption
             channel_secret = payload.get('channel_secret', b'')

@@ -1,0 +1,1843 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:cap="urn:oasis:names:tc:emergency:cap:1.2">
+    <title>NWS active alerts sample (TX, CA, AK, FL; 2026-10-01)</title>
+    <entry>
+        <id>https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.af4b7a998d0abf1bbf1841635a7398615c8e4a08.001.1</id>
+        <link rel="alternate" href="https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.af4b7a998d0abf1bbf1841635a7398615c8e4a08.001.1.cap"/>
+        <updated>2026-10-01T09:33:00-05:00</updated>
+        <published>2026-10-01T09:33:00-05:00</published>
+        <author>
+            <name>NWS</name>
+        </author>
+        <title>Flash Flood Warning issued October 1 at 9:33AM CDT until October 1 at 12:30PM CDT by NWS Fort Worth TX</title>
+        <summary>FFWFWD
+
+The National Weather Service in Fort Worth has issued a
+
+* Flash Flood Warning for...
+Northwestern Ellis County in north central Texas...
+Johnson County in north central Texas...
+
+* Until 1230 PM CDT.
+
+* At 933 AM CDT, Doppler radar and automated rain gauges indicated
+thunderstorms producing heavy rain across the warned area. Up to
+2.5 inches of rain have fallen. Additional rainfall</summary>
+        <cap:event>Flash Flood Warning</cap:event>
+        <cap:sent>2026-10-01T09:33:00-05:00</cap:sent>
+        <cap:effective>2026-10-01T09:33:00-05:00</cap:effective>
+        <cap:onset>2026-10-01T09:33:00-05:00</cap:onset>
+        <cap:expires>2026-10-01T12:30:00-05:00</cap:expires>
+        <cap:status>Actual</cap:status>
+        <cap:msgType>Alert</cap:msgType>
+        <cap:category>Met</cap:category>
+        <cap:urgency>Immediate</cap:urgency>
+        <cap:severity>Severe</cap:severity>
+        <cap:certainty>Likely</cap:certainty>
+        <cap:areaDesc>Ellis, TX; Johnson, TX</cap:areaDesc>
+        <cap:polygon>32.34,-97.62 32.56,-97.53 32.55,-96.97 32.27,-97.09 32.19,-97.45 32.16,-97.52 32.14,-97.52 32.15,-97.57 32.16,-97.56 32.17,-97.57 32.18,-97.57 32.18,-97.59 32.20,-97.59 32.20,-97.61 32.34,-97.62</cap:polygon>
+        <cap:parameter>
+            <valueName>AWIPSidentifier</valueName>
+            <value>FFWFWD</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>WMOidentifier</valueName>
+            <value>WGUS54 KFWD 011433</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>flashFloodDetection</valueName>
+            <value>RADAR AND GAUGE INDICATED</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>EAS</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>NWEM</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>CMAS</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>EAS-ORG</valueName>
+            <value>WXR</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>VTEC</valueName>
+            <value>/O.NEW.KFWD.FF.W.0089.261001T1433Z-261001T1730Z/</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>eventEndingTime</valueName>
+            <value>2026-10-01T12:30:00-05:00</value>
+        </cap:parameter>
+        <cap:scope>Public</cap:scope>
+        <cap:code>IPAWSv1.0</cap:code>
+        <cap:language>en-US</cap:language>
+        <cap:web>http://www.weather.gov</cap:web>
+        <cap:eventCode>
+            <valueName>SAME</valueName>
+            <value>FFW</value>
+        </cap:eventCode>
+        <cap:eventCode>
+            <valueName>NationalWeatherService</valueName>
+            <value>FFW</value>
+        </cap:eventCode>
+    </entry>
+    <entry>
+        <id>https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.02af6db195e0d896038d7856f5a86bad08fe59d3.001.1</id>
+        <link rel="alternate" href="https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.02af6db195e0d896038d7856f5a86bad08fe59d3.001.1.cap"/>
+        <updated>2026-10-01T09:32:00-05:00</updated>
+        <published>2026-10-01T09:32:00-05:00</published>
+        <author>
+            <name>NWS</name>
+        </author>
+        <title>Flood Warning issued October 1 at 9:32AM CDT until October 1 at 3:30PM CDT by NWS San Angelo TX</title>
+        <summary>* WHAT...Flooding caused by excessive rainfall is expected.
+
+* WHERE...Kimble County in west central Texas...
+Mason County in west central Texas...
+Southeastern Menard County in west central Texas...
+Southeastern Sutton County in west central Texas...
+
+* WHEN...Until 330 PM CDT.
+
+* IMPACTS...Flooding of rivers, creeks, streams, and other low-lying
+and flood-prone locations is imminent or</summary>
+        <cap:event>Flood Warning</cap:event>
+        <cap:sent>2026-10-01T09:32:00-05:00</cap:sent>
+        <cap:effective>2026-10-01T09:32:00-05:00</cap:effective>
+        <cap:onset>2026-10-01T09:32:00-05:00</cap:onset>
+        <cap:expires>2026-10-01T15:30:00-05:00</cap:expires>
+        <cap:status>Actual</cap:status>
+        <cap:msgType>Alert</cap:msgType>
+        <cap:category>Met</cap:category>
+        <cap:urgency>Expected</cap:urgency>
+        <cap:severity>Severe</cap:severity>
+        <cap:certainty>Likely</cap:certainty>
+        <cap:areaDesc>Kimble, TX; Mason, TX; Menard, TX; Sutton, TX</cap:areaDesc>
+        <cap:polygon>30.29,-100.22 30.29,-100.56 30.51,-100.56 30.80,-99.59 30.82,-99.48 30.82,-98.98 30.58,-98.96 30.51,-98.96 30.50,-99.16 30.50,-99.30 30.49,-99.30 30.49,-99.31 30.29,-99.31 30.29,-100.22</cap:polygon>
+        <cap:parameter>
+            <valueName>AWIPSidentifier</valueName>
+            <value>FLWSJT</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>WMOidentifier</valueName>
+            <value>WGUS44 KSJT 011432</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>NWSheadline</valueName>
+            <value>FLOOD WARNING IN EFFECT UNTIL 330 PM CDT THIS AFTERNOON</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>EAS</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>NWEM</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>CMAS</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>EAS-ORG</valueName>
+            <value>WXR</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>VTEC</valueName>
+            <value>/O.NEW.KSJT.FA.W.0003.261001T1432Z-261001T2030Z/</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>eventEndingTime</valueName>
+            <value>2026-10-01T15:30:00-05:00</value>
+        </cap:parameter>
+        <cap:scope>Public</cap:scope>
+        <cap:code>IPAWSv1.0</cap:code>
+        <cap:language>en-US</cap:language>
+        <cap:web>http://www.weather.gov</cap:web>
+        <cap:eventCode>
+            <valueName>SAME</valueName>
+            <value>FLW</value>
+        </cap:eventCode>
+        <cap:eventCode>
+            <valueName>NationalWeatherService</valueName>
+            <value>FAW</value>
+        </cap:eventCode>
+    </entry>
+    <entry>
+        <id>https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.41af1373ad9013b66e6cd74f17cd0d7d79603732.001.1</id>
+        <link rel="alternate" href="https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.41af1373ad9013b66e6cd74f17cd0d7d79603732.001.1.cap"/>
+        <updated>2026-10-01T09:27:00-05:00</updated>
+        <published>2026-10-01T09:27:00-05:00</published>
+        <author>
+            <name>NWS</name>
+        </author>
+        <title>Flood Advisory issued October 1 at 9:27AM CDT until October 1 at 12:00PM CDT by NWS Austin/San Antonio TX</title>
+        <summary>* WHAT...Flooding caused by excessive rainfall continues.
+
+* WHERE...Burnet County in south central Texas...
+Eastern Llano County in south central Texas...
+
+* WHEN...Until noon CDT.
+
+* IMPACTS...Minor flooding in low-lying and poor drainage areas.
+Water over roadways.
+
+* ADDITIONAL DETAILS...
+- At 927 AM CDT, Doppler radar indicated heavy rain due to
+thunderstorms. Minor flooding is ongoing or</summary>
+        <cap:event>Flood Advisory</cap:event>
+        <cap:sent>2026-10-01T09:27:00-05:00</cap:sent>
+        <cap:effective>2026-10-01T09:27:00-05:00</cap:effective>
+        <cap:onset>2026-10-01T09:27:00-05:00</cap:onset>
+        <cap:expires>2026-10-01T12:00:00-05:00</cap:expires>
+        <cap:status>Actual</cap:status>
+        <cap:msgType>Update</cap:msgType>
+        <cap:category>Met</cap:category>
+        <cap:urgency>Expected</cap:urgency>
+        <cap:severity>Minor</cap:severity>
+        <cap:certainty>Likely</cap:certainty>
+        <cap:areaDesc>Burnet, TX; Llano, TX</cap:areaDesc>
+        <cap:polygon>30.5,-98.57 30.92,-98.51 30.93,-98.42 30.95,-98.42 30.96,-98.45 30.98,-98.44 31.01,-98.46 31.03,-98.44 31.03,-97.91 31.02,-97.90 30.46,-98.25 30.50,-98.41 30.5,-98.57</cap:polygon>
+        <cap:parameter>
+            <valueName>AWIPSidentifier</valueName>
+            <value>FLSEWX</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>WMOidentifier</valueName>
+            <value>WGUS84 KEWX 011427 RRA</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>NWSheadline</valueName>
+            <value>FLOOD ADVISORY NOW IN EFFECT UNTIL NOON CDT TODAY</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>EAS</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>NWEM</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>CMAS</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>VTEC</valueName>
+            <value>/O.EXT.KEWX.FA.Y.0210.000000T0000Z-261001T1700Z/</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>eventEndingTime</valueName>
+            <value>2026-10-01T12:00:00-05:00</value>
+        </cap:parameter>
+        <cap:scope>Public</cap:scope>
+        <cap:code>IPAWSv1.0</cap:code>
+        <cap:language>en-US</cap:language>
+        <cap:web>http://www.weather.gov</cap:web>
+        <cap:eventCode>
+            <valueName>SAME</valueName>
+            <value>NWS</value>
+        </cap:eventCode>
+        <cap:eventCode>
+            <valueName>NationalWeatherService</valueName>
+            <value>FAY</value>
+        </cap:eventCode>
+    </entry>
+    <entry>
+        <id>https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.a06399bfde6edf46aa1b162642be624f84004fb9.001.1</id>
+        <link rel="alternate" href="https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.a06399bfde6edf46aa1b162642be624f84004fb9.001.1.cap"/>
+        <updated>2026-10-01T09:27:00-05:00</updated>
+        <published>2026-10-01T09:27:00-05:00</published>
+        <author>
+            <name>NWS</name>
+        </author>
+        <title>Flood Advisory issued October 1 at 9:27AM CDT until October 1 at 12:00PM CDT by NWS Austin/San Antonio TX</title>
+        <summary>* WHAT...Small stream flooding caused by excessive rainfall
+continues.
+
+* WHERE...Eastern Gillespie County in south central Texas...
+Llano County in south central Texas...
+
+* WHEN...Until noon CDT.
+
+* IMPACTS...Minor flooding in low-lying and poor drainage areas.
+Dangerous flows over low-water crossings.
+
+* ADDITIONAL DETAILS...
+- At 927 AM CDT, Doppler radar indicated heavy rain due</summary>
+        <cap:event>Flood Advisory</cap:event>
+        <cap:sent>2026-10-01T09:27:00-05:00</cap:sent>
+        <cap:effective>2026-10-01T09:27:00-05:00</cap:effective>
+        <cap:onset>2026-10-01T09:27:00-05:00</cap:onset>
+        <cap:expires>2026-10-01T12:00:00-05:00</cap:expires>
+        <cap:status>Actual</cap:status>
+        <cap:msgType>Update</cap:msgType>
+        <cap:category>Met</cap:category>
+        <cap:urgency>Expected</cap:urgency>
+        <cap:severity>Minor</cap:severity>
+        <cap:certainty>Likely</cap:certainty>
+        <cap:areaDesc>Gillespie, TX; Llano, TX</cap:areaDesc>
+        <cap:polygon>30.5,-98.91 30.5,-98.96 30.92,-98.96 30.92,-98.51 30.50,-98.57 30.50,-98.59 30.14,-98.59 30.14,-98.91 30.5,-98.91</cap:polygon>
+        <cap:parameter>
+            <valueName>AWIPSidentifier</valueName>
+            <value>FLSEWX</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>WMOidentifier</valueName>
+            <value>WGUS84 KEWX 011427</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>NWSheadline</valueName>
+            <value>FLOOD ADVISORY NOW IN EFFECT UNTIL NOON CDT TODAY</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>EAS</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>NWEM</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>CMAS</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>VTEC</valueName>
+            <value>/O.EXT.KEWX.FA.Y.0209.000000T0000Z-261001T1700Z/</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>eventEndingTime</valueName>
+            <value>2026-10-01T12:00:00-05:00</value>
+        </cap:parameter>
+        <cap:scope>Public</cap:scope>
+        <cap:code>IPAWSv1.0</cap:code>
+        <cap:language>en-US</cap:language>
+        <cap:web>http://www.weather.gov</cap:web>
+        <cap:eventCode>
+            <valueName>SAME</valueName>
+            <value>NWS</value>
+        </cap:eventCode>
+        <cap:eventCode>
+            <valueName>NationalWeatherService</valueName>
+            <value>FAY</value>
+        </cap:eventCode>
+    </entry>
+    <entry>
+        <id>https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.16c58151a194263922ea5d7ed302b88f4d9b03e2.002.1</id>
+        <link rel="alternate" href="https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.16c58151a194263922ea5d7ed302b88f4d9b03e2.002.1.cap"/>
+        <updated>2026-10-01T09:22:00-05:00</updated>
+        <published>2026-10-01T09:22:00-05:00</published>
+        <author>
+            <name>NWS</name>
+        </author>
+        <title>Flood Watch issued October 1 at 9:22AM CDT until October 2 at 1:00AM CDT by NWS San Angelo TX</title>
+        <summary>* WHAT...Flash flooding caused by excessive rainfall continues to be
+possible.
+
+* WHERE...A portion of west central Texas, including the following
+counties, Brown, Kimble, Mason and San Saba.
+
+* WHEN...Through late tonight.
+
+* IMPACTS...Excessive runoff may result in flooding of rivers,
+creeks, streams, and other low-lying and flood-prone locations.
+
+* ADDITIONAL DETAILS...
+- There is an</summary>
+        <cap:event>Flood Watch</cap:event>
+        <cap:sent>2026-10-01T09:22:00-05:00</cap:sent>
+        <cap:effective>2026-10-01T09:22:00-05:00</cap:effective>
+        <cap:onset>2026-10-01T09:22:00-05:00</cap:onset>
+        <cap:expires>2026-10-01T17:30:00-05:00</cap:expires>
+        <cap:status>Actual</cap:status>
+        <cap:msgType>Alert</cap:msgType>
+        <cap:category>Met</cap:category>
+        <cap:urgency>Future</cap:urgency>
+        <cap:severity>Severe</cap:severity>
+        <cap:certainty>Possible</cap:certainty>
+        <cap:areaDesc>Brown; San Saba; Kimble; Mason</cap:areaDesc>
+        <cap:polygon/>
+        <cap:parameter>
+            <valueName>AWIPSidentifier</valueName>
+            <value>FFASJT</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>WMOidentifier</valueName>
+            <value>WGUS64 KSJT 011422</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>NWSheadline</valueName>
+            <value>FLOOD WATCH REMAINS IN EFFECT THROUGH LATE TONIGHT</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>EAS</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>NWEM</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>CMAS</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>EAS-ORG</valueName>
+            <value>WXR</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>VTEC</valueName>
+            <value>/O.CON.KSJT.FA.A.0007.000000T0000Z-261002T0600Z/</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>eventEndingTime</valueName>
+            <value>2026-10-02T01:00:00-05:00</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>expiredReferences</valueName>
+            <value>w-nws.webmaster@noaa.gov,urn:oid:2.49.0.1.840.0.5186e8526c0afa4788f23cb6e1b914914d538e99.001.1,2026-09-30T05:45:00-05:00 w-nws.webmaster@noaa.gov,urn:oid:2.49.0.1.840.0.a375008b8ec971444c28bb48b2113c10d3c89a41.001.1,2026-09-29T14:57:00-05:00 w-nws.webmaster@noaa.gov,urn:oid:2.49.0.1.840.0.eb464936598ad9958b19a459a7212962209c4b88.001.1,2026-09-29T01:18:00-05:00</value>
+        </cap:parameter>
+        <cap:scope>Public</cap:scope>
+        <cap:code>IPAWSv1.0</cap:code>
+        <cap:language>en-US</cap:language>
+        <cap:web>http://www.weather.gov</cap:web>
+        <cap:eventCode>
+            <valueName>SAME</valueName>
+            <value>FFA</value>
+        </cap:eventCode>
+        <cap:eventCode>
+            <valueName>NationalWeatherService</valueName>
+            <value>FAA</value>
+        </cap:eventCode>
+    </entry>
+    <entry>
+        <id>https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.16c58151a194263922ea5d7ed302b88f4d9b03e2.001.1</id>
+        <link rel="alternate" href="https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.16c58151a194263922ea5d7ed302b88f4d9b03e2.001.1.cap"/>
+        <updated>2026-10-01T09:22:00-05:00</updated>
+        <published>2026-10-01T09:22:00-05:00</published>
+        <author>
+            <name>NWS</name>
+        </author>
+        <title>The Flood Watch has been cancelled.</title>
+        <summary>The Flood Watch has been cancelled and is no longer in effect.</summary>
+        <cap:event>Flood Watch</cap:event>
+        <cap:sent>2026-10-01T09:22:00-05:00</cap:sent>
+        <cap:effective>2026-10-01T09:22:00-05:00</cap:effective>
+        <cap:onset>2026-10-01T09:22:00-05:00</cap:onset>
+        <cap:expires>2026-10-01T09:38:02-05:00</cap:expires>
+        <cap:status>Actual</cap:status>
+        <cap:msgType>Alert</cap:msgType>
+        <cap:category>Met</cap:category>
+        <cap:urgency>Past</cap:urgency>
+        <cap:severity>Minor</cap:severity>
+        <cap:certainty>Observed</cap:certainty>
+        <cap:areaDesc>Fisher; Nolan; Sterling; Coke; Runnels; Irion; Tom Green; Concho; Crockett; Schleicher; Sutton; Haskell; Throckmorton; Jones; Shackelford; Taylor; Callahan; Coleman; McCulloch; Menard</cap:areaDesc>
+        <cap:polygon/>
+        <cap:parameter>
+            <valueName>AWIPSidentifier</valueName>
+            <value>FFASJT</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>WMOidentifier</valueName>
+            <value>WGUS64 KSJT 011422</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>NWSheadline</valueName>
+            <value>FLOOD WATCH IS CANCELLED</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>EAS</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>NWEM</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>CMAS</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>EAS-ORG</valueName>
+            <value>WXR</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>VTEC</valueName>
+            <value>/O.CAN.KSJT.FA.A.0007.000000T0000Z-261002T0600Z/</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>eventEndingTime</valueName>
+            <value>2026-10-02T01:00:00-05:00</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>expiredReferences</valueName>
+            <value>w-nws.webmaster@noaa.gov,urn:oid:2.49.0.1.840.0.5186e8526c0afa4788f23cb6e1b914914d538e99.001.1,2026-09-30T05:45:00-05:00 w-nws.webmaster@noaa.gov,urn:oid:2.49.0.1.840.0.a375008b8ec971444c28bb48b2113c10d3c89a41.001.1,2026-09-29T14:57:00-05:00 w-nws.webmaster@noaa.gov,urn:oid:2.49.0.1.840.0.eb464936598ad9958b19a459a7212962209c4b88.001.1,2026-09-29T01:18:00-05:00</value>
+        </cap:parameter>
+        <cap:scope>Public</cap:scope>
+        <cap:code>IPAWSv1.0</cap:code>
+        <cap:language>en-US</cap:language>
+        <cap:web>http://www.weather.gov</cap:web>
+        <cap:eventCode>
+            <valueName>SAME</valueName>
+            <value>FFA</value>
+        </cap:eventCode>
+        <cap:eventCode>
+            <valueName>NationalWeatherService</valueName>
+            <value>FAA</value>
+        </cap:eventCode>
+    </entry>
+    <entry>
+        <id>https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.f9cbbcad740a662ca7161e435c3302a8a2f3c41d.001.1</id>
+        <link rel="alternate" href="https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.f9cbbcad740a662ca7161e435c3302a8a2f3c41d.001.1.cap"/>
+        <updated>2026-10-01T09:20:00-05:00</updated>
+        <published>2026-10-01T09:20:00-05:00</published>
+        <author>
+            <name>NWS</name>
+        </author>
+        <title>Special Weather Statement issued October 1 at 9:20AM CDT by NWS Brownsville TX</title>
+        <summary>The combination of hot temperatures and elevated humidity levels
+will produce Heat Index values between 108 and 110 degrees for
+several hours this afternoon into early this evening. A few
+locations may briefly experience Heat Index values above 110
+degrees.
+
+If you plan to spend time outside, drink plenty of water, wear
+light-weight and light-colored clothing and take frequent breaks
+from the</summary>
+        <cap:event>Special Weather Statement</cap:event>
+        <cap:sent>2026-10-01T09:20:00-05:00</cap:sent>
+        <cap:effective>2026-10-01T09:20:00-05:00</cap:effective>
+        <cap:onset>2026-10-01T09:20:00-05:00</cap:onset>
+        <cap:expires>2026-10-01T18:00:00-05:00</cap:expires>
+        <cap:status>Actual</cap:status>
+        <cap:msgType>Alert</cap:msgType>
+        <cap:category>Met</cap:category>
+        <cap:urgency>Expected</cap:urgency>
+        <cap:severity>Moderate</cap:severity>
+        <cap:certainty>Observed</cap:certainty>
+        <cap:areaDesc>Brooks; Inland Kenedy; Starr; Southern Hidalgo; Inland Willacy; Inland Cameron; Coastal Kenedy; Northern Hidalgo; Coastal Willacy; Coastal Cameron</cap:areaDesc>
+        <cap:polygon/>
+        <cap:parameter>
+            <valueName>AWIPSidentifier</valueName>
+            <value>SPSBRO</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>WMOidentifier</valueName>
+            <value>WWUS84 KBRO 011420</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>NWSheadline</valueName>
+            <value>HEAT INDICES EXPECTED TO APPROACH 110 DEGREES THIS AFTERNOON</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>EAS</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>NWEM</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>CMAS</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>EAS-ORG</valueName>
+            <value>WXR</value>
+        </cap:parameter>
+        <cap:scope>Public</cap:scope>
+        <cap:code>IPAWSv1.0</cap:code>
+        <cap:language>en-US</cap:language>
+        <cap:web>http://www.weather.gov</cap:web>
+        <cap:eventCode>
+            <valueName>SAME</valueName>
+            <value>SPS</value>
+        </cap:eventCode>
+        <cap:eventCode>
+            <valueName>NationalWeatherService</valueName>
+            <value>SPS</value>
+        </cap:eventCode>
+    </entry>
+    <entry>
+        <id>https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.f4be351c6b2111b6c31613932c0d06a461016288.001.1</id>
+        <link rel="alternate" href="https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.f4be351c6b2111b6c31613932c0d06a461016288.001.1.cap"/>
+        <updated>2026-10-01T08:53:00-05:00</updated>
+        <published>2026-10-01T08:53:00-05:00</published>
+        <author>
+            <name>NWS</name>
+        </author>
+        <title>Flood Warning issued October 1 at 8:53AM CDT until October 3 at 3:00AM CDT by NWS Austin/San Antonio TX</title>
+        <summary>...The Flood Warning continues for the following rivers in Texas...
+
+Devils River At Bakers Crossing 19N Of Comstock affecting Val Verde
+County.
+
+Devils River At Cauthorn Ranch Near Juno affecting Val Verde
+County.
+
+...The Flood Warning is extended for the following rivers in Texas...
+
+Devils River At Pafford Crossing near Comstock affecting Val Verde
+County.
+
+* WHAT...Minor flooding is occurring</summary>
+        <cap:event>Flood Warning</cap:event>
+        <cap:sent>2026-10-01T08:53:00-05:00</cap:sent>
+        <cap:effective>2026-10-01T08:53:00-05:00</cap:effective>
+        <cap:onset>2026-10-01T08:53:00-05:00</cap:onset>
+        <cap:expires>2026-10-01T21:00:00-05:00</cap:expires>
+        <cap:status>Actual</cap:status>
+        <cap:msgType>Update</cap:msgType>
+        <cap:category>Met</cap:category>
+        <cap:urgency>Immediate</cap:urgency>
+        <cap:severity>Severe</cap:severity>
+        <cap:certainty>Observed</cap:certainty>
+        <cap:areaDesc>Val Verde, TX</cap:areaDesc>
+        <cap:polygon>29.96,-101.18 29.96,-101.10 29.89,-100.97 29.71,-100.95 29.68,-101.03 29.86,-101.05 29.96,-101.18</cap:polygon>
+        <cap:parameter>
+            <valueName>AWIPSidentifier</valueName>
+            <value>FLSEWX</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>WMOidentifier</valueName>
+            <value>WGUS84 KEWX 011353</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>NWSheadline</valueName>
+            <value>FLOOD WARNING NOW IN EFFECT UNTIL LATE FRIDAY NIGHT</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>EAS</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>NWEM</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>CMAS</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>EAS-ORG</valueName>
+            <value>WXR</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>VTEC</valueName>
+            <value>/O.EXT.KEWX.FL.W.0052.000000T0000Z-261003T0800Z/</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>eventEndingTime</valueName>
+            <value>2026-10-03T03:00:00-05:00</value>
+        </cap:parameter>
+        <cap:scope>Public</cap:scope>
+        <cap:code>IPAWSv1.0</cap:code>
+        <cap:language>en-US</cap:language>
+        <cap:web>http://www.weather.gov</cap:web>
+        <cap:eventCode>
+            <valueName>SAME</valueName>
+            <value>FLS</value>
+        </cap:eventCode>
+        <cap:eventCode>
+            <valueName>NationalWeatherService</valueName>
+            <value>FLW</value>
+        </cap:eventCode>
+    </entry>
+    <entry>
+        <id>https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.89673fe4890e820377cfab17c51df746b8c67e7c.001.1</id>
+        <link rel="alternate" href="https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.89673fe4890e820377cfab17c51df746b8c67e7c.001.1.cap"/>
+        <updated>2026-10-01T08:43:00-05:00</updated>
+        <published>2026-10-01T08:43:00-05:00</published>
+        <author>
+            <name>NWS</name>
+        </author>
+        <title>Flash Flood Warning issued October 1 at 8:43AM CDT until October 1 at 10:30AM CDT by NWS Fort Worth TX</title>
+        <summary>At 843 AM CDT, Doppler radar and automated rain gauges indicated
+thunderstorms producing heavy rain across the warned area. Up to 3
+inches of rain have fallen. Additional rainfall amounts up to 2
+inches are possible in the warned area. Flash flooding is ongoing or
+expected to begin shortly.
+
+HAZARD...Flash flooding caused by thunderstorms.
+
+SOURCE...Radar and automated gauges.
+
+IMPACT...Flash</summary>
+        <cap:event>Flash Flood Warning</cap:event>
+        <cap:sent>2026-10-01T08:43:00-05:00</cap:sent>
+        <cap:effective>2026-10-01T08:43:00-05:00</cap:effective>
+        <cap:onset>2026-10-01T08:43:00-05:00</cap:onset>
+        <cap:expires>2026-10-01T10:30:00-05:00</cap:expires>
+        <cap:status>Actual</cap:status>
+        <cap:msgType>Update</cap:msgType>
+        <cap:category>Met</cap:category>
+        <cap:urgency>Immediate</cap:urgency>
+        <cap:severity>Severe</cap:severity>
+        <cap:certainty>Likely</cap:certainty>
+        <cap:areaDesc>Dallas, TX; Denton, TX; Tarrant, TX</cap:areaDesc>
+        <cap:polygon>32.99,-97.54 32.99,-97.40 33.26,-97.39 33.24,-96.84 32.99,-96.84 32.55,-97.04 32.56,-97.55 32.84,-97.55 32.99,-97.54</cap:polygon>
+        <cap:parameter>
+            <valueName>AWIPSidentifier</valueName>
+            <value>FFSFWD</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>WMOidentifier</valueName>
+            <value>WGUS74 KFWD 011343</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>NWSheadline</valueName>
+            <value>FLASH FLOOD WARNING REMAINS IN EFFECT UNTIL 1030 AM CDT THIS MORNING FOR NORTHWESTERN DALLAS, DENTON AND TARRANT COUNTIES</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>flashFloodDetection</valueName>
+            <value>RADAR AND GAUGE INDICATED</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>EAS</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>NWEM</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>CMAS</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>EAS-ORG</valueName>
+            <value>WXR</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>VTEC</valueName>
+            <value>/O.CON.KFWD.FF.W.0088.000000T0000Z-261001T1530Z/</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>eventEndingTime</valueName>
+            <value>2026-10-01T10:30:00-05:00</value>
+        </cap:parameter>
+        <cap:scope>Public</cap:scope>
+        <cap:code>IPAWSv1.0</cap:code>
+        <cap:language>en-US</cap:language>
+        <cap:web>http://www.weather.gov</cap:web>
+        <cap:eventCode>
+            <valueName>SAME</valueName>
+            <value>FFS</value>
+        </cap:eventCode>
+        <cap:eventCode>
+            <valueName>NationalWeatherService</valueName>
+            <value>FFW</value>
+        </cap:eventCode>
+    </entry>
+    <entry>
+        <id>https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.6cb98c56cb186df34846bec7f9fe2867e49e8c67.002.1</id>
+        <link rel="alternate" href="https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.6cb98c56cb186df34846bec7f9fe2867e49e8c67.002.1.cap"/>
+        <updated>2026-10-01T06:38:00-05:00</updated>
+        <published>2026-10-01T06:38:00-05:00</published>
+        <author>
+            <name>NWS</name>
+        </author>
+        <title>Flood Watch issued October 1 at 6:38AM CDT until October 1 at 1:00PM CDT by NWS Norman OK</title>
+        <summary>* WHAT...Flooding caused by excessive rainfall continues to be
+possible.
+
+* WHERE...Portions of Oklahoma, including the following counties,
+Atoka, Bryan, Carter, Coal, Garvin, Hughes, Jefferson, Johnston,
+Love, Marshall, Murray, Pontotoc, Pottawatomie and Seminole and
+northern Texas, including the following county, Clay.
+
+* WHEN...Until 1 PM CDT this afternoon.
+
+* IMPACTS...Excessive runoff may</summary>
+        <cap:event>Flood Watch</cap:event>
+        <cap:sent>2026-10-01T06:38:00-05:00</cap:sent>
+        <cap:effective>2026-10-01T06:38:00-05:00</cap:effective>
+        <cap:onset>2026-10-01T06:38:00-05:00</cap:onset>
+        <cap:expires>2026-10-01T13:00:00-05:00</cap:expires>
+        <cap:status>Actual</cap:status>
+        <cap:msgType>Update</cap:msgType>
+        <cap:category>Met</cap:category>
+        <cap:urgency>Future</cap:urgency>
+        <cap:severity>Severe</cap:severity>
+        <cap:certainty>Possible</cap:certainty>
+        <cap:areaDesc>Pottawatomie; Seminole; Hughes; Garvin; Murray; Pontotoc; Coal; Jefferson; Carter; Johnston; Atoka; Love; Marshall; Bryan; Clay</cap:areaDesc>
+        <cap:polygon/>
+        <cap:parameter>
+            <valueName>AWIPSidentifier</valueName>
+            <value>FFAOUN</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>WMOidentifier</valueName>
+            <value>WGUS64 KOUN 011138</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>NWSheadline</valueName>
+            <value>FLOOD WATCH REMAINS IN EFFECT UNTIL 1 PM CDT THIS AFTERNOON</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>EAS</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>NWEM</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>CMAS</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>EAS-ORG</valueName>
+            <value>WXR</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>VTEC</valueName>
+            <value>/O.CON.KOUN.FA.A.0007.000000T0000Z-261001T1800Z/</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>eventEndingTime</valueName>
+            <value>2026-10-01T13:00:00-05:00</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>expiredReferences</valueName>
+            <value>w-nws.webmaster@noaa.gov,urn:oid:2.49.0.1.840.0.0d8babfd0bc7c2b158ae5c3dc389019c99c59dce.001.1,2026-09-30T16:28:00-05:00 w-nws.webmaster@noaa.gov,urn:oid:2.49.0.1.840.0.08bad7b31c0601043ca6a02119a5ba29641c8786.002.1,2026-09-30T12:01:00-05:00 w-nws.webmaster@noaa.gov,urn:oid:2.49.0.1.840.0.08bad7b31c0601043ca6a02119a5ba29641c8786.001.1,2026-09-30T12:01:00-05:00 w-nws.webmaster@noaa.gov,urn:oid:2.49.0.1.840.0.8b23bf5920a9dfa757f9f78d91ad61ae98d95d2b.001.1,2026-09-30T02:33:00-05:00 w-nws.webmaster@noaa.gov,urn:oid:2.49.0.1.840.0.f4be2c3ed05660c9d8d1f0067c4eecd545186452.001.1,2026-09-29T14:54:00-05:00 w-nws.webmaster@noaa.gov,urn:oid:2.49.0.1.840.0.82adf4e73357e768aef33e6f0442302177975e12.001.1,2026-09-29T01:10:00-05:00</value>
+        </cap:parameter>
+        <cap:scope>Public</cap:scope>
+        <cap:code>IPAWSv1.0</cap:code>
+        <cap:language>en-US</cap:language>
+        <cap:web>http://www.weather.gov</cap:web>
+        <cap:eventCode>
+            <valueName>SAME</valueName>
+            <value>FFA</value>
+        </cap:eventCode>
+        <cap:eventCode>
+            <valueName>NationalWeatherService</valueName>
+            <value>FAA</value>
+        </cap:eventCode>
+    </entry>
+    <entry>
+        <id>https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.d7838ad214ef9b08b02c6710c39c39f915dfc23f.001.1</id>
+        <link rel="alternate" href="https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.d7838ad214ef9b08b02c6710c39c39f915dfc23f.001.1.cap"/>
+        <updated>2026-10-01T05:45:00-05:00</updated>
+        <published>2026-10-01T05:45:00-05:00</published>
+        <author>
+            <name>NWS</name>
+        </author>
+        <title>Rip Current Statement issued October 1 at 5:45AM CDT until October 1 at 8:00PM CDT by NWS Houston/Galveston TX</title>
+        <summary>* WHAT...Dangerous rip currents.
+
+* WHERE...Gulf-facing beaches, including the Matagorda
+Peninsula, Brazoria County beaches, Galveston Island and the
+Bolivar Peninsula.
+
+* WHEN...Through this evening.
+
+* IMPACTS...Rip currents can sweep even the best swimmers away
+from shore into deeper water.</summary>
+        <cap:event>Rip Current Statement</cap:event>
+        <cap:sent>2026-10-01T05:45:00-05:00</cap:sent>
+        <cap:effective>2026-10-01T05:45:00-05:00</cap:effective>
+        <cap:onset>2026-10-01T05:45:00-05:00</cap:onset>
+        <cap:expires>2026-10-01T19:00:00-05:00</cap:expires>
+        <cap:status>Actual</cap:status>
+        <cap:msgType>Update</cap:msgType>
+        <cap:category>Met</cap:category>
+        <cap:urgency>Expected</cap:urgency>
+        <cap:severity>Moderate</cap:severity>
+        <cap:certainty>Likely</cap:certainty>
+        <cap:areaDesc>Matagorda Islands; Brazoria Islands; Galveston Island; Bolivar Peninsula</cap:areaDesc>
+        <cap:polygon/>
+        <cap:parameter>
+            <valueName>AWIPSidentifier</valueName>
+            <value>CFWHGX</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>WMOidentifier</valueName>
+            <value>WHUS44 KHGX 011045</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>NWSheadline</valueName>
+            <value>HIGH RIP CURRENT RISK NOW IN EFFECT THROUGH THIS EVENING</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>EAS</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>NWEM</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>CMAS</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>VTEC</valueName>
+            <value>/O.EXT.KHGX.RP.S.0017.000000T0000Z-261002T0100Z/</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>eventEndingTime</valueName>
+            <value>2026-10-01T20:00:00-05:00</value>
+        </cap:parameter>
+        <cap:scope>Public</cap:scope>
+        <cap:code>IPAWSv1.0</cap:code>
+        <cap:language>en-US</cap:language>
+        <cap:web>http://www.weather.gov</cap:web>
+        <cap:eventCode>
+            <valueName>SAME</valueName>
+            <value>NWS</value>
+        </cap:eventCode>
+        <cap:eventCode>
+            <valueName>NationalWeatherService</valueName>
+            <value>RPS</value>
+        </cap:eventCode>
+    </entry>
+    <entry>
+        <id>https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.b0298ce8669ec993197e560fc10afa2f9b515d6e.005.2</id>
+        <link rel="alternate" href="https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.b0298ce8669ec993197e560fc10afa2f9b515d6e.005.2.cap"/>
+        <updated>2026-10-01T00:29:00-07:00</updated>
+        <published>2026-10-01T00:29:00-07:00</published>
+        <author>
+            <name>NWS</name>
+        </author>
+        <title>Extreme Heat Warning issued October 1 at 12:29AM PDT until October 8 at 8:00PM PDT by NWS San Diego CA</title>
+        <summary>* WHAT...Dangerously hot conditions with high temperatures ranging
+from the mid 80s to around 90 near the coast to the lower to mid
+90s near higher coastal terrain expected. Nights will be very warm
+with low temperatures mostly in the lower to mid 70s.
+
+* WHERE...Orange County Coastal Areas.
+
+* WHEN...From 10 AM Friday to 8 PM PDT Thursday.
+
+* IMPACTS...Heat related illnesses increase</summary>
+        <cap:event>Extreme Heat Warning</cap:event>
+        <cap:sent>2026-10-01T00:29:00-07:00</cap:sent>
+        <cap:effective>2026-10-01T00:29:00-07:00</cap:effective>
+        <cap:onset>2026-10-02T10:00:00-07:00</cap:onset>
+        <cap:expires>2026-10-01T15:30:00-07:00</cap:expires>
+        <cap:status>Actual</cap:status>
+        <cap:msgType>Alert</cap:msgType>
+        <cap:category>Met</cap:category>
+        <cap:urgency>Expected</cap:urgency>
+        <cap:severity>Severe</cap:severity>
+        <cap:certainty>Likely</cap:certainty>
+        <cap:areaDesc>Orange County Coastal</cap:areaDesc>
+        <cap:polygon/>
+        <cap:parameter>
+            <valueName>AWIPSidentifier</valueName>
+            <value>NPWSGX</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>WMOidentifier</valueName>
+            <value>WWUS76 KSGX 010729</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>NWSheadline</valueName>
+            <value>EXTREME HEAT WARNING IN EFFECT FROM 10 AM FRIDAY TO 8 PM PDT THURSDAY</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>EAS</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>NWEM</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>CMAS</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>VTEC</valueName>
+            <value>/O.NEW.KSGX.XH.W.0010.261002T1700Z-261009T0300Z/</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>eventEndingTime</valueName>
+            <value>2026-10-08T20:00:00-07:00</value>
+        </cap:parameter>
+        <cap:scope>Public</cap:scope>
+        <cap:code>IPAWSv1.0</cap:code>
+        <cap:language>en-US</cap:language>
+        <cap:web>http://www.weather.gov</cap:web>
+        <cap:eventCode>
+            <valueName>SAME</valueName>
+            <value>NWS</value>
+        </cap:eventCode>
+        <cap:eventCode>
+            <valueName>NationalWeatherService</valueName>
+            <value>XHW</value>
+        </cap:eventCode>
+    </entry>
+    <entry>
+        <id>https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.b0298ce8669ec993197e560fc10afa2f9b515d6e.003.2</id>
+        <link rel="alternate" href="https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.b0298ce8669ec993197e560fc10afa2f9b515d6e.003.2.cap"/>
+        <updated>2026-10-01T00:29:00-07:00</updated>
+        <published>2026-10-01T00:29:00-07:00</published>
+        <author>
+            <name>NWS</name>
+        </author>
+        <title>Extreme Heat Warning issued October 1 at 12:29AM PDT until October 8 at 8:00PM PDT by NWS San Diego CA</title>
+        <summary>* WHAT...Dangerously hot conditions with high temperatures in the
+upper 90s to 106 expected. Nights will be very warm with low
+temperatures mostly in the upper 60s to mid 70s.
+
+* WHERE...San Diego County Valleys.
+
+* WHEN...From 10 AM Friday to 8 PM PDT Thursday.
+
+* IMPACTS...Heat related illnesses increase significantly during
+extreme heat events.</summary>
+        <cap:event>Extreme Heat Warning</cap:event>
+        <cap:sent>2026-10-01T00:29:00-07:00</cap:sent>
+        <cap:effective>2026-10-01T00:29:00-07:00</cap:effective>
+        <cap:onset>2026-10-02T10:00:00-07:00</cap:onset>
+        <cap:expires>2026-10-01T15:30:00-07:00</cap:expires>
+        <cap:status>Actual</cap:status>
+        <cap:msgType>Alert</cap:msgType>
+        <cap:category>Met</cap:category>
+        <cap:urgency>Expected</cap:urgency>
+        <cap:severity>Severe</cap:severity>
+        <cap:certainty>Likely</cap:certainty>
+        <cap:areaDesc>San Diego County Inland Valleys</cap:areaDesc>
+        <cap:polygon/>
+        <cap:parameter>
+            <valueName>AWIPSidentifier</valueName>
+            <value>NPWSGX</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>WMOidentifier</valueName>
+            <value>WWUS76 KSGX 010729</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>NWSheadline</valueName>
+            <value>EXTREME HEAT WARNING IN EFFECT FROM 10 AM FRIDAY TO 8 PM PDT THURSDAY</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>EAS</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>NWEM</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>CMAS</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>VTEC</valueName>
+            <value>/O.NEW.KSGX.XH.W.0010.261002T1700Z-261009T0300Z/</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>eventEndingTime</valueName>
+            <value>2026-10-08T20:00:00-07:00</value>
+        </cap:parameter>
+        <cap:scope>Public</cap:scope>
+        <cap:code>IPAWSv1.0</cap:code>
+        <cap:language>en-US</cap:language>
+        <cap:web>http://www.weather.gov</cap:web>
+        <cap:eventCode>
+            <valueName>SAME</valueName>
+            <value>NWS</value>
+        </cap:eventCode>
+        <cap:eventCode>
+            <valueName>NationalWeatherService</valueName>
+            <value>XHW</value>
+        </cap:eventCode>
+    </entry>
+    <entry>
+        <id>https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.cc5e450e109e1a1ba68c67517aa98f8d69deb1e9.001.1</id>
+        <link rel="alternate" href="https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.cc5e450e109e1a1ba68c67517aa98f8d69deb1e9.001.1.cap"/>
+        <updated>2026-09-30T15:46:00-07:00</updated>
+        <published>2026-09-30T15:46:00-07:00</published>
+        <author>
+            <name>NWS</name>
+        </author>
+        <title>Coastal Flood Advisory issued September 30 at 3:46PM PDT until October 1 at 5:00PM PDT by NWS San Francisco CA</title>
+        <summary>* WHAT...Up to 1.1 ft of inundation above ground level is
+possible in low-lying areas near shorelines and tidal
+waterways.
+
+* WHERE...Bayshore locations along the San Francisco Bay, San
+Pablo Bay, and Monterey Bay.
+
+* WHEN...Now through 5 PM PDT Thursday.
+
+* IMPACTS...Flooding of lots, parks, and roads with only
+isolated road closures expected. High tides will result in
+flooding along coastal</summary>
+        <cap:event>Coastal Flood Advisory</cap:event>
+        <cap:sent>2026-09-30T15:46:00-07:00</cap:sent>
+        <cap:effective>2026-09-30T15:46:00-07:00</cap:effective>
+        <cap:onset>2026-09-30T15:46:00-07:00</cap:onset>
+        <cap:expires>2026-10-01T17:00:00-07:00</cap:expires>
+        <cap:status>Actual</cap:status>
+        <cap:msgType>Update</cap:msgType>
+        <cap:category>Met</cap:category>
+        <cap:urgency>Expected</cap:urgency>
+        <cap:severity>Minor</cap:severity>
+        <cap:certainty>Likely</cap:certainty>
+        <cap:areaDesc>San Francisco; North Bay Interior Valleys; San Francisco Bay Shoreline; Northern Monterey Bay; Southern Monterey Bay and Big Sur Coast</cap:areaDesc>
+        <cap:polygon/>
+        <cap:parameter>
+            <valueName>AWIPSidentifier</valueName>
+            <value>CFWMTR</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>WMOidentifier</valueName>
+            <value>WHUS46 KMTR 302246</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>NWSheadline</valueName>
+            <value>COASTAL FLOOD ADVISORY REMAINS IN EFFECT UNTIL 5 PM PDT THURSDAY</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>EAS</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>NWEM</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>CMAS</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>VTEC</valueName>
+            <value>/O.CON.KMTR.CF.Y.0011.000000T0000Z-261002T0000Z/</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>eventEndingTime</valueName>
+            <value>2026-10-01T17:00:00-07:00</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>expiredReferences</valueName>
+            <value>w-nws.webmaster@noaa.gov,urn:oid:2.49.0.1.840.0.af3758352f1af80d35c24fb9305054c7bb097104.001.1,2026-09-28T21:16:00-07:00 w-nws.webmaster@noaa.gov,urn:oid:2.49.0.1.840.0.77ae2579709348ae0adbca0147b9e9b4e43e7265.001.1,2026-09-28T10:39:00-07:00 w-nws.webmaster@noaa.gov,urn:oid:2.49.0.1.840.0.829d11dc93a20b06c181d233509389f5ba2dc419.001.1,2026-09-28T10:32:00-07:00 w-nws.webmaster@noaa.gov,urn:oid:2.49.0.1.840.0.1ba25e19eb82af39dd04774cf557db9ac2fd781c.001.1,2026-09-27T20:17:00-07:00</value>
+        </cap:parameter>
+        <cap:scope>Public</cap:scope>
+        <cap:code>IPAWSv1.0</cap:code>
+        <cap:language>en-US</cap:language>
+        <cap:web>http://www.weather.gov</cap:web>
+        <cap:eventCode>
+            <valueName>SAME</valueName>
+            <value>NWS</value>
+        </cap:eventCode>
+        <cap:eventCode>
+            <valueName>NationalWeatherService</valueName>
+            <value>CFY</value>
+        </cap:eventCode>
+    </entry>
+    <entry>
+        <id>https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.6df8c047e1cbe829627cc92d595584cc92d7c79f.002.1</id>
+        <link rel="alternate" href="https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.6df8c047e1cbe829627cc92d595584cc92d7c79f.002.1.cap"/>
+        <updated>2026-09-30T09:46:00-07:00</updated>
+        <published>2026-09-30T09:46:00-07:00</published>
+        <author>
+            <name>NWS</name>
+        </author>
+        <title>Extreme Heat Watch issued September 30 at 9:46AM PDT until October 8 at 8:00PM PDT by NWS Los Angeles/Oxnard CA</title>
+        <summary>* WHAT...Dangerously hot conditions with temperatures up to 90 at the
+coast and 105 in the valleys.
+
+* WHERE...Coast and valleys of Los Angeles and Ventura Counties.
+
+* WHEN...From Friday morning through Thursday, October 08.
+
+* IMPACTS...Heat related illnesses increase significantly during
+extreme heat events.
+
+* ADDITIONAL DETAILS...Very hot temperatures are likely to continue
+into the second</summary>
+        <cap:event>Extreme Heat Watch</cap:event>
+        <cap:sent>2026-09-30T09:46:00-07:00</cap:sent>
+        <cap:effective>2026-09-30T09:46:00-07:00</cap:effective>
+        <cap:onset>2026-10-02T10:00:00-07:00</cap:onset>
+        <cap:expires>2026-10-02T10:15:00-07:00</cap:expires>
+        <cap:status>Actual</cap:status>
+        <cap:msgType>Alert</cap:msgType>
+        <cap:category>Met</cap:category>
+        <cap:urgency>Future</cap:urgency>
+        <cap:severity>Severe</cap:severity>
+        <cap:certainty>Likely</cap:certainty>
+        <cap:areaDesc>Catalina and Santa Barbara Islands; Santa Clarita Valley; Ventura County Beaches; Ventura County Inland Coast; Lake Casitas; Ojai Valley; Central Ventura County Valleys; Malibu Coast; Los Angeles County Beaches; Palos Verdes Hills; Los Angeles County Inland Coast including Downtown Los Angeles; Western Santa Monica Mountains Recreational Area; Eastern Santa Monica Mountains Recreational Area; Calabasas and Agoura Hills; Western San Fernando Valley; Eastern San Fernando Valley; Southeastern Ventura County Valleys; Santa Susana Mountains; Los Angeles County San Gabriel Valley</cap:areaDesc>
+        <cap:polygon/>
+        <cap:parameter>
+            <valueName>AWIPSidentifier</valueName>
+            <value>NPWLOX</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>WMOidentifier</valueName>
+            <value>WWUS76 KLOX 301646</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>NWSheadline</valueName>
+            <value>EXTREME HEAT WATCH IN EFFECT FROM FRIDAY MORNING THROUGH THURSDAY, OCTOBER 08</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>EAS</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>NWEM</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>CMAS</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>VTEC</valueName>
+            <value>/O.NEW.KLOX.XH.A.0006.261002T1700Z-261009T0300Z/</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>eventEndingTime</valueName>
+            <value>2026-10-08T20:00:00-07:00</value>
+        </cap:parameter>
+        <cap:scope>Public</cap:scope>
+        <cap:code>IPAWSv1.0</cap:code>
+        <cap:language>en-US</cap:language>
+        <cap:web>http://www.weather.gov</cap:web>
+        <cap:eventCode>
+            <valueName>SAME</valueName>
+            <value>NWS</value>
+        </cap:eventCode>
+        <cap:eventCode>
+            <valueName>NationalWeatherService</valueName>
+            <value>XHA</value>
+        </cap:eventCode>
+    </entry>
+    <entry>
+        <id>https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.6df8c047e1cbe829627cc92d595584cc92d7c79f.001.1</id>
+        <link rel="alternate" href="https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.6df8c047e1cbe829627cc92d595584cc92d7c79f.001.1.cap"/>
+        <updated>2026-09-30T09:46:00-07:00</updated>
+        <published>2026-09-30T09:46:00-07:00</published>
+        <author>
+            <name>NWS</name>
+        </author>
+        <title>Extreme Heat Watch issued September 30 at 9:46AM PDT until October 8 at 8:00PM PDT by NWS Los Angeles/Oxnard CA</title>
+        <summary>* WHAT...Dangerously hot conditions with temperatures up to 85 at the
+coast and 100 in the mountains and Cuyama valley.
+
+* WHERE...Cuyama Valley, Santa Barbara County Interior Mountains,
+Santa Barbara County Southeastern Coast, Santa Barbara County
+Southwestern Coast, Santa Cruz and Anacapa Islands, Santa Ynez
+Mountains Eastern Range, and Santa Ynez Mountains Western Range.
+
+* WHEN...From Friday</summary>
+        <cap:event>Extreme Heat Watch</cap:event>
+        <cap:sent>2026-09-30T09:46:00-07:00</cap:sent>
+        <cap:effective>2026-09-30T09:46:00-07:00</cap:effective>
+        <cap:onset>2026-10-02T10:00:00-07:00</cap:onset>
+        <cap:expires>2026-10-02T10:15:00-07:00</cap:expires>
+        <cap:status>Actual</cap:status>
+        <cap:msgType>Alert</cap:msgType>
+        <cap:category>Met</cap:category>
+        <cap:urgency>Future</cap:urgency>
+        <cap:severity>Severe</cap:severity>
+        <cap:certainty>Likely</cap:certainty>
+        <cap:areaDesc>Cuyama Valley; Santa Barbara County Southwestern Coast; Santa Barbara County Southeastern Coast; Santa Ynez Mountains Western Range; Santa Ynez Mountains Eastern Range; Santa Barbara County Interior Mountains; Santa Cruz and Anacapa Islands</cap:areaDesc>
+        <cap:polygon/>
+        <cap:parameter>
+            <valueName>AWIPSidentifier</valueName>
+            <value>NPWLOX</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>WMOidentifier</valueName>
+            <value>WWUS76 KLOX 301646</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>NWSheadline</valueName>
+            <value>EXTREME HEAT WATCH IN EFFECT FROM FRIDAY MORNING THROUGH THURSDAY, OCTOBER 08</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>EAS</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>NWEM</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>CMAS</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>VTEC</valueName>
+            <value>/O.NEW.KLOX.XH.A.0006.261002T1700Z-261009T0300Z/</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>eventEndingTime</valueName>
+            <value>2026-10-08T20:00:00-07:00</value>
+        </cap:parameter>
+        <cap:scope>Public</cap:scope>
+        <cap:code>IPAWSv1.0</cap:code>
+        <cap:language>en-US</cap:language>
+        <cap:web>http://www.weather.gov</cap:web>
+        <cap:eventCode>
+            <valueName>SAME</valueName>
+            <value>NWS</value>
+        </cap:eventCode>
+        <cap:eventCode>
+            <valueName>NationalWeatherService</valueName>
+            <value>XHA</value>
+        </cap:eventCode>
+    </entry>
+    <entry>
+        <id>https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.c4e20634fb8500ec08bdac6c0dc16c0082cb25f9.001.1</id>
+        <link rel="alternate" href="https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.c4e20634fb8500ec08bdac6c0dc16c0082cb25f9.001.1.cap"/>
+        <updated>2026-10-01T06:08:00-08:00</updated>
+        <published>2026-10-01T06:08:00-08:00</published>
+        <author>
+            <name>NWS</name>
+        </author>
+        <title>Special Weather Statement issued October 1 at 6:08AM AKDT by NWS Juneau AK</title>
+        <summary>The latest camera imagery from inside the basin showed a drop in
+water level with a corresponding rise in water levels on Mendenhall
+Lake overnight. This could be an
+indication that a basin release has started. NWS hydrologists and
+meteorologists along with their partners are
+assessing and analyzing the information.
+
+Water levels in the basin are around 200 ft below where it was
+before the</summary>
+        <cap:event>Special Weather Statement</cap:event>
+        <cap:sent>2026-10-01T06:08:00-08:00</cap:sent>
+        <cap:effective>2026-10-01T06:08:00-08:00</cap:effective>
+        <cap:onset>2026-10-01T06:08:00-08:00</cap:onset>
+        <cap:expires>2026-10-01T14:15:00-08:00</cap:expires>
+        <cap:status>Actual</cap:status>
+        <cap:msgType>Alert</cap:msgType>
+        <cap:category>Met</cap:category>
+        <cap:urgency>Expected</cap:urgency>
+        <cap:severity>Moderate</cap:severity>
+        <cap:certainty>Observed</cap:certainty>
+        <cap:areaDesc>City and Borough of Juneau</cap:areaDesc>
+        <cap:polygon/>
+        <cap:parameter>
+            <valueName>AWIPSidentifier</valueName>
+            <value>SPSAJK</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>WMOidentifier</valueName>
+            <value>WWAK87 PAJK 011408</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>NWSheadline</valueName>
+            <value>INCREASED ACTIVITY FROM SUICIDE BASIN</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>EAS</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>NWEM</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>CMAS</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>EAS-ORG</valueName>
+            <value>WXR</value>
+        </cap:parameter>
+        <cap:scope>Public</cap:scope>
+        <cap:code>IPAWSv1.0</cap:code>
+        <cap:language>en-US</cap:language>
+        <cap:web>http://www.weather.gov</cap:web>
+        <cap:eventCode>
+            <valueName>SAME</valueName>
+            <value>SPS</value>
+        </cap:eventCode>
+        <cap:eventCode>
+            <valueName>NationalWeatherService</valueName>
+            <value>SPS</value>
+        </cap:eventCode>
+    </entry>
+    <entry>
+        <id>https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.807b2e2155bc59c8b4a76731d307f9df600909a7.001.1</id>
+        <link rel="alternate" href="https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.807b2e2155bc59c8b4a76731d307f9df600909a7.001.1.cap"/>
+        <updated>2026-10-01T05:03:00-08:00</updated>
+        <published>2026-10-01T05:03:00-08:00</published>
+        <author>
+            <name>NWS</name>
+        </author>
+        <title>Winter Weather Advisory issued October 1 at 5:03AM AKDT until October 1 at 10:00PM AKDT by NWS Fairbanks AK</title>
+        <summary>* WHAT...Snow expected. Total snow accumulations between 6 and 11
+inches.
+
+* WHERE...Eastern Alaska Range.
+
+* WHEN...Until 10 PM AKDT this evening.
+
+* IMPACTS...Travel could be very difficult. Roads, and especially
+bridges and overpasses, will likely become slick and hazardous.
+
+* ADDITIONAL DETAILS...Snowfall rates may be as high as 0.5&quot;-1.0&quot; per
+hour Thursday morning. Most of the</summary>
+        <cap:event>Winter Weather Advisory</cap:event>
+        <cap:sent>2026-10-01T05:03:00-08:00</cap:sent>
+        <cap:effective>2026-10-01T05:03:00-08:00</cap:effective>
+        <cap:onset>2026-10-01T05:03:00-08:00</cap:onset>
+        <cap:expires>2026-10-01T16:00:00-08:00</cap:expires>
+        <cap:status>Actual</cap:status>
+        <cap:msgType>Update</cap:msgType>
+        <cap:category>Met</cap:category>
+        <cap:urgency>Expected</cap:urgency>
+        <cap:severity>Moderate</cap:severity>
+        <cap:certainty>Likely</cap:certainty>
+        <cap:areaDesc>Eastern Alaska Range North of Trims Camp; Eastern Alaska Range South of Trims Camp</cap:areaDesc>
+        <cap:polygon/>
+        <cap:parameter>
+            <valueName>AWIPSidentifier</valueName>
+            <value>WSWAFG</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>WMOidentifier</valueName>
+            <value>WWAK43 PAFG 011303</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>NWSheadline</valueName>
+            <value>WINTER WEATHER ADVISORY REMAINS IN EFFECT UNTIL 10 PM AKDT THIS EVENING</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>EAS</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>NWEM</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>CMAS</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>VTEC</valueName>
+            <value>/O.CON.PAFG.WW.Y.0076.000000T0000Z-261002T0600Z/</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>eventEndingTime</valueName>
+            <value>2026-10-01T22:00:00-08:00</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>expiredReferences</valueName>
+            <value>w-nws.webmaster@noaa.gov,urn:oid:2.49.0.1.840.0.ea8ca56f4d62fb0f5bbefbfb987da04cac562977.001.1,2026-09-30T05:56:00-08:00 w-nws.webmaster@noaa.gov,urn:oid:2.49.0.1.840.0.1b9f8ede73e8679a0ed6f0c9b26f174e3ae3ec74.001.1,2026-09-29T12:33:00-08:00</value>
+        </cap:parameter>
+        <cap:scope>Public</cap:scope>
+        <cap:code>IPAWSv1.0</cap:code>
+        <cap:language>en-US</cap:language>
+        <cap:web>http://www.weather.gov</cap:web>
+        <cap:eventCode>
+            <valueName>SAME</valueName>
+            <value>NWS</value>
+        </cap:eventCode>
+        <cap:eventCode>
+            <valueName>NationalWeatherService</valueName>
+            <value>WWY</value>
+        </cap:eventCode>
+    </entry>
+    <entry>
+        <id>https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.0177da300b0ed1123f0ec1169f6044dc8b1ff9d6.001.1</id>
+        <link rel="alternate" href="https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.0177da300b0ed1123f0ec1169f6044dc8b1ff9d6.001.1.cap"/>
+        <updated>2026-09-30T23:43:00-08:00</updated>
+        <published>2026-09-30T23:43:00-08:00</published>
+        <author>
+            <name>NWS</name>
+        </author>
+        <title>Wind Advisory issued September 30 at 11:43PM AKDT until October 1 at 1:00PM AKDT by NWS Juneau AK</title>
+        <summary>* WHAT...Southwest winds 10 to 15 mph with gusts up to 30 mph
+expected.
+
+* WHERE...Municipality of Skagway.
+
+* WHEN...From 7 AM to 1 PM AKDT Thursday.
+
+* IMPACTS...Gusty winds will blow around unsecured objects. Tree
+limbs could be blown down and a few power outages may result.</summary>
+        <cap:event>Wind Advisory</cap:event>
+        <cap:sent>2026-09-30T23:43:00-08:00</cap:sent>
+        <cap:effective>2026-09-30T23:43:00-08:00</cap:effective>
+        <cap:onset>2026-10-01T07:00:00-08:00</cap:onset>
+        <cap:expires>2026-10-01T07:45:00-08:00</cap:expires>
+        <cap:status>Actual</cap:status>
+        <cap:msgType>Update</cap:msgType>
+        <cap:category>Met</cap:category>
+        <cap:urgency>Expected</cap:urgency>
+        <cap:severity>Moderate</cap:severity>
+        <cap:certainty>Likely</cap:certainty>
+        <cap:areaDesc>Municipality of Skagway</cap:areaDesc>
+        <cap:polygon/>
+        <cap:parameter>
+            <valueName>AWIPSidentifier</valueName>
+            <value>NPWAJK</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>WMOidentifier</valueName>
+            <value>WWAK77 PAJK 010743</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>NWSheadline</valueName>
+            <value>WIND ADVISORY REMAINS IN EFFECT FROM 7 AM TO 1 PM AKDT THURSDAY</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>EAS</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>NWEM</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>CMAS</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>VTEC</valueName>
+            <value>/O.CON.PAJK.WI.Y.0048.261001T1500Z-261001T2100Z/</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>eventEndingTime</valueName>
+            <value>2026-10-01T13:00:00-08:00</value>
+        </cap:parameter>
+        <cap:scope>Public</cap:scope>
+        <cap:code>IPAWSv1.0</cap:code>
+        <cap:language>en-US</cap:language>
+        <cap:web>http://www.weather.gov</cap:web>
+        <cap:eventCode>
+            <valueName>SAME</valueName>
+            <value>NWS</value>
+        </cap:eventCode>
+        <cap:eventCode>
+            <valueName>NationalWeatherService</valueName>
+            <value>WIY</value>
+        </cap:eventCode>
+    </entry>
+    <entry>
+        <id>https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.32a9590c43d1a1a0560be606937ecff405185e2d.001.1</id>
+        <link rel="alternate" href="https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.32a9590c43d1a1a0560be606937ecff405185e2d.001.1.cap"/>
+        <updated>2026-10-01T09:56:00-04:00</updated>
+        <published>2026-10-01T09:56:00-04:00</published>
+        <author>
+            <name>NWS</name>
+        </author>
+        <title>Coastal Flood Advisory issued October 1 at 9:56AM EDT until October 2 at 6:00AM EDT by NWS Key West FL</title>
+        <summary>* WHAT...Saltwater flooding.
+
+* WHERE...Upper Florida Keys.
+
+* WHEN...Until Friday morning.
+
+* IMPACTS...Saltwater flooding of low elevation streets and lots
+is expected. Some storm drains will overflow, and some
+seawalls and docks will be overtopped. Boaters can expect less
+clearance under fixed bridges. Motorists should remember that
+persistent puddles around the times of high tide are</summary>
+        <cap:event>Coastal Flood Advisory</cap:event>
+        <cap:sent>2026-10-01T09:56:00-04:00</cap:sent>
+        <cap:effective>2026-10-01T09:56:00-04:00</cap:effective>
+        <cap:onset>2026-10-01T09:56:00-04:00</cap:onset>
+        <cap:expires>2026-10-01T18:00:00-04:00</cap:expires>
+        <cap:status>Actual</cap:status>
+        <cap:msgType>Update</cap:msgType>
+        <cap:category>Met</cap:category>
+        <cap:urgency>Expected</cap:urgency>
+        <cap:severity>Minor</cap:severity>
+        <cap:certainty>Likely</cap:certainty>
+        <cap:areaDesc>Monroe Upper Keys</cap:areaDesc>
+        <cap:polygon/>
+        <cap:parameter>
+            <valueName>AWIPSidentifier</valueName>
+            <value>CFWKEY</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>WMOidentifier</valueName>
+            <value>WHUS42 KKEY 011356</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>NWSheadline</valueName>
+            <value>COASTAL FLOOD ADVISORY IN EFFECT</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>EAS</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>NWEM</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>CMAS</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>VTEC</valueName>
+            <value>/O.EXT.KKEY.CF.Y.0003.000000T0000Z-261002T1000Z/</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>eventEndingTime</valueName>
+            <value>2026-10-02T06:00:00-04:00</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>expiredReferences</valueName>
+            <value>w-nws.webmaster@noaa.gov,urn:oid:2.49.0.1.840.0.5a8b52c5880356fed74845ff11d7660b8735df32.001.1,2026-09-30T22:21:00-04:00 w-nws.webmaster@noaa.gov,urn:oid:2.49.0.1.840.0.b6d09aa2ad2eab531f0236c01e3b94a366f7e7e0.001.1,2026-09-30T11:36:00-04:00 w-nws.webmaster@noaa.gov,urn:oid:2.49.0.1.840.0.15b9d911bdcf0610d7d9af736cbd7790b54dbdb0.001.1,2026-09-30T03:55:00-04:00 w-nws.webmaster@noaa.gov,urn:oid:2.49.0.1.840.0.6c3c932f9130de4b1ce56c5d86e06f73826ec9e7.001.2,2026-09-29T22:42:00-04:00 w-nws.webmaster@noaa.gov,urn:oid:2.49.0.1.840.0.f61198d5302c13e1e1926403ba022a4a43fa2361.001.1,2026-09-28T15:55:00-04:00 w-nws.webmaster@noaa.gov,urn:oid:2.49.0.1.840.0.a5364e19dae05339bd062766c7fe75e70aa5951c.001.1,2026-09-28T17:41:00-04:00 w-nws.webmaster@noaa.gov,urn:oid:2.49.0.1.840.0.378d237818cadb78ddca55f5ada36967577db9b0.001.2,2026-09-28T09:22:00-04:00</value>
+        </cap:parameter>
+        <cap:scope>Public</cap:scope>
+        <cap:code>IPAWSv1.0</cap:code>
+        <cap:language>en-US</cap:language>
+        <cap:web>http://www.weather.gov</cap:web>
+        <cap:eventCode>
+            <valueName>SAME</valueName>
+            <value>NWS</value>
+        </cap:eventCode>
+        <cap:eventCode>
+            <valueName>NationalWeatherService</valueName>
+            <value>CFY</value>
+        </cap:eventCode>
+    </entry>
+    <entry>
+        <id>https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.32a9590c43d1a1a0560be606937ecff405185e2d.002.1</id>
+        <link rel="alternate" href="https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.32a9590c43d1a1a0560be606937ecff405185e2d.002.1.cap"/>
+        <updated>2026-10-01T09:56:00-04:00</updated>
+        <published>2026-10-01T09:56:00-04:00</published>
+        <author>
+            <name>NWS</name>
+        </author>
+        <title>Coastal Flood Statement issued October 1 at 9:56AM EDT until October 2 at 6:00AM EDT by NWS Key West FL</title>
+        <summary>* WHAT...Minor saltwater flooding.
+
+* WHERE...Middle and Lower Florida Keys.
+
+* WHEN...Through Friday morning.
+
+* IMPACTS...Minor saltwater flooding of low elevation streets
+and lots is likely. Some storm drains will overflow, and some
+seawalls and docks will be overtopped. Boaters can expect less
+clearance under fixed bridges. Motorists should remember that
+persistent puddles around the times of</summary>
+        <cap:event>Coastal Flood Statement</cap:event>
+        <cap:sent>2026-10-01T09:56:00-04:00</cap:sent>
+        <cap:effective>2026-10-01T09:56:00-04:00</cap:effective>
+        <cap:onset>2026-10-01T09:56:00-04:00</cap:onset>
+        <cap:expires>2026-10-01T18:00:00-04:00</cap:expires>
+        <cap:status>Actual</cap:status>
+        <cap:msgType>Update</cap:msgType>
+        <cap:category>Met</cap:category>
+        <cap:urgency>Expected</cap:urgency>
+        <cap:severity>Minor</cap:severity>
+        <cap:certainty>Likely</cap:certainty>
+        <cap:areaDesc>Monroe Middle Keys; Monroe Lower Keys</cap:areaDesc>
+        <cap:polygon/>
+        <cap:parameter>
+            <valueName>AWIPSidentifier</valueName>
+            <value>CFWKEY</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>WMOidentifier</valueName>
+            <value>WHUS42 KKEY 011356</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>NWSheadline</valueName>
+            <value>COASTAL FLOOD STATEMENT IN EFFECT</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>EAS</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>NWEM</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>CMAS</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>VTEC</valueName>
+            <value>/O.EXT.KKEY.CF.S.0008.000000T0000Z-261002T1000Z/</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>eventEndingTime</valueName>
+            <value>2026-10-02T06:00:00-04:00</value>
+        </cap:parameter>
+        <cap:scope>Public</cap:scope>
+        <cap:code>IPAWSv1.0</cap:code>
+        <cap:language>en-US</cap:language>
+        <cap:web>http://www.weather.gov</cap:web>
+        <cap:eventCode>
+            <valueName>SAME</valueName>
+            <value>NWS</value>
+        </cap:eventCode>
+        <cap:eventCode>
+            <valueName>NationalWeatherService</valueName>
+            <value>CFS</value>
+        </cap:eventCode>
+    </entry>
+    <entry>
+        <id>https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.5d7503657b296cce032fdf30c6bab3a1e1c354a6.001.1</id>
+        <link rel="alternate" href="https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.5d7503657b296cce032fdf30c6bab3a1e1c354a6.001.1.cap"/>
+        <updated>2026-10-01T03:41:00-05:00</updated>
+        <published>2026-10-01T03:41:00-05:00</published>
+        <author>
+            <name>NWS</name>
+        </author>
+        <title>Rip Current Statement issued October 1 at 3:41AM CDT until October 4 at 7:00PM CDT by NWS Mobile AL</title>
+        <summary>* WHAT...Dangerous rip currents expected.
+
+* WHERE...In Alabama, Mobile Coastal and Baldwin Coastal
+Counties. In Florida, Escambia Coastal, Santa Rosa Coastal and
+Okaloosa Coastal Counties.
+
+* WHEN...From 7 AM CDT this morning through Sunday evening.
+
+* IMPACTS...Rip currents can sweep even the best swimmers away
+from shore into deeper water.</summary>
+        <cap:event>Rip Current Statement</cap:event>
+        <cap:sent>2026-10-01T03:41:00-05:00</cap:sent>
+        <cap:effective>2026-10-01T03:41:00-05:00</cap:effective>
+        <cap:onset>2026-10-01T07:00:00-05:00</cap:onset>
+        <cap:expires>2026-10-01T12:00:00-05:00</cap:expires>
+        <cap:status>Actual</cap:status>
+        <cap:msgType>Update</cap:msgType>
+        <cap:category>Met</cap:category>
+        <cap:urgency>Expected</cap:urgency>
+        <cap:severity>Moderate</cap:severity>
+        <cap:certainty>Likely</cap:certainty>
+        <cap:areaDesc>Mobile Coastal; Baldwin Coastal; Escambia Coastal; Santa Rosa Coastal; Okaloosa Coastal</cap:areaDesc>
+        <cap:polygon/>
+        <cap:parameter>
+            <valueName>AWIPSidentifier</valueName>
+            <value>CFWMOB</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>WMOidentifier</valueName>
+            <value>WHUS44 KMOB 010841</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>NWSheadline</valueName>
+            <value>HIGH RIP CURRENT RISK REMAINS IN EFFECT FROM 7 AM CDT THIS MORNING THROUGH SUNDAY EVENING</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>EAS</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>NWEM</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>CMAS</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>VTEC</valueName>
+            <value>/O.CON.KMOB.RP.S.0026.261001T1200Z-261005T0000Z/</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>eventEndingTime</valueName>
+            <value>2026-10-04T19:00:00-05:00</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>expiredReferences</valueName>
+            <value>w-nws.webmaster@noaa.gov,urn:oid:2.49.0.1.840.0.d249e9348744493634b39c29dbcc2b647c13057b.001.1,2026-09-30T11:35:00-05:00 w-nws.webmaster@noaa.gov,urn:oid:2.49.0.1.840.0.8871c44fbc07c5d555a0f11dfe2876862aefe2e2.001.1,2026-09-29T23:54:00-05:00</value>
+        </cap:parameter>
+        <cap:scope>Public</cap:scope>
+        <cap:code>IPAWSv1.0</cap:code>
+        <cap:language>en-US</cap:language>
+        <cap:web>http://www.weather.gov</cap:web>
+        <cap:eventCode>
+            <valueName>SAME</valueName>
+            <value>NWS</value>
+        </cap:eventCode>
+        <cap:eventCode>
+            <valueName>NationalWeatherService</valueName>
+            <value>RPS</value>
+        </cap:eventCode>
+    </entry>
+    <entry>
+        <id>https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.3cd52469290744c39ec07048621a6caa9f240d9c.002.1</id>
+        <link rel="alternate" href="https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.3cd52469290744c39ec07048621a6caa9f240d9c.002.1.cap"/>
+        <updated>2026-10-01T02:10:00-04:00</updated>
+        <published>2026-10-01T02:10:00-04:00</published>
+        <author>
+            <name>NWS</name>
+        </author>
+        <title>Coastal Flood Statement issued October 1 at 2:10AM EDT until October 1 at 12:00PM EDT by NWS Miami FL</title>
+        <summary>* WHAT...Isolated minor coastal flooding.
+
+* WHERE...Coastal Collier County, Mainland Monroe and Far South
+Miami-Dade County.
+
+* WHEN...Through Thursday morning.
+
+* IMPACTS...Some water on low lying roads and property.</summary>
+        <cap:event>Coastal Flood Statement</cap:event>
+        <cap:sent>2026-10-01T02:10:00-04:00</cap:sent>
+        <cap:effective>2026-10-01T02:10:00-04:00</cap:effective>
+        <cap:onset>2026-10-01T02:10:00-04:00</cap:onset>
+        <cap:expires>2026-10-01T10:15:00-04:00</cap:expires>
+        <cap:status>Actual</cap:status>
+        <cap:msgType>Update</cap:msgType>
+        <cap:category>Met</cap:category>
+        <cap:urgency>Expected</cap:urgency>
+        <cap:severity>Minor</cap:severity>
+        <cap:certainty>Likely</cap:certainty>
+        <cap:areaDesc>Coastal Collier County; Mainland Monroe; Far South Miami-Dade County</cap:areaDesc>
+        <cap:polygon/>
+        <cap:parameter>
+            <valueName>AWIPSidentifier</valueName>
+            <value>CFWMFL</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>WMOidentifier</valueName>
+            <value>WHUS42 KMFL 010610</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>NWSheadline</valueName>
+            <value>COASTAL FLOOD STATEMENT REMAINS IN EFFECT UNTIL NOON EDT TODAY</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>EAS</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>NWEM</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>BLOCKCHANNEL</valueName>
+            <value>CMAS</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>VTEC</valueName>
+            <value>/O.CON.KMFL.CF.S.0004.000000T0000Z-261001T1600Z/</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>eventEndingTime</valueName>
+            <value>2026-10-01T12:00:00-04:00</value>
+        </cap:parameter>
+        <cap:parameter>
+            <valueName>expiredReferences</valueName>
+            <value>w-nws.webmaster@noaa.gov,urn:oid:2.49.0.1.840.0.9e565d02140f1bd812895ef6a4e8bc916b0b8f7e.002.1,2026-09-30T08:00:00-04:00 w-nws.webmaster@noaa.gov,urn:oid:2.49.0.1.840.0.102ac608664d22dd5f2d63dd1747119cab3eca1c.003.1,2026-09-30T06:24:00-04:00 w-nws.webmaster@noaa.gov,urn:oid:2.49.0.1.840.0.102ac608664d22dd5f2d63dd1747119cab3eca1c.002.1,2026-09-30T06:24:00-04:00 w-nws.webmaster@noaa.gov,urn:oid:2.49.0.1.840.0.f7ff4c3d4fd1ad9a0641216d12cc7dba7a0bf355.002.1,2026-09-29T11:41:00-04:00 w-nws.webmaster@noaa.gov,urn:oid:2.49.0.1.840.0.aca33c88e94cafd488312555ba65952299042769.002.1,2026-09-29T02:56:00-04:00 w-nws.webmaster@noaa.gov,urn:oid:2.49.0.1.840.0.352a8efa83057fcb5feae27909be3962ae50400b.003.1,2026-09-28T20:00:00-04:00 w-nws.webmaster@noaa.gov,urn:oid:2.49.0.1.840.0.71c5005ee8e3030ce49f28f9bc734f02a1d7e70b.003.1,2026-09-28T12:09:00-04:00 w-nws.webmaster@noaa.gov,urn:oid:2.49.0.1.840.0.71cd485fdf8756b019c0e288182d75d90caa7b60.003.1,2026-09-28T03:01:00-04:00 w-nws.webmaster@noaa.gov,urn:oid:2.49.0.1.840.0.cd3f28512529857103fd8f11497b9703eaeed637.002.1,2026-09-27T13:36:00-04:00 w-nws.webmaster@noaa.gov,urn:oid:2.49.0.1.840.0.95c8125c2a0bebfd3fe204c88078ae653c458c1d.003.1,2026-09-27T03:53:00-04:00 w-nws.webmaster@noaa.gov,urn:oid:2.49.0.1.840.0.d7b5ae9919e44df52aa518dc891eddef7e4e7744.003.1,2026-09-27T06:17:00-04:00 w-nws.webmaster@noaa.gov,urn:oid:2.49.0.1.840.0.7876cd78db930ef8ad68fa208f25ad7aeafdc51b.004.1,2026-09-26T19:34:00-04:00 w-nws.webmaster@noaa.gov,urn:oid:2.49.0.1.840.0.b11d61c0efcce07c0173cab89ca092d0ac2bdd62.004.1,2026-09-26T02:30:00-04:00 w-nws.webmaster@noaa.gov,urn:oid:2.49.0.1.840.0.be51a1d2bf617c88d8bccb235742ad89231397b3.003.1,2026-09-25T14:55:00-04:00 w-nws.webmaster@noaa.gov,urn:oid:2.49.0.1.840.0.5dd94328eaebdc71a5bc25ab09337b893bfc6a92.003.1,2026-09-25T02:08:00-04:00</value>
+        </cap:parameter>
+        <cap:scope>Public</cap:scope>
+        <cap:code>IPAWSv1.0</cap:code>
+        <cap:language>en-US</cap:language>
+        <cap:web>http://www.weather.gov</cap:web>
+        <cap:eventCode>
+            <valueName>SAME</valueName>
+            <value>NWS</value>
+        </cap:eventCode>
+        <cap:eventCode>
+            <valueName>NationalWeatherService</valueName>
+            <value>CFS</value>
+        </cap:eventCode>
+    </entry>
+</feed>

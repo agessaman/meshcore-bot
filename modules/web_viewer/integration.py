@@ -517,6 +517,20 @@ class BotIntegration:
             _number('bytes_per_hop'),
         )
 
+    @staticmethod
+    def _on_air_content(message, fallback: str = "") -> str:
+        """Return the on-air body for web-viewer capture.
+
+        Command matching may have stripped @[mentions] from ``message.content``
+        (#267). Prefer ``original_content``. Mocks may lack that field
+        (MagicMock would invent a non-str attribute), so only honor a real string.
+        """
+        original = getattr(message, "original_content", None)
+        if isinstance(original, str) and original:
+            return original
+        content = getattr(message, "content", fallback)
+        return content if isinstance(content, str) else fallback
+
     def capture_command(self, message, command_name, response, success, command_id=None):
         """Capture command data and store in database for web viewer"""
         try:
@@ -526,12 +540,13 @@ class BotIntegration:
             # Extract data from message object
             user = getattr(message, 'sender_id', 'Unknown')
             channel = getattr(message, 'channel', 'Unknown')
-            user_input = getattr(message, 'content', f'/{command_name}')
+            user_input = self._on_air_content(message, fallback=f'/{command_name}')
 
             # Get repeat information if transmission tracker is available
             repeat_count = 0
             repeater_prefixes = []
             repeater_counts = {}
+            reply_packet_hash = None
             if (hasattr(self.bot, 'transmission_tracker') and
                 self.bot.transmission_tracker and
                 command_id):
@@ -539,6 +554,7 @@ class BotIntegration:
                 repeat_count = repeat_info.get('repeat_count', 0)
                 repeater_prefixes = repeat_info.get('repeater_prefixes', [])
                 repeater_counts = repeat_info.get('repeater_counts', {})
+                reply_packet_hash = repeat_info.get('packet_hash')
 
             # Construct command data structure
             command_data = {
@@ -554,6 +570,13 @@ class BotIntegration:
                 'repeater_counts': repeater_counts,  # Count per repeater prefix
                 'command_id': command_id  # Store command_id for later updates
             }
+            # Packet hashes tie the command to the packets the radio heard: the
+            # message that triggered it and, once a repeater echoes it, the reply.
+            trigger_packet_hash = self._message_packet_hash(message)
+            if trigger_packet_hash:
+                command_data['trigger_packet_hash'] = trigger_packet_hash
+            if reply_packet_hash:
+                command_data['reply_packet_hash'] = reply_packet_hash
 
             # Convert non-serializable objects to strings
             serializable_data = self._make_json_serializable(command_data)
@@ -574,15 +597,29 @@ class BotIntegration:
                 'timestamp': time.time(),
                 'sender': getattr(message, 'sender_id', ''),
                 'channel': getattr(message, 'channel', ''),
-                'content': getattr(message, 'content', ''),
+                'content': self._on_air_content(message),
                 'snr': str(getattr(message, 'snr', '')),
                 'hops': getattr(message, 'hops', None),
                 'path': getattr(message, 'path', ''),
                 'is_dm': bool(getattr(message, 'is_dm', False)),
             }
+            packet_hash = self._message_packet_hash(message)
+            if packet_hash:
+                data['packet_hash'] = packet_hash
             self._insert_packet_stream_row(json.dumps(data), 'message', "channel message")
         except Exception as e:
             self.bot.logger.debug(f"Error storing channel message for web viewer: {e}")
+
+    @staticmethod
+    def _message_packet_hash(message) -> Optional[str]:
+        """Hash of the RF packet correlated with *message*, or None when there wasn't one."""
+        routing_info = getattr(message, 'routing_info', None) or {}
+        if not isinstance(routing_info, dict):
+            return None
+        packet_hash = routing_info.get('packet_hash')
+        if packet_hash and str(packet_hash).strip('0'):
+            return packet_hash
+        return None
 
     def capture_packet_routing(self, routing_data):
         """Capture packet routing data and store in database for web viewer"""

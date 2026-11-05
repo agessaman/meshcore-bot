@@ -605,7 +605,7 @@ class TestApiMeshEdgesEvidence:
                     return fixed_now
                 return fixed_now.replace(tzinfo=timezone.utc).astimezone(tz)
 
-        monkeypatch.setattr('modules.web_viewer.app.datetime', FixedDateTime)
+        monkeypatch.setattr('modules.web_viewer.mesh_evidence.datetime', FixedDateTime)
         cutoff = fixed_now - timedelta(days=7)
         _seed_observed_path(
             viewer_with_db.db_path,
@@ -1049,11 +1049,40 @@ def test_mesh_refresh_coordinator_handles_bursts_visibility_and_failures():
     async function loadStats() {{ statsCount++; }}
     function applyFilters() {{}}
 
+    const SETTLE_TIMEOUT_MS = 2000;
+
+    function coordinatorIdle() {{
+        return !meshLiveRefreshPending
+            && !meshLiveRefreshRunning
+            && meshLiveRefreshTimer === null
+            && meshLoadInFlight === null
+            && pendingMeshLoad === null;
+    }}
+
+    // Wait for the coordinator to come to rest instead of sleeping a fixed span.
+    // A 10ms timer on a loaded CI runner can fire tens of ms late, so a fixed wait
+    // samples the state machine mid-retry and reports a half-finished count as a
+    // logic failure. Two consecutive idle observations are required so the gap
+    // between a load settling and its retry being armed is not read as rest.
+    async function waitForIdle(label) {{
+        const deadline = Date.now() + SETTLE_TIMEOUT_MS;
+        let idleStreak = 0;
+        while (idleStreak < 2) {{
+            idleStreak = coordinatorIdle() ? idleStreak + 1 : 0;
+            if (idleStreak < 2 && Date.now() > deadline) {{
+                throw new Error(
+                    `timed out after ${{SETTLE_TIMEOUT_MS}}ms waiting for ${{label}} to settle`
+                );
+            }}
+            await new Promise(resolve => setTimeout(resolve, 1));
+        }}
+    }}
+
     {coordinator}
 
     (async () => {{
         for (let i = 0; i < 100; i++) scheduleMeshLiveRefresh(false);
-        await new Promise(resolve => setTimeout(resolve, 40));
+        await waitForIdle('burst coalescing');
         const burst = {{loadCount, statsCount, maxConcurrent}};
 
         loadCount = 0;
@@ -1094,7 +1123,7 @@ def test_mesh_refresh_coordinator_handles_bursts_visibility_and_failures():
         scheduleMeshLiveRefresh(true, 10);
         await firstStarted;
         firstReleaseResolve();
-        await new Promise(resolve => setTimeout(resolve, 35));
+        await waitForIdle('scheduled retry');
         const scheduledRetry = {{
             loadCount,
             statsCount,
@@ -1110,7 +1139,7 @@ def test_mesh_refresh_coordinator_handles_bursts_visibility_and_failures():
         failBlockedFirst = false;
         scheduleMeshLiveRefresh(false, 20);
         await refreshData();
-        await new Promise(resolve => setTimeout(resolve, 30));
+        await waitForIdle('manual refresh absorbing the timer');
         const manualAbsorbsTimer = {{
             loadCount,
             statsCount,
@@ -1130,7 +1159,7 @@ def test_mesh_refresh_coordinator_handles_bursts_visibility_and_failures():
         await firstStarted;
         firstReleaseResolve();
         await failedManualPromise;
-        await new Promise(resolve => setTimeout(resolve, 35));
+        await waitForIdle('failed manual refresh retry');
         const failedManualRetries = {{
             loadCount,
             forcedLoads,
@@ -1150,7 +1179,7 @@ def test_mesh_refresh_coordinator_handles_bursts_visibility_and_failures():
         const activeManualPromise = refreshData();
         firstReleaseResolve();
         await activeManualPromise;
-        await new Promise(resolve => setTimeout(resolve, 10));
+        await waitForIdle('manual refresh reusing the active load');
         const manualReusesActiveRefresh = {{
             loadCount,
             forcedLoads,
@@ -1179,7 +1208,10 @@ def test_mesh_refresh_coordinator_handles_bursts_visibility_and_failures():
         text=True,
         capture_output=True,
         check=True,
-        timeout=5,
+        # Generous: the script now waits on coordinator state rather than the clock,
+        # so a genuine stall reports which phase failed to settle instead of dying
+        # here with no detail.
+        timeout=60,
     )
     result = json.loads(completed.stdout.strip())
 
@@ -2277,6 +2309,43 @@ class TestApiBannerStatus:
             response = client.get('/api/banner-status')
         data = json.loads(response.data)
         assert data['radio_zombie'] is True
+
+    def test_no_heartbeat_means_bot_not_running(self, viewer_with_db):
+        """A fresh database has a viewer but no bot; the radio state is unknown, not ok."""
+        viewer_with_db.db_manager.set_metadata('radio_connected', '1')
+        with viewer_with_db.app.test_client() as client:
+            data = client.get('/api/banner-status').get_json()
+        assert data['bot_running'] is False
+        assert data['bot_last_seen'] is None
+        assert data['bot_started'] is None
+        assert data['radio_connected'] is None
+
+    def test_fresh_heartbeat_reports_the_radio(self, viewer_with_db):
+        viewer_with_db.db_manager.set_system_health({'status': 'healthy', 'timestamp': time.time() - 20})
+        viewer_with_db.db_manager.set_metadata('radio_connected', '0')
+        with viewer_with_db.app.test_client() as client:
+            data = client.get('/api/banner-status').get_json()
+        assert data['bot_running'] is True
+        assert data['radio_connected'] is False
+
+    def test_running_bot_reports_when_it_started(self, viewer_with_db):
+        started = time.time() - 720
+        viewer_with_db.db_manager.set_bot_start_time(started)
+        viewer_with_db.db_manager.set_system_health({'status': 'healthy', 'timestamp': time.time()})
+        with viewer_with_db.app.test_client() as client:
+            data = client.get('/api/banner-status').get_json()
+        assert data['bot_started'] == pytest.approx(started)
+
+    def test_stale_heartbeat_means_bot_stopped(self, viewer_with_db):
+        """The start time outlives the bot; only the 30 s heartbeat says it's still there."""
+        stopped_at = time.time() - 600
+        viewer_with_db.db_manager.set_system_health({'status': 'healthy', 'timestamp': stopped_at})
+        viewer_with_db.db_manager.set_metadata('radio_connected', '1')
+        with viewer_with_db.app.test_client() as client:
+            data = client.get('/api/banner-status').get_json()
+        assert data['bot_running'] is False
+        assert data['bot_last_seen'] == pytest.approx(stopped_at)
+        assert data['radio_connected'] is None
 
 
 # ---------------------------------------------------------------------------

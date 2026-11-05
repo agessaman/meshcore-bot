@@ -307,6 +307,16 @@ class TestSetupScheduledMessages:
         assert len(self._message_jobs(scheduler)) == 1
         self._teardown(scheduler)
 
+    def test_scheduled_message_tolerates_short_scheduler_delay(self, scheduler):
+        scheduler.bot.config.add_section("Scheduled_Messages")
+        scheduler.bot.config.set("Scheduled_Messages", "0900", "general: Good morning!")
+        self._setup_and_call(scheduler)
+
+        job = self._message_jobs(scheduler)[0]
+        assert job.misfire_grace_time == 300
+        assert job.coalesce is True
+        self._teardown(scheduler)
+
     def test_deprecated_hhmm_logs_migration_warning(self, scheduler):
         scheduler.bot.config.add_section("Scheduled_Messages")
         scheduler.bot.config.set("Scheduled_Messages", "0900", "general: Hi")
@@ -998,6 +1008,7 @@ def _make_scheduler():
     bot.main_event_loop = None
     bot.is_radio_zombie = False
     bot.is_radio_offline = False
+    bot._admit_measured_send.return_value = (True, False)
 
     # db_manager.connection() context manager
     conn_mock = MagicMock()
@@ -1360,6 +1371,7 @@ class TestSendScheduledMessageWrapper:
     def test_suppressed_when_radio_offline(self):
         scheduler = _make_scheduler()
         scheduler.bot.is_radio_offline = True
+        scheduler.bot._admit_measured_send.return_value = (False, False)
         with patch("asyncio.run_coroutine_threadsafe") as mock_rct:
             scheduler.send_scheduled_message("general", "hi")
         mock_rct.assert_not_called()
@@ -1370,13 +1382,30 @@ class TestSendScheduledMessageWrapper:
         mock_loop.is_running.return_value = True
         scheduler.bot.main_event_loop = mock_loop
         fake_future = Mock()
-        fake_future.result.return_value = None
+        fake_future.result.return_value = True
         def _run_coro_threadsafe(coro, loop):
             coro.close()
             return fake_future
         with patch("asyncio.run_coroutine_threadsafe", side_effect=_run_coro_threadsafe):
             scheduler.send_scheduled_message("general", "hi")
         scheduler.bot._record_send_success.assert_called_once()
+
+    def test_send_reporting_failure_is_inconclusive(self):
+        """A send that returns False without timing out proves nothing about the radio."""
+        scheduler = _make_scheduler()
+        mock_loop = Mock()
+        mock_loop.is_running.return_value = True
+        scheduler.bot.main_event_loop = mock_loop
+        fake_future = Mock()
+        fake_future.result.return_value = False
+        def _run_coro_threadsafe(coro, loop):
+            coro.close()
+            return fake_future
+        with patch("asyncio.run_coroutine_threadsafe", side_effect=_run_coro_threadsafe):
+            scheduler.send_scheduled_message("general", "hi")
+        scheduler.bot._record_send_success.assert_not_called()
+        scheduler.bot._record_send_failure.assert_not_called()
+        scheduler.bot._record_send_inconclusive.assert_called_once()
 
     def test_records_failure_on_exception(self):
         scheduler = _make_scheduler()
@@ -1411,6 +1440,7 @@ class TestSendIntervalAdvertOfflineGuard:
     def test_suppressed_when_radio_offline(self):
         scheduler = _make_scheduler()
         scheduler.bot.is_radio_offline = True
+        scheduler.bot._admit_measured_send.return_value = (False, False)
         with patch("asyncio.run_coroutine_threadsafe") as mock_rct:
             scheduler.send_interval_advert()
         mock_rct.assert_not_called()
@@ -1659,6 +1689,7 @@ def _make_sched_with_logger(mock_logger):
     bot.config.set("Bot", "scheduled_message_max_stagger_seconds", "0")
     bot.is_radio_zombie = False   # ensure zombie guard does not suppress sends
     bot.is_radio_offline = False  # ensure offline guard does not suppress sends
+    bot._admit_measured_send.return_value = (True, False)
     return MessageScheduler(bot)
 
 

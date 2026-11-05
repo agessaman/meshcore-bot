@@ -165,7 +165,8 @@ async def test_weather_alert_fetch_keeps_event_loop_responsive(mock_logger: Mock
 
     await _run_with_heartbeat(service._check_weather_alerts, gate)
 
-    assert service._nws_alerts_available is True
+    assert gate.provider_started.is_set()
+    assert not service._nws_no_coverage._points
 
 
 @pytest.mark.asyncio
@@ -187,7 +188,8 @@ async def test_weather_alert_xml_parse_keeps_event_loop_responsive(
 
     await _run_with_heartbeat(service._check_weather_alerts, gate)
 
-    assert service._nws_alerts_available is True
+    service.api_session.get.assert_called_once()
+    assert not service._nws_no_coverage._points
 
 
 @pytest.mark.asyncio
@@ -436,6 +438,8 @@ _BLOCKING_METHODS = frozenset({
     "_resolve_location",
     "_coordinates_to_location_string",
     "_get_city_from_coordinates",
+    "_get_state_country_from_coordinates",
+    "_get_full_location_from_coordinates",
     "_zip_to_city_string",
     "_suffix_for_coords",
     "_reverse_geocode",
@@ -477,17 +481,18 @@ class _InlineBlockingCallFinder(ast.NodeVisitor):
 def test_no_blocking_geocode_on_async_paths() -> None:
     repo_root = pathlib.Path(__file__).resolve().parents[2]
     offenders: list[str] = []
-    for root in ("modules/commands", "modules/service_plugins"):
-        for path in sorted((repo_root / root).rglob("*.py")):
-            try:
-                tree = ast.parse(path.read_text(encoding="utf-8"))
-            except (SyntaxError, UnicodeDecodeError):
-                continue
-            finder = _InlineBlockingCallFinder()
-            finder.visit(tree)
-            for lineno, name in finder.hits:
-                rel = path.relative_to(repo_root)
-                offenders.append(f"{rel}:{lineno} calls {name}() inline")
+    paths = [p for root in ("modules/commands", "modules/service_plugins") for p in sorted((repo_root / root).rglob("*.py"))]
+    paths.append(repo_root / "modules" / "repeater_manager.py")
+    for path in paths:
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except (SyntaxError, UnicodeDecodeError):
+            continue
+        finder = _InlineBlockingCallFinder()
+        finder.visit(tree)
+        for lineno, name in finder.hits:
+            rel = path.relative_to(repo_root)
+            offenders.append(f"{rel}:{lineno} calls {name}() inline")
 
     assert offenders == [], (
         "blocking geocode/network work on an async path — wrap it in "

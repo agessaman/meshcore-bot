@@ -38,6 +38,8 @@ class WorldCupCommand(BaseCommand):
     # Read-only informational output; safe for scheduled {cmd:...} rendering.
     render_safe = True
     name = "worldcup"
+    honors_skip_channel_check = False
+    enabled_attr = "worldcup_enabled"
     keywords = ["wc", "worldcup"]
     description = "FIFA World Cup scores, standings, and nation results (in-season only)"
     category = "sports"
@@ -51,6 +53,16 @@ class WorldCupCommand(BaseCommand):
     parameters = [
         {"name": "group <X>", "description": "Standings for a group (e.g. group a)"},
         {"name": "nation", "description": "A nation's matches (e.g. brazil, usa)"},
+    ]
+
+    # Web-viewer settings schema (see modules/settings_schema.py).
+    settings_schema = [
+        {"key": "api_timeout", "label": "API timeout", "type": "int",
+         "min": 1, "default": 10, "unit": "s",
+         "help": "ESPN API request timeout."},
+        {"key": "cache_ttl_minutes", "label": "Lookup cache", "type": "int",
+         "min": 0, "default": 360, "unit": "min",
+         "help": "How long season detection and nation rosters are cached."},
     ]
 
     def __init__(self, bot: "MeshCoreBot"):
@@ -70,19 +82,16 @@ class WorldCupCommand(BaseCommand):
         """Match only when a keyword is the first word (mirrors SportsCommand)."""
         if not self.keywords:
             return False
-        content_lower = self.cleanup_message_for_matching(message)
-        words = content_lower.split()
-        if not words:
-            return False
-        return any(words[0] == keyword.lower() for keyword in self.keywords)
 
-    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
-        """Gate on the enabled flag; season gating happens in execute() (needs network)."""
-        if not self.worldcup_enabled:
-            return False
-        return super().can_execute(message)
+        def _matches(content_lower: str) -> bool:
+            words = content_lower.split()
+            if not words:
+                return False
+            return any(words[0] == keyword.lower() for keyword in self.keywords)
 
-    def get_help_text(self) -> str:
+        return self._cleaned_content_matches(message, _matches)
+
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         return self.translate("commands.worldcup.help")
 
     # ------------------------------------------------------------------ helpers

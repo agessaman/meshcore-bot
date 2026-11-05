@@ -15,32 +15,32 @@
                 <div class="col-md-3">
                     <div class="card">
                         <div class="card-body">
-                            <h5 class="card-title">Total Subscriptions</h5>
-                            <h2 id="total-subscriptions">-</h2>
+                            <h2 class="card-title h5">Total Subscriptions</h2>
+                            <p id="total-subscriptions" class="h2 mb-2 readout-blue">-</p>
                         </div>
                     </div>
                 </div>
                 <div class="col-md-3">
                     <div class="card">
                         <div class="card-body">
-                            <h5 class="card-title">Active Feeds</h5>
-                            <h2 id="active-feeds">-</h2>
+                            <h2 class="card-title h5">Active Feeds</h2>
+                            <p id="active-feeds" class="h2 mb-2 readout-teal">-</p>
                         </div>
                     </div>
                 </div>
                 <div class="col-md-3">
                     <div class="card">
                         <div class="card-body">
-                            <h5 class="card-title">Items (24h)</h5>
-                            <h2 id="items-24h">-</h2>
+                            <h2 class="card-title h5">Items (24h)</h2>
+                            <p id="items-24h" class="h2 mb-2 readout-violet">-</p>
                         </div>
                     </div>
                 </div>
                 <div class="col-md-3">
                     <div class="card">
                         <div class="card-body">
-                            <h5 class="card-title">Active Errors</h5>
-                            <h2 id="active-errors">-</h2>
+                            <h2 class="card-title h5">Active Errors</h2>
+                            <p id="active-errors" class="h2 mb-2 readout-muted">-</p>
                         </div>
                     </div>
                 </div>
@@ -49,7 +49,7 @@
             <!-- Feed List -->
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0">Feed Subscriptions</h5>
+                    <h2 class="h5 mb-0">Feed Subscriptions</h2>
                     <div>
                         <button type="button" id="resetAllErrorsBtn" class="btn btn-outline-secondary me-2" title="Clear recorded errors for all feeds">
                             <i class="fas fa-eraser"></i> Reset Errors
@@ -89,12 +89,12 @@
 </div>
 
 <!-- Add/Edit Feed Modal -->
-<div class="modal fade" id="addFeedModal" tabindex="-1">
+<div class="modal fade" id="addFeedModal" tabindex="-1" aria-labelledby="feedModalTitle">
     <div class="modal-dialog modal-xl">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="feedModalTitle">Add Feed Subscription</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body" style="max-height: calc(100vh - 200px); overflow-y: auto;">
                 <form id="addFeedForm">
@@ -103,18 +103,18 @@
                     <!-- Basic Settings Row -->
                     <div class="row mb-3">
                         <div class="col-md-3">
-                            <label class="form-label">Feed Type</label>
+                            <label class="form-label" for="feedType">Feed Type</label>
                             <select class="form-select" id="feedType" name="feed_type" required>
                                 <option value="rss">RSS Feed</option>
                                 <option value="api">API Feed</option>
                             </select>
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label">Feed URL</label>
+                            <label class="form-label" for="feedUrl">Feed URL</label>
                             <input type="url" class="form-control" id="feedUrl" name="feed_url" required>
                         </div>
                         <div class="col-md-3">
-                            <label class="form-label">Check Interval (seconds)</label>
+                            <label class="form-label" for="checkInterval">Check Interval (seconds)</label>
                             <input type="number" class="form-control" id="checkInterval" name="check_interval_seconds" value="300" min="60">
                         </div>
                     </div>
@@ -122,7 +122,7 @@
                     <!-- Channel and Name Row -->
                     <div class="row mb-3">
                         <div class="col-md-6">
-                            <label class="form-label">Channel</label>
+                            <label class="form-label" for="channelSelect">Channel</label>
                             <div class="input-group">
                                 <select class="form-select" id="channelSelect" name="channel_name" required>
                                     <option value="">Select channel...</option>
@@ -133,7 +133,7 @@
                             </div>
                             <div id="newChannelGroup" style="display: none;" class="mt-2">
                                 <div class="input-group input-group-sm">
-                                    <input type="text" class="form-control" id="newChannelName" placeholder="#channelname" autocomplete="off">
+                                    <input type="text" class="form-control" id="newChannelName" aria-label="New channel name" placeholder="#channelname" autocomplete="off">
                                     <button type="button" class="btn btn-primary" id="submitNewChannelBtn" title="Create channel on the bot (same as Radio page)">
                                         <i class="fas fa-check"></i> Create channel
                                     </button>
@@ -142,11 +142,11 @@
                             </div>
                         </div>
                         <div class="col-md-3">
-                            <label class="form-label">Feed Name <small class="text-muted">(Optional)</small></label>
+                            <label class="form-label" for="feedName">Feed Name <small class="text-muted">(Optional)</small></label>
                             <input type="text" class="form-control" id="feedName" name="feed_name" placeholder="My Feed">
                         </div>
                         <div class="col-md-3">
-                            <label class="form-label">Send Interval (seconds)</label>
+                            <label class="form-label" for="messageSendInterval">Send Interval (seconds)</label>
                             <input type="number" class="form-control" id="messageSendInterval" name="message_send_interval_seconds" value="2.0" min="0.5" step="0.1">
                             <small class="form-text text-muted">Time between messages</small>
                         </div>
@@ -155,12 +155,12 @@
                     <!-- Output Format Row -->
                     <div class="row mb-3">
                         <div class="col-md-8">
-                            <label class="form-label">
-                                Output Format
-                                <button type="button" class="btn btn-sm btn-link p-0 ms-2" data-bs-toggle="collapse" data-bs-target="#formatHelp" aria-expanded="false">
-                                    <i class="fas fa-question-circle"></i> Help
+                            <div class="d-flex align-items-baseline form-label">
+                                <label class="mb-0" for="outputFormat">Output Format</label>
+                                <button type="button" class="btn btn-sm btn-link p-0 ms-2" data-bs-toggle="collapse" data-bs-target="#formatHelp" aria-expanded="false" aria-controls="formatHelp">
+                                    <i class="fas fa-question-circle" aria-hidden="true"></i> Help
                                 </button>
-                            </label>
+                            </div>
                             <textarea class="form-control font-monospace" id="outputFormat" name="output_format" rows="5" placeholder="{emoji} {body|truncate:100} - {date}\n{link|truncate:50}"></textarea>
                             <div class="collapse mt-2" id="formatHelp">
                                 <div class="card card-body bg-light small" style="background-color: var(--bg-secondary) !important; color: var(--text-color) !important;">
@@ -175,7 +175,7 @@
                             </div>
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label">&nbsp;</label>
+                            <div class="form-label" aria-hidden="true">&nbsp;</div>
                             <div class="d-grid">
                                 <button type="button" class="btn btn-outline-primary" id="previewBtn" title="Preview format with live feed">
                                     <i class="fas fa-eye"></i> Preview Format
@@ -200,13 +200,13 @@
                     <div class="accordion mb-3" id="advancedOptions">
                         <div class="accordion-item" id="apiConfigGroup" style="display: none;">
                             <h2 class="accordion-header">
-                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#apiConfigCollapse">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#apiConfigCollapse" aria-expanded="false" aria-controls="apiConfigCollapse">
                                     <i class="fas fa-cog me-2"></i> API Configuration
                                 </button>
                             </h2>
                             <div id="apiConfigCollapse" class="accordion-collapse collapse" data-bs-parent="#advancedOptions">
                                 <div class="accordion-body">
-                                    <textarea class="form-control font-monospace" id="apiConfig" name="api_config" rows="8" placeholder="{
+                                    <textarea class="form-control font-monospace" id="apiConfig" aria-label="API configuration (JSON)" name="api_config" rows="8" placeholder="{
   &quot;method&quot;: &quot;GET&quot;,
   &quot;headers&quot;: {},
   &quot;params&quot;: {
@@ -230,13 +230,13 @@
                         
                         <div class="accordion-item">
                             <h2 class="accordion-header">
-                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#filterConfigCollapse">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#filterConfigCollapse" aria-expanded="false" aria-controls="filterConfigCollapse">
                                     <i class="fas fa-filter me-2"></i> Filter Configuration <small class="text-muted ms-2">(Optional)</small>
                                 </button>
                             </h2>
                             <div id="filterConfigCollapse" class="accordion-collapse collapse" data-bs-parent="#advancedOptions">
                                 <div class="accordion-body">
-                                    <textarea class="form-control font-monospace" id="filterConfig" name="filter_config" rows="8" placeholder="{
+                                    <textarea class="form-control font-monospace" id="filterConfig" aria-label="Filter configuration (JSON)" name="filter_config" rows="8" placeholder="{
   &quot;conditions&quot;: [
     {
       &quot;field&quot;: &quot;raw.Priority&quot;,
@@ -263,13 +263,13 @@
                         
                         <div class="accordion-item">
                             <h2 class="accordion-header">
-                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#sortConfigCollapse">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#sortConfigCollapse" aria-expanded="false" aria-controls="sortConfigCollapse">
                                     <i class="fas fa-sort me-2"></i> Sort Configuration <small class="text-muted ms-2">(Optional)</small>
                                 </button>
                             </h2>
                             <div id="sortConfigCollapse" class="accordion-collapse collapse" data-bs-parent="#advancedOptions">
                                 <div class="accordion-body">
-                                    <textarea class="form-control font-monospace" id="sortConfig" name="sort_config" rows="4" placeholder="{
+                                    <textarea class="form-control font-monospace" id="sortConfig" aria-label="Sort configuration (JSON)" name="sort_config" rows="4" placeholder="{
   &quot;field&quot;: &quot;raw.LastUpdatedTime&quot;,
   &quot;order&quot;: &quot;desc&quot;
 }"></textarea>
@@ -294,12 +294,12 @@
 </div>
 
 <!-- Feed Details Modal -->
-<div class="modal fade" id="feedDetailsModal" tabindex="-1">
+<div class="modal fade" id="feedDetailsModal" tabindex="-1" aria-labelledby="feedDetailsModalTitle">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Feed Details</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <h5 class="modal-title" id="feedDetailsModalTitle">Feed Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body" id="feedDetailsContent">
                 Loading...
@@ -488,7 +488,12 @@ class FeedManager {
             document.getElementById('total-subscriptions').textContent = data.total_subscriptions || 0;
             document.getElementById('active-feeds').textContent = data.enabled_subscriptions || 0;
             document.getElementById('items-24h').textContent = data.items_24h || 0;
-            document.getElementById('active-errors').textContent = data.active_errors || 0;
+            const activeErrors = Number(data.active_errors) || 0;
+            const errorsEl = document.getElementById('active-errors');
+            errorsEl.textContent = activeErrors;
+            // A count of errors is a state: red when there are any, quiet at zero.
+            errorsEl.classList.toggle('readout-danger', activeErrors > 0);
+            errorsEl.classList.toggle('readout-muted', activeErrors === 0);
         } catch (error) {
             console.error('Error loading statistics:', error);
         }
@@ -587,24 +592,26 @@ class FeedManager {
             const addAction = (classes, iconClass, title, handler) => {
                 const button = document.createElement('button');
                 button.type = 'button';
-                button.className = `btn btn-sm ${classes}`;
+                button.className = `row-action ${classes}`;
                 button.title = title;
+                button.setAttribute('aria-label', title);
                 const icon = document.createElement('i');
                 icon.className = `fas ${iconClass}`;
+                icon.setAttribute('aria-hidden', 'true');
                 button.appendChild(icon);
                 button.addEventListener('click', handler);
                 actions.appendChild(button);
                 actions.appendChild(document.createTextNode(' '));
             };
-            addAction('btn-info', 'fa-eye', 'View Details', () => this.viewFeed(feed.id));
-            addAction('btn-primary', 'fa-edit', 'Edit', () => this.editFeed(feed.id));
+            addAction('row-action--view', 'fa-eye', 'View details', () => this.viewFeed(feed.id));
+            addAction('row-action--edit', 'fa-edit', 'Edit', () => this.editFeed(feed.id));
             addAction(
-                feed.enabled ? 'btn-warning' : 'btn-success',
+                feed.enabled ? 'row-action--pause' : 'row-action--play',
                 feed.enabled ? 'fa-pause' : 'fa-play',
                 feed.enabled ? 'Disable' : 'Enable',
                 () => this.toggleFeed(feed.id, !feed.enabled),
             );
-            addAction('btn-danger', 'fa-trash', 'Delete', () => this.deleteFeed(feed.id));
+            addAction('row-action--danger', 'fa-trash', 'Delete', () => this.deleteFeed(feed.id));
 
             tbody.appendChild(row);
         });
@@ -1148,19 +1155,9 @@ class FeedManager {
     }
 
     showAlert(message, kind, timeout) {
-        const alert = document.createElement('div');
-        alert.className = `alert alert-${kind} alert-dismissible fade show position-fixed`;
-        alert.style.cssText = 'top: 20px; right: 20px; z-index: 9999; max-width: 300px;';
         const messageNode = document.createElement('span');
         messageNode.textContent = String(message ?? '');
-        const closeButton = document.createElement('button');
-        closeButton.type = 'button';
-        closeButton.className = 'btn-close';
-        closeButton.setAttribute('data-bs-dismiss', 'alert');
-        closeButton.setAttribute('aria-label', 'Close');
-        alert.append(messageNode, closeButton);
-        document.body.appendChild(alert);
-        setTimeout(() => alert.remove(), timeout);
+        window.viewerToast(messageNode, kind, timeout);
     }
 }
 
@@ -1214,9 +1211,9 @@ document.addEventListener('DOMContentLoaded', () => {
     color: var(--text-color);
 }
 
-/* Ensure all text in table cells is light in dark mode */
-[data-theme="dark"] .table td,
-[data-theme="dark"] .table td * {
+/* Table cells take the light text color in dark mode; children with their
+   own color (badges, buttons, status text) keep it. */
+[data-theme="dark"] .table td {
     color: var(--text-color) !important;
 }
 

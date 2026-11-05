@@ -24,35 +24,35 @@
                 <div class="col-md-3">
                     <div class="card">
                         <div class="card-body">
-                            <h5 class="card-title">Total Channels</h5>
-                            <h2 id="total-channels">-</h2>
+                            <h2 class="card-title h5">Total Channels</h2>
+                            <p id="total-channels" class="h2 mb-2 readout-blue">-</p>
                         </div>
                     </div>
                 </div>
                 <div class="col-md-3">
                     <div class="card">
                         <div class="card-body">
-                            <h5 class="card-title">
+                            <h2 class="card-title h5">
                                 Available Slots
                                 <i class="fas fa-info-circle text-muted ms-1" id="available-slots-info" style="font-size: 0.8em; cursor: help; display: none;" data-bs-toggle="tooltip"></i>
-                            </h5>
-                            <h2 id="available-slots">-</h2>
+                            </h2>
+                            <p id="available-slots" class="h2 mb-2 readout-teal">-</p>
                         </div>
                     </div>
                 </div>
                 <div class="col-md-3">
                     <div class="card">
                         <div class="card-body">
-                            <h5 class="card-title">Channels with Feeds</h5>
-                            <h2 id="channels-with-feeds">-</h2>
+                            <h2 class="card-title h5">Channels with Feeds</h2>
+                            <p id="channels-with-feeds" class="h2 mb-2 readout-violet">-</p>
                         </div>
                     </div>
                 </div>
                 <div class="col-md-3">
                     <div class="card">
                         <div class="card-body">
-                            <h5 class="card-title">Empty Channels</h5>
-                            <h2 id="empty-channels">-</h2>
+                            <h2 class="card-title h5">Empty Channels</h2>
+                            <p id="empty-channels" class="h2 mb-2 readout-orange">-</p>
                         </div>
                     </div>
                 </div>
@@ -61,7 +61,7 @@
             <!-- Radio Parameters -->
             <div class="card mb-4" id="radio-params-card">
                 <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0"><i class="fas fa-sliders-h me-2"></i>Radio Parameters</h5>
+                    <h2 class="h5 mb-0"><i class="fas fa-sliders-h me-2"></i>Radio Parameters</h2>
                     <button class="btn btn-sm btn-outline-secondary" id="readRadioParamsBtn">
                         <span class="spinner-border spinner-border-sm me-1" id="readParamsSpinner" style="display:none" role="status"></span>
                         <i class="fas fa-sync me-1" id="readParamsIcon"></i>Read from Device
@@ -135,7 +135,7 @@
             <!-- Node Settings -->
             <div class="card mb-4" id="node-settings-card">
                 <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0"><i class="fas fa-microchip me-2"></i>Node Settings</h5>
+                    <h2 class="h5 mb-0"><i class="fas fa-microchip me-2"></i>Node Settings</h2>
                     <button class="btn btn-sm btn-outline-secondary" id="readNodeSettingsBtn">
                         <span class="spinner-border spinner-border-sm me-1" id="readNodeSpinner" style="display:none" role="status"></span>
                         <i class="fas fa-sync me-1" id="readNodeIcon"></i>Read from Device
@@ -145,9 +145,9 @@
                     <div id="nodeSettingsAlert" style="display:none"></div>
 
                     <!-- Response Path Hashing -->
-                    <h6 class="text-uppercase text-muted fw-semibold mb-3" style="font-size:.75rem;letter-spacing:.05em;">
+                    <h3 class="h6 text-uppercase text-muted fw-semibold mb-3" style="font-size:.75rem;letter-spacing:.05em;">
                         Response Path Hashing
-                    </h6>
+                    </h3>
                     <div class="row g-3 align-items-end">
                         <div class="col-md-3">
                             <label class="form-label" for="nodePathHashMode">Path Hash Size</label>
@@ -159,7 +159,7 @@
                             </select>
                         </div>
                         <div class="col-md-auto">
-                            <button type="button" class="btn btn-warning" id="savePathHashBtn">
+                            <button type="button" class="btn btn-primary" id="savePathHashBtn">
                                 <span class="spinner-border spinner-border-sm me-1" id="savePathHashSpinner" style="display:none" role="status"></span>
                                 <i class="fas fa-upload me-1"></i>Write Path Settings
                             </button>
@@ -173,10 +173,48 @@
 
                     <hr class="my-4">
 
+                    <!-- Default Region Scope (device) -->
+                    <h3 class="h6 text-uppercase text-muted fw-semibold mb-3" style="font-size:.75rem;letter-spacing:.05em;">
+                        Default Region Scope
+                    </h3>
+                    <div class="row g-3 align-items-end">
+                        <div class="col-md-4">
+                            <label class="form-label" for="nodeDefaultScope">Region</label>
+                            <input type="text" class="form-control" id="nodeDefaultScope"
+                                   maxlength="30" placeholder="blank = unscoped" autocomplete="off">
+                            <small class="form-text text-muted" id="nodeDefaultScopeKey"></small>
+                        </div>
+                        <div class="col-md-auto">
+                            <button type="button" class="btn btn-primary" id="saveDefaultScopeBtn">
+                                <span class="spinner-border spinner-border-sm me-1" id="saveDefaultScopeSpinner"
+                                      style="display:none" role="status"></span>
+                                <i class="fas fa-upload me-1"></i>Write Default Scope
+                            </button>
+                        </div>
+                    </div>
+                    <small class="form-text text-muted d-block mt-2">
+                        The radio's own default region, stored in firmware and used for any
+                        send the bot does not scope itself. Max 30 ASCII characters including
+                        the <code>#</code>, which is added if you omit it. Blank clears it, and
+                        the radio then floods unscoped.
+                    </small>
+                    <small class="form-text text-muted d-block mt-2">
+                        <i class="fas fa-info-circle me-1"></i>
+                        Once the bot sends a scoped message it leaves the radio in forced-unscoped
+                        mode, so this default stops applying until the bot scopes another send.
+                        If the bot should post under a region, set it in
+                        <a href="#region-scopes-card">Region Scopes</a> below rather than relying
+                        on this.
+                    </small>
+                    <div class="alert alert-warning py-2 px-3 small mt-2" id="nodeDefaultScopeNote"
+                         style="display:none"></div>
+
+                    <hr class="my-4">
+
                     <!-- Identity & Adverts -->
-                    <h6 class="text-uppercase text-muted fw-semibold mb-3" style="font-size:.75rem;letter-spacing:.05em;">
+                    <h3 class="h6 text-uppercase text-muted fw-semibold mb-3" style="font-size:.75rem;letter-spacing:.05em;">
                         Identity &amp; Adverts
-                    </h6>
+                    </h3>
                     <div class="row g-3">
                         <div class="col-md-3">
                             <label class="form-label" for="nodeName">Node Name</label>
@@ -209,7 +247,7 @@
                         </div>
                     </div>
                     <div class="mt-3 d-flex gap-2 flex-wrap">
-                        <button type="button" class="btn btn-warning" id="saveIdentityBtn">
+                        <button type="button" class="btn btn-primary" id="saveIdentityBtn">
                             <span class="spinner-border spinner-border-sm me-1" id="saveIdentitySpinner" style="display:none" role="status"></span>
                             <i class="fas fa-upload me-1"></i>Write Identity
                         </button>
@@ -226,9 +264,9 @@
                     <hr class="my-4">
 
                     <!-- Mesh Behavior -->
-                    <h6 class="text-uppercase text-muted fw-semibold mb-3" style="font-size:.75rem;letter-spacing:.05em;">
+                    <h3 class="h6 text-uppercase text-muted fw-semibold mb-3" style="font-size:.75rem;letter-spacing:.05em;">
                         Mesh Behavior
-                    </h6>
+                    </h3>
                     <div class="row g-3">
                         <div class="col-md-3">
                             <label class="form-label" for="nodeNewContactsMode">New Contacts</label>
@@ -279,7 +317,7 @@
                         Telemetry permissions control who may request each reading type.
                     </small>
                     <div class="mt-3">
-                        <button type="button" class="btn btn-warning" id="saveMeshBtn">
+                        <button type="button" class="btn btn-primary" id="saveMeshBtn">
                             <span class="spinner-border spinner-border-sm me-1" id="saveMeshSpinner" style="display:none" role="status"></span>
                             <i class="fas fa-upload me-1"></i>Write Mesh Behavior
                         </button>
@@ -317,10 +355,112 @@
                 </div>
             </div>
 
+            <!-- Region Scopes -->
+            <div class="card mb-4" id="region-scopes-card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h2 class="h5 mb-0"><i class="fas fa-map-marked-alt me-2"></i>Region Scopes</h2>
+                    <small class="text-muted" id="regionScopeTarget"></small>
+                </div>
+                <div class="card-body">
+                    <div id="regionScopeAlert" style="display:none"></div>
+
+                    <p class="text-muted small mb-4">
+                        A region code confines a channel message to repeaters holding that
+                        region's key, instead of flooding the whole mesh. These are bot
+                        settings in <code>config.ini</code>, not device settings, so they
+                        are not read from or written to the radio — the radio's own
+                        <a href="#node-settings-card">Default Region Scope</a> is above, and
+                        only covers sends the bot does not scope itself. See the
+                        <a href="/region-warnings">Region Warnings</a> page for how much
+                        unscoped traffic this mesh actually carries.
+                    </p>
+
+                    <div class="alert alert-warning py-2 px-3 small" id="regionScopeLegacy"
+                         style="display:none"></div>
+
+                    <!-- Incoming allowlist -->
+                    <h3 class="h6 text-uppercase text-muted fw-semibold mb-3" style="font-size:.75rem;letter-spacing:.05em;">
+                        Which scopes the bot replies to
+                    </h3>
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="radio" name="regionScopeMode"
+                               id="regionScopeModeAll" value="all">
+                        <label class="form-check-label" for="regionScopeModeAll">
+                            Reply whatever the scope
+                            <span class="text-muted">— every message the bot hears on a monitored channel.</span>
+                        </label>
+                    </div>
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="radio" name="regionScopeMode"
+                               id="regionScopeModeList" value="list">
+                        <label class="form-check-label" for="regionScopeModeList">
+                            Only these scopes
+                            <span class="text-muted">— reply mirrors the scope it came in on.</span>
+                        </label>
+                    </div>
+                    <div class="ms-4 ps-2 border-start" id="regionScopeListFields">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label" for="regionScopeList">Region scopes</label>
+                                <input type="text" class="form-control" id="regionScopeList"
+                                       placeholder="e.g. #west, #east" autocomplete="off">
+                                <small class="form-text text-muted">
+                                    Comma-separated. The leading <code>#</code> is added if you omit it.
+                                </small>
+                            </div>
+                            <div class="col-md-6 d-flex align-items-center">
+                                <div class="form-check mt-md-4">
+                                    <input class="form-check-input" type="checkbox" id="regionScopeAllowGlobal">
+                                    <label class="form-check-label" for="regionScopeAllowGlobal">
+                                        Also reply to unscoped (global) messages
+                                        <small class="d-block text-muted">
+                                            Adds <code>*</code>. Without it, a sender with no region set
+                                            gets no reply.
+                                        </small>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <hr class="my-4">
+
+                    <!-- Outgoing default -->
+                    <h3 class="h6 text-uppercase text-muted fw-semibold mb-3" style="font-size:.75rem;letter-spacing:.05em;">
+                        Default outgoing scope
+                    </h3>
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label" for="regionScopeOutgoing">Scope</label>
+                            <input type="text" class="form-control" id="regionScopeOutgoing"
+                                   placeholder="blank = global flood" autocomplete="off">
+                            <small class="form-text text-muted">
+                                Used for sends that have no scope of their own — scheduled
+                                messages, feeds, webhooks — and for a reply whose incoming
+                                scope could not be matched. It never overrides a mirrored
+                                reply scope.
+                            </small>
+                        </div>
+                        <div class="col-md-8">
+                            <div id="regionScopeChannelOverrides" class="small text-muted"></div>
+                        </div>
+                    </div>
+
+                    <div class="mt-3 d-flex gap-2 align-items-center flex-wrap">
+                        <button type="button" class="btn btn-primary" id="saveRegionScopesBtn">
+                            <span class="spinner-border spinner-border-sm me-1" id="saveRegionScopesSpinner"
+                                  style="display:none" role="status"></span>
+                            <i class="fas fa-save me-1"></i>Save Region Scopes
+                        </button>
+                        <small id="regionScopeStatus" class="text-muted"></small>
+                    </div>
+                </div>
+            </div>
+
             <!-- Channel Management -->
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0">Channel Management</h5>
+                    <h2 class="h5 mb-0">Channel Management</h2>
                     <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createChannelModal">
                         <i class="fas fa-plus"></i> Create Channel
                     </button>
@@ -352,17 +492,17 @@
 </div>
 
 <!-- Create Channel Modal -->
-<div class="modal fade" id="createChannelModal" tabindex="-1">
+<div class="modal fade" id="createChannelModal" tabindex="-1" aria-labelledby="createChannelModalTitle">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Create Channel</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <h5 class="modal-title" id="createChannelModalTitle">Create Channel</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <form id="createChannelForm">
                     <div class="mb-3">
-                        <label class="form-label">Channel Name</label>
+                        <label class="form-label" for="channelName">Channel Name</label>
                         <input type="text" class="form-control" id="channelName" name="channel_name" required placeholder="#channelname or channelname">
                         <small class="form-text text-muted">
                             <strong>Hashtag channel:</strong> Start with # (e.g., #emergency) - key auto-generated<br>
@@ -370,7 +510,7 @@
                         </small>
                     </div>
                     <div class="mb-3" id="channelKeyGroup" style="display: none;">
-                        <label class="form-label">Channel Key (32 hex characters) <span class="text-danger">*</span></label>
+                        <label class="form-label" for="channelKey">Channel Key (32 hex characters) <span class="text-danger">*</span></label>
                         <input type="text" class="form-control" id="channelKey" name="channel_key" placeholder="00000000000000000000000000000000" pattern="[0-9a-fA-F]{32}" maxlength="32">
                         <small class="form-text text-muted">Required for custom channels. Must be exactly 32 hexadecimal characters (16 bytes).</small>
                     </div>
@@ -391,12 +531,12 @@
 </div>
 
 <!-- Channel Details Modal -->
-<div class="modal fade" id="channelDetailsModal" tabindex="-1">
+<div class="modal fade" id="channelDetailsModal" tabindex="-1" aria-labelledby="channelDetailsModalTitle">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Channel Details</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <h5 class="modal-title" id="channelDetailsModalTitle">Channel Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body" id="channelDetailsContent">
                 Loading...
@@ -426,8 +566,10 @@ class RadioManager {
         this.setupEventHandlers();
         this.setupRadioParamsHandlers();
         this.setupNodeSettingsHandlers();
+        this.setupRegionScopeHandlers();
         this.readRadioParams({ silent: true });
         this.readFirmwareConfig({ silent: true });
+        this.loadRegionScopes();
 
         // Auto-refresh every 30 seconds
         setInterval(() => this.loadChannels(), 30000);
@@ -625,8 +767,10 @@ class RadioManager {
         button.type = 'button';
         button.className = `btn btn-sm ${colorClass}`;
         button.title = title;
+        button.setAttribute('aria-label', title);
         const icon = document.createElement('i');
         icon.className = `fas ${iconClass}`;
+        icon.setAttribute('aria-hidden', 'true');
         button.appendChild(icon);
         return button;
     }
@@ -1285,6 +1429,8 @@ class RadioManager {
             this.readFirmwareConfig();
         });
         document.getElementById('savePathHashBtn').addEventListener('click', () => this.savePathHash());
+        document.getElementById('saveDefaultScopeBtn')
+            .addEventListener('click', () => this.saveDefaultScope());
         document.getElementById('saveIdentityBtn').addEventListener('click', () => this.saveIdentity());
         document.getElementById('saveMeshBtn').addEventListener('click', () => this.saveMesh());
         document.getElementById('applyTuningBtn').addEventListener('click', () => this.applyTuning());
@@ -1366,6 +1512,68 @@ class RadioManager {
         if (data.path_hash_mode != null && data.path_hash_mode >= 0) {
             document.getElementById('nodePathHashMode').value = String(data.path_hash_mode);
         }
+        this.fillDefaultScope(data);
+    }
+
+    fillDefaultScope(data) {
+        const field = document.getElementById('nodeDefaultScope');
+        const keyNote = document.getElementById('nodeDefaultScopeKey');
+        const note = document.getElementById('nodeDefaultScopeNote');
+        keyNote.textContent = '';
+        note.style.display = 'none';
+
+        // Absent keys mean the radio never answered — older firmware has no
+        // CMD_GET_DEFAULT_FLOOD_SCOPE. Say so rather than showing an empty box
+        // that reads as "no scope set".
+        if (!data.default_scope_supported) {
+            field.value = '';
+            field.disabled = true;
+            document.getElementById('saveDefaultScopeBtn').disabled = true;
+            note.textContent = 'This radio did not report a default scope. The firmware '
+                + 'is likely older than the setting; nothing was changed.';
+            note.style.display = 'block';
+            return;
+        }
+
+        field.disabled = false;
+        document.getElementById('saveDefaultScopeBtn').disabled = false;
+        const name = data.default_scope_name || '';
+        field.value = name;
+        if (!name) return;
+
+        keyNote.textContent = `Key ${(data.default_scope_key || '').slice(0, 8)}…`;
+        // The name is a label the app wrote; the key is what the radio routes
+        // by. They only disagree if something wrote them separately, and then
+        // the name on screen is not the region this radio is actually in.
+        if (data.default_scope_key && data.default_scope_key_matches === false) {
+            note.textContent = `The stored key does not match ${name}. The radio routes by `
+                + 'the key, so the name shown is only a label. Writing the scope again '
+                + 'puts the two back in step.';
+            note.style.display = 'block';
+        }
+    }
+
+    async saveDefaultScope() {
+        const raw = document.getElementById('nodeDefaultScope').value.trim();
+        if (!raw && !confirm(
+            'Clear the radio\'s default region scope?\n\n'
+            + 'Sends the bot does not scope itself will then flood the whole mesh '
+            + 'instead of staying inside a region.'
+        )) return;
+
+        await this.runNodeAction('saveDefaultScopeBtn', 'saveDefaultScopeSpinner', async () => {
+            const result = await this.queueAndPoll(
+                '/api/radio/firmware/config/write', { default_flood_scope: raw });
+            if (result && result.status === 'completed') {
+                this.setNodeAlert('success', raw
+                    ? `Default scope set to ${raw}.`
+                    : 'Default scope cleared — the radio floods unscoped.');
+                // Read it back: the radio is the authority on what it stored.
+                await this.readFirmwareConfig({ silent: true });
+            } else {
+                this.setNodeAlert('danger', result?.error_message || 'Write failed');
+            }
+        });
     }
 
     async savePathHash() {
@@ -1485,34 +1693,223 @@ class RadioManager {
         });
     }
 
-    showError(message) {
-        const alert = document.createElement('div');
-        alert.className = 'alert alert-danger alert-dismissible fade show position-fixed';
-        alert.style.cssText = 'top: 20px; right: 20px; z-index: 9999; max-width: 300px;';
-        const messageNode = document.createElement('span');
-        messageNode.textContent = String(message ?? '');
-        const closeButton = document.createElement('button');
-        closeButton.type = 'button';
-        closeButton.className = 'btn-close';
-        closeButton.dataset.bsDismiss = 'alert';
-        alert.append(messageNode, closeButton);
-        document.body.appendChild(alert);
-        setTimeout(() => alert.remove(), 5000);
+
+    // ── Region scopes ([Channels] flood_scopes) ─────────────────────────────
+
+    setupRegionScopeHandlers() {
+        const sync = () => this.syncRegionScopeMode();
+        document.getElementById('regionScopeModeAll').addEventListener('change', sync);
+        document.getElementById('regionScopeModeList').addEventListener('change', sync);
+        document.getElementById('saveRegionScopesBtn')
+            .addEventListener('click', () => this.saveRegionScopes());
     }
-    
-    showSuccess(message) {
-        const alert = document.createElement('div');
-        alert.className = 'alert alert-success alert-dismissible fade show position-fixed';
-        alert.style.cssText = 'top: 20px; right: 20px; z-index: 9999; max-width: 300px;';
+
+    // The allowlist inputs are meaningless in "reply whatever the scope" mode,
+    // so disable rather than hide them: a hidden list the operator forgot they
+    // filled in is the version of this that loses their scopes on the next save.
+    syncRegionScopeMode() {
+        const listMode = document.getElementById('regionScopeModeList').checked;
+        document.getElementById('regionScopeList').disabled = !listMode;
+        document.getElementById('regionScopeAllowGlobal').disabled = !listMode;
+        document.getElementById('regionScopeListFields').style.opacity = listMode ? '1' : '.55';
+    }
+
+    async loadRegionScopes() {
+        try {
+            const resp = await fetch('/api/region-scopes', {
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            });
+            const data = await resp.json();
+            if (!resp.ok) {
+                this.setRegionScopeAlert('danger', data.error || 'Could not read region scopes');
+                return;
+            }
+            this.fillRegionScopeForm(data);
+            this.setRegionScopeAlert('', '');
+        } catch (e) {
+            this.setRegionScopeAlert('danger', 'Error: ' + e.message);
+        }
+    }
+
+    fillRegionScopeForm(data) {
+        const scopes = Array.isArray(data.scopes) ? data.scopes : [];
+        document.getElementById('regionScopeList').value = scopes.join(', ');
+        document.getElementById('regionScopeAllowGlobal').checked = !!data.allow_global;
+        document.getElementById('regionScopeOutgoing').value = data.outgoing_override || '';
+        const listMode = !!data.allowlist_active;
+        document.getElementById('regionScopeModeList').checked = listMode;
+        document.getElementById('regionScopeModeAll').checked = !listMode;
+        this.syncRegionScopeMode();
+
+        const target = document.getElementById('regionScopeTarget');
+        target.textContent = data.target ? `[Channels] in ${data.target}` : '';
+
+        const legacy = document.getElementById('regionScopeLegacy');
+        if (data.legacy_section) {
+            // [Channels] is empty, so the bot fell back to the old location.
+            // Saving an allowlist here takes over; saving "reply whatever the
+            // scope" leaves [Channels] empty and hands it straight back.
+            legacy.textContent =
+                `[Channels] has no flood_scopes, so the bot is using the one under `
+                + `[${data.legacy_section}]. Saving a list here writes [Channels], which `
+                + `the bot reads first. Saving "reply whatever the scope" leaves [Channels] `
+                + `empty, and the [${data.legacy_section}] entry takes over again — remove `
+                + 'it from config.ini by hand to turn the allowlist off for good.';
+            legacy.style.display = 'block';
+        } else {
+            legacy.style.display = 'none';
+        }
+
+        this.renderChannelScopeOverrides(data.channel_overrides || []);
+    }
+
+    renderChannelScopeOverrides(overrides) {
+        const host = document.getElementById('regionScopeChannelOverrides');
+        host.replaceChildren();
+        if (!overrides.length) return;
+
+        const heading = document.createElement('div');
+        heading.className = 'fw-semibold mb-1';
+        heading.textContent = 'Per-channel overrides (edit in config.ini)';
+        host.appendChild(heading);
+
+        const list = document.createElement('ul');
+        list.className = 'list-unstyled mb-0';
+        overrides.forEach(entry => {
+            const item = document.createElement('li');
+            const name = document.createElement('code');
+            name.textContent = entry.channel;
+            item.appendChild(name);
+            item.appendChild(document.createTextNode(' → '));
+            const scope = document.createElement('code');
+            scope.textContent = entry.scope || 'global flood';
+            item.appendChild(scope);
+            list.appendChild(item);
+        });
+        host.appendChild(list);
+
+        const note = document.createElement('div');
+        note.className = 'mt-1';
+        note.textContent = 'These win over the default outgoing scope on their channel.';
+        host.appendChild(note);
+    }
+
+    async saveRegionScopes() {
+        const listMode = document.getElementById('regionScopeModeList').checked;
+        const payload = {
+            allowlist_enabled: listMode,
+            scopes: listMode ? document.getElementById('regionScopeList').value : '',
+            allow_global: listMode && document.getElementById('regionScopeAllowGlobal').checked,
+            outgoing_override: document.getElementById('regionScopeOutgoing').value,
+        };
+
+        if (listMode && !payload.allow_global) {
+            const ok = confirm(
+                'Only reply to the listed scopes?\n\n'
+                + 'Anyone whose client has no region set floods unscoped, and the bot '
+                + 'will not answer them at all. Tick "also reply to unscoped messages" '
+                + 'to keep answering those.'
+            );
+            if (!ok) return;
+        }
+
+        const btn = document.getElementById('saveRegionScopesBtn');
+        const spinner = document.getElementById('saveRegionScopesSpinner');
+        btn.disabled = true;
+        spinner.style.display = 'inline-block';
+        this.setRegionScopeAlert('', '');
+        this.setRegionScopeStatus('Saving…', 'text-muted');
+        try {
+            const resp = await fetch('/api/region-scopes', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: JSON.stringify(payload)
+            });
+            const data = await resp.json();
+            if (!resp.ok || !data.success) {
+                this.setRegionScopeStatus('', '');
+                this.setRegionScopeAlert('danger', data.error || 'Save failed');
+                return;
+            }
+            // Show what was actually written, including the canonical form of
+            // anything typed loosely (west -> #west, * folded into the checkbox).
+            this.fillRegionScopeForm(data.settings || {});
+            this.setRegionScopeStatus('Saved. Waiting for the bot to reload…', 'text-muted');
+            const applied = await this.awaitConfigReload(data.reload_operation_id);
+            this.setRegionScopeStatus(applied.text, applied.cls);
+        } catch (e) {
+            this.setRegionScopeStatus('', '');
+            this.setRegionScopeAlert('danger', 'Error: ' + e.message);
+        } finally {
+            btn.disabled = false;
+            spinner.style.display = 'none';
+        }
+    }
+
+    // A queued reload row only means the request was written down. Poll it so
+    // the page reports what the bot did, and says plainly when nothing picked
+    // it up (a stopped bot, or a reload the bot refused).
+    async awaitConfigReload(operationId) {
+        if (!operationId) {
+            return {
+                text: 'Saved to config.ini. It applies the next time the bot reloads.',
+                cls: 'text-warning'
+            };
+        }
+        for (let attempt = 0; attempt < 15; attempt++) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            try {
+                const resp = await fetch(`/api/channel-operations/${operationId}`);
+                const data = await resp.json();
+                if (data.status === 'completed') {
+                    return { text: 'Saved and applied — the bot is using it now.', cls: 'text-success' };
+                }
+                if (data.status === 'failed' || data.status === 'interrupted') {
+                    // reload_config's messages already end in a full stop.
+                    const reason = String(data.error_message || 'reason not reported')
+                        .trim().replace(/\.+$/, '');
+                    return {
+                        text: `Saved to config.ini, but the reload failed: ${reason}. `
+                            + 'Restart the bot to apply it.',
+                        cls: 'text-danger'
+                    };
+                }
+            } catch { /* keep polling; the answer is the same either way */ }
+        }
+        return {
+            text: 'Saved to config.ini. The bot has not picked it up — if it is not '
+                + 'running, this applies at startup.',
+            cls: 'text-warning'
+        };
+    }
+
+    setRegionScopeAlert(type, message) {
+        const el = document.getElementById('regionScopeAlert');
+        if (!type || !message) { el.style.display = 'none'; return; }
+        el.className = `alert alert-${type}`;
+        el.textContent = message;
+        el.style.display = 'block';
+    }
+
+    setRegionScopeStatus(text, cls) {
+        const el = document.getElementById('regionScopeStatus');
+        el.className = cls || 'text-muted';
+        el.textContent = text || '';
+    }
+
+    showError(message) {
         const messageNode = document.createElement('span');
         messageNode.textContent = String(message ?? '');
-        const closeButton = document.createElement('button');
-        closeButton.type = 'button';
-        closeButton.className = 'btn-close';
-        closeButton.dataset.bsDismiss = 'alert';
-        alert.append(messageNode, closeButton);
-        document.body.appendChild(alert);
-        setTimeout(() => alert.remove(), 3000);
+        window.viewerToast(messageNode, 'danger', 5000);
+    }
+
+    showSuccess(message) {
+        const messageNode = document.createElement('span');
+        messageNode.textContent = String(message ?? '');
+        window.viewerToast(messageNode, 'success', 3000);
     }
 }
 
@@ -1553,9 +1950,9 @@ document.addEventListener('DOMContentLoaded', () => {
     color: var(--text-color);
 }
 
-/* Ensure all text in table cells is light in dark mode */
-[data-theme="dark"] .table td,
-[data-theme="dark"] .table td * {
+/* Table cells take the light text color in dark mode; children with their
+   own color (badges, buttons, status text) keep it. */
+[data-theme="dark"] .table td {
     color: var(--text-color) !important;
 }
 

@@ -34,8 +34,23 @@
     }
     .plugin-header .form-switch { cursor: pointer; }
     .plugin-title { font-weight: 600; }
-    .plugin-headtext { min-width: 0; }                 /* allow truncation */
+    .plugin-headtext {                                 /* button reset */
+        min-width: 0;                                  /* allow truncation */
+        background: none;
+        border: 0;
+        padding: 0;
+        color: inherit;
+        font: inherit;
+        text-align: start;
+        cursor: pointer;
+    }
+    .plugin-headtext:focus-visible {
+        outline: 2px solid var(--bs-primary, #0d6efd);
+        outline-offset: 3px;
+        border-radius: 2px;
+    }
     .plugin-desc {
+        display: block;
         color: var(--text-muted, #6c757d);
         font-size: 0.8rem;
         overflow: hidden;
@@ -75,11 +90,96 @@
     .section-badge {
         font-family: var(--bs-font-monospace, monospace);
         font-weight: 500;
-        font-size: 0.66rem;
+        font-size: 0.7rem;
         color: var(--text-muted, #6c757d);
         background-color: var(--bg-secondary, #f1f3f5);
         border: 1px solid var(--border-color);
         vertical-align: middle;
+    }
+
+    /* Template reference panel, opened by the { } button on template fields */
+    .template-ref-btn { font-family: var(--bs-font-monospace, monospace); font-weight: 600; }
+    .template-ref {
+        margin-top: 0.4rem;
+        padding: 0.6rem 0.75rem;
+        border: 1px solid var(--border-color);
+        border-radius: 0.375rem;
+        background-color: var(--bg-secondary);
+        font-size: 0.8rem;
+    }
+    .template-ref-intro { color: var(--text-muted); margin-bottom: 0.4rem; }
+    .template-ref-heading {
+        font-weight: 600;
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--text-muted);
+        margin: 0.6rem 0 0.3rem;
+    }
+    .template-ref-list { display: grid; gap: 0.25rem 1rem; grid-template-columns: repeat(auto-fill, minmax(min(100%, 24rem), 1fr)); }
+    .template-ref-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 0.2rem 0.5rem;
+    }
+    .template-ref-desc { color: var(--text-color); flex: 1 1 14rem; min-width: 0; }
+    .template-chip {
+        font-family: var(--bs-font-monospace, monospace);
+        font-size: 0.76rem;
+        padding: 0.05rem 0.4rem;
+        color: var(--text-color);
+        background-color: var(--card-bg);
+        border: 1px solid var(--border-color);
+        white-space: nowrap;
+    }
+    .template-chip:hover, .template-chip:focus-visible {
+        border-color: #0d6efd;
+        color: var(--text-color);
+        background-color: var(--card-bg);
+    }
+    [data-theme="dark"] .template-chip:hover,
+    [data-theme="dark"] .template-chip:focus-visible { border-color: #6ea8fe; }
+    .template-ref-filters {
+        display: grid;
+        grid-template-columns: max-content 1fr;
+        gap: 0.4rem 0.6rem;
+        align-items: start;
+    }
+    .template-chip-example { margin-top: 0.15rem; }
+    .template-chip-example { color: var(--text-muted); white-space: normal; text-align: left; overflow-wrap: anywhere; }
+    .template-ref-notes { color: var(--text-muted); margin: 0.6rem 0 0; padding-left: 1.1rem; }
+    .template-ref-notes li { overflow-wrap: anywhere; }
+    .template-preview { display: grid; gap: 0.3rem; margin-bottom: 0.3rem; }
+    .template-preview-row {
+        display: grid;
+        grid-template-columns: 9.5rem 1fr auto;
+        gap: 0.5rem;
+        align-items: start;
+    }
+    .template-preview-label { color: var(--text-muted); }
+    .template-preview-output {
+        font-family: var(--bs-font-monospace, monospace);
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        background-color: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 0.25rem;
+        padding: 0.15rem 0.4rem;
+        min-width: 0;
+    }
+    .template-preview-output.empty { color: var(--text-muted); font-style: italic; }
+    .template-preview-output.has-error { border-color: #dc3545; }
+    .template-preview-error { grid-column: 2 / -1; color: #b02a37; font-size: 0.76rem; }
+    [data-theme="dark"] .template-preview-output.has-error { border-color: #ea868f; }
+    [data-theme="dark"] .template-preview-error { color: #ea868f; }
+    .template-preview-bytes { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+    @media (max-width: 575.98px) {
+        .template-ref-filters { grid-template-columns: 1fr; gap: 0.15rem; }
+        .template-ref-filters > div:nth-child(2n) { margin-bottom: 0.35rem; }
+        .template-preview-row { grid-template-columns: 1fr auto; }
+        .template-preview-label { grid-column: 1 / -1; }
+        .template-preview-error { grid-column: 1 / -1; }
     }
 </style>
 {% endblock %}
@@ -103,10 +203,10 @@
             <div class="col-12 col-md">
                 <div class="input-group input-group-sm">
                     <span class="input-group-text"><i class="fas fa-search"></i></span>
-                    <input type="text" class="form-control" id="plugins-filter"
+                    <input type="text" class="form-control" id="plugins-filter" aria-label="Filter plugins"
                            placeholder="Filter by name, section, or description…" autocomplete="off">
-                    <button class="btn btn-outline-secondary" id="plugins-filter-clear" title="Clear">
-                        <i class="fas fa-times"></i>
+                    <button class="btn btn-outline-secondary" type="button" id="plugins-filter-clear" title="Clear" aria-label="Clear filter">
+                        <i class="fas fa-times" aria-hidden="true"></i>
                     </button>
                 </div>
             </div>
@@ -212,9 +312,9 @@ class PluginsManager {
             // collapse clears everything so nothing stays open while hidden.
             if (expand) {
                 if (c.el.classList.contains('d-none')) return;
-                c.collapse.show(); c.el.classList.add('expanded');
+                c.setOpen(true);
             } else {
-                c.collapse.hide(); c.el.classList.remove('expanded');
+                c.setOpen(false);
             }
         });
     }
@@ -254,21 +354,28 @@ class PluginsManager {
         toggle.role = 'switch';
         toggle.id = toggleId;
         toggle.checked = Boolean(plugin.enabled);
+        toggle.setAttribute('aria-label', `Enable ${String(plugin.label ?? plugin.name)}`);
         switchWrapper.appendChild(toggle);
-        const headText = document.createElement('div');
+        // The title area is a real button so the card opens from the keyboard;
+        // the enable switch stays outside it.
+        const headText = document.createElement('button');
+        headText.type = 'button';
         headText.className = 'flex-grow-1 plugin-headtext';
+        headText.setAttribute('aria-expanded', 'false');
+        headText.setAttribute('aria-controls', bodyId);
         const title = document.createElement('span');
         title.className = 'plugin-title';
         title.textContent = String(plugin.label ?? '');
         const section = document.createElement('span');
         section.className = 'plugin-section-label';
         section.textContent = `[${String(plugin.section ?? '')}]`;
-        const description = document.createElement('div');
+        const description = document.createElement('span');
         description.className = 'plugin-desc';
         description.textContent = String(plugin.description ?? '');
         headText.append(title, section, description);
         const chevron = document.createElement('i');
         chevron.className = 'fas fa-chevron-down plugin-chevron';
+        chevron.setAttribute('aria-hidden', 'true');
         header.append(switchWrapper, headText, chevron);
         card.appendChild(header);
 
@@ -293,7 +400,7 @@ class PluginsManager {
         const addField = (field, value, targetGrid = grid) => {
             const col = document.createElement('div');
             col.className = fieldColClass(field);
-            const { wrapper, input } = renderField(field, value);
+            const { wrapper, input } = renderField(field, value, plugin);
             col.appendChild(wrapper);
             targetGrid.appendChild(col);
             // Capture the original value so saves only send changed fields
@@ -320,7 +427,7 @@ class PluginsManager {
             });
         };
 
-        const schemaKeys = new Set((plugin.fields || []).map(f => f.key));
+        const schemaKeys = new Set((plugin.fields || []).filter(f => !f.section).map(f => f.key));
         const values = plugin.values || {};
         // Keys managed by a dynamic editor on this same section (by prefix) are
         // excluded from the raw "Other config values" list to avoid duplication.
@@ -403,11 +510,17 @@ class PluginsManager {
 
         const collapse = new bootstrap.Collapse(body, { toggle: false });
 
+        const setOpen = (open) => {
+            card.classList.toggle('expanded', open);
+            headText.setAttribute('aria-expanded', String(open));
+            if (open) collapse.show(); else collapse.hide();
+        };
         // Header click expands/collapses; clicking the enable switch must not.
+        // Clicks on the title button bubble here too, so keyboard activation
+        // goes through the same path.
         header.addEventListener('click', (e) => {
             if (e.target.closest('.form-switch')) return;
-            const isOpen = card.classList.toggle('expanded');
-            if (isOpen) collapse.show(); else collapse.hide();
+            setOpen(!card.classList.contains('expanded'));
         });
         // The enable switch only changes enabled state + dim style.
         toggle.addEventListener('change', () => {
@@ -418,7 +531,7 @@ class PluginsManager {
             this.save(plugin, toggle, inputs, saveBtn, status, dynamicEditors, blockEditors));
 
         const searchText = `${plugin.label} ${plugin.section} ${plugin.description || ''}`.toLowerCase();
-        this.cards.push({ el: card, collapse, kind: plugin.kind, enabled: plugin.enabled, searchText,
+        this.cards.push({ el: card, setOpen, kind: plugin.kind, enabled: plugin.enabled, searchText,
                           setEnabled: (v) => { card.classList.toggle('disabled', !v); } });
 
         return card;
@@ -439,7 +552,7 @@ class PluginsManager {
                 markInvalid(input, err);
                 if (!firstError) firstError = err;
             }
-            values[field.key] = raw;
+            values[field.id || field.key] = raw;
         });
 
         // Dynamic sections: collect rows, validate keys, detect changes.
@@ -493,7 +606,8 @@ class PluginsManager {
             if (!resp.ok) {
                 if (data.errors) {
                     inputs.forEach(({ field, input }) => {
-                        if (data.errors[field.key]) markInvalid(input, data.errors[field.key]);
+                        const err = data.errors[field.id || field.key];
+                        if (err) markInvalid(input, err);
                     });
                     throw new Error('Please fix the highlighted fields');
                 }
@@ -530,7 +644,35 @@ class PluginsManager {
 
 // --- Field rendering & validation helpers -------------------------------
 
-function renderField(field, overrideValue) {
+// `plugin` ({kind, name}) is only needed by template fields, for their preview.
+function renderField(field, overrideValue, plugin) {
+    const rendered = renderFieldControl(field, overrideValue, plugin);
+    linkFieldLabel(rendered.wrapper, rendered.input);
+    return rendered;
+}
+
+// Tie the field's visible label and help text to its control, so screen
+// readers announce the setting's name instead of a bare "edit text".
+function linkFieldLabel(wrapper, input) {
+    const label = wrapper.querySelector(':scope > label.form-label');
+    if (label && !label.htmlFor) {
+        if (!input.id) input.id = 'fld-' + Math.random().toString(36).slice(2, 9);
+        if (input.labels !== undefined) {
+            label.htmlFor = input.id;
+        } else {
+            label.id = input.id + '-label';
+            input.setAttribute('aria-labelledby', label.id);
+        }
+    }
+    const help = wrapper.querySelector(':scope > .form-text');
+    if (help && !input.hasAttribute('aria-describedby')) {
+        if (!input.id) input.id = 'fld-' + Math.random().toString(36).slice(2, 9);
+        help.id = input.id + '-help';
+        input.setAttribute('aria-describedby', help.id);
+    }
+}
+
+function renderFieldControl(field, overrideValue, plugin) {
     const wrapper = document.createElement('div');
     wrapper.className = 'mb-1';
     const value = overrideValue !== undefined ? overrideValue : field.value;
@@ -600,6 +742,61 @@ function renderField(field, overrideValue) {
         wrapper.appendChild(group);
         if (field.help) wrapper.appendChild(helpText(field.help));
         return { wrapper, input };
+    } else if (field.type === 'password') {
+        const group = document.createElement('div');
+        group.className = 'input-group input-group-sm has-validation';
+        input = document.createElement('input');
+        input.className = 'form-control';
+        input.type = 'password';
+        input.autocomplete = 'new-password';
+        if (field.pattern) input.pattern = field.pattern;
+        input.value = (value !== undefined && value !== null) ? value : '';
+        input.placeholder = field.has_value ? '(saved — enter new value to change)' : '';
+        group.appendChild(input);
+        const toggleBtn = document.createElement('button');
+        toggleBtn.type = 'button';
+        toggleBtn.className = 'btn btn-outline-secondary';
+        toggleBtn.title = 'Show / hide value';
+        toggleBtn.setAttribute('aria-label', 'Show value');
+        toggleBtn.setAttribute('aria-pressed', 'false');
+        const toggleIcon = document.createElement('i');
+        toggleIcon.className = 'fas fa-eye';
+        toggleIcon.setAttribute('aria-hidden', 'true');
+        toggleBtn.appendChild(toggleIcon);
+        toggleBtn.addEventListener('click', () => {
+            const showing = input.type === 'text';
+            input.type = showing ? 'password' : 'text';
+            toggleIcon.classList.toggle('fa-eye', showing);
+            toggleIcon.classList.toggle('fa-eye-slash', !showing);
+            toggleBtn.setAttribute('aria-pressed', String(!showing));
+        });
+        group.appendChild(toggleBtn);
+        const fb = document.createElement('div');
+        fb.className = 'invalid-feedback';
+        group.appendChild(fb);
+        wrapper.appendChild(group);
+        if (field.help) wrapper.appendChild(helpText(field.help));
+        return { wrapper, input };
+    } else if (field.template) {
+        const group = document.createElement('div');
+        group.className = 'input-group input-group-sm has-validation';
+        input = document.createElement('input');
+        input.className = 'form-control font-monospace';
+        input.type = 'text';
+        input.spellcheck = false;
+        if (field.pattern) input.pattern = field.pattern;
+        input.value = (value !== undefined && value !== null) ? value : '';
+        const refBtn = document.createElement('button');
+        refBtn.type = 'button';
+        refBtn.className = 'btn btn-outline-secondary template-ref-btn';
+        refBtn.textContent = '{ }';
+        const fb = document.createElement('div');
+        fb.className = 'invalid-feedback';
+        group.append(input, refBtn, fb);
+        wrapper.appendChild(group);
+        if (field.help) wrapper.appendChild(helpText(field.help));
+        wrapper.appendChild(buildTemplateReference(field, input, refBtn, plugin));
+        return { wrapper, input };
     } else {
         input = document.createElement('input');
         input.className = 'form-control form-control-sm';
@@ -618,6 +815,213 @@ function renderField(field, overrideValue) {
     return { wrapper, input };
 }
 
+// --- Template reference panel (placeholders, filters, live preview) -------
+
+let templateRefSeq = 0;
+
+// Insert text at the input's cursor (replacing any selection) and keep focus
+// there, so several chips can be clicked in a row.
+function insertAtCursor(input, text) {
+    const start = input.selectionStart ?? input.value.length;
+    const end = input.selectionEnd ?? input.value.length;
+    input.setRangeText(text, start, end, 'end');
+    input.focus();
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+function refChip(label, title, onClick) {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'btn btn-sm template-chip';
+    chip.textContent = label;
+    chip.title = title;
+    chip.addEventListener('click', onClick);
+    return chip;
+}
+
+function refHeading(text) {
+    const h = document.createElement('div');
+    h.className = 'template-ref-heading';
+    h.textContent = text;
+    return h;
+}
+
+function buildTemplateReference(field, input, refBtn, plugin) {
+    const spec = field.template;
+    const piped = spec.syntax === 'piped';
+    const panelId = 'tref-' + (++templateRefSeq);
+
+    const panel = document.createElement('div');
+    panel.className = 'template-ref d-none';
+    panel.id = panelId;
+    panel.setAttribute('role', 'region');
+    panel.setAttribute('aria-label', field.label + ' placeholders');
+    refBtn.setAttribute('aria-controls', panelId);
+    refBtn.setAttribute('aria-expanded', 'false');
+    refBtn.setAttribute('aria-label', 'Placeholders for ' + field.label);
+    refBtn.title = piped ? 'Placeholders, filters and preview'
+        : (spec.previewable ? 'Placeholders and preview' : 'Placeholders');
+
+    const intro = document.createElement('p');
+    intro.className = 'template-ref-intro';
+    intro.textContent = piped
+        ? 'Click to insert at the cursor. Filters go inside a placeholder, after its name: {field|filter:arg}.'
+        : 'Click to insert at the cursor. This field takes placeholders only; filters and conditionals don\'t work here.';
+    panel.appendChild(intro);
+    // The preview goes first: it's what you watch while typing.
+    const previewSlot = document.createElement('div');
+    panel.appendChild(previewSlot);
+
+    panel.appendChild(refHeading('Placeholders'));
+    const list = document.createElement('div');
+    list.className = 'template-ref-list';
+    (spec.placeholders || []).forEach(p => {
+        const row = document.createElement('div');
+        row.className = 'template-ref-row';
+        const token = '{' + p.name + '}';
+        row.appendChild(refChip(token, 'Insert ' + token, () => insertAtCursor(input, token)));
+        if (p.help) {
+            const desc = document.createElement('span');
+            desc.className = 'template-ref-desc';
+            desc.textContent = p.help;
+            row.appendChild(desc);
+        }
+        list.appendChild(row);
+    });
+    panel.appendChild(list);
+
+    if (piped && spec.filters) {
+        panel.appendChild(refHeading('Filters and conditionals'));
+        const flist = document.createElement('div');
+        flist.className = 'template-ref-filters';
+        spec.filters.forEach(f => {
+            const token = '|' + f.name + (f.arg ? ':' : '');
+            const label = '|' + f.name + (f.arg ? ':' + f.arg : '');
+            const chipCell = document.createElement('div');
+            chipCell.appendChild(refChip(label, 'Insert ' + token, () => insertAtCursor(input, token)));
+            const body = document.createElement('div');
+            const desc = document.createElement('div');
+            desc.textContent = f.help + (f.aliases && f.aliases.length ? ` Also: ${f.aliases.join(', ')}.` : '');
+            body.appendChild(desc);
+            if (f.example) {
+                const ex = refChip(f.example, 'Insert this example', () => insertAtCursor(input, f.example));
+                ex.classList.add('template-chip-example');
+                body.appendChild(ex);
+            }
+            flist.append(chipCell, body);
+        });
+        panel.appendChild(flist);
+    }
+
+    const notes = [...(spec.notes || []), ...(spec.syntax_notes || [])];
+    if (notes.length) {
+        const ul = document.createElement('ul');
+        ul.className = 'template-ref-notes';
+        notes.forEach(n => {
+            const li = document.createElement('li');
+            li.textContent = n;
+            ul.appendChild(li);
+        });
+        panel.appendChild(ul);
+    }
+
+    let refreshPreview = () => {};
+    if (spec.previewable && plugin) {
+        previewSlot.appendChild(refHeading('Preview'));
+        const preview = document.createElement('div');
+        preview.className = 'template-preview';
+        preview.setAttribute('aria-live', 'polite');
+        previewSlot.appendChild(preview);
+        const sampleNote = document.createElement('div');
+        sampleNote.className = 'template-ref-intro mb-0';
+        sampleNote.textContent = (spec.sample_note ? spec.sample_note + ' ' : '')
+            + 'Byte counts are UTF-8; a channel message holds 155 bytes less the bot name and ": ".';
+        previewSlot.appendChild(sampleNote);
+
+        let timer = null;
+        let seq = 0;
+        const render = async () => {
+            const mine = seq;
+            try {
+                const resp = await fetch(`/api/plugins/${plugin.kind}/${plugin.name}/template-preview`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    body: JSON.stringify({ key: field.key, template: input.value }),
+                });
+                const data = await resp.json();
+                if (mine !== seq) return;  // the field changed while this was in flight
+                if (!resp.ok) throw new Error(data.error || 'Preview failed');
+                const rows = [];
+                if (data.note) {
+                    const note = document.createElement('div');
+                    note.className = 'template-ref-intro mb-0';
+                    note.textContent = data.note;
+                    rows.push(note);
+                }
+                if (!data.scenarios.length && !data.note) {
+                    const none = document.createElement('div');
+                    none.className = 'template-ref-intro mb-0';
+                    none.textContent = 'Nothing to preview.';
+                    rows.push(none);
+                }
+                preview.replaceChildren(...rows, ...data.scenarios.map(s => {
+                    const row = document.createElement('div');
+                    row.className = 'template-preview-row';
+                    const label = document.createElement('div');
+                    label.className = 'template-preview-label';
+                    label.textContent = s.label;
+                    const out = document.createElement('div');
+                    out.className = 'template-preview-output' + (s.output ? '' : ' empty')
+                        + (s.error ? ' has-error' : '');
+                    out.textContent = s.output || (s.error ? '(nothing sent)' : '(empty)');
+                    const bytes = document.createElement('div');
+                    bytes.className = 'template-preview-bytes';
+                    bytes.textContent = s.bytes + ' B';
+                    row.append(label, out, bytes);
+                    if (s.error) {
+                        const err = document.createElement('div');
+                        err.className = 'template-preview-error';
+                        const icon = document.createElement('i');
+                        icon.className = 'fas fa-exclamation-triangle me-1';
+                        icon.setAttribute('aria-hidden', 'true');
+                        err.append(icon, document.createTextNode(s.error));
+                        row.appendChild(err);
+                    }
+                    return row;
+                }));
+            } catch (err) {
+                if (mine !== seq) return;
+                const msg = document.createElement('div');
+                msg.className = 'text-danger small';
+                msg.textContent = err.message;
+                preview.replaceChildren(msg);
+            }
+        };
+        refreshPreview = () => {
+            // Invalidate any request in flight now, not when the timer fires: a
+            // response that lands inside the debounce would show a stale template.
+            seq++;
+            clearTimeout(timer);
+            timer = setTimeout(render, 300);
+        };
+        input.addEventListener('input', () => {
+            if (!panel.classList.contains('d-none')) refreshPreview();
+        });
+    }
+
+    const setOpen = (open) => {
+        panel.classList.toggle('d-none', !open);
+        refBtn.setAttribute('aria-expanded', String(open));
+        refBtn.classList.toggle('active', open);
+        if (open) refreshPreview();
+    };
+    refBtn.addEventListener('click', () => setOpen(panel.classList.contains('d-none')));
+    panel.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') { setOpen(false); refBtn.focus(); }
+    });
+    return panel;
+}
+
 function helpText(text) {
     const el = document.createElement('div');
     el.className = 'form-text';
@@ -634,11 +1038,12 @@ function fieldColClass(field) {
         case 'md':   return 'col-12 col-sm-6 col-xl-4';
         case 'sm':   return 'col-6 col-md-4 col-xl-3';
     }
+    if (field.template) return 'col-12';  // room for the reference panel
     if (field.type === 'bool') return 'col-12 col-sm-6 col-lg-4';
     if (field.type === 'int' || field.type === 'float' || field.type === 'enum') {
         return 'col-6 col-md-4 col-xl-3';
     }
-    return 'col-12 col-sm-6 col-xl-4';  // str / list — medium
+    return 'col-12 col-sm-6 col-xl-4';  // str / list / password — medium
 }
 
 // Badge marking a field that reads/writes a shared section (not the plugin's own).
@@ -687,16 +1092,19 @@ function buildDynamicEditor(ds) {
         const ki = document.createElement('input');
         ki.type = 'text'; ki.className = 'form-control form-control-sm dyn-key';
         ki.placeholder = ds.key_placeholder || ''; ki.value = key;
+        ki.setAttribute('aria-label', `${String(ds.label ?? 'Entry')} key`);
         kc.appendChild(ki);
         const vc = document.createElement('div'); vc.className = 'col-10 col-md-6';
         const vi = document.createElement('input');
         vi.type = 'text'; vi.className = 'form-control form-control-sm dyn-value';
         vi.placeholder = ds.value_placeholder || ''; vi.value = value;
+        vi.setAttribute('aria-label', `${String(ds.label ?? 'Entry')} value`);
         vc.appendChild(vi);
         const bc = document.createElement('div'); bc.className = 'col-2 col-md-1 text-end';
         const rm = document.createElement('button');
         rm.type = 'button'; rm.className = 'btn btn-outline-danger btn-sm';
-        rm.title = 'Remove'; rm.innerHTML = '<i class="fas fa-trash"></i>';
+        rm.title = 'Remove'; rm.setAttribute('aria-label', 'Remove entry');
+        rm.innerHTML = '<i class="fas fa-trash" aria-hidden="true"></i>';
         rm.addEventListener('click', () => row.remove());
         bc.appendChild(rm);
         row.appendChild(kc); row.appendChild(vc); row.appendChild(bc);
@@ -763,7 +1171,10 @@ function buildRepeatingBlockEditor(rb) {
     const renumber = () => {
         blocksContainer.querySelectorAll('.rb-block').forEach((card, i) => {
             const t = card.querySelector('.rb-block-title');
-            if (t) t.textContent = `${rb.item_label} ${i + 1}`;
+            const name = `${rb.item_label} ${i + 1}`;
+            if (t) t.textContent = name;
+            card.querySelector('.rb-block-enable')?.setAttribute('aria-label', `Enable ${name}`);
+            card.querySelector('.rb-block-remove')?.setAttribute('aria-label', `Remove ${name}`);
         });
     };
 
@@ -781,14 +1192,15 @@ function buildRepeatingBlockEditor(rb) {
         const swWrap = document.createElement('div');
         swWrap.className = 'form-check form-switch mb-0';
         const sw = document.createElement('input');
-        sw.className = 'form-check-input'; sw.type = 'checkbox'; sw.role = 'switch';
+        sw.className = 'form-check-input rb-block-enable'; sw.type = 'checkbox'; sw.role = 'switch';
         sw.checked = (block ? block.enabled !== false : true);
         swWrap.appendChild(sw);
         const title = document.createElement('span');
         title.className = 'rb-block-title fw-semibold flex-grow-1';
         const rm = document.createElement('button');
         rm.type = 'button'; rm.className = 'btn btn-outline-danger btn-sm';
-        rm.title = 'Remove'; rm.innerHTML = '<i class="fas fa-trash"></i>';
+        rm.title = 'Remove'; rm.className += ' rb-block-remove';
+        rm.innerHTML = '<i class="fas fa-trash" aria-hidden="true"></i>';
         rm.addEventListener('click', () => { card.remove(); renumber(); });
         header.append(swWrap, title, rm);
         card.appendChild(header);
@@ -870,6 +1282,7 @@ function validateClient(field, raw) {
     const empty = (raw === '' || raw === null || raw === undefined);
     if (field.type === 'bool') return null;
     if (empty) {
+        if (field.type === 'password' && field.has_value) return null;  // leave unchanged
         return field.required ? `${field.label} is required` : null;
     }
     if (field.type === 'int' || field.type === 'float') {
@@ -883,7 +1296,7 @@ function validateClient(field, raw) {
         const allowed = (field.options || []).map(o => String(o.value));
         if (!allowed.includes(String(raw))) return `${field.label} is invalid`;
     }
-    if (field.type === 'str' && field.pattern) {
+    if ((field.type === 'str' || field.type === 'password') && field.pattern) {
         if (!new RegExp('^(?:' + field.pattern + ')$').test(raw)) return `${field.label} has an invalid format`;
     }
     return null;

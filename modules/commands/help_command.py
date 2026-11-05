@@ -5,10 +5,13 @@ Provides help information for commands and general usage
 """
 
 from collections import defaultdict
-from typing import Any, Optional
+from typing import (
+    Any,  # noqa: F401  importable from this module on dev
+    Optional,
+)
 
 from ..models import MeshMessage
-from .base_command import BaseCommand
+from .base_command import BaseCommand, help_text_for
 
 
 class HelpCommand(BaseCommand):
@@ -21,6 +24,8 @@ class HelpCommand(BaseCommand):
 
     # Plugin metadata
     name = "help"
+    honors_skip_channel_check = False
+    enabled_attr = "help_enabled"
     keywords = ['help']
     description = "Shows commands. Use 'help <command>' for details."
     category = "basic"
@@ -42,20 +47,7 @@ class HelpCommand(BaseCommand):
         super().__init__(bot)
         self.help_enabled = self.get_config_value('Help_Command', 'enabled', fallback=True, value_type='bool')
 
-    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
-        """Check if this command can be executed with the given message.
-
-        Args:
-            message: The message triggering the command.
-
-        Returns:
-            bool: True if command is enabled and checks pass, False otherwise.
-        """
-        if not self.help_enabled:
-            return False
-        return super().can_execute(message)
-
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         """Get help text for the help command.
 
         Returns:
@@ -94,39 +86,42 @@ class HelpCommand(BaseCommand):
             str: The formatted help text for the specific command.
         """
         requested_name = command_name.strip()
-        normalized_name = requested_name.lower()
+        command = None
+        candidates = [requested_name]
+        if requested_name:
+            base_name = requested_name.split(maxsplit=1)[0]
+            if base_name != requested_name:
+                candidates.append(base_name)
 
-        # Get the command instance by direct name first
-        command = (
-            self.bot.command_manager.commands.get(normalized_name)
-            or self.bot.command_manager.commands.get(requested_name)
-        )
-
-        # Then through plugin keyword mappings (if available)
-        if not command and hasattr(self.bot.command_manager, 'plugin_loader'):
-            mappings = getattr(self.bot.command_manager.plugin_loader, 'keyword_mappings', {})
-            mapped_name = mappings.get(normalized_name)
-            if mapped_name:
-                command = self.bot.command_manager.commands.get(mapped_name)
-
-        # Final fallback: resolve through runtime command keywords
-        if not command:
-            for cmd_instance in self.bot.command_manager.commands.values():
-                if (
-                    hasattr(cmd_instance, 'keywords')
-                    and normalized_name in [k.lower() for k in cmd_instance.keywords]
-                ):
-                    command = cmd_instance
-                    break
+        mappings = getattr(self.bot.command_manager.plugin_loader, 'keyword_mappings', {})
+        for lookup_name in candidates:
+            normalized_name = lookup_name.lower()
+            command = (
+                self.bot.command_manager.commands.get(normalized_name)
+                or self.bot.command_manager.commands.get(lookup_name)
+            )
+            if not command:
+                mapped_name = mappings.get(normalized_name)
+                if mapped_name:
+                    command = self.bot.command_manager.commands.get(mapped_name)
+            if not command:
+                command = next(
+                    (
+                        cmd_instance
+                        for cmd_instance in self.bot.command_manager.commands.values()
+                        if hasattr(cmd_instance, 'keywords')
+                        and normalized_name in [keyword.lower() for keyword in cmd_instance.keywords]
+                    ),
+                    None,
+                )
+            if command:
+                break
 
         if command:
             # Pass message context to get_help_text if the method supports it
             if hasattr(command, 'get_help_text') and callable(command.get_help_text):
-                try:
-                    help_text = command.get_help_text(message)
-                except TypeError:
-                    # Fallback for commands that don't accept message parameter
-                    help_text = command.get_help_text()
+                # Commands that don't accept the message get the no-argument call
+                help_text = help_text_for(command, message)
             else:
                 help_text = self.translate('commands.help.no_help')
             return self.translate('commands.help.specific', command=command_name, help_text=help_text)
@@ -147,18 +142,6 @@ class HelpCommand(BaseCommand):
         help_text += self.translate('commands.help.usage_examples')
         help_text += self.translate('commands.help.custom_syntax')
         return help_text
-
-    def _is_command_valid_for_channel(self, cmd_name: str, cmd_instance: Any, message: Optional[MeshMessage]) -> bool:
-        """Return True if this command is valid in the message's channel context."""
-        if message is None:
-            return True
-        if hasattr(cmd_instance, 'is_channel_allowed') and callable(cmd_instance.is_channel_allowed):
-            if not cmd_instance.is_channel_allowed(message):
-                return False
-        if hasattr(self.bot.command_manager, '_is_channel_trigger_allowed'):
-            if not self.bot.command_manager._is_channel_trigger_allowed(cmd_name, message):
-                return False
-        return True
 
     # Reserved suffix appended by command_manager.get_general_help (must match there)
     HELP_LIST_SUFFIX = " | More: 'help <command>'"
@@ -313,5 +296,3 @@ class HelpCommand(BaseCommand):
                         return ', '.join(result) + suffix
                 break
         return ', '.join(result)
-
-

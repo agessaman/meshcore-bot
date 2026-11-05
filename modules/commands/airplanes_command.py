@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 
 import requests
 
+from ..location import get_bot_lat_lon, latest_contact_position_rows
 from ..models import MeshMessage
 from ..security_utils import sanitize_name
 from ..utils import calculate_distance
@@ -55,6 +56,8 @@ class AirplanesCommand(BaseCommand):
     # Read-only informational output; safe for scheduled {cmd:...} rendering.
     render_safe = True
     name = "airplanes"
+    honors_skip_channel_check = False
+    enabled_attr = "airplanes_enabled"
     keywords = ['airplanes', 'aircraft', 'planes', 'adsb', 'overhead']
     description = "Get aircraft overhead (usage: airplanes [location] [options] or overhead [lat,lon])"
     category = "general"
@@ -100,20 +103,7 @@ class AirplanesCommand(BaseCommand):
         self.max_results = self.get_config_value('Airplanes_Command', 'max_results', fallback=3, value_type='int')
         self.url_timeout = self.get_config_value('Airplanes_Command', 'url_timeout', fallback=10, value_type='int')
 
-    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
-        """Check if this command can be executed with the given message.
-
-        Args:
-            message: The message triggering the command.
-
-        Returns:
-            bool: True if command is enabled and checks pass, False otherwise.
-        """
-        if not self.airplanes_enabled:
-            return False
-        return super().can_execute(message)
-
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         """Get help text for this command.
 
         Returns:
@@ -192,17 +182,7 @@ class AirplanesCommand(BaseCommand):
             if not sender_pubkey:
                 return None
 
-            query = '''
-                SELECT latitude, longitude
-                FROM complete_contact_tracking
-                WHERE public_key = ?
-                AND latitude IS NOT NULL AND longitude IS NOT NULL
-                AND latitude != 0 AND longitude != 0
-                ORDER BY COALESCE(last_advert_timestamp, last_heard) DESC
-                LIMIT 1
-            '''
-
-            results = self.bot.db_manager.execute_query(query, (sender_pubkey,))
+            results = latest_contact_position_rows(self.bot, sender_pubkey, zero_rule="either")
 
             if results:
                 row = results[0]
@@ -218,18 +198,7 @@ class AirplanesCommand(BaseCommand):
         Returns:
             Optional[Tuple[float, float]]: Tuple of (latitude, longitude) or None.
         """
-        try:
-            lat = self.bot.config.getfloat('Bot', 'bot_latitude', fallback=None)
-            lon = self.bot.config.getfloat('Bot', 'bot_longitude', fallback=None)
-
-            if lat is not None and lon is not None:
-                # Validate coordinates
-                if -90 <= lat <= 90 and -180 <= lon <= 180:
-                    return (lat, lon)
-            return None
-        except Exception as e:
-            self.logger.debug(f"Error getting bot location: {e}")
-            return None
+        return get_bot_lat_lon(self.bot, self.logger)
 
     def _parse_coordinates(self, args: str) -> Optional[tuple[float, float]]:
         """Parse latitude and longitude from command arguments.
@@ -870,40 +839,3 @@ class AirplanesCommand(BaseCommand):
             await self.send_response(message, error_msg)
             return False
 
-    async def _send_split_response(self, message: MeshMessage, response: str, max_length: int):
-        """Send response split into multiple messages if it exceeds max_length.
-
-        Args:
-            message: The message to respond to.
-            response: The full response text.
-            max_length: Maximum message length.
-        """
-        lines = response.split('\n')
-        current_message = ""
-        message_count = 0
-
-        for _i, line in enumerate(lines):
-            # Check if adding this line would exceed max_length
-            if len(current_message) + len(line) + 1 > max_length:  # +1 for newline
-                # Send current message and start new one
-                if current_message:
-                    # Per-user rate limit applies only to first message (trigger); skip for continuations
-                    await self.send_response(
-                        message, current_message.rstrip(),
-                        skip_user_rate_limit=(message_count > 0)
-                    )
-                    await asyncio.sleep(2.0)  # Delay between messages
-                    message_count += 1
-
-                # Start new message
-                current_message = line
-            else:
-                # Add line to current message
-                if current_message:
-                    current_message += f"\n{line}"
-                else:
-                    current_message = line
-
-        # Send the last message if there's content (continuation; skip per-user rate limit)
-        if current_message:
-            await self.send_response(message, current_message, skip_user_rate_limit=True)

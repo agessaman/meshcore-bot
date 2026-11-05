@@ -4,9 +4,10 @@ Base command class for all MeshCore Bot commands
 Provides common functionality and interface for command implementations
 """
 
+import inspect
 import re
 from abc import ABC, abstractmethod
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import datetime
@@ -19,7 +20,13 @@ from ..command_prefix import (
     normalize_command_content,
 )
 from ..config_schema import LEGACY_ENABLED_ALIASES
-from ..models import CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD, MeshMessage
+from ..models import (
+    CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD,
+    DM_BODY_LIMIT,
+    MeshMessage,
+    channel_body_limit,
+    self_info_name,
+)
 from ..security_utils import validate_pubkey_format
 from ..utils import (
     format_elapsed_display,
@@ -36,6 +43,67 @@ from ..utils import (
 _response_translator: ContextVar[Optional[Any]] = ContextVar(
     "meshcore_response_translator", default=None
 )
+
+
+# get_config_value value types: the typed getters, plus 'str' and 'list'
+_CONFIG_TYPED_GETTERS = {'bool': 'getboolean', 'int': 'getint', 'float': 'getfloat'}
+_CONFIG_VALUE_TYPES = frozenset({'str', 'list', *_CONFIG_TYPED_GETTERS})
+
+
+def _defined_by_bundled_class(command: Any, method: Any) -> bool:
+    """Whether ``method`` is a plain bound method from a class defined under ``modules.``.
+
+    Looks for the function itself in the ``__dict__`` of a bundled class in
+    the command's MRO (so a local class that reuses a bundled function still
+    counts), rather than trusting the function's own ``__module__``, which
+    ``functools.wraps`` copies.
+    """
+    func = getattr(method, "__func__", None)
+    if func is None or getattr(method, "__self__", None) is not command:
+        return False
+    for klass in type(command).__mro__:
+        module = klass.__dict__.get("__module__")
+        if (
+            klass.__dict__.get("get_help_text") is func
+            and isinstance(module, str)
+            and module.startswith("modules.")
+        ):
+            return True
+    return False
+
+
+def _accepts_message(method: Any, message: Any) -> bool:
+    """Whether ``method(message)`` binds, per its own signature (False when that can't be read).
+
+    ``follow_wrapped=False``: a functools.wraps-decorated override reports the
+    wrapped function's signature otherwise, not its own.
+    """
+    try:
+        inspect.signature(method, follow_wrapped=False).bind(message)
+    except (TypeError, ValueError):
+        return False
+    return True
+
+
+def help_text_for(command: Any, message: Any) -> str:
+    """``command.get_help_text(message)``, retrying without the message for local plugins.
+
+    Every bundled command's get_help_text takes the message, so when the
+    method comes from a class under ``modules.`` and its signature accepts the
+    message, it is called once and an error from its body propagates. Anything
+    else keeps the old contract, where a TypeError from the message call is
+    retried without the message: local plugins and overrides, operator-installed
+    commands inside modules/commands written as ``get_help_text(self)``, and
+    any other callable.
+    """
+    get_help_text = command.get_help_text
+    if _defined_by_bundled_class(command, get_help_text) and _accepts_message(get_help_text, message):
+        return get_help_text(message)
+    try:
+        return get_help_text(message)
+    except TypeError:
+        # Read the attribute again, as the old inline retry did.
+        return command.get_help_text()
 
 
 class BaseCommand(ABC):
@@ -63,6 +131,27 @@ class BaseCommand(ABC):
     # safe here: a new command defaults to not renderable rather than to transmitting.
     render_safe: bool = False
     category: str = "general"
+
+    # Name of the instance attribute holding this command's own enable switch
+    # (usually read from ``[<Section>] enabled`` in ``__init__``). can_execute
+    # refuses while it is false, before any other check. None: no switch, or the
+    # command checks it itself.
+    enabled_attr: Optional[str] = None
+
+    # Commands that are always admin-only, whatever [Admin_ACL] admin_commands
+    # lists. requires_admin_access() is still the method callers ask.
+    admin_only: bool = False
+
+    # The [Keywords] option whose value, when set, is this command's response
+    # format (quotes stripped). None: get_response_format() returns None unless
+    # the command overrides it.
+    keywords_format_key: Optional[str] = None
+
+    # Whether can_execute honors skip_channel_check. Commands whose own override
+    # used to drop the argument (it called super().can_execute(message)) set this
+    # to False so they keep enforcing their channel list even when a delegating
+    # caller asks to skip it. Fixing that is a behavior change, kept separate.
+    honors_skip_channel_check: bool = True
 
     # Documentation fields - to be overridden by subclasses for website generation
     short_description: str = ""  # Brief description for website (without usage syntax)
@@ -101,6 +190,20 @@ class BaseCommand(ABC):
         # Load translated keywords after initialization
         self._load_translated_keywords()
 
+    @property
+    def response_translator(self) -> Any:
+        """The translator for the reply being built, or the bot default.
+
+        ``respond_in_sender_language`` binds a per-message translator for the
+        duration of one reply, so helpers that format part of a response need
+        this rather than ``bot.translator`` — otherwise one line of a reply
+        comes back in the sender's language and the next in the bot's default.
+
+        Returns:
+            Any: Translator object, or None when the bot has none.
+        """
+        return _response_translator.get() or getattr(self.bot, 'translator', None)
+
     def translate(self, key: str, **kwargs: Any) -> str:
         """Translate a key using the bot's translator.
 
@@ -111,7 +214,7 @@ class BaseCommand(ABC):
         Returns:
             str: Translated string, or key if translation not found.
         """
-        translator = _response_translator.get() or getattr(self.bot, 'translator', None)
+        translator = self.response_translator
         if translator is not None:
             return translator.translate(key, **kwargs)
         # Fallback if translator not available
@@ -126,10 +229,22 @@ class BaseCommand(ABC):
         Returns:
             Any: The value at the key path, or None if not found.
         """
-        translator = _response_translator.get() or getattr(self.bot, 'translator', None)
+        translator = self.response_translator
         if translator is not None:
             return translator.get_value(key)
         return None
+
+    def translated_or(self, key: str, fallback: Any, kind: type = list) -> Any:
+        """The translation at ``key`` when it is a non-empty ``kind``, else ``fallback``.
+
+        For list/dict-valued catalog entries (greetings, facts) whose command
+        also carries built-in defaults for catalogs that leave the key out or
+        empty.
+        """
+        value = self.translate_get_value(key)
+        if value and isinstance(value, kind):
+            return value
+        return fallback
 
     def detect_response_language(self, message: MeshMessage) -> Optional[str]:
         """Detect the language to answer ``message`` in, or None to keep default.
@@ -257,34 +372,18 @@ class BaseCommand(ABC):
                     if not self.bot.config.has_option(sec, key):
                         continue
 
-                    raw_value = self.bot.config.get(sec, key)
-
-                    # Type conversion
-                    if value_type == 'str':
-                        value = raw_value
-                    elif value_type == 'bool':
-                        value = self.bot.config.getboolean(sec, key, fallback=fallback)
-                    elif value_type == 'int':
-                        value = self.bot.config.getint(sec, key, fallback=fallback)
-                    elif value_type == 'float':
-                        value = self.bot.config.getfloat(sec, key, fallback=fallback)
-                    elif value_type == 'list':
-                        # Parse comma-separated list
-                        value = [item.strip() for item in raw_value.split(',') if item.strip()]
-                    else:
+                    if value_type not in _CONFIG_VALUE_TYPES:
                         self.logger.warning(f"Unknown value_type '{value_type}' for {sec}.{key}, returning as string")
-                        value = raw_value
+                    value = self._read_typed_option(sec, key, value_type, fallback)
 
-                    # If we got a value (not fallback), return it
-                    if value != fallback or self.bot.config.has_option(sec, key):
-                        # Log migration notice on first use of old/legacy section
-                        if sec == old_section:
-                            self.logger.info(f"Config migration: Using old section '[{old_section}]' for '{key}'. "
-                                           f"Please update to '[{new_section}]' in config.ini")
-                        elif legacy_sec and sec == legacy_sec:
-                            self.logger.info(f"Config migration: Using old section '[{legacy_sec}]' for '{key}'. "
-                                           f"Please update to '[{new_section}]' in config.ini")
-                        return value
+                    # Log migration notice on first use of old/legacy section
+                    if sec == old_section:
+                        self.logger.info(f"Config migration: Using old section '[{old_section}]' for '{key}'. "
+                                       f"Please update to '[{new_section}]' in config.ini")
+                    elif legacy_sec and sec == legacy_sec:
+                        self.logger.info(f"Config migration: Using old section '[{legacy_sec}]' for '{key}'. "
+                                       f"Please update to '[{new_section}]' in config.ini")
+                    return value
                 except (ValueError, TypeError) as e:
                     self.logger.debug(f"Config conversion error for {sec}.{key}: {e}")
                     continue
@@ -299,18 +398,7 @@ class BaseCommand(ABC):
             for legacy_sec, legacy_key in aliases:
                 if self.bot.config.has_section(legacy_sec) and self.bot.config.has_option(legacy_sec, legacy_key):
                     try:
-                        if value_type == 'bool':
-                            value = self.bot.config.getboolean(legacy_sec, legacy_key, fallback=fallback)
-                        elif value_type == 'int':
-                            value = self.bot.config.getint(legacy_sec, legacy_key, fallback=fallback)
-                        elif value_type == 'float':
-                            value = self.bot.config.getfloat(legacy_sec, legacy_key, fallback=fallback)
-                        elif value_type == 'list':
-                            raw = self.bot.config.get(legacy_sec, legacy_key)
-                            value = [item.strip() for item in raw.split(',') if item.strip()]
-                        else:
-                            value = self.bot.config.get(legacy_sec, legacy_key)
-                        return value
+                        return self._read_typed_option(legacy_sec, legacy_key, value_type, fallback)
                     except (ValueError, TypeError) as e:
                         self.logger.debug(f"Config conversion error for {legacy_sec}.{legacy_key}: {e}")
 
@@ -328,7 +416,29 @@ class BaseCommand(ABC):
         """
         pass
 
-    def get_help_text(self) -> str:
+    def _read_typed_option(self, section: str, key: str, value_type: str, fallback: Any) -> Any:
+        """Read one existing option as ``bool``/``int``/``float``, a comma ``list``, or a string."""
+        getter = _CONFIG_TYPED_GETTERS.get(value_type)
+        if getter is not None:
+            return getattr(self.bot.config, getter)(section, key, fallback=fallback)
+        raw_value = self.bot.config.get(section, key)
+        if value_type == 'list':
+            return [item.strip() for item in raw_value.split(',') if item.strip()]
+        return raw_value
+
+    def _is_command_valid_for_channel(self, cmd_name: str, cmd_instance: Any, message: Optional[MeshMessage]) -> bool:
+        """Whether another command may be offered in ``message``'s channel (for help/cmd listings)."""
+        if message is None:
+            return True
+        if hasattr(cmd_instance, 'is_channel_allowed') and callable(cmd_instance.is_channel_allowed):
+            if not cmd_instance.is_channel_allowed(message):
+                return False
+        if hasattr(self.bot.command_manager, '_is_channel_trigger_allowed'):
+            if not self.bot.command_manager._is_channel_trigger_allowed(cmd_name, message):
+                return False
+        return True
+
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         """Get help text for this command.
 
         Returns:
@@ -410,7 +520,7 @@ class BaseCommand(ABC):
             base_name = camel_case_map[self.name]
         else:
             # Use title() for regular names
-            base_name = self.name.title().replace('_', '_')
+            base_name = self.name.title()
 
         return f"{base_name}_Command"
 
@@ -570,6 +680,13 @@ class BaseCommand(ABC):
         Returns:
             bool: True if the command can be executed, False otherwise.
         """
+        # The command's own enable switch, when it names one
+        if self.enabled_attr is not None and not getattr(self, self.enabled_attr):
+            return False
+
+        if not self.honors_skip_channel_check:
+            skip_channel_check = False
+
         # Check channel access (standardized channel override)
         if not skip_channel_check and not self.is_channel_allowed(message):
             return False
@@ -663,7 +780,8 @@ class BaseCommand(ABC):
         """Calculate the maximum payload size for the message body in UTF-8 bytes.
 
         Channel messages are formatted as "<username>: <message>", so the body budget is:
-        160 - utf8_byte_len(username) - 2 (for ": "), matching firmware cipher block limits.
+        CHANNEL_FRAME_TEXT_LIMIT - utf8_byte_len(username) - 2 (for ": "); see
+        ``models.channel_body_limit``.
         Regional (non-global) flood scope subtracts CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD bytes.
 
         DM (contact) messages have no username prefix; max safe payload is 158 bytes.
@@ -675,22 +793,16 @@ class BaseCommand(ABC):
             int: Maximum message body length in UTF-8 bytes.
         """
         if message.is_dm:
-            return 158
+            return DM_BODY_LIMIT
 
         # For channel messages, calculate based on bot username length
         # Try to get device username from meshcore first (actual radio username)
         username = None
         if hasattr(self.bot, 'meshcore') and self.bot.meshcore:
             try:
-                if hasattr(self.bot.meshcore, 'self_info') and self.bot.meshcore.self_info:
-                    self_info = self.bot.meshcore.self_info
-                    # Try to get name from self_info (could be dict or object)
-                    if isinstance(self_info, dict):
-                        username = self_info.get('name') or self_info.get('user_name')
-                    elif hasattr(self_info, 'name'):
-                        username = self_info.name
-                    elif hasattr(self_info, 'user_name'):
-                        username = self_info.user_name
+                username = self_info_name(
+                    getattr(self.bot.meshcore, 'self_info', None), ('name', 'user_name'), by_presence=True
+                )
             except Exception as e:
                 self.logger.debug(f"Could not get username from meshcore.self_info: {e}")
 
@@ -698,9 +810,7 @@ class BaseCommand(ABC):
         if not username:
             username = self.bot.config.get('Bot', 'bot_name', fallback='Bot')
 
-        # 160 bytes are available for channel messages
-        # Calculate max length: 160 - username_length - 2 (for ": ")
-        max_length = max(130, 160 - len(str(username).encode('utf-8')) - 2)
+        max_length = channel_body_limit(username)
         if not MeshMessage.is_global_flood_scope(message.effective_outgoing_flood_scope(self.bot)):
             max_length -= CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD
         return max_length
@@ -811,15 +921,6 @@ class BaseCommand(ABC):
             # Log the error for debugging
             self.logger.debug(f"Could not load translated keywords for {self.name}: {e}")
 
-    def _load_command_prefix(self) -> str:
-        """Load default command prefix from config (first configured prefix).
-
-        Returns:
-            str: The default command prefix, or empty string if not configured.
-        """
-        prefixes, _require = load_command_prefix_settings(self.bot.config)
-        return prefixes[0] if prefixes else ''
-
     def _get_bot_name(self) -> str:
         """Get bot name from device or config.
 
@@ -829,19 +930,11 @@ class BaseCommand(ABC):
         # Try to get name from device first (actual radio username)
         if hasattr(self.bot, 'meshcore') and self.bot.meshcore:
             try:
-                if hasattr(self.bot.meshcore, 'self_info') and self.bot.meshcore.self_info:
-                    self_info = self.bot.meshcore.self_info
-                    # Try to get name from self_info (could be dict or object)
-                    if isinstance(self_info, dict):
-                        device_name = self_info.get('name') or self_info.get('adv_name')
-                        if device_name:
-                            return device_name
-                    elif hasattr(self_info, 'name'):
-                        if self_info.name:
-                            return self_info.name
-                    elif hasattr(self_info, 'adv_name'):
-                        if self_info.adv_name:
-                            return self_info.adv_name
+                device_name = self_info_name(
+                    getattr(self.bot.meshcore, 'self_info', None), ('name', 'adv_name'), by_presence=True
+                )
+                if device_name:
+                    return device_name
             except Exception as e:
                 self.logger.debug(f"Could not get name from device: {e}")
 
@@ -924,6 +1017,7 @@ class BaseCommand(ABC):
         validates mention rules and strips all @[...] mentions. Also updates
         message.content and message.content_lower with the cleaned text so that
         downstream processing (the execute step) sees the same clean content.
+        Does not touch message.original_content (the on-air body for display).
 
         Args:
             message: The incoming message.
@@ -958,6 +1052,25 @@ class BaseCommand(ABC):
         message.content = content
         message.content_lower = content.lower()
         return message.content_lower
+
+    def _cleaned_content_matches(
+        self, message: MeshMessage, matcher: Callable[[str], bool]
+    ) -> bool:
+        """Apply mention/prefix cleanup for matching; restore content on a miss.
+
+        ``matcher`` receives the cleaned lowercased body. On True, ``message.content``
+        stays cleaned for execute. On False (or cleanup reject), the previous
+        content is restored so a keyword scan does not rewrite overheard traffic
+        (#267).
+        """
+        prior_content = message.content
+        prior_lower = message.content_lower
+        content_lower = self.cleanup_message_for_matching(message)
+        if not content_lower or not matcher(content_lower):
+            message.content = prior_content
+            message.content_lower = prior_lower
+            return False
+        return True
 
     def split_trigger_and_args(self, content: str) -> tuple[Optional[str], str]:
         """Split message content into ``(matched_keyword, args)``.
@@ -1019,25 +1132,19 @@ class BaseCommand(ABC):
         if not self.keywords:
             return False
 
-        content_lower = self.cleanup_message_for_matching(message)
-        if not content_lower:
+        def _matches(content_lower: str) -> bool:
+            for keyword in self.keywords:
+                keyword_lower = keyword.lower()
+                if keyword_lower == content_lower:
+                    return True
+                if content_lower.startswith(keyword_lower) and (
+                    len(content_lower) == len(keyword_lower)
+                    or content_lower[len(keyword_lower)] == ' '
+                ):
+                    return True
             return False
 
-        for keyword in self.keywords:
-            keyword_lower = keyword.lower()
-
-            # Check for exact match first
-            if keyword_lower == content_lower:
-                return True
-
-            # Check if the message starts with the keyword (followed by space or end of string)
-            # This ensures the keyword is the first word in the message
-            if content_lower.startswith(keyword_lower):
-                # Check if it's followed by a space or is the end of the message
-                if len(content_lower) == len(keyword_lower) or content_lower[len(keyword_lower)] == ' ':
-                    return True
-
-        return False
+        return self._cleaned_content_matches(message, _matches)
 
     def matches_custom_syntax(self, message: MeshMessage) -> bool:
         """Check if this command matches custom syntax patterns.
@@ -1278,12 +1385,22 @@ class BaseCommand(ABC):
             return response_format
 
     def get_response_format(self) -> Optional[str]:
-        """Get the response format for this command from config"""
-        # Override in subclasses to provide custom response formats
+        """Get the response format for this command from config.
+
+        Reads ``[Keywords] <keywords_format_key>`` when the class names one;
+        override for any other source.
+        """
+        if self.keywords_format_key is None:
+            return None
+        if self.bot.config.has_section('Keywords'):
+            format_str = self.bot.config.get('Keywords', self.keywords_format_key, fallback=None)
+            return self._strip_quotes_from_config(format_str) if format_str else None
         return None
 
     def requires_admin_access(self) -> bool:
         """Check if this command requires admin access"""
+        if self.admin_only:
+            return True
         if not hasattr(self.bot, 'config') or not self.bot.config.has_section('Admin_ACL'):
             return False
 
@@ -1299,6 +1416,46 @@ class BaseCommand(ABC):
         except Exception as e:
             self.logger.warning(f"Error checking admin access requirement: {e}")
             return False
+
+    def _pubkey_in_acl(self, message: MeshMessage, acl: Any, kind: str, denied: str) -> bool:
+        """Whether the sender's validated public key is in ``acl`` (lowercase keys).
+
+        Never falls back to sender_id. ``kind`` names the access in the log
+        lines ("admin", "announcements"); ``denied`` starts the not-in-ACL line.
+        """
+        # Get sender's public key - NEVER fall back to sender_id
+        sender_pubkey = getattr(message, 'sender_pubkey', None)
+        if not sender_pubkey:
+            self.logger.warning(
+                f"No sender public key available for {message.sender_id} - "
+                f"{kind} access denied (missing pubkey)"
+            )
+            return False
+
+        # Validate sender pubkey format
+        if not validate_pubkey_format(sender_pubkey, expected_length=64):
+            self.logger.warning(
+                f"Invalid sender pubkey format from {message.sender_id}: "
+                f"{sender_pubkey[:16]}... - {kind} access denied"
+            )
+            return False
+
+        # Normalize and compare
+        sender_pubkey_normalized = sender_pubkey.lower()
+        has_access = sender_pubkey_normalized in acl
+
+        if not has_access:
+            self.logger.warning(
+                f"{denied} for {message.sender_id} "
+                f"(pubkey: {sender_pubkey[:16]}...) - not in {kind} ACL"
+            )
+        else:
+            self.logger.info(
+                f"{kind.capitalize()} access granted for {message.sender_id} "
+                f"(pubkey: {sender_pubkey[:16]}...)"
+            )
+
+        return has_access
 
     def _check_admin_access(self, message: MeshMessage) -> bool:
         """
@@ -1341,39 +1498,7 @@ class BaseCommand(ABC):
                 self.logger.error("No valid admin pubkeys found in config after validation")
                 return False
 
-            # Get sender's public key - NEVER fall back to sender_id
-            sender_pubkey = getattr(message, 'sender_pubkey', None)
-            if not sender_pubkey:
-                self.logger.warning(
-                    f"No sender public key available for {message.sender_id} - "
-                    "admin access denied (missing pubkey)"
-                )
-                return False
-
-            # Validate sender pubkey format
-            if not validate_pubkey_format(sender_pubkey, expected_length=64):
-                self.logger.warning(
-                    f"Invalid sender pubkey format from {message.sender_id}: "
-                    f"{sender_pubkey[:16]}... - admin access denied"
-                )
-                return False
-
-            # Normalize and compare
-            sender_pubkey_normalized = sender_pubkey.lower()
-            is_admin = sender_pubkey_normalized in admin_pubkey_list
-
-            if not is_admin:
-                self.logger.warning(
-                    f"Access denied for {message.sender_id} "
-                    f"(pubkey: {sender_pubkey[:16]}...) - not in admin ACL"
-                )
-            else:
-                self.logger.info(
-                    f"Admin access granted for {message.sender_id} "
-                    f"(pubkey: {sender_pubkey[:16]}...)"
-                )
-
-            return is_admin
+            return self._pubkey_in_acl(message, admin_pubkey_list, "admin", "Access denied")
 
         except Exception as e:
             self.logger.error(f"Error checking admin access: {e}")

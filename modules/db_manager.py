@@ -61,6 +61,8 @@ class DBManager:
         'observed_paths',  # Repeater manager - observed paths from adverts and messages
         'neighbor_links',  # Zero-hop neighbor discovery - current adjacency
         'neighbor_observations',  # Zero-hop neighbor discovery - per-cycle history
+        'region_scope_daily',  # Regional flood scope tallies per channel per day
+        'region_warning_events',  # Region-code warning decisions
     }
 
     def __init__(self, bot: Any, db_path: str = "meshcore_bot.db"):

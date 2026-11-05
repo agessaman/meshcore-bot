@@ -1,11 +1,18 @@
 """Tests for WebhookService."""
 
+import re
 from configparser import ConfigParser
 from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+from modules.command_manager import CommandManager
 from modules.service_plugins.webhook_service import WebhookService
+
+
+def _strip_part_suffix(text: str) -> str:
+    """Drop a trailing " (i/n)" ordering marker so content can be compared."""
+    return re.sub(r" \(\d+/\d+\)$", "", text)
 
 # ---------------------------------------------------------------------------
 # Helpers / fixtures
@@ -29,7 +36,18 @@ def _make_bot(mock_logger, extra_cfg=None):
             bot.config.set("Webhook", key, val)
     bot.command_manager = Mock()
     bot.command_manager.send_channel_message = AsyncMock(return_value=True)
+    bot.command_manager.send_channel_messages_chunked = AsyncMock(return_value=True)
     bot.command_manager.send_dm = AsyncMock(return_value=True)
+    # The service sizes bodies against the real budget/split helpers, so a bare
+    # Mock would hand a Mock to the splitter. Use the production implementations.
+    bot.command_manager.split_text_into_utf8_chunks = (
+        CommandManager.split_text_into_utf8_chunks
+    )
+    bot.command_manager.split_text_into_numbered_utf8_chunks = (
+        CommandManager.split_text_into_numbered_utf8_chunks
+    )
+    bot.command_manager.links_split_across = CommandManager.links_split_across
+    bot.command_manager.channel_body_budget = Mock(return_value=130)
     bot.connected = True
     return bot
 
@@ -329,3 +347,276 @@ class TestHandleWebhookDispatch:
         req = _make_request(body={"channel": "general", "message": "hi"})
         resp = await svc._handle_webhook(req)
         assert resp.status == 500
+
+
+# ---------------------------------------------------------------------------
+# TestChunking — a message longer than one frame must go out in several parts
+# ---------------------------------------------------------------------------
+
+
+class TestChunking:
+    """The 200-char cap is a total, not a frame size.
+
+    A MeshCore channel body only holds ~130 bytes, so relaying a longer payload
+    whole gets it dropped by the device with no acknowledgement — the send burns
+    its retries and the stalled transport then looks dead.
+    """
+
+    # The alert from the reported failure: 173 chars, under the 200-char cap but
+    # well over a single channel frame.
+    LONG_ALERT = (
+        "The Heat Advisory for the I-35 Corridor and Coastal Plains (Hays, "
+        "Bexar, Comal, Guadalupe, Caldwell, Atascosa, Wilson, Karnes, "
+        "Gonzales, De Witt) has expired as of 7 PM CDT."
+    )
+
+    @pytest.mark.asyncio
+    async def test_oversized_channel_message_is_chunked(self, mock_logger):
+        svc, bot = _make_service(mock_logger)
+        req = _make_request(body={"channel": "ky-wx", "message": self.LONG_ALERT})
+
+        resp = await svc._handle_webhook(req)
+
+        assert resp.status == 200
+        bot.command_manager.send_channel_message.assert_not_awaited()
+        bot.command_manager.send_channel_messages_chunked.assert_awaited_once()
+        chunks = bot.command_manager.send_channel_messages_chunked.call_args[0][1]
+        assert len(chunks) > 1
+        for chunk in chunks:
+            assert len(chunk.encode("utf-8")) <= 130
+
+    @pytest.mark.asyncio
+    async def test_chunks_preserve_the_whole_message(self, mock_logger):
+        svc, bot = _make_service(mock_logger)
+        req = _make_request(body={"channel": "ky-wx", "message": self.LONG_ALERT})
+
+        await svc._handle_webhook(req)
+
+        chunks = bot.command_manager.send_channel_messages_chunked.call_args[0][1]
+        rejoined = " ".join(_strip_part_suffix(c) for c in chunks)
+        assert rejoined.split() == self.LONG_ALERT.split()
+
+    @pytest.mark.asyncio
+    async def test_response_reports_part_count(self, mock_logger):
+        import json
+
+        svc, bot = _make_service(mock_logger)
+        req = _make_request(body={"channel": "ky-wx", "message": self.LONG_ALERT})
+
+        resp = await svc._handle_webhook(req)
+
+        chunks = bot.command_manager.send_channel_messages_chunked.call_args[0][1]
+        assert json.loads(resp.text) == {"ok": True, "parts": len(chunks)}
+
+    @pytest.mark.asyncio
+    async def test_single_part_message_still_reports_one(self, mock_logger):
+        import json
+
+        svc, _ = _make_service(mock_logger)
+        req = _make_request(body={"channel": "general", "message": "Hello!"})
+
+        resp = await svc._handle_webhook(req)
+
+        assert json.loads(resp.text) == {"ok": True, "parts": 1}
+
+    @pytest.mark.asyncio
+    async def test_short_message_uses_the_unchunked_path(self, mock_logger):
+        svc, bot = _make_service(mock_logger)
+        req = _make_request(body={"channel": "general", "message": "Hello!"})
+
+        await svc._handle_webhook(req)
+
+        bot.command_manager.send_channel_message.assert_awaited_once()
+        bot.command_manager.send_channel_messages_chunked.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_budget_is_resolved_for_the_target_channel_and_scope(self, mock_logger):
+        svc, bot = _make_service(mock_logger)
+        req = _make_request(
+            body={"channel": "ky-wx", "message": "hi", "flood_scope": "west"}
+        )
+
+        await svc._handle_webhook(req)
+
+        bot.command_manager.channel_body_budget.assert_called_once_with(
+            channel="ky-wx", scope="#west"
+        )
+
+    @pytest.mark.asyncio
+    async def test_scope_is_passed_to_the_chunked_send(self, mock_logger):
+        svc, bot = _make_service(mock_logger)
+        req = _make_request(
+            body={"channel": "ky-wx", "message": self.LONG_ALERT, "flood_scope": "west"}
+        )
+
+        await svc._handle_webhook(req)
+
+        _, kwargs = bot.command_manager.send_channel_messages_chunked.call_args
+        assert kwargs.get("scope") == "#west"
+
+    @pytest.mark.asyncio
+    async def test_chunked_send_failure_returns_500(self, mock_logger):
+        svc, bot = _make_service(mock_logger)
+        bot.command_manager.send_channel_messages_chunked = AsyncMock(return_value=False)
+        req = _make_request(body={"channel": "ky-wx", "message": self.LONG_ALERT})
+
+        resp = await svc._handle_webhook(req)
+
+        assert resp.status == 500
+
+    @pytest.mark.asyncio
+    async def test_narrow_budget_produces_more_parts(self, mock_logger):
+        """A long bot name or a regional scope shrinks the budget; parts follow it."""
+        svc, bot = _make_service(mock_logger)
+        bot.command_manager.channel_body_budget = Mock(return_value=40)
+        req = _make_request(body={"channel": "ky-wx", "message": self.LONG_ALERT})
+
+        await svc._handle_webhook(req)
+
+        chunks = bot.command_manager.send_channel_messages_chunked.call_args[0][1]
+        assert len(chunks) >= 5
+        for chunk in chunks:
+            assert len(chunk.encode("utf-8")) <= 40
+
+    @pytest.mark.asyncio
+    async def test_truncation_still_applies_before_chunking(self, mock_logger):
+        svc, bot = _make_service(mock_logger)
+        req = _make_request(
+            body={"channel": "ky-wx", "message": "A" * 1000}
+        )
+
+        await svc._handle_webhook(req)
+
+        chunks = bot.command_manager.send_channel_messages_chunked.call_args[0][1]
+        assert sum(len(_strip_part_suffix(c)) for c in chunks) == 200
+
+    @pytest.mark.asyncio
+    async def test_long_dm_reports_parts_but_sends_once(self, mock_logger):
+        """send_dm applies its own byte guard, so the whole body goes in one call."""
+        import json
+
+        svc, bot = _make_service(mock_logger, {"max_message_length": "400"})
+        req = _make_request(body={"dm_to": "Alice", "message": "B" * 400})
+
+        resp = await svc._handle_webhook(req)
+
+        bot.command_manager.send_dm.assert_awaited_once()
+        assert bot.command_manager.send_dm.call_args[0][1] == "B" * 400
+        assert json.loads(resp.text) == {"ok": True, "parts": 3}
+
+
+# ---------------------------------------------------------------------------
+# TestPartNumbering — a mesh does not guarantee delivery order
+# ---------------------------------------------------------------------------
+
+
+class TestPartNumbering:
+    """Multi-part posts carry " (i/n)" so a reader can reassemble them.
+
+    Nothing else distinguishes a continuation from a standalone post, and parts
+    can arrive out of order.
+    """
+
+    @pytest.mark.asyncio
+    async def test_each_part_is_tagged_with_its_position(self, mock_logger):
+        svc, bot = _make_service(mock_logger)
+        req = _make_request(
+            body={"channel": "ky-wx", "message": TestChunking.LONG_ALERT}
+        )
+
+        await svc._handle_webhook(req)
+
+        chunks = bot.command_manager.send_channel_messages_chunked.call_args[0][1]
+        total = len(chunks)
+        assert total > 1
+        for i, chunk in enumerate(chunks, 1):
+            assert chunk.endswith(f" ({i}/{total})")
+
+    @pytest.mark.asyncio
+    async def test_suffix_does_not_push_a_part_over_budget(self, mock_logger):
+        svc, bot = _make_service(mock_logger)
+        req = _make_request(
+            body={"channel": "ky-wx", "message": TestChunking.LONG_ALERT}
+        )
+
+        await svc._handle_webhook(req)
+
+        chunks = bot.command_manager.send_channel_messages_chunked.call_args[0][1]
+        for chunk in chunks:
+            assert len(chunk.encode("utf-8")) <= 130
+
+    @pytest.mark.asyncio
+    async def test_single_part_carries_no_suffix(self, mock_logger):
+        svc, bot = _make_service(mock_logger)
+        req = _make_request(body={"channel": "general", "message": "Hello!"})
+
+        await svc._handle_webhook(req)
+
+        assert bot.command_manager.send_channel_message.call_args[0][1] == "Hello!"
+
+    @pytest.mark.asyncio
+    async def test_reported_parts_match_the_numbering(self, mock_logger):
+        import json
+
+        svc, bot = _make_service(mock_logger)
+        req = _make_request(
+            body={"channel": "ky-wx", "message": TestChunking.LONG_ALERT}
+        )
+
+        resp = await svc._handle_webhook(req)
+
+        chunks = bot.command_manager.send_channel_messages_chunked.call_args[0][1]
+        assert json.loads(resp.text)["parts"] == len(chunks)
+        assert chunks[-1].endswith(f" ({len(chunks)}/{len(chunks)})")
+
+
+class TestWebhookLinkIntegrity:
+    """A relayed link must survive the split intact."""
+
+    LINK = "https://is.gd/a1B2c3"
+
+    @pytest.mark.asyncio
+    async def test_link_survives_a_split_relay(self, mock_logger):
+        svc, bot = _make_service(mock_logger)
+        text = (
+            "Flood Warning for Caldwell and Hays counties until 9PM CDT, avoid low "
+            f"water crossings and do not drive through standing water {self.LINK}"
+        )
+        req = _make_request(body={"channel": "ky-wx", "message": text})
+
+        resp = await svc._handle_webhook(req)
+
+        assert resp.status == 200
+        chunks = bot.command_manager.send_channel_messages_chunked.call_args[0][1]
+        assert len(chunks) > 1
+        assert any(self.LINK in chunk for chunk in chunks)
+
+    @pytest.mark.asyncio
+    async def test_unspaced_link_survives_a_split_relay(self, mock_logger):
+        svc, bot = _make_service(mock_logger)
+        text = f"FloodWarn-Caldwell-Hays-til-9PM-avoid-low-water-crossings|{self.LINK}"
+        bot.command_manager.channel_body_budget = Mock(return_value=40)
+        req = _make_request(body={"channel": "ky-wx", "message": text})
+
+        await svc._handle_webhook(req)
+
+        chunks = bot.command_manager.send_channel_messages_chunked.call_args[0][1]
+        assert any(self.LINK in chunk for chunk in chunks)
+
+    @pytest.mark.asyncio
+    async def test_uncuttable_link_still_relays_and_is_warned_about(self, mock_logger):
+        """A link longer than one frame cannot survive; the relay must not fail."""
+        svc, bot = _make_service(mock_logger)
+        long_link = (
+            "https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.abcdef.001.1"
+        )
+        bot.command_manager.channel_body_budget = Mock(return_value=40)
+        req = _make_request(body={"channel": "ky-wx", "message": f"Alert {long_link}"})
+
+        resp = await svc._handle_webhook(req)
+
+        assert resp.status == 200
+        assert any(
+            "not be clickable" in str(call)
+            for call in mock_logger.warning.call_args_list
+        )

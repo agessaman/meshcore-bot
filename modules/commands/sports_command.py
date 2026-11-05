@@ -40,6 +40,8 @@ class SportsCommand(BaseCommand):
     # Read-only informational output; safe for scheduled {cmd:...} rendering.
     render_safe = True
     name = "sports"
+    honors_skip_channel_check = False
+    enabled_attr = "sports_enabled"
     keywords = ['sports', 'score', 'scores']
     description = "Get sports scores and schedules (usage: sports [team/league])"
     category = "sports"
@@ -73,6 +75,9 @@ class SportsCommand(BaseCommand):
         {"key": "channel_override", "label": "Channel team overrides", "type": "str",
          "default": "",
          "help": "channel=team,channel2=team2 — default team shortcut per channel."},
+        {"key": "api_timeout", "label": "API timeout", "type": "int",
+         "min": 1, "default": 10, "unit": "s",
+         "help": "ESPN API request timeout."},
     ]
 
     def __init__(self, bot: "MeshCoreBot"):
@@ -82,7 +87,7 @@ class SportsCommand(BaseCommand):
             bot: The MeshCoreBot instance that owns this command.
         """
         super().__init__(bot)
-        self.url_timeout = 10  # seconds
+        self.url_timeout = self.get_config_value('Sports_Command', 'api_timeout', fallback=10, value_type='int')
 
         # Load enabled (standard enabled; sports_enabled legacy)
         self.sports_enabled = self.get_config_value('Sports_Command', 'enabled', fallback=None, value_type='bool')
@@ -130,27 +135,16 @@ class SportsCommand(BaseCommand):
         if not self.keywords:
             return False
 
-        content_lower = self.cleanup_message_for_matching(message)
+        def _matches(content_lower: str) -> bool:
+            words = content_lower.split()
+            if not words:
+                return False
+            first_word = words[0]
+            return any(first_word == keyword.lower() for keyword in self.keywords)
 
-        # Split into words and check if first word matches any keyword
-        words = content_lower.split()
-        if not words:
-            return False
+        return self._cleaned_content_matches(message, _matches)
 
-        first_word = words[0]
-
-        return any(first_word == keyword.lower() for keyword in self.keywords)
-
-    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
-        """Check if this command can execute with the given message"""
-        if not self.sports_enabled:
-            return False
-
-        # Channel access and cooldown are now handled by BaseCommand.can_execute()
-        # Call parent can_execute() which includes channel checking and cooldown
-        return super().can_execute(message)
-
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         return self.translate('commands.sports.help')
 
 

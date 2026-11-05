@@ -166,9 +166,17 @@ class TestFormatElapsedDisplay:
 
     def test_valid_recent_timestamp_returns_ms(self):
         import time
-        ts = time.time() - 1.5  # 1.5 seconds ago
+        ts = time.time() - 0.5  # 0.5 seconds ago
         result = format_elapsed_display(ts)
         assert "ms" in result
+        assert "Sync" not in result
+
+    def test_valid_recent_timestamp_returns_s(self):
+        import time
+        ts = time.time() - 1.5  # 1.5 seconds ago
+        result = format_elapsed_display(ts)
+        assert "s" in result
+        assert "ms" not in result
         assert "Sync" not in result
 
     def test_future_timestamp_returns_sync_message(self):
@@ -590,6 +598,18 @@ class TestCalculatePathDistances:
         path_dist, fl_dist = calculate_path_distances(self._bot(), "")
         assert "direct" in path_dist.lower()
 
+    def test_old_utils_entry_point_is_the_moved_function(self):
+        # Path helpers live in modules.mesh_paths; modules.utils re-exports them.
+        import modules.mesh_paths
+        import modules.utils
+
+        assert modules.utils.calculate_path_distances is modules.mesh_paths.calculate_path_distances
+        assert modules.utils._get_node_location_from_db is modules.mesh_paths._get_node_location_from_db
+        locations = [((47.6062, -122.3321), None), ((45.5152, -122.6784), None)]
+        with patch("modules.mesh_paths._get_node_location_from_db", side_effect=locations):
+            path_dist, _ = modules.utils.calculate_path_distances(self._bot(), "01,5f")
+        assert "km" in path_dist
+
     def test_direct_path_returns_direct(self):
         path_dist, fl_dist = calculate_path_distances(self._bot(), "Direct")
         assert "direct" in path_dist.lower()
@@ -601,7 +621,7 @@ class TestCalculatePathDistances:
 
     def test_single_node_returns_locally(self):
         bot = self._bot()
-        with patch("modules.utils._get_node_location_from_db", return_value=None):
+        with patch("modules.mesh_paths._get_node_location_from_db", return_value=None):
             path_dist, fl_dist = calculate_path_distances(bot, "01")
         assert "local" in path_dist.lower() or "1 hop" in path_dist.lower()
 
@@ -609,14 +629,14 @@ class TestCalculatePathDistances:
         bot = self._bot()
         # Seattle and Portland coords
         locations = [((47.6062, -122.3321), None), ((45.5152, -122.6784), None)]
-        with patch("modules.utils._get_node_location_from_db", side_effect=locations):
+        with patch("modules.mesh_paths._get_node_location_from_db", side_effect=locations):
             path_dist, fl_dist = calculate_path_distances(bot, "01,5f")
         assert "km" in path_dist
         assert "km" in fl_dist
 
     def test_two_nodes_no_locations_returns_unknown(self):
         bot = self._bot()
-        with patch("modules.utils._get_node_location_from_db", return_value=None):
+        with patch("modules.mesh_paths._get_node_location_from_db", return_value=None):
             path_dist, fl_dist = calculate_path_distances(bot, "01,5f")
         assert "unknown" in path_dist.lower()
 
@@ -625,7 +645,7 @@ class TestCalculatePathDistances:
         bot = self._bot()
         bot.prefix_hex_chars = 2
         locations = [((47.6062, -122.3321), None), ((45.5152, -122.6784), None)]
-        with patch("modules.utils._get_node_location_from_db", side_effect=locations):
+        with patch("modules.mesh_paths._get_node_location_from_db", side_effect=locations):
             path_dist, fl_dist = calculate_path_distances(bot, "28667c,e0eed9")
         assert "(1 segs)" in path_dist
         assert "km" in fl_dist
@@ -640,7 +660,7 @@ class TestCalculatePathDistances:
             "path_nodes": ["28667c", "e0eed9"],
         }
         locations = [((47.6062, -122.3321), None), ((45.5152, -122.6784), None)]
-        with patch("modules.utils._get_node_location_from_db", side_effect=locations):
+        with patch("modules.mesh_paths._get_node_location_from_db", side_effect=locations):
             path_dist, fl_dist = calculate_path_distances(bot, "", message=msg)
         assert "(1 segs)" in path_dist
 

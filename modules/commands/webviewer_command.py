@@ -13,6 +13,8 @@ class WebViewerCommand(BaseCommand):
 
     # Plugin metadata
     name = "webviewer"
+    honors_skip_channel_check = False
+    enabled_attr = "webviewer_enabled"
     keywords = ["webviewer", "web", "viewer", "wv"]
     description = "Manage web viewer integration (DM only)"
     requires_dm = True
@@ -28,20 +30,7 @@ class WebViewerCommand(BaseCommand):
         super().__init__(bot)
         self.webviewer_enabled = self.get_config_value('WebViewer_Command', 'enabled', fallback=True, value_type='bool')
 
-    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
-        """Check if this command can be executed with the given message.
-
-        Args:
-            message: The message triggering the command.
-
-        Returns:
-            bool: True if command is enabled and checks pass, False otherwise.
-        """
-        if not self.webviewer_enabled:
-            return False
-        return super().can_execute(message)
-
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         """Get help text for the webviewer command.
 
         Returns:
@@ -58,8 +47,13 @@ class WebViewerCommand(BaseCommand):
         Returns:
             bool: True if matches, False otherwise.
         """
-        content_lower = self.cleanup_message_for_matching(message)
-        return any(content_lower.startswith(keyword + ' ') or content_lower == keyword for keyword in self.keywords)
+        return self._cleaned_content_matches(
+            message,
+            lambda content_lower: any(
+                content_lower.startswith(keyword + ' ') or content_lower == keyword
+                for keyword in self.keywords
+            ),
+        )
 
     async def execute(self, message: MeshMessage) -> bool:
         """Execute the webviewer command.

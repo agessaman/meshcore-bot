@@ -10,6 +10,7 @@ import re
 from typing import Any
 
 from ..models import MeshMessage
+from ..security_utils import sanitize_name
 from ..utils import get_config_timezone
 from .base_command import BaseCommand
 
@@ -19,9 +20,28 @@ class HelloCommand(BaseCommand):
 
     # Plugin metadata
     name = "hello"
+    honors_skip_channel_check = False
+    enabled_attr = "hello_enabled"
     keywords = ['hello', 'hi', 'hey', 'howdy', 'greetings', 'salutations', 'good morning', 'good afternoon', 'good evening', 'good night', 'yo', 'sup', 'whats up', 'what\'s up', 'morning', 'afternoon', 'evening', 'night', 'gday', 'g\'day', 'hola', 'bonjour', 'ciao', 'namaste', 'aloha', 'shalom', 'konnichiwa', 'guten tag', 'buenos dias', 'buenas tardes', 'buenas noches']
     description = "Responds to greetings with robot-themed responses"
     category = "basic"
+
+    # How the sender is addressed when include_sender is on. The greeting already
+    # has a slot for the person being greeted — the random human descriptor
+    # ("pal", "carbon-based lifeform") -- so the mention is substituted there
+    # rather than prepended, which keeps the translated sentence intact.
+    SENDER_MENTION_FORMAT = "@[{sender}]"
+
+    # message_handler falls back to this literal when a channel packet carries no
+    # "Name: body" prefix. It names nobody, so it must never be echoed as a mention.
+    UNKNOWN_CHANNEL_SENDER = "Channel User"
+
+    # Web-viewer settings schema (see modules/settings_schema.py)
+    settings_schema = [
+        {"key": "include_sender", "label": "Address the sender", "type": "bool",
+         "default": False,
+         "help": "Name the user in the reply, so a busy channel can tell whose greeting was answered."},
+    ]
 
     # Documentation
     short_description = "Responds to greetings with robot-themed responses"
@@ -38,9 +58,37 @@ class HelloCommand(BaseCommand):
 
         # Load configuration
         self.hello_enabled = self.get_config_value('Hello_Command', 'enabled', fallback=True, value_type='bool')
+        self.include_sender = self.get_config_value('Hello_Command', 'include_sender', fallback=False, value_type='bool')
 
         # Fallback arrays if translations not available
         self._init_fallback_arrays()
+
+    def get_sender_mention(self, message: MeshMessage) -> str:
+        """Build the @[name] mention for the sender of *message*.
+
+        Args:
+            message: The message being answered.
+
+        Returns:
+            str: The mention, or "" when the sender must not be named — the
+                 setting is off, the reply is a DM (the recipient is the only
+                 other party), or the name is missing/unresolvable.
+        """
+        if not self.include_sender or message.is_dm:
+            return ""
+
+        # Channel sender names are parsed straight off the wire in
+        # message_handler.handle_channel_message and are not sanitized there, so
+        # treat them as hostile. Control characters go; so do brackets, which
+        # would let a crafted name close the mention and forge a second one, and
+        # braces, which would raise from the .format(bot_name=...) the assembled
+        # reply still has to go through.
+        sender = sanitize_name(message.sender_id or "")
+        sender = sender.translate(str.maketrans("", "", "[]{}")).strip()
+        if not sender or sender == self.UNKNOWN_CHANNEL_SENDER:
+            return ""
+
+        return self.SENDER_MENTION_FORMAT.format(sender=sender)
 
     def _init_fallback_arrays(self) -> None:
         """Initialize fallback arrays for when translations are not available."""
@@ -195,10 +243,7 @@ class HelloCommand(BaseCommand):
         Returns:
             List[str]: A list of greeting opening strings.
         """
-        openings = self.translate_get_value('commands.hello.greeting_openings')
-        if openings and isinstance(openings, list) and len(openings) > 0:
-            return openings
-        return self.greeting_openings_fallback
+        return self.translated_or('commands.hello.greeting_openings', self.greeting_openings_fallback)
 
     def get_morning_greetings(self) -> list[str]:
         """Get morning greetings from translations or fallback.
@@ -206,10 +251,7 @@ class HelloCommand(BaseCommand):
         Returns:
             List[str]: A list of morning greeting strings.
         """
-        greetings = self.translate_get_value('commands.hello.morning_greetings')
-        if greetings and isinstance(greetings, list) and len(greetings) > 0:
-            return greetings
-        return self.morning_greetings_fallback
+        return self.translated_or('commands.hello.morning_greetings', self.morning_greetings_fallback)
 
     def get_afternoon_greetings(self) -> list[str]:
         """Get afternoon greetings from translations or fallback.
@@ -217,10 +259,7 @@ class HelloCommand(BaseCommand):
         Returns:
             List[str]: A list of afternoon greeting strings.
         """
-        greetings = self.translate_get_value('commands.hello.afternoon_greetings')
-        if greetings and isinstance(greetings, list) and len(greetings) > 0:
-            return greetings
-        return self.afternoon_greetings_fallback
+        return self.translated_or('commands.hello.afternoon_greetings', self.afternoon_greetings_fallback)
 
     def get_evening_greetings(self) -> list[str]:
         """Get evening greetings from translations or fallback.
@@ -228,10 +267,7 @@ class HelloCommand(BaseCommand):
         Returns:
             List[str]: A list of evening greeting strings.
         """
-        greetings = self.translate_get_value('commands.hello.evening_greetings')
-        if greetings and isinstance(greetings, list) and len(greetings) > 0:
-            return greetings
-        return self.evening_greetings_fallback
+        return self.translated_or('commands.hello.evening_greetings', self.evening_greetings_fallback)
 
     def get_human_descriptors(self) -> list[str]:
         """Get human descriptors from translations or fallback.
@@ -239,10 +275,7 @@ class HelloCommand(BaseCommand):
         Returns:
             List[str]: A list of human descriptor strings.
         """
-        descriptors = self.translate_get_value('commands.hello.human_descriptors')
-        if descriptors and isinstance(descriptors, list) and len(descriptors) > 0:
-            return descriptors
-        return self.human_descriptors_fallback
+        return self.translated_or('commands.hello.human_descriptors', self.human_descriptors_fallback)
 
     def get_emoji_responses(self) -> dict[str, list[str]]:
         """Get emoji responses from translations or fallback.
@@ -250,12 +283,9 @@ class HelloCommand(BaseCommand):
         Returns:
             Dict[str, List[str]]: A dictionary mapping emojis to lists of response strings.
         """
-        responses = self.translate_get_value('commands.hello.emoji_responses')
-        if responses and isinstance(responses, dict) and len(responses) > 0:
-            return responses
-        return self.emoji_responses_fallback
+        return self.translated_or('commands.hello.emoji_responses', self.emoji_responses_fallback, dict)
 
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         """Get help text for the hello command.
 
         Returns:
@@ -297,24 +327,54 @@ class HelloCommand(BaseCommand):
         # Strip mentions from content for processing
         content = self._strip_mentions(message.content)
 
+        mention = self.get_sender_mention(message)
+
         # Build the reply in the sender's language when auto-detection is enabled.
         # The full response string is assembled inside the context manager; the
         # await (send_response) happens after it, keeping the override window
         # free of suspension points.
         with self.respond_in_sender_language(message):
-            # Check if message is emoji-only (after stripping mentions)
-            if self.is_emoji_only_message(content):
-                response = self.get_emoji_response(content, bot_name)
-            else:
-                # Get random robot greeting
-                random_greeting = self.get_random_greeting()
-                response_format = self.translate('commands.hello.response_format')
-                response = f"{random_greeting} {response_format}".format(bot_name=bot_name)
+            response = self._build_response(content, bot_name, mention)
+
+            # Nothing downstream truncates, so an over-budget reply is cut by the
+            # firmware mid-word. A long node name can push the reply past the
+            # channel body budget; drop the mention rather than lose the tail.
+            if mention and len(response.encode('utf-8')) > self.get_max_message_length(message):
+                response = self._build_response(content, bot_name, "")
 
         return await self.send_response(message, response)
 
-    def get_random_greeting(self) -> str:
-        """Generate a random robot greeting by combining opening and descriptor"""
+    def _build_response(self, content: str, bot_name: str, mention: str) -> str:
+        """Assemble the reply for *content*, addressing *mention* when set.
+
+        Args:
+            content: The incoming message body, with mentions already stripped.
+            bot_name: Name to substitute into the response format.
+            mention: The sender's @[name] mention, or "" to leave them unnamed.
+
+        Returns:
+            str: The assembled reply.
+        """
+        # Check if message is emoji-only (after stripping mentions)
+        if self.is_emoji_only_message(content):
+            return self.get_emoji_response(content, bot_name, mention)
+
+        # Get random robot greeting
+        random_greeting = self.get_random_greeting(mention)
+        response_format = self.translate('commands.hello.response_format')
+        return f"{random_greeting} {response_format}".format(bot_name=bot_name)
+
+    def get_random_greeting(self, mention: str = "") -> str:
+        """Generate a random robot greeting by combining opening and descriptor.
+
+        Args:
+            mention: When set, the sender's @[name] mention is used in place of
+                     the random human descriptor, so the reply addresses the
+                     person by name inside the sentence the translation defines.
+
+        Returns:
+            str: The assembled greeting.
+        """
         tz, _ = get_config_timezone(self.bot.config, self.logger)
         current_time = datetime.datetime.now(tz)
 
@@ -339,7 +399,7 @@ class HelloCommand(BaseCommand):
             greeting_pool = evening_greetings + greeting_openings
 
         opening = random.choice(greeting_pool)
-        descriptor = random.choice(human_descriptors)
+        descriptor = mention or random.choice(human_descriptors)
 
         # Add some variety in punctuation and formatting
         punctuation_options = ["!", ".", "!", "!", "!"]  # Favor exclamation marks
@@ -365,24 +425,19 @@ class HelloCommand(BaseCommand):
 
         return bool(re.match(defined_emoji_pattern, cleaned_text))
 
-    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
-        """Check if this command can be executed with the given message.
+    def get_emoji_response(self, text: str, bot_name: str, mention: str = "") -> str:
+        """Get appropriate response for emoji-only message.
 
         Args:
-            message: The message triggering the command.
+            text: The emoji-only message body.
+            bot_name: Name to substitute into the response format.
+            mention: When set, the sender's @[name] mention. The canned emoji
+                     lines have no descriptor slot to substitute it into, so it
+                     is prefixed instead; they are short enough to afford it.
 
         Returns:
-            bool: True if command is enabled and checks pass, False otherwise.
+            str: The assembled response.
         """
-        # Check if hello command is enabled
-        if not self.hello_enabled:
-            return False
-
-        # Call parent can_execute() which includes channel checking, cooldown, etc.
-        return super().can_execute(message)
-
-    def get_emoji_response(self, text: str, bot_name: str) -> str:
-        """Get appropriate response for emoji-only message"""
         import random
 
         # Get emoji responses from translations or fallback
@@ -395,8 +450,9 @@ class HelloCommand(BaseCommand):
         # Check if this emoji has special responses
         if first_emoji in emoji_responses:
             response = random.choice(emoji_responses[first_emoji])
-            return f"{response} {response_format}".format(bot_name=bot_name)
+            prefix = f"{mention} " if mention else ""
+            return f"{prefix}{response} {response_format}".format(bot_name=bot_name)
         else:
             # Use random greeting generator for general emojis
-            random_greeting = self.get_random_greeting()
+            random_greeting = self.get_random_greeting(mention)
             return f"{random_greeting} {response_format}".format(bot_name=bot_name)

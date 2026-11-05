@@ -1006,6 +1006,21 @@ class DashboardStatsService:
             # "Heard last week, silent this week" — a churn signal, not a total.
             mesh["gone_quiet_7d"] = row[2] or 0
 
+            # The newest arrival by name, so "10 new nodes" has a face. first_heard
+            # is stored in local time; strftime with 'utc' turns it into epoch.
+            row = conn.execute(
+                """
+                SELECT name, role, hop_count, CAST(strftime('%s', first_heard, 'utc') AS INTEGER)
+                FROM complete_contact_tracking
+                WHERE first_heard >= datetime('now', 'localtime', '-1 day')
+                  AND name IS NOT NULL AND name != ''
+                ORDER BY first_heard DESC LIMIT 1
+                """
+            ).fetchone()
+            mesh["newest_node"] = (
+                {"name": row[0], "role": row[1], "hops": row[2], "first_heard": row[3]} if row else None
+            )
+
             # Each column carries its own emptiness test rather than sharing one
             # in the WHERE clause: filtering the row set on country would drop
             # contacts that have a state or city but no country, undercounting
@@ -1409,17 +1424,43 @@ class DashboardStatsService:
         Explicitly calendar days, not a rolling 24 hours: quoting one against
         the other is the classic dashboard lie, so the UI says which it is.
         """
-        expressions = ", ".join(f"{SERIES_METRICS[name]} AS {name}" for name in SUMMARY_METRICS)
-        rows = conn.execute(
-            f"""
-            SELECT date, {expressions} FROM daily_rollup
-            WHERE is_final = 1 ORDER BY date DESC LIMIT 2
-            """
-        ).fetchall()
+        rows = self._last_two_final_days(conn)
         if len(rows) < 2:
             return {}
         current, previous = rows[0], rows[1]
+        if self._silent_day(current) or self._silent_day(previous):
+            return dict.fromkeys(SUMMARY_METRICS)
         return {name: _change_pct(current[name], previous[name]) for name in SUMMARY_METRICS}
+
+    def _delta_gap_from_rollup(self, conn: sqlite3.Connection) -> str | None:
+        """The compared day on which nothing at all was heard, if either was.
+
+        A day with no packets, adverts or messages is a gap in collection (the
+        bot or its radio was down), not a mesh that went silent, so the change
+        against it would report a 100% collapse that never happened.
+        """
+        rows = self._last_two_final_days(conn)
+        if len(rows) < 2:
+            return None
+        silent = [row["date"] for row in rows if self._silent_day(row)]
+        # Both silent is a station with no history yet (a fresh install), not a
+        # gap in one; the empty chips say enough there.
+        return silent[0] if len(silent) == 1 else None
+
+    def _last_two_final_days(self, conn: sqlite3.Connection) -> list[sqlite3.Row]:
+        expressions = ", ".join(f"{SERIES_METRICS[name]} AS {name}" for name in SUMMARY_METRICS)
+        return conn.execute(
+            f"""
+            SELECT date, packets_total AS heard_packets, adverts_total AS heard_adverts,
+                   messages_total AS heard_messages, {expressions}
+            FROM daily_rollup
+            WHERE is_final = 1 ORDER BY date DESC LIMIT 2
+            """
+        ).fetchall()
+
+    @staticmethod
+    def _silent_day(row: sqlite3.Row) -> bool:
+        return not any(row[name] for name in ("heard_packets", "heard_adverts", "heard_messages"))
 
     def _packet_encoding_from_rollup(
         self, conn: sqlite3.Connection, points: int = SUMMARY_SERIES_POINTS
@@ -1480,6 +1521,7 @@ class DashboardStatsService:
         }
         payload["series"] = self._series_from_rollup(conn)
         payload["deltas"] = self._deltas_from_rollup(conn)
+        payload["delta_gap"] = self._delta_gap_from_rollup(conn)
         payload["packet_encoding"] = self._packet_encoding_from_rollup(conn)
         return payload
 

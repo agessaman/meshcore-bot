@@ -76,8 +76,21 @@ NEIGHBORS_ATTEMPT_STATE_KEY = "packet_capture.last_neighbors_attempt"
 # instead, which is longer.
 NEIGHBORS_RETRY_BACKOFF_SECONDS = 300.0
 
+# waev.app rejects a JWT whose exp is more than an hour past its iat, so the
+# project-wide 24-hour default cannot authenticate there (#248). These are the
+# values its brokers accept, applied only when nothing else was configured;
+# renewal is set just under the TTL so a token is replaced before it expires.
+WAEV_JWT_TTL_SECONDS = 3600
+WAEV_JWT_RENEWAL_INTERVAL = 3500
+
 # Sentinel meaning "no IATA configured" (documented as invalid in config.ini.example).
 DEFAULT_IATA = "XYZ"
+
+
+def _is_waev_host(host: str) -> bool:
+    """Whether ``host`` is a waev.app broker (the apex or any subdomain)."""
+    normalized = (host or "").strip().lower().rstrip(".")
+    return normalized == "waev.app" or normalized.endswith(".waev.app")
 
 
 def _decode_key_str(key_str: str) -> Optional[bytes]:
@@ -247,6 +260,28 @@ class PacketCaptureService(BaseServicePlugin):
         {"key": "neighbors_self_scopes", "label": "Own scopes override", "type": "str",
          "group": "Neighbors", "default": "", "width": "lg",
          "help": "Override for this node's own \"self.scopes\" value. Empty asks the device."},
+        {"key": "observer_name", "label": "Observer name", "type": "str", "default": "",
+         "help": "Name published for this observer. Blank = the radio's name."},
+        {"key": "decode_payloads", "label": "Decode payloads", "type": "bool", "default": False,
+         "help": "Decode text and structured payloads into a nested 'decoded' object."},
+        {"key": "include_decoded", "label": "Publish decoded (all brokers)", "type": "bool", "default": False,
+         "help": "Default for each broker's include_decoded toggle."},
+        {"key": "decode_include_public", "label": "Decode Public channel", "type": "bool", "default": True,
+         "help": "Include the Public channel key when decoding."},
+        {"key": "decode_hashtag_channels", "label": "Decode hashtag channels", "type": "list", "default": "",
+         "help": "Hashtag channel names to decode (keys are derived from the names)."},
+        {"key": "decode_channel_keys", "label": "Decode channel keys", "type": "password", "default": "",
+         "help": "Custom channels as name=key pairs, comma-separated (key: 32-char hex or base64)."},
+        {"key": "log_rotation", "label": "Log rotation", "type": "enum",
+         "options": [{"value": "off", "label": "Off (default)"}, {"value": "size", "label": "By size"},
+                     {"value": "time", "label": "By time"}],
+         "default": "off", "help": "How the packet log file is rotated."},
+        {"key": "log_max_bytes", "label": "Log max size", "type": "str", "default": "0",
+         "help": "Size rotation threshold, e.g. 10MB."},
+        {"key": "log_rotation_when", "label": "Rotate when", "type": "str", "default": "midnight",
+         "help": "Time rotation interval (midnight, h, d, w0-w6)."},
+        {"key": "log_backup_count", "label": "Log backups", "type": "int", "min": 0, "default": 5,
+         "help": "Rotated log files to keep."},
     ]
 
     # Repeating structured blocks (see modules/settings_schema.py). Each MQTT
@@ -271,6 +306,10 @@ class PacketCaptureService(BaseServicePlugin):
                 {"key": "tls_insecure", "label": "Skip TLS verification", "type": "bool", "default": False,
                  "help": "INSECURE — accept any broker certificate. Only for self-signed brokers on a "
                          "trusted network; leave off so certificate and hostname are verified."},
+                {"key": "username", "label": "Username", "type": "str", "default": "",
+                 "help": "Broker username, when not using a JWT."},
+                {"key": "password", "label": "Password", "type": "password", "default": "",
+                 "help": "Broker password, when not using a JWT."},
                 {"key": "use_auth_token", "label": "Use JWT auth token", "type": "bool", "default": False,
                  "help": "Authenticate with a signed JWT instead of username/password."},
                 {"key": "token_audience", "label": "Token audience", "type": "str", "default": "",
@@ -280,6 +319,13 @@ class PacketCaptureService(BaseServicePlugin):
                  "help": "Reconnect right after renewing the token, so the fresh one is in "
                          "force. Brokers that enforce the JWT's expiry drop the session "
                          "otherwise. Turn off only if your broker ignores expiry."},
+                {"key": "jwt_renewal_interval", "label": "JWT renewal interval", "type": "int", "min": 0,
+                 "default": "", "unit": "s",
+                 "help": "Blank = the service-wide JWT renewal interval."},
+                {"key": "jwt_ttl_seconds", "label": "JWT TTL", "type": "int", "min": 1, "default": "", "unit": "s",
+                 "help": "Blank = the service-wide JWT TTL."},
+                {"key": "topic_prefix", "label": "Topic prefix", "type": "str", "default": "",
+                 "help": "Base for the status/packets topics when those aren't set."},
                 {"key": "topic_status", "label": "Status topic", "type": "str", "default": ""},
                 {"key": "topic_packets", "label": "Packets topic", "type": "str", "default": ""},
                 {"key": "neighbors", "label": "Publish neighbours", "type": "bool", "default": True,
@@ -300,6 +346,11 @@ class PacketCaptureService(BaseServicePlugin):
                          "that drops idle connections."},
                 {"key": "upload_packet_types", "label": "Upload packet types", "type": "str", "default": "",
                  "help": "Comma-separated type numbers (e.g. 2,4). Empty = upload all."},
+                {"key": "include_decoded", "label": "Publish decoded", "type": "enum",
+                 "options": [{"value": "", "label": "Same as all brokers"},
+                             {"value": "true", "label": "On"}, {"value": "false", "label": "Off"}],
+                 "default": "",
+                 "help": "Publish the decoded object to this broker. Needs Decode payloads on."},
             ],
         }
     ]
@@ -689,6 +740,8 @@ class PacketCaptureService(BaseServicePlugin):
 
         global_jwt_renewal = config.getint("PacketCapture", "jwt_renewal_interval", fallback=43200)
         global_jwt_ttl = config.getint("PacketCapture", "jwt_ttl_seconds", fallback=86400)
+        global_renewal_set = config.has_option("PacketCapture", "jwt_renewal_interval")
+        global_ttl_set = config.has_option("PacketCapture", "jwt_ttl_seconds")
 
         # Parse multiple brokers (mqtt1_*, mqtt2_*, etc.)
         broker_num = 1
@@ -712,21 +765,42 @@ class PacketCaptureService(BaseServicePlugin):
                 if not upload_packet_types:
                     upload_packet_types = None
 
+            host = config.get("PacketCapture", server_key, fallback="localhost")
+            # waev.app refuses a token whose lifetime runs past an hour, so the
+            # 24-hour default never authenticates there and the operator only sees
+            # a bare auth failure (#248). Give those brokers a lifetime they accept
+            # unless a value was chosen for them, per broker or globally.
+            waev_default = _is_waev_host(host)
+
             renew_key = f"mqtt{broker_num}_jwt_renewal_interval"
             if config.has_option("PacketCapture", renew_key):
                 jwt_renewal_interval = config.getint("PacketCapture", renew_key)
+            elif waev_default and not global_renewal_set:
+                jwt_renewal_interval = WAEV_JWT_RENEWAL_INTERVAL
             else:
                 jwt_renewal_interval = global_jwt_renewal
 
             ttl_key = f"mqtt{broker_num}_jwt_ttl_seconds"
             if config.has_option("PacketCapture", ttl_key):
                 jwt_ttl_seconds = config.getint("PacketCapture", ttl_key)
+            elif waev_default and not global_ttl_set:
+                jwt_ttl_seconds = WAEV_JWT_TTL_SECONDS
             else:
                 jwt_ttl_seconds = global_jwt_ttl
 
+            if waev_default and (
+                jwt_ttl_seconds != global_jwt_ttl or jwt_renewal_interval != global_jwt_renewal
+            ):
+                self.logger.info(
+                    "MQTT broker %d (%s) is a waev.app host; using a %ds JWT TTL and %ds "
+                    "renewal instead of the defaults, which it rejects. Set "
+                    "mqtt%d_jwt_ttl_seconds to override.",
+                    broker_num, host, jwt_ttl_seconds, jwt_renewal_interval, broker_num,
+                )
+
             broker = {
                 "enabled": True,
-                "host": config.get("PacketCapture", server_key, fallback="localhost"),
+                "host": host,
                 "port": config.getint("PacketCapture", f"mqtt{broker_num}_port", fallback=1883),
                 "username": config.get("PacketCapture", f"mqtt{broker_num}_username", fallback=None),
                 "password": config.get("PacketCapture", f"mqtt{broker_num}_password", fallback=None),
@@ -850,9 +924,13 @@ class PacketCaptureService(BaseServicePlugin):
         return iat, iat + ttl
 
     @staticmethod
-    def _utc_iso_timestamp() -> str:
-        """UTC ISO 8601 timestamp with Z suffix for broad consumer compatibility."""
-        return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    def _utc_iso_timestamp(moment: datetime | None = None) -> str:
+        """UTC ISO 8601 timestamp with Z suffix for broad consumer compatibility.
+
+        Pass ``moment`` to render an instant the caller already has, so every
+        time field in one payload agrees instead of straddling a second boundary.
+        """
+        return (moment or datetime.now(timezone.utc)).isoformat().replace("+00:00", "Z")
 
     @staticmethod
     def _disconnect_reason(rc: int) -> str:
@@ -903,6 +981,9 @@ class PacketCaptureService(BaseServicePlugin):
         if not self.enabled:
             self.logger.info("Packet capture service is disabled")
             return
+
+        # stop() sets this; clear it so a restart's background loops actually run.
+        self.should_exit = False
 
         # Wait for bot to be connected (with timeout)
         max_wait = 30  # seconds
@@ -1005,10 +1086,10 @@ class PacketCaptureService(BaseServicePlugin):
     def cleanup_event_subscriptions(self) -> None:
         """Clean up event subscriptions.
 
-        Clears local subscription tracking list.
+        Unsubscribes the handlers (a restart would otherwise publish every
+        packet twice) and clears the local tracking list.
         """
-        # Note: meshcore library handles subscription cleanup automatically
-        # This is mainly for tracking/logging
+        self._unsubscribe_all()
         self.event_subscriptions = []
 
     async def setup_event_handlers(self) -> None:
@@ -1028,8 +1109,8 @@ class PacketCaptureService(BaseServicePlugin):
             await self.handle_raw_data(event, metadata)
 
         # Subscribe to events (meshcore supports multiple subscribers)
-        self.meshcore.subscribe(EventType.RX_LOG_DATA, on_rx_log_data)
-        self.meshcore.subscribe(EventType.RAW_DATA, on_raw_data)
+        self._subscribe(self.meshcore, EventType.RX_LOG_DATA, on_rx_log_data)
+        self._subscribe(self.meshcore, EventType.RAW_DATA, on_raw_data)
 
         self.event_subscriptions = [(EventType.RX_LOG_DATA, on_rx_log_data), (EventType.RAW_DATA, on_raw_data)]
 
@@ -1190,8 +1271,12 @@ class PacketCaptureService(BaseServicePlugin):
         Returns:
             dict[str, Any]: Formatted packet dictionary.
         """
-        current_time = datetime.now()
-        timestamp = self._utc_iso_timestamp()
+        # One UTC instant for the whole payload. "time"/"date" mirror "timestamp"
+        # because the original script read them off the firmware log line, which
+        # runs on the device's UTC clock — rendering them in the host's local
+        # zone here reads downstream as clock skew of exactly the UTC offset.
+        current_time = datetime.now(timezone.utc)
+        timestamp = self._utc_iso_timestamp(current_time)
 
         # Remove 0x prefix if present
         clean_raw_hex = raw_hex.replace("0x", "").upper()
@@ -1899,7 +1984,7 @@ class PacketCaptureService(BaseServicePlugin):
                         )
                         # For WebSockets, connect without path parameter (path set via ws_set_options)
                         # Run connect in executor to avoid blocking the event loop
-                        loop = asyncio.get_event_loop()
+                        loop = asyncio.get_running_loop()
                         try:
                             await loop.run_in_executor(None, client.connect, host, port, keepalive)
                         except Exception as connect_error:
@@ -1910,7 +1995,7 @@ class PacketCaptureService(BaseServicePlugin):
                             f"Connecting to MQTT broker {host}:{port} via TCP (TLS: {broker_config.get('use_tls', False)})"
                         )
                         # Run connect in executor to avoid blocking the event loop
-                        loop = asyncio.get_event_loop()
+                        loop = asyncio.get_running_loop()
                         try:
                             await loop.run_in_executor(None, client.connect, host, port, keepalive)
                         except Exception as connect_error:
@@ -2813,6 +2898,18 @@ class PacketCaptureService(BaseServicePlugin):
             except Exception as exc:
                 self.logger.debug(f"Error fetching radio stats: {exc}")
 
+            try:
+                packets_result = await self.meshcore.commands.get_stats_packets()
+                if packets_result and packets_result.type == EventType.STATS_PACKETS and packets_result.payload:
+                    stats_payload.update(packets_result.payload)
+                    # Aliases meshcore-packet-capture publishes
+                    stats_payload["packets_sent"] = packets_result.payload["sent"]
+                    stats_payload["packets_received"] = packets_result.payload["recv"]
+                elif packets_result and packets_result.type == EventType.ERROR:
+                    self.logger.debug(f"Packet stats unavailable: {packets_result.payload}")
+            except Exception as exc:
+                self.logger.debug(f"Error fetching packet stats: {exc}")
+
             if stats_payload:
                 self.latest_stats = stats_payload
                 self.last_stats_fetch = time.time()
@@ -3086,7 +3183,7 @@ class PacketCaptureService(BaseServicePlugin):
         """
         client = mqtt_client_info["client"]
         broker_host = mqtt_client_info["config"].get("host", "unknown")
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         async with mqtt_client_info["cycle_lock"]:
             self.logger.info(f"Cycling MQTT connection to {broker_host} ({reason})")

@@ -379,39 +379,15 @@ venv_reuse_blocker() {
 }
 
 # Extra pip arguments for 32-bit ARM hosts (Raspberry Pi 2/3 on a 32-bit OS).
-#
-# Ten dependencies have no prebuilt armv7 wheel on PyPI and would compile from source on
-# the device - hours of work on a Cortex-A7 and a likely OOM at 1 GB RAM.  piwheels serves
-# prebuilt armv7 wheels and is already configured on Raspberry Pi OS via /etc/pip.conf;
-# passing it explicitly also covers Ubuntu armhf, DietPi and other 32-bit distros that do
-# not ship that default.  constraints-armv7.txt then closes the last two gaps, so the
-# install resolves entirely to wheels.  See that file for the measurements.
-#
-# Scoped to 32-bit ARM on purpose: the constraints hold two packages one version back, and
-# there is no reason to impose that on amd64/arm64.  Results go in ARMV7_PIP_ARGS, which is
-# empty on every other platform.
-ARMV7_PIP_ARGS=()
-configure_armv7_pip_args() {
-    local requirements="$1"
-    local constraints
-
-    ARMV7_PIP_ARGS=()
-    case "$(uname -m)" in
-        armv6l|armv7l) ;;
-        *) return 0 ;;
-    esac
-
-    ARMV7_PIP_ARGS+=(--extra-index-url https://www.piwheels.org/simple)
-    print_info "32-bit ARM detected; using piwheels prebuilt wheels to avoid on-device compilation"
-
-    constraints="$(dirname "$requirements")/constraints-armv7.txt"
-    if [ -f "$constraints" ]; then
-        ARMV7_PIP_ARGS+=(-c "$constraints")
-    else
-        print_warning "constraints-armv7.txt not found next to $requirements"
-        print_warning "brotli and ephem will compile from source; this can take a while"
-    fi
-}
+# Shared with the .deb postinst via scripts/armv7_pip_args.sh so the two install
+# paths cannot drift (issue #269).  See that helper and constraints-armv7.txt.
+_ARMV7_PIP_HELPER="$SCRIPT_DIR/scripts/armv7_pip_args.sh"
+if [ ! -f "$_ARMV7_PIP_HELPER" ]; then
+    print_error "Missing $_ARMV7_PIP_HELPER"
+    exit 1
+fi
+# shellcheck source=scripts/armv7_pip_args.sh
+source "$_ARMV7_PIP_HELPER"
 
 # Bring an existing virtualenv up to date with requirements.txt.  Plain
 # `pip install -r` (no --upgrade) is deliberate: it installs what is missing and

@@ -127,6 +127,32 @@ class TestReloadConfigMerge:
         assert bot.config is old_config
         assert bot.config.get("LocalExtra", "value") == "original"
 
+    def test_literal_percent_in_a_raw_read_value_does_not_block_reload(self, tmp_path):
+        db_path = tmp_path / "bot.db"
+        main_config = tmp_path / "config.ini"
+        template = "{humidity_percent}% RH | {pressure_hpa:.0f} hPa"
+        main_config.write_text(
+            _minimal_main_config(tmp_path, db_path)
+            + f"\n[MqttWeather]\njson_template = {template}\n",
+            encoding="utf-8",
+        )
+        bot = MeshCoreBot(config_file=str(main_config))
+
+        main_config.write_text(
+            _minimal_main_config(tmp_path, db_path)
+            + f"\n[MqttWeather]\njson_template = {template}\n"
+            + "\n[LocalExtra]\nvalue = after_reload\n",
+            encoding="utf-8",
+        )
+        with patch.object(bot.logger, "warning") as warning:
+            success, message = bot.reload_config()
+
+        assert success, message
+        assert bot.config.get("LocalExtra", "value") == "after_reload"
+        assert bot.config.get("MqttWeather", "json_template", raw=True) == template
+        logged = [call.args[0] % call.args[1:] for call in warning.call_args_list]
+        assert any("[MqttWeather] json_template" in line for line in logged)
+
     def test_invalid_typed_value_in_overlay_leaves_snapshot_untouched(self, tmp_path):
         db_path = tmp_path / "bot.db"
         main_config = tmp_path / "config.ini"
@@ -301,3 +327,88 @@ class TestReloadConfigMerge:
 
         assert observed
         assert observed <= {("old", "old", "old"), ("new", "new", "new")}
+
+
+class TestLocalTranslationPath:
+    """The local translation catalog follows [Bot] local_dir_path."""
+
+    def _bot_with_local_dir(self, tmp_path, local_dir_path: str | None):
+        db_path = tmp_path / "bot.db"
+        main_config = tmp_path / "config.ini"
+        text = _minimal_main_config(tmp_path, db_path)
+        if local_dir_path is not None:
+            text = text.replace("[Bot]\n", f"[Bot]\nlocal_dir_path = {local_dir_path}\n")
+        main_config.write_text(text, encoding="utf-8")
+        return MeshCoreBot(config_file=str(main_config))
+
+    def test_defaults_into_local_dir_path(self, tmp_path):
+        elsewhere = tmp_path / "somewhere-else"
+        elsewhere.mkdir()
+        bot = self._bot_with_local_dir(tmp_path, str(elsewhere))
+        assert bot.local_translation_path == str(elsewhere / "translations")
+
+    def test_defaults_to_local_when_unset(self, tmp_path):
+        bot = self._bot_with_local_dir(tmp_path, None)
+        # Absolute and anchored on the config's directory, not the process cwd.
+        assert bot.local_translation_path == str(tmp_path / "local" / "translations")
+
+    def test_explicit_setting_overrides_the_default(self, tmp_path):
+        custom = tmp_path / "my-catalogs"
+        custom.mkdir()
+        db_path = tmp_path / "bot.db"
+        main_config = tmp_path / "config.ini"
+        main_config.write_text(
+            _minimal_main_config(tmp_path, db_path)
+            + f"\n[Localization]\nlanguage = en\nlocal_translation_path = {custom.as_posix()}\n",
+            encoding="utf-8",
+        )
+        bot = MeshCoreBot(config_file=str(main_config))
+        assert bot.local_translation_path == str(custom)
+
+    def test_local_catalog_reaches_the_translator(self, tmp_path):
+        """End to end: a catalog under local_dir_path overrides a shipped string."""
+        import json
+
+        dist = tmp_path / "translations"
+        dist.mkdir()
+        (dist / "en.json").write_text(
+            json.dumps({"commands": {"ping": "shipped", "other": "keep"}}), encoding="utf-8"
+        )
+        local_translations = tmp_path / "local" / "translations"
+        local_translations.mkdir(parents=True)
+        (local_translations / "en.json").write_text(
+            json.dumps({"commands": {"ping": "from local"}}), encoding="utf-8"
+        )
+        db_path = tmp_path / "bot.db"
+        main_config = tmp_path / "config.ini"
+        main_config.write_text(
+            _minimal_main_config(tmp_path, db_path)
+            + f"\n[Localization]\nlanguage = en\ntranslation_path = {dist.as_posix()}\n",
+            encoding="utf-8",
+        )
+        bot = MeshCoreBot(config_file=str(main_config))
+        assert bot.translator.translate("commands.ping") == "from local"
+        assert bot.translator.translate("commands.other") == "keep"
+
+    def test_reload_picks_up_a_changed_local_translation_path(self, tmp_path):
+        """A reload must republish the local path, not keep the pre-reload one."""
+        db_path = tmp_path / "bot.db"
+        main_config = tmp_path / "config.ini"
+        main_config.write_text(
+            _minimal_main_config(tmp_path, db_path)
+            + "\n[Localization]\nlanguage = en\n",
+            encoding="utf-8",
+        )
+        bot = MeshCoreBot(config_file=str(main_config))
+        assert bot.local_translation_path == str(tmp_path / "local" / "translations")
+
+        moved = tmp_path / "moved-catalogs"
+        moved.mkdir()
+        main_config.write_text(
+            _minimal_main_config(tmp_path, db_path)
+            + f"\n[Localization]\nlanguage = en\nlocal_translation_path = {moved.as_posix()}\n",
+            encoding="utf-8",
+        )
+        success, _ = bot.reload_config()
+        assert success is True
+        assert bot.local_translation_path == str(moved)
