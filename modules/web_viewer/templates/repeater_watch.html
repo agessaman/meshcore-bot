@@ -81,6 +81,7 @@
         border-color: var(--border-color);
     }
     .rwt-picker-main { flex: 1 1 auto; min-width: 0; }
+    .rwt-picker .btn { flex: none; white-space: nowrap; }
     .rwt-picker-name { font-weight: 600; overflow-wrap: anywhere; }
 
     .rwt-preview {
@@ -96,6 +97,36 @@
     .rwt-template { font-family: var(--font-mono); font-size: .875rem; }
 
     .rwt-empty { color: var(--text-muted); text-align: center; padding: 1.5rem .5rem; }
+
+    /* Phones: each table row becomes a stacked block so the meter and actions
+       stay on screen instead of behind a sideways scroll. */
+    @media (max-width: 575.98px) {
+        .rwt-stack thead { display: none; }
+        .rwt-stack tbody tr {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: .25rem .75rem;
+            padding: .75rem 1rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .rwt-stack tbody td { display: block; padding: 0; border: 0; }
+        .rwt-stack tbody td.rwt-empty { grid-column: 1 / -1; padding: 1rem 0; }
+        .rwt-stack td[data-label]::before {
+            content: attr(data-label) " ";
+            font-size: .7rem;
+            font-weight: 600;
+            letter-spacing: .04em;
+            text-transform: uppercase;
+            color: var(--text-muted);
+        }
+        .rwt-stack .rwt-cell-wide { grid-column: 1 / -1; }
+        .rwt-stack .rwt-cell-end { grid-column: 2; grid-row: 1; justify-self: end; text-align: end; }
+        #rwt-watched td.rwt-cell-status { grid-column: 1; grid-row: 1; }
+        #rwt-watched td.rwt-cell-name { grid-column: 1 / -1; grid-row: 2; }
+        #rwt-watched td.rwt-cell-meter { grid-column: 1 / -1; }
+        #rwt-watched .rwt-meter { flex: 1 1 auto; width: auto; }
+        #rwt-events td.rwt-cell-detail { grid-column: 1 / -1; }
+    }
     .rwt-dirty { color: var(--text-warning); }
 </style>
 {% endblock %}
@@ -140,7 +171,7 @@
             <div class="card-header"><i class="fas fa-list" aria-hidden="true"></i> Watched repeaters</div>
             <div class="card-body p-0">
                 <div class="table-responsive">
-                    <table class="table table-hover align-middle mb-0">
+                    <table class="table table-hover align-middle mb-0 rwt-stack">
                         <thead class="table-dark">
                             <tr>
                                 <th scope="col">Status</th>
@@ -213,8 +244,8 @@
                                 <span class="input-group-text">min</span>
                             </div>
                         </div>
-                        <div class="col-lg-6 d-flex align-items-end">
-                            <div class="form-check mb-2">
+                        <div class="col-12">
+                            <div class="form-check">
                                 <input class="form-check-input" type="checkbox" id="rwt-recovery">
                                 <label class="form-check-label" for="rwt-recovery">
                                     Also report when an offline repeater is heard again
@@ -316,7 +347,7 @@
             <div class="card-header"><i class="fas fa-clock-rotate-left" aria-hidden="true"></i> Recent outages</div>
             <div class="card-body p-0">
                 <div class="table-responsive">
-                    <table class="table table-striped align-middle mb-0">
+                    <table class="table table-striped align-middle mb-0 rwt-stack">
                         <thead class="table-dark">
                             <tr>
                                 <th scope="col">When</th>
@@ -597,6 +628,11 @@
             const pending = new Set(this.watch.filter((k) => !byKey[k]));
             const labels = { up: 'Heard', quiet: 'Quiet', offline: 'Offline', unknown: 'Never heard' };
             const threshold = this.threshold();
+            // Worst first: what needs a visit leads, then the longest-quiet.
+            const rank = { offline: 0, quiet: 1, unknown: 2, up: 3 };
+            const statusOf = (key) => (pending.has(key) ? 'unknown' : this.rowStatus(byKey[key]));
+            keys.sort((a, b) => (rank[statusOf(a)] - rank[statusOf(b)])
+                || (((byKey[b] && byKey[b].quiet_for) || 0) - ((byKey[a] && byKey[a].quiet_for) || 0)));
 
             if (!keys.length) {
                 el('rwt-watched').innerHTML = '<tr><td colspan="6" class="rwt-empty">'
@@ -613,32 +649,32 @@
                     const meterClass = quiet == null ? 'rwt-meter--none'
                         : (status === 'offline' ? 'rwt-meter--offline' : (status === 'quiet' ? 'rwt-meter--quiet' : ''));
                     const viaStar = row && !row.configured && !this.watch.includes(key);
-                    const place = (row && row.city) || cand.place || '';
+                    const place = cand.place || (row && row.city) || '';
                     const action = viaStar
                         ? '<span class="small text-muted">Starred</span>'
                         : '<button type="button" class="btn btn-sm btn-outline-secondary" data-unwatch="'
                           + escapeHtml(key) + '" aria-label="Stop watching ' + escapeHtml(name) + '">Remove</button>';
                     return '<tr>'
-                        + '<td class="text-nowrap"><span class="d-inline-flex align-items-center gap-2">'
+                        + '<td class="text-nowrap rwt-cell-status"><span class="d-inline-flex align-items-center gap-2">'
                         +   '<span class="rwt-lamp ' + (status === 'unknown' ? '' : 'rwt-lamp--' + status) + '"></span>'
                         +   '<span class="rwt-status-text--' + status + '">' + escapeHtml(statusLabel) + '</span></span>'
                         +   (row && row.status === 'offline' && row.status_since
                                 ? '<div class="small text-muted rwt-num">since ' + escapeHtml(clock(row.status_since)) + '</div>' : '')
                         + '</td>'
-                        + '<td><div class="fw-semibold">' + escapeHtml(name) + '</div>'
+                        + '<td class="rwt-cell-name"><div class="fw-semibold">' + escapeHtml(name) + '</div>'
                         +   '<div class="rwt-key">' + escapeHtml(prefixOf(key, bytes)) + ' · ' + escapeHtml(key.slice(0, 12)) + '…'
                         +   (place ? ' · ' + escapeHtml(place) : '') + '</div></td>'
-                        + '<td class="rwt-num" title="' + escapeHtml(clock(row && row.last_advert)) + '">'
+                        + '<td class="rwt-num" data-label="Advert" title="' + escapeHtml(clock(row && row.last_advert)) + '">'
                         +   escapeHtml(row ? ago(row.last_advert, now) : '—') + '</td>'
-                        + '<td class="rwt-num" title="' + escapeHtml(clock(row && row.last_relay)) + '">'
+                        + '<td class="rwt-num" data-label="Relayed" title="' + escapeHtml(clock(row && row.last_relay)) + '">'
                         +   escapeHtml(row ? ago(row.last_relay, now) : '—') + '</td>'
-                        + '<td><div class="d-flex align-items-center gap-2">'
+                        + '<td class="rwt-cell-meter"><div class="d-flex align-items-center gap-2">'
                         +   '<div class="rwt-meter ' + meterClass + '" role="img" aria-label="'
                         +     escapeHtml(quiet == null ? 'No reading' : duration(quiet) + ' of ' + duration(threshold)) + '">'
                         +     '<span style="width:' + pct.toFixed(0) + '%"></span></div>'
                         +   '<span class="rwt-num small">' + escapeHtml(quiet == null ? '—' : duration(quiet)) + '</span>'
                         + '</div></td>'
-                        + '<td class="text-end">' + action + '</td>'
+                        + '<td class="text-end rwt-cell-end">' + action + '</td>'
                         + '</tr>';
                 }).join('');
             }
@@ -670,7 +706,7 @@
                     +     (c.place ? ' · ' + escapeHtml(c.place) : '') + ' · heard ' + escapeHtml(ago(c.last_heard, now)) + '</div>'
                     + '</div>'
                     + '<button type="button" class="btn btn-sm ' + (on ? 'btn-secondary' : 'btn-outline-primary') + '" data-key="'
-                    +   escapeHtml(c.public_key) + '" aria-pressed="' + on + '">' + (on ? 'Watching' : 'Watch') + '</button>'
+                    +   escapeHtml(c.public_key) + '" aria-pressed="' + on + '">' + (on ? '<i class="fas fa-check" aria-hidden="true"></i> Watching' : 'Watch') + '</button>'
                     + '</div>';
             }).join('') : '<div class="rwt-empty">' + (all.length ? 'No repeater matches.' : 'The bot has not heard any repeaters yet.') + '</div>';
             el('rwt-picker-note').textContent = matches.length > shown.length
@@ -718,9 +754,9 @@
                     : 'Offline ' + duration(e.down_for);
                 return '<tr>'
                     + '<td class="rwt-num small">' + escapeHtml(clock(e.at)) + '</td>'
-                    + '<td>' + escapeHtml(e.name) + '</td>'
-                    + '<td>' + (badge[e.event] || escapeHtml(e.event)) + '</td>'
-                    + '<td class="small">' + escapeHtml(detail) + '</td>'
+                    + '<td class="rwt-cell-wide fw-semibold">' + escapeHtml(e.name) + '</td>'
+                    + '<td class="rwt-cell-end">' + (badge[e.event] || escapeHtml(e.event)) + '</td>'
+                    + '<td class="small rwt-cell-detail">' + escapeHtml(detail) + '</td>'
                     + '</tr>';
             }).join('') : '<tr><td colspan="4" class="rwt-empty">No outages recorded yet.</td></tr>';
         }
