@@ -269,3 +269,11 @@ def test_mqtt_weather_display_no_cache() -> None:
     text2, err2 = mqtt_weather_display_for_topic("missing", None, fmt)
     assert text2 is None
     assert err2 == "no_cache"
+
+
+def test_celsius_just_below_freezing_is_not_negative_zero() -> None:
+    fmt = _default_json_template_fmt()
+    raw = json.dumps({"time": "12:00", "temperature_F": 31.95, "humidity": 70}).encode()
+    text, err = format_mqtt_weather_payload(raw, fmt)
+    assert err is None
+    assert text == "12:00 | 31.95°F (0.0°C) | RH 70.0%"

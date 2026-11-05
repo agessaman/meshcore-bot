@@ -370,7 +370,8 @@ def format_mqtt_weather_payload(
     if temp_f is not None:
         # Rounded to one decimal (the usual precision of the °F reading) so the bare
         # {temperature_c} placeholder renders e.g. 16.3 rather than 16.27777777777778.
-        temp_c = round((temp_f - 32.0) * 5.0 / 9.0, 1)
+        # Adding 0.0 turns -0.0 (31.95°F) into 0.0 so it doesn't print as "-0.0".
+        temp_c = round((temp_f - 32.0) * 5.0 / 9.0, 1) + 0.0
 
     uptime_i = _coerce_nonnegative_int(data.get("uptime_s"))
 
