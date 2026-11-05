@@ -405,6 +405,7 @@ class ConfigManager {
             recipients:     document.getElementById('recipients'),
         };
         this.nightlyToggle   = document.getElementById('nightly-enabled-toggle');
+        this.allowLocalSmtp  = document.getElementById('allow-local-smtp');
         this.saveBtn         = document.getElementById('save-notifications-btn');
         this.testBtn         = document.getElementById('test-email-btn');
         this.saveStatus      = document.getElementById('save-status');
@@ -438,6 +439,7 @@ class ConfigManager {
             if (data.recipients)    this.fields.recipients.value    = data.recipients;
 
             this.nightlyToggle.checked = data.nightly_enabled === 'true';
+            this.allowLocalSmtp.checked = data.allow_local_smtp === 'true';
         } catch (err) {
             this.showStatus('Failed to load settings: ' + err.message, 'danger');
         }
@@ -477,6 +479,7 @@ class ConfigManager {
     buildPayload() {
         const payload = {
             nightly_enabled: this.nightlyToggle.checked ? 'true' : 'false',
+            allow_local_smtp: this.allowLocalSmtp.checked ? 'true' : 'false',
         };
         for (const [key, el] of Object.entries(this.fields)) {
             // Only send password if the user actually typed something

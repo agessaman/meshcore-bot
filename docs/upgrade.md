@@ -136,7 +136,7 @@ v0.9 is a large release focused on operational reliability, observability, and d
 ### Security review
 
 - Outbound HTTP uses SSRF hardening; review integrations that fetch URLs.
-- SMTP: use **`allow_local_smtp`** only if you intentionally relay to local mail servers.
+- SMTP: private and local SMTP hosts are blocked unless you tick **Allow a local or private-network SMTP server** (`allow_local_smtp`) in the web viewer's Email & Notifications settings. It is stored in the bot database, not `config.ini`; turn it on only if you intentionally relay to a local mail server.
 - User-supplied strings in logs are sanitized to reduce log-injection risk.
 
 ### New commands and behavior
