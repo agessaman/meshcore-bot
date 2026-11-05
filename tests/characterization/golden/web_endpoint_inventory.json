@@ -1039,10 +1039,10 @@
  },
  "/api/multibyte-rollout": {
   "GET locked anon": {
-   "content_type": "application/json",
+   "content_type": "text/html",
    "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
-   "status": 401,
+   "status": 404,
    "x_content_type_options": "nosniff",
    "x_frame_options": "SAMEORIGIN"
   },
@@ -1750,8 +1750,8 @@
   "GET locked anon": {
    "content_type": "text/html",
    "csp_script_src": "script-src 'self' 'nonce-X'",
-   "location": "/login?next=/multibyte-rollout",
-   "status": 302,
+   "location": "",
+   "status": 404,
    "x_content_type_options": "nosniff",
    "x_frame_options": "SAMEORIGIN"
   },

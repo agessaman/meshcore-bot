@@ -1282,6 +1282,17 @@ class TestRoleBasedAccess:
         assert auth_client.get("/realtime").status_code == 200
         assert 'href="/realtime"' in auth_client.get("/").get_data(as_text=True)
 
+    def test_multibyte_page_and_data_are_public(self, auth_viewer, auth_client):
+        """Multibyte rollout is mesh-visible data, so anonymous visitors get the page, its data and the nav link."""
+        auth_viewer.multibyte_monitor_enabled = True
+        assert auth_client.get("/multibyte-rollout").status_code == 200
+        resp = auth_client.get("/api/multibyte-rollout")
+        assert resp.status_code == 200
+        blob = str(resp.get_json()).lower()
+        for needle in ("smtp_password", "channel_key", "key_hex", "private_key", "web_viewer_password"):
+            assert needle not in blob
+        assert 'href="/multibyte-rollout"' in auth_client.get("/").get_data(as_text=True)
+
     def test_admin_pages_require_auth(self, auth_client):
         admin_pages = ["/logs", "/config", "/plugins", "/radio", "/greeter", "/feeds", "/schedule"]
         for page in admin_pages:

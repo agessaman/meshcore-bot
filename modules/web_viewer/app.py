@@ -865,7 +865,7 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
         # Issue #240 public HTML surface. Realtime is admin-only: its live socket
         # is, so an anonymous visit would only ever show an empty page.
         _PUBLIC_PAGE_PATHS = frozenset([
-            '/', '/contacts', '/mesh',
+            '/', '/contacts', '/mesh', '/multibyte-rollout',
         ])
 
         # Anonymous-safe GET APIs: mesh-visible / aggregate data only. No channel
@@ -883,6 +883,9 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
             '/api/mesh/nodes',
             '/api/mesh/edges',
             '/api/mesh/stats',
+            # Multibyte rollout: per-node hash sizes and traffic counts from
+            # adverts and paths, all mesh-visible.
+            '/api/multibyte-rollout',
         ])
 
         # Read-only POST helpers used by public Contacts / Mesh info panels.
