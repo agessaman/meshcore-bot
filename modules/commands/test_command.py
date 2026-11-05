@@ -11,6 +11,11 @@ from typing import Any, Optional
 
 from ..location import latest_contact_position_rows
 from ..models import MeshMessage
+from ..path_inference import (
+    PathInferenceConfig,
+    gather_hop_candidates,
+    infer_path_nodes,
+)
 from ..response_template import format_piped_template
 from ..template_reference import MESSAGE_PLACEHOLDERS, template_spec
 from ..utils import (
@@ -87,6 +92,16 @@ class TestCommand(BaseCommand):
         recency_weight = bot.config.getfloat('Path_Command', 'recency_weight', fallback=0.2)
         self.recency_weight = max(0.0, min(1.0, recency_weight))  # Clamp to 0.0-1.0
         self.proximity_weight = 1.0 - self.recency_weight
+
+        # 'joint' resolves the whole path at once (modules.path_inference); 'greedy'
+        # keeps the per-hop lookups below. See [Path_Command] path_inference_mode.
+        mode = bot.config.get('Path_Command', 'path_inference_mode', fallback='greedy')
+        self.path_inference_mode = mode.strip().lower() if mode else 'greedy'
+        if self.path_inference_mode not in ('greedy', 'joint'):
+            self.path_inference_mode = 'greedy'
+        # {path_distance} and {firstlast_distance} both resolve the same path, so
+        # one reply resolves it once. Reset per message in execute().
+        self._hop_locations_cache: Optional[tuple[tuple[str, ...], list[Optional[tuple[float, float]]]]] = None
 
         try:
             # Try to get location from Bot section
@@ -620,6 +635,80 @@ class TestCommand(BaseCommand):
             return f"{distance_km * self.KM_TO_MILES:.1f}mi"
         return f"{distance_km:.1f}km"
 
+    def _inference_config(self) -> PathInferenceConfig:
+        """Tuning for the joint inference, with this command's live bot location.
+
+        The bot coordinates come from ``self`` rather than the config snapshot so
+        tests that set them after construction are honored, as PathCommand does.
+        """
+        cfg = PathInferenceConfig.from_config(self.bot.config)
+        cfg.geographic_guessing_enabled = self.geographic_guessing_enabled
+        cfg.bot_latitude = self.bot_latitude
+        cfg.bot_longitude = self.bot_longitude
+        return cfg
+
+    def _joint_hop_locations(self, node_ids: list[str]) -> list[Optional[tuple[float, float]]]:
+        """Resolve every hop at once and return its coordinates, by hop index.
+
+        A hop the inference marks unlisted contributes None, the same as a hop
+        with no stored coordinates: it is skipped rather than bridged, so one bad
+        prefix match cannot inflate the total.
+        """
+        cfg = self._inference_config()
+        db_manager = getattr(self.bot, 'db_manager', None)
+        if db_manager is None:
+            return [None] * len(node_ids)
+
+        candidates = [
+            gather_hop_candidates(node_id, cfg, db_manager=db_manager)
+            for node_id in node_ids
+        ]
+        observer = None
+        if self.bot_latitude is not None and self.bot_longitude is not None:
+            observer = (self.bot_latitude, self.bot_longitude)
+
+        hops = infer_path_nodes(
+            node_ids, candidates, cfg,
+            mesh_graph=getattr(self.bot, 'mesh_graph', None),
+            logger=self.logger,
+            sender_location=self._get_sender_location(),
+            observer_location=observer,
+        )
+        locations: list[Optional[tuple[float, float]]] = []
+        for hop in hops:
+            if hop.repeater is None:
+                locations.append(None)
+                continue
+            lat = hop.repeater.get('latitude')
+            lon = hop.repeater.get('longitude')
+            if lat is None or lon is None:
+                locations.append(None)
+            else:
+                locations.append((float(lat), float(lon)))
+        return locations
+
+    def _resolve_hop_locations(self, node_ids: list[str]) -> list[Optional[tuple[float, float]]]:
+        """Coordinates for each hop, by hop index, in the configured mode."""
+        cache_key = tuple(node_ids)
+        if self._hop_locations_cache is not None and self._hop_locations_cache[0] == cache_key:
+            return self._hop_locations_cache[1]
+
+        resolved: list[Optional[tuple[float, float]]] = []
+        if self.path_inference_mode == 'joint':
+            try:
+                resolved = self._joint_hop_locations(node_ids)
+            except Exception as e:
+                self.logger.debug(f"Joint path inference failed, falling back to per-hop: {e}")
+                resolved = []
+        if not resolved:
+            resolved = [
+                self._lookup_repeater_location(node_id, path_context=node_ids)
+                for node_id in node_ids
+            ]
+
+        self._hop_locations_cache = (cache_key, resolved)
+        return resolved
+
     def _calculate_path_distance(self, message: MeshMessage) -> str:
         """Calculate total distance along path (sum of distances between consecutive repeaters with locations).
 
@@ -644,16 +733,14 @@ class TestCommand(BaseCommand):
 
         total_distance = 0.0
         valid_segments = 0
-        skipped_nodes = 0
 
-        # Get locations for all nodes using path context for proximity selection
-        locations = []
-        for i, node_id in enumerate(node_ids):
-            location = self._lookup_repeater_location(node_id, path_context=node_ids)
-            if location:
-                locations.append((node_id, location))
-            else:
-                skipped_nodes += 1
+        resolved = self._resolve_hop_locations(node_ids)
+        locations = [
+            (node_id, location)
+            for node_id, location in zip(node_ids, resolved, strict=False)
+            if location
+        ]
+        skipped_nodes = len(node_ids) - len(locations)
 
         # Calculate distances between consecutive nodes with locations
         # This skips nodes without locations but continues the path
@@ -701,13 +788,11 @@ class TestCommand(BaseCommand):
                 return "N/A"  # Direct connection, no path to calculate
             return ""  # Path exists but insufficient nodes
 
-        # Get first and last node IDs
-        first_node_id = node_ids[0]
-        last_node_id = node_ids[-1]
-
-        # Use path context for better selection when multiple repeaters share prefix
-        first_location = self._lookup_repeater_location(first_node_id, path_context=node_ids)
-        last_location = self._lookup_repeater_location(last_node_id, path_context=node_ids)
+        # Resolve the whole path so the endpoints are judged in its context: with
+        # colliding prefixes the first and last hop cannot be chosen in isolation.
+        resolved = self._resolve_hop_locations(node_ids)
+        first_location = resolved[0]
+        last_location = resolved[-1]
 
         # Both locations must be available
         if not first_location or not last_location:
@@ -780,4 +865,5 @@ class TestCommand(BaseCommand):
 
         # Store the current message for use in location lookups
         self._current_message = message
+        self._hop_locations_cache = None
         return await self.handle_keyword_match(message)
