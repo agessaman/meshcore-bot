@@ -236,6 +236,14 @@ class MeshCoreBot(ServiceSupervisorMixin, RadioLinkMixin, RadioOfflineBreaker, D
             self.logger.warning(f"Failed to initialize region warning monitor: {e}")
             self.region_warning_monitor = None
 
+        # Offline reporting for watched repeaters ([Repeater_Watch], #353).
+        try:
+            from .repeater_watch import RepeaterWatchMonitor
+            self.repeater_watch = RepeaterWatchMonitor(self)
+        except Exception as e:
+            self.logger.warning(f"Failed to initialize repeater watch: {e}")
+            self.repeater_watch = None
+
         # Initialize transmission tracker for monitoring TX success
         try:
             self.transmission_tracker = TransmissionTracker(self)
@@ -1023,6 +1031,13 @@ class MeshCoreBot(ServiceSupervisorMixin, RadioLinkMixin, RadioOfflineBreaker, D
                         self._last_radio_probe = time.time()
                         asyncio.create_task(self._probe_radio_health())
 
+                # Watched-repeater offline check; it decides itself whether one is due.
+                if getattr(self, 'repeater_watch', None) and not self._shutdown_event.is_set():
+                    try:
+                        self.repeater_watch.tick(time.time())
+                    except Exception as e:
+                        self.logger.debug(f"Repeater watch tick failed: {e}")
+
                 # Periodically update system health in database (every 30 seconds)
                 if time.time() - self._last_health_update >= 30:
                     try:
@@ -1087,6 +1102,12 @@ class MeshCoreBot(ServiceSupervisorMixin, RadioLinkMixin, RadioOfflineBreaker, D
                     self.mesh_graph.shutdown()
                 except Exception as e:
                     self.logger.warning(f"Error shutting down mesh graph: {e}")
+
+            if getattr(self, 'repeater_watch', None):
+                try:
+                    await self.repeater_watch.stop()
+                except Exception as e:
+                    self.logger.warning(f"Error stopping repeater watch: {e}")
 
             # Stop feed manager
             if self.feed_manager:
