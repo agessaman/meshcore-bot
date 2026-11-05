@@ -1130,7 +1130,7 @@ schedule
 
 **Response:** Lists configured scheduled posts (each line shows the cron or preset schedule, or legacy `HH:MM` if you still use deprecated HHMM keys) plus current advert timing.
 
-**Note:** DM-only command by default. Cron day-of-week uses APScheduler numbering (0=Monday), not Vixie cron — see [Scheduled messages](configuration.md#scheduled-messages-scheduled_messages).
+**Note:** DM-only command by default. Cron day-of-week uses APScheduler numbering (0=Monday), not Vixie cron — see [Scheduled messages](scheduled-messages.md).
 
 ---
 
