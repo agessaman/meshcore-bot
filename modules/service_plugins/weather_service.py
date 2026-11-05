@@ -1276,11 +1276,15 @@ class WeatherService(BaseServicePlugin):
         delay = BLITZ_RECONNECT_MIN_SECONDS
         while self._running:
             connected_at: Optional[float] = None
+            client = None
+            connect_future: Optional[asyncio.Future] = None
             try:
                 # The random suffix keeps two bots started in the same second
                 # from sharing an ID, which makes the broker drop the older one.
                 client_id = f"meshcore_weather_{int(time.time())}_{secrets.token_hex(3)}"
-                client = mqtt.Client(client_id=client_id)
+                # This loop owns retries and their backoff; paho's own reconnects
+                # would otherwise keep retrying on its network thread.
+                client = mqtt.Client(client_id=client_id, reconnect_on_failure=False)
                 self.mqtt_client = client
                 disconnect_rc: list[Any] = []
                 loop = asyncio.get_running_loop()
@@ -1312,19 +1316,22 @@ class WeatherService(BaseServicePlugin):
                 client.on_message = on_message
                 client.on_disconnect = lambda _client, _userdata, rc: disconnect_rc.append(rc)
 
-                # Connect and subscribe (non-blocking to avoid blocking event loop)
+                def on_connect(client, userdata, flags, rc):
+                    # Subscribe once the broker has accepted the session.
+                    if rc == 0:
+                        client.subscribe(topic)
+
+                client.on_connect = on_connect
+
+                # Connect off the event loop; DNS and the TCP handshake block.
+                connect_future = loop.run_in_executor(None, client.connect, broker_host, broker_port, 60)
                 try:
-                    await loop.run_in_executor(None, client.connect, broker_host, broker_port, 60)
+                    # Shielded so a cancel leaves connect_future pending until the
+                    # worker thread really returns (see the finally block).
+                    await asyncio.shield(connect_future)
                 except Exception as connect_error:
                     self.logger.debug(f"Initial connect() call failed (non-blocking): {connect_error}")
                     raise  # Re-raise to trigger retry logic
-
-                # Subscribe is non-blocking, but wrap it anyway for consistency
-                try:
-                    client.subscribe(topic)
-                except Exception as subscribe_error:
-                    self.logger.debug(f"Subscribe() call failed: {subscribe_error}")
-                    raise
 
                 client.loop_start()
 
@@ -1339,9 +1346,6 @@ class WeatherService(BaseServicePlugin):
                     self.logger.info(f"Connected to Blitzortung MQTT, subscribed to {topic}")
                     while self._running and client.is_connected():
                         await asyncio.sleep(1)
-
-                client.loop_stop()
-                client.disconnect()
 
                 if not self._running:
                     break
@@ -1363,12 +1367,30 @@ class WeatherService(BaseServicePlugin):
                 if not self._running:
                     break
                 self.logger.info(f"Reconnecting to Blitzortung MQTT in {delay:.0f}s")
+            finally:
+                if client is not None:
+                    if connect_future is not None and not connect_future.done():
+                        # Cancelled mid-connect: the executor can't be interrupted,
+                        # so close the client once its connect() returns.
+                        connect_future.add_done_callback(
+                            lambda _f, c=client: self._close_blitz_client(c)
+                        )
+                    else:
+                        self._close_blitz_client(client)
 
             try:
                 await asyncio.sleep(delay)
             except asyncio.CancelledError:
                 break
             delay = min(delay * 2, BLITZ_RECONNECT_MAX_SECONDS)
+
+    def _close_blitz_client(self, client: Any) -> None:
+        """Stop a Blitzortung client's network thread and close its socket."""
+        try:
+            client.loop_stop()
+            client.disconnect()
+        except Exception as e:
+            self.logger.debug(f"Error closing Blitzortung MQTT client: {e}")
 
     async def _handle_lightning_strike(self, blitz_data: dict[str, Any]) -> None:
         """Handle a single lightning strike from MQTT.
@@ -1456,9 +1478,13 @@ class WeatherService(BaseServicePlugin):
         if not self.blitz_buffer:
             return
 
+        # Take the batch now: strikes keep arriving while alerts are geocoded and
+        # sent below, and they belong to the next pass rather than being cleared.
+        buffer, self.blitz_buffer = self.blitz_buffer, []
+
         # Count strikes by bucket key
         counter: dict[str, int] = {}
-        for blitz in self.blitz_buffer:
+        for blitz in buffer:
             key = blitz['key']
             counter[key] = counter.get(key, 0) + 1
 
@@ -1467,7 +1493,7 @@ class WeatherService(BaseServicePlugin):
             # Only alert if 10+ strikes in bucket and we haven't seen this bucket before
             if count >= 10 and key not in self.seen_blitz_keys:
                 # Find a representative strike from this bucket
-                bucket_strikes = [b for b in self.blitz_buffer if b['key'] == key]
+                bucket_strikes = [b for b in buffer if b['key'] == key]
                 if not bucket_strikes:
                     continue
 
@@ -1499,9 +1525,6 @@ class WeatherService(BaseServicePlugin):
 
                 # Small delay between alerts
                 await asyncio.sleep(2)
-
-        # Clear buffer
-        self.blitz_buffer = []
 
         # Clean up old seen keys (keep last 1000)
         if len(self.seen_blitz_keys) > 1000:

@@ -29,21 +29,27 @@ class FakeClient:
     instances: list["FakeClient"] = []
     session_checks = 2
 
-    def __init__(self, client_id):
+    def __init__(self, client_id, reconnect_on_failure=True):
         self.client_id = client_id
+        self.reconnect_on_failure = reconnect_on_failure
         self.on_message = None
         self.on_disconnect = None
+        self.on_connect = None
+        self.subscriptions = []
         self._checks_left = 0
+        self.closed = False
         FakeClient.instances.append(self)
 
     def connect(self, host, port, keepalive):
         pass
 
     def subscribe(self, topic):
-        pass
+        self.subscriptions.append(topic)
 
     def loop_start(self):
         self._checks_left = FakeClient.session_checks
+        if self._checks_left and self.on_connect:
+            self.on_connect(self, None, {}, 0)
 
     def is_connected(self):
         if self._checks_left > 0:
@@ -55,7 +61,7 @@ class FakeClient:
         pass
 
     def disconnect(self):
-        pass
+        self.closed = True
 
 
 @pytest.fixture
@@ -137,6 +143,41 @@ class TestReconnectBackoff:
         assert len(set(ids)) == 5
 
 
+    async def test_paho_does_not_reconnect_on_its_own(self, monkeypatch, service):
+        record_backoff(monkeypatch, service, attempts=2)
+        await asyncio.wait_for(service._connect_blitzortung_mqtt(), 5)
+        assert [c.reconnect_on_failure for c in FakeClient.instances] == [False, False]
+        assert [c.subscriptions for c in FakeClient.instances] == [["blitzortung/1.1/#"]] * 2
+        assert all(c.closed for c in FakeClient.instances)
+
+
+class TestShutdown:
+    async def test_cancel_mid_connect_closes_the_client_once_connect_returns(self, monkeypatch, service):
+        release = threading.Event()
+        entered = threading.Event()
+
+        def slow_connect(self, host, port, keepalive):
+            entered.set()
+            release.wait(5)
+
+        monkeypatch.setattr(FakeClient, "connect", slow_connect)
+        task = asyncio.create_task(service._connect_blitzortung_mqtt())
+        while not entered.is_set():
+            await asyncio.sleep(0.01)
+
+        task.cancel()
+        await asyncio.wait_for(task, 2)  # the loop ends on cancel rather than re-raising
+        client = FakeClient.instances[0]
+        assert not client.closed  # connect() is still running on the worker thread
+
+        release.set()
+        for _ in range(200):
+            if client.closed:
+                break
+            await asyncio.sleep(0.01)
+        assert client.closed
+
+
 class TestStrikeHandoff:
     async def test_strike_from_network_thread_reaches_the_handler(self, monkeypatch, service):
         handled = asyncio.Event()
@@ -163,3 +204,27 @@ class TestStrikeHandoff:
         assert received == [strike]
         service._running = False
         await asyncio.wait_for(task, 5)
+
+
+class TestLightningBuffer:
+    async def test_strikes_arriving_during_an_alert_are_kept(self, monkeypatch, service):
+        service.alerts_channel = "#wx"
+        service.seen_blitz_keys = set()
+        service._geocode_location = AsyncMock(return_value=None)
+        strike = {"key": "a", "heading": 90, "distance": 12.0, "lat": 47.6, "lon": -122.3}
+        late = {"key": "b", "heading": 0, "distance": 30.0, "lat": 47.9, "lon": -122.3}
+        service.blitz_buffer = [dict(strike) for _ in range(10)]
+
+        async def send(*args, **kwargs):
+            service.blitz_buffer.append(dict(late))  # arrives mid-alert
+
+        service.bot.command_manager.send_channel_message = AsyncMock(side_effect=send)
+        real_sleep = asyncio.sleep
+
+        async def no_wait(_seconds):
+            await real_sleep(0)
+
+        monkeypatch.setattr(ws.asyncio, "sleep", no_wait)
+        await service._process_lightning_buffer()
+        assert service.bot.command_manager.send_channel_message.await_count == 1
+        assert service.blitz_buffer == [late]
