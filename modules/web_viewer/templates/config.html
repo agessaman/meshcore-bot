@@ -439,7 +439,7 @@ class ConfigManager {
             if (data.recipients)    this.fields.recipients.value    = data.recipients;
 
             this.nightlyToggle.checked = data.nightly_enabled === 'true';
-            this.allowLocalSmtp.checked = data.allow_local_smtp === 'true';
+            this.allowLocalSmtp.checked = String(data.allow_local_smtp || '').toLowerCase() === 'true';
         } catch (err) {
             this.showStatus('Failed to load settings: ' + err.message, 'danger');
         }
