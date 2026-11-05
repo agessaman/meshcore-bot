@@ -8,7 +8,7 @@ import asyncio
 import re
 import sqlite3
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone  # noqa: F401  timedelta importable from this module on dev
 from typing import Any, Optional
 
 from ..models import MeshMessage
