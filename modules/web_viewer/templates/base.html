@@ -346,6 +346,13 @@
             color: var(--text-color);
         }
 
+        /* Unit and icon addons beside a field (hours, min, search) */
+        [data-theme="dark"] .input-group-text {
+            background-color: var(--bg-secondary);
+            border-color: var(--border-color);
+            color: var(--text-muted);
+        }
+
         [data-theme="dark"] .form-control:disabled,
         [data-theme="dark"] .form-control[readonly],
         [data-theme="dark"] .form-select:disabled {
@@ -842,7 +849,7 @@
 
                     {#- Configuration pages live behind one gear so the bar stays about
                         what the mesh is doing, not how the bot is set up. -#}
-                    {% set settings_paths = ['/radio', '/schedule', '/greeter', '/feeds', '/region-warnings', '/plugins', '/config'] %}
+                    {% set settings_paths = ['/radio', '/schedule', '/greeter', '/feeds', '/region-warnings', '/repeater-watch', '/plugins', '/config'] %}
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle {{ 'active' if request.path in settings_paths }}"
                            href="#" id="settingsDropdown" role="button"
@@ -877,6 +884,11 @@
                             <li>
                                 <a class="dropdown-item {{ 'active' if request.path == '/region-warnings' }}" href="/region-warnings">
                                     <i class="fas fa-globe fa-fw me-2"></i>Region Warnings
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item {{ 'active' if request.path == '/repeater-watch' }}" href="/repeater-watch">
+                                    <i class="fas fa-heart-pulse fa-fw me-2"></i>Repeater Watch
                                 </a>
                             </li>
                             <li>

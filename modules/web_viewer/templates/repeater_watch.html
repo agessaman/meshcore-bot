@@ -1,0 +1,796 @@
+{% extends "base.html" %}
+
+{% block title %}Repeater Watch - MeshCore Bot Data Viewer{% endblock %}
+
+{% block extra_css %}
+<style>
+    .rwt-strip {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: .5rem 1.5rem;
+        min-height: 56px;
+        padding: .5rem 1rem;
+        border: 1px solid var(--border-color);
+        border-radius: 10px;
+        background-color: var(--card-bg);
+        box-shadow: 0 1px 3px var(--shadow-color);
+    }
+    .rwt-strip-item { display: flex; align-items: center; gap: .5rem; }
+    .rwt-strip-label {
+        font-size: .7rem;
+        font-weight: 600;
+        letter-spacing: .04em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+    }
+    .rwt-strip-value { font-weight: 600; font-variant-numeric: tabular-nums; }
+    .rwt-strip-spacer { flex: 1 1 auto; }
+
+    .rwt-lamp {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        display: inline-block;
+        flex: none;
+        background-color: var(--bg-tertiary);
+        border: 1px solid var(--border-color);
+    }
+    .rwt-lamp--up { background-color: #198754; border-color: #198754; }
+    .rwt-lamp--quiet { background-color: #ffc107; border-color: #ffc107; }
+    .rwt-lamp--offline { background-color: #dc3545; border-color: #dc3545; }
+
+    .rwt-status-text--up { color: var(--text-success); }
+    .rwt-status-text--quiet { color: var(--text-warning); }
+    .rwt-status-text--offline { color: var(--text-danger); }
+    .rwt-status-text--unknown { color: var(--text-muted); }
+
+    .rwt-key { font-family: var(--font-mono); font-size: .8rem; color: var(--text-muted); }
+    .rwt-num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+    /* Quiet time against the offline threshold, on a fixed 0-to-threshold
+       scale so a half-full bar means the same thing on every row. */
+    .rwt-meter {
+        position: relative;
+        width: 7rem;
+        height: 10px;
+        border-radius: 5px;
+        background-color: var(--bg-tertiary);
+        overflow: hidden;
+    }
+    .rwt-meter > span {
+        display: block;
+        height: 100%;
+        border-radius: 5px;
+        background-color: var(--text-muted);
+    }
+    .rwt-meter--quiet > span { background-color: #ffc107; }
+    .rwt-meter--offline > span { background-color: #dc3545; }
+    .rwt-meter--none {
+        background-image: repeating-linear-gradient(
+            45deg, transparent 0 3px, var(--border-color) 3px 5px);
+    }
+
+    .rwt-picker { max-height: 22rem; overflow-y: auto; }
+    .rwt-picker .list-group-item {
+        display: flex;
+        align-items: center;
+        gap: .75rem;
+        background-color: var(--card-bg);
+        color: var(--text-color);
+        border-color: var(--border-color);
+    }
+    .rwt-picker-main { flex: 1 1 auto; min-width: 0; }
+    .rwt-picker .btn { flex: none; white-space: nowrap; }
+    .rwt-picker-name { font-weight: 600; overflow-wrap: anywhere; }
+
+    .rwt-preview {
+        background-color: var(--log-entry-bg);
+        border: 1px solid var(--border-color);
+        border-radius: .375rem;
+        padding: .5rem .75rem;
+        font-family: var(--font-mono);
+        font-size: .875rem;
+        white-space: pre-wrap;
+        word-break: break-word;
+    }
+    .rwt-template { font-family: var(--font-mono); font-size: .875rem; }
+
+    .rwt-empty { color: var(--text-muted); text-align: center; padding: 1.5rem .5rem; }
+
+    /* Phones: each table row becomes a stacked block so the meter and actions
+       stay on screen instead of behind a sideways scroll. */
+    @media (max-width: 575.98px) {
+        .rwt-stack thead { display: none; }
+        .rwt-stack tbody tr {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: .25rem .75rem;
+            padding: .75rem 1rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .rwt-stack tbody td { display: block; padding: 0; border: 0; }
+        .rwt-stack tbody td.rwt-empty { grid-column: 1 / -1; padding: 1rem 0; }
+        .rwt-stack td[data-label]::before {
+            content: attr(data-label) " ";
+            font-size: .7rem;
+            font-weight: 600;
+            letter-spacing: .04em;
+            text-transform: uppercase;
+            color: var(--text-muted);
+        }
+        .rwt-stack .rwt-cell-wide { grid-column: 1 / -1; }
+        .rwt-stack .rwt-cell-end { grid-column: 2; grid-row: 1; justify-self: end; text-align: end; }
+        #rwt-watched td.rwt-cell-status { grid-column: 1; grid-row: 1; }
+        #rwt-watched td.rwt-cell-name { grid-column: 1 / -1; grid-row: 2; }
+        #rwt-watched td.rwt-cell-meter { grid-column: 1 / -1; }
+        #rwt-watched .rwt-meter { flex: 1 1 auto; width: auto; }
+        #rwt-events td.rwt-cell-detail { grid-column: 1 / -1; }
+    }
+    .rwt-dirty { color: var(--text-warning); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-1"><i class="fas fa-heart-pulse"></i> Repeater Watch</h1>
+        <p class="text-muted mb-4">
+            Pick the repeaters you look after. When one stops advertising and stops relaying
+            traffic for long enough, the bot tells you once, and again when it comes back.
+        </p>
+    </div>
+</div>
+
+<div class="rwt-strip mb-4" id="rwt-strip" aria-live="polite">
+    <div class="rwt-strip-item">
+        <span class="rwt-lamp" id="rwt-strip-lamp"></span>
+        <span class="rwt-strip-value" id="rwt-strip-state">Loading…</span>
+    </div>
+    <div class="rwt-strip-item">
+        <span class="rwt-strip-label">Watching</span>
+        <span class="rwt-strip-value" id="rwt-strip-count">—</span>
+    </div>
+    <div class="rwt-strip-item">
+        <span class="rwt-strip-label">Offline</span>
+        <span class="rwt-strip-value" id="rwt-strip-offline">—</span>
+    </div>
+    <div class="rwt-strip-item">
+        <span class="rwt-strip-label">Last check</span>
+        <span class="rwt-strip-value" id="rwt-strip-check">—</span>
+    </div>
+    <div class="rwt-strip-spacer"></div>
+    <button class="btn btn-sm btn-outline-secondary" type="button" id="rwt-refresh">
+        <i class="fas fa-rotate" aria-hidden="true"></i> Refresh
+    </button>
+</div>
+
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header"><i class="fas fa-list" aria-hidden="true"></i> Watched repeaters</div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0 rwt-stack">
+                        <thead class="table-dark">
+                            <tr>
+                                <th scope="col">Status</th>
+                                <th scope="col">Repeater</th>
+                                <th scope="col">Last advert</th>
+                                <th scope="col">Last relayed</th>
+                                <th scope="col">Quiet for</th>
+                                <th scope="col"><span class="visually-hidden">Actions</span></th>
+                            </tr>
+                        </thead>
+                        <tbody id="rwt-watched">
+                            <tr><td colspan="6" class="rwt-empty">Loading…</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="card-footer small text-muted" id="rwt-watched-note"></div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header"><i class="fas fa-plus" aria-hidden="true"></i> Add repeaters</div>
+            <div class="card-body">
+                <label class="form-label" for="rwt-search">Search heard repeaters and room servers</label>
+                <input type="search" class="form-control mb-3" id="rwt-search"
+                       placeholder="Name, place or key prefix" autocomplete="off">
+                <div class="list-group rwt-picker" id="rwt-picker"></div>
+                <div class="form-text" id="rwt-picker-note"></div>
+                <div class="form-check mt-3">
+                    <input class="form-check-input" type="checkbox" id="rwt-watch-starred">
+                    <label class="form-check-label" for="rwt-watch-starred">
+                        Also watch every repeater starred on the Contacts page
+                    </label>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-12">
+        <form class="card" id="rwt-form" novalidate>
+            <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <span><i class="fas fa-sliders-h" aria-hidden="true"></i> Settings</span>
+                <div class="form-check form-switch mb-0">
+                    <input class="form-check-input" type="checkbox" role="switch" id="rwt-enabled">
+                    <label class="form-check-label" for="rwt-enabled">Report offline repeaters</label>
+                </div>
+            </div>
+            <div class="card-body">
+                <fieldset class="mb-4">
+                    <legend class="h6">When</legend>
+                    <div class="row g-3">
+                        <div class="col-sm-6 col-lg-3">
+                            <label class="form-label" for="rwt-offline-after">Offline after</label>
+                            <div class="input-group">
+                                <input type="number" class="form-control" id="rwt-offline-after" min="1" max="720" step="1"
+                                       aria-describedby="rwt-offline-after-help">
+                                <span class="input-group-text">hours</span>
+                            </div>
+                            <div class="form-text" id="rwt-offline-after-help">With no advert and no relayed traffic. Repeaters advertise every few hours, so leave room.</div>
+                        </div>
+                        <div class="col-sm-6 col-lg-3">
+                            <label class="form-label" for="rwt-interval">Check every</label>
+                            <div class="input-group">
+                                <input type="number" class="form-control" id="rwt-interval" min="5" max="1440" step="1">
+                                <span class="input-group-text">min</span>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="rwt-recovery">
+                                <label class="form-check-label" for="rwt-recovery">
+                                    Also report when an offline repeater is heard again
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </fieldset>
+
+                <fieldset class="mb-4">
+                    <legend class="h6">Where</legend>
+                    <p class="form-text mt-0">Each outage costs one message per target, plus one when it ends. With no target set, outages are only logged here.</p>
+                    <div class="row g-3">
+                        <div class="col-lg-4">
+                            <label class="form-label" for="rwt-channels">Channels</label>
+                            <input type="text" class="form-control" id="rwt-channels" list="rwt-channel-list"
+                                   placeholder="#ops" autocomplete="off" aria-describedby="rwt-channels-help">
+                            <datalist id="rwt-channel-list"></datalist>
+                            <div class="form-text" id="rwt-channels-help">Comma-separated.</div>
+                        </div>
+                        <div class="col-lg-4">
+                            <label class="form-label" for="rwt-dms">Direct messages to</label>
+                            <input type="text" class="form-control" id="rwt-dms" list="rwt-companion-list"
+                                   placeholder="Contact name" autocomplete="off" aria-describedby="rwt-dms-help">
+                            <datalist id="rwt-companion-list"></datalist>
+                            <div class="form-text" id="rwt-dms-help">Contact names the radio knows, comma-separated.</div>
+                        </div>
+                        <div class="col-lg-4">
+                            <label class="form-label" for="rwt-scope">Flood scope</label>
+                            <input type="text" class="form-control" id="rwt-scope" placeholder="#west" autocomplete="off"
+                                   aria-describedby="rwt-scope-help">
+                            <div class="form-text" id="rwt-scope-help">Optional region for channel notices.</div>
+                        </div>
+                    </div>
+                    <details class="mt-3" id="rwt-external">
+                        <summary>Discord and Telegram</summary>
+                        <div class="row g-3 mt-1">
+                            <div class="col-lg-6">
+                                <label class="form-label" for="rwt-discord">Discord webhook URLs</label>
+                                <input type="password" class="form-control" id="rwt-discord" autocomplete="off"
+                                       aria-describedby="rwt-discord-help">
+                                <div class="form-text" id="rwt-discord-help">Comma-separated.
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline d-none" id="rwt-discord-clear">Remove saved URLs</button>
+                                </div>
+                            </div>
+                            <div class="col-lg-3">
+                                <label class="form-label" for="rwt-telegram-chats">Telegram chat IDs</label>
+                                <input type="text" class="form-control" id="rwt-telegram-chats" autocomplete="off">
+                            </div>
+                            <div class="col-lg-3">
+                                <label class="form-label" for="rwt-telegram-token">Telegram bot token</label>
+                                <input type="password" class="form-control" id="rwt-telegram-token" autocomplete="off"
+                                       aria-describedby="rwt-telegram-token-help">
+                                <div class="form-text" id="rwt-telegram-token-help">Blank uses the Telegram bridge's token.
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline d-none" id="rwt-token-clear">Remove saved token</button>
+                                </div>
+                            </div>
+                        </div>
+                    </details>
+                </fieldset>
+
+                <fieldset>
+                    <legend class="h6">Wording</legend>
+                    <div class="row g-3">
+                        <div class="col-lg-7">
+                            <label class="form-label" for="rwt-offline-msg">Offline notice</label>
+                            <input type="text" class="form-control rwt-template mb-3" id="rwt-offline-msg" maxlength="200">
+                            <label class="form-label" for="rwt-recovered-msg">Back-online notice</label>
+                            <input type="text" class="form-control rwt-template" id="rwt-recovered-msg" maxlength="200"
+                                   aria-describedby="rwt-template-help">
+                            <div class="form-text" id="rwt-template-help">
+                                Placeholders: <code>{name}</code> <code>{prefix}</code> <code>{silent_for}</code>
+                                <code>{down_for}</code> <code>{last_heard}</code>
+                            </div>
+                            <button type="button" class="btn btn-link btn-sm px-0" id="rwt-reset-wording">
+                                Reset to the default wording
+                            </button>
+                        </div>
+                        <div class="col-lg-5">
+                            <span class="form-label d-block">Preview</span>
+                            <div class="rwt-preview" id="rwt-preview"></div>
+                            <div class="small mt-2" id="rwt-bytes"></div>
+                        </div>
+                    </div>
+                </fieldset>
+            </div>
+            <div class="card-footer d-flex flex-wrap align-items-center gap-3">
+                <button type="submit" class="btn btn-primary" id="rwt-save">Save settings</button>
+                <button type="button" class="btn btn-outline-secondary" id="rwt-revert">Revert</button>
+                <span id="rwt-save-status" role="status" aria-live="polite"></span>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header"><i class="fas fa-clock-rotate-left" aria-hidden="true"></i> Recent outages</div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-striped align-middle mb-0 rwt-stack">
+                        <thead class="table-dark">
+                            <tr>
+                                <th scope="col">When</th>
+                                <th scope="col">Repeater</th>
+                                <th scope="col">Event</th>
+                                <th scope="col">Detail</th>
+                            </tr>
+                        </thead>
+                        <tbody id="rwt-events">
+                            <tr><td colspan="4" class="rwt-empty">Loading…</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script nonce="{{ g.csp_nonce }}">
+(function () {
+    'use strict';
+
+    const el = (id) => document.getElementById(id);
+    const encoder = new TextEncoder();
+    const PICKER_LIMIT = 60;
+
+    function escapeHtml(value) {
+        return String(value == null ? '' : value).replace(/[&<>"']/g, (c) => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+        }[c]));
+    }
+
+    function duration(seconds) {
+        if (seconds == null) return '—';
+        const s = Math.max(0, Math.floor(seconds));
+        if (s < 3600) return Math.max(1, Math.floor(s / 60)) + 'm';
+        const h = Math.floor(s / 3600);
+        if (h < 48) return h + 'h';
+        const d = Math.floor(h / 24);
+        const rem = h % 24;
+        return rem ? d + 'd ' + rem + 'h' : d + 'd';
+    }
+
+    function ago(epoch, now) {
+        if (epoch == null) return 'never';
+        return duration(now - epoch) + ' ago';
+    }
+
+    function clock(epoch) {
+        if (epoch == null) return '';
+        return new Date(epoch * 1000).toLocaleString(undefined, {
+            month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+        });
+    }
+
+    function splitList(text) {
+        return String(text || '').split(',').map((p) => p.trim()).filter(Boolean);
+    }
+
+    function prefixOf(key, bytes) {
+        return String(key || '').slice(0, Math.max(1, Math.min(bytes || 1, 3)) * 2).toUpperCase();
+    }
+
+    class RepeaterWatchPage {
+        constructor() {
+            this.data = null;
+            this.watch = [];
+            this.saved = null;
+            this.keepDiscord = true;
+            this.keepToken = true;
+            this.bind();
+            this.load();
+        }
+
+        bind() {
+            el('rwt-refresh').addEventListener('click', () => this.load());
+            el('rwt-search').addEventListener('input', () => this.renderPicker());
+            el('rwt-form').addEventListener('submit', (e) => { e.preventDefault(); this.save(); });
+            el('rwt-revert').addEventListener('click', () => this.fillForm(this.data.settings));
+            el('rwt-reset-wording').addEventListener('click', () => {
+                el('rwt-offline-msg').value = this.data.defaults.offline_message;
+                el('rwt-recovered-msg').value = this.data.defaults.recovered_message;
+                this.onChange();
+            });
+            ['rwt-offline-msg', 'rwt-recovered-msg'].forEach((id) =>
+                el(id).addEventListener('input', () => this.renderPreview()));
+            el('rwt-form').addEventListener('input', () => this.onChange());
+            el('rwt-form').addEventListener('change', () => this.onChange());
+            el('rwt-watch-starred').addEventListener('change', () => this.onChange());
+            el('rwt-discord-clear').addEventListener('click', () => {
+                this.keepDiscord = false;
+                el('rwt-discord').value = '';
+                el('rwt-discord').placeholder = '(will be removed on save)';
+                el('rwt-discord-clear').classList.add('d-none');
+                this.onChange();
+            });
+            el('rwt-token-clear').addEventListener('click', () => {
+                this.keepToken = false;
+                el('rwt-telegram-token').value = '';
+                el('rwt-telegram-token').placeholder = '(will be removed on save)';
+                el('rwt-token-clear').classList.add('d-none');
+                this.onChange();
+            });
+            el('rwt-picker').addEventListener('click', (e) => {
+                const btn = e.target.closest('[data-key]');
+                if (btn) this.toggleWatch(btn.dataset.key);
+            });
+            el('rwt-watched').addEventListener('click', (e) => {
+                const btn = e.target.closest('[data-unwatch]');
+                if (btn) this.toggleWatch(btn.dataset.unwatch);
+            });
+        }
+
+        async load() {
+            try {
+                const resp = await fetch('/api/repeater-watch', {
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                });
+                const data = await resp.json();
+                if (!resp.ok) throw new Error(data.error || ('HTTP ' + resp.status));
+                const firstLoad = this.data === null;
+                this.data = data;
+                if (firstLoad || !this.isDirty()) {
+                    this.fillForm(data.settings);
+                }
+                this.renderLists();
+                this.renderAll();
+            } catch (err) {
+                el('rwt-strip-state').textContent = 'Could not load: ' + err.message;
+            }
+        }
+
+        renderLists() {
+            el('rwt-channel-list').innerHTML = (this.data.known_channels || [])
+                .map((c) => '<option value="' + escapeHtml(c) + '"></option>').join('');
+            el('rwt-companion-list').innerHTML = (this.data.companions || [])
+                .map((c) => '<option value="' + escapeHtml(c) + '"></option>').join('');
+        }
+
+        fillForm(s) {
+            el('rwt-enabled').checked = s.enabled === 'true';
+            el('rwt-watch-starred').checked = s.watch_starred === 'true';
+            el('rwt-offline-after').value = s.offline_after_hours;
+            el('rwt-interval').value = s.check_interval_minutes;
+            el('rwt-recovery').checked = s.notify_recovery === 'true';
+            el('rwt-channels').value = s.channels;
+            el('rwt-dms').value = s.dm_recipients;
+            el('rwt-scope').value = s.flood_scope;
+            el('rwt-offline-msg').value = s.offline_message;
+            el('rwt-recovered-msg').value = s.recovered_message;
+            el('rwt-telegram-chats').value = s.telegram_chat_ids;
+            el('rwt-discord').value = '';
+            el('rwt-discord').placeholder = s.discord_webhook_urls_set === 'true' ? '(saved; type to replace)' : '';
+            el('rwt-telegram-token').value = '';
+            el('rwt-telegram-token').placeholder = s.telegram_bot_token_set === 'true' ? '(saved; type to replace)' : '';
+            this.keepDiscord = true;
+            this.keepToken = true;
+            el('rwt-discord-clear').classList.toggle('d-none', s.discord_webhook_urls_set !== 'true');
+            el('rwt-token-clear').classList.toggle('d-none', s.telegram_bot_token_set !== 'true');
+            el('rwt-external').open = !!(s.telegram_chat_ids || s.discord_webhook_urls_set === 'true');
+            this.watch = splitList(s.watch);
+            this.saved = JSON.stringify(this.payload());
+            this.renderAll();
+        }
+
+        payload() {
+            return {
+                enabled: el('rwt-enabled').checked,
+                watch: this.watch,
+                watch_starred: el('rwt-watch-starred').checked,
+                offline_after_hours: el('rwt-offline-after').value,
+                check_interval_minutes: el('rwt-interval').value,
+                notify_recovery: el('rwt-recovery').checked,
+                channels: el('rwt-channels').value,
+                dm_recipients: el('rwt-dms').value,
+                flood_scope: el('rwt-scope').value,
+                offline_message: el('rwt-offline-msg').value,
+                recovered_message: el('rwt-recovered-msg').value,
+                discord_webhook_urls: el('rwt-discord').value,
+                discord_webhook_urls_keep: this.keepDiscord,
+                telegram_chat_ids: el('rwt-telegram-chats').value,
+                telegram_bot_token: el('rwt-telegram-token').value,
+                telegram_bot_token_keep: this.keepToken,
+            };
+        }
+
+        isDirty() {
+            return this.saved !== null && JSON.stringify(this.payload()) !== this.saved;
+        }
+
+        onChange() {
+            const status = el('rwt-save-status');
+            if (this.isDirty()) {
+                status.className = 'small rwt-dirty';
+                status.textContent = 'Unsaved changes';
+            } else if (status.classList.contains('rwt-dirty')) {
+                status.className = '';
+                status.textContent = '';
+            }
+            this.renderPreview();
+        }
+
+        toggleWatch(key) {
+            const i = this.watch.indexOf(key);
+            if (i >= 0) this.watch.splice(i, 1);
+            else this.watch.push(key);
+            this.renderAll();
+            this.onChange();
+        }
+
+        renderAll() {
+            if (!this.data) return;
+            this.renderStrip();
+            this.renderWatched();
+            this.renderPicker();
+            this.renderPreview();
+            this.renderEvents();
+        }
+
+        threshold() {
+            const hours = parseFloat(this.data.settings.offline_after_hours) || 24;
+            return hours * 3600;
+        }
+
+        rowStatus(row) {
+            if (!row) return 'unknown';
+            if (row.status === 'offline') return 'offline';
+            if (row.quiet_for == null) return 'unknown';
+            if (row.quiet_for >= this.threshold()) return 'offline';
+            if (row.quiet_for >= this.threshold() / 2) return 'quiet';
+            return 'up';
+        }
+
+        renderStrip() {
+            const st = this.data.status;
+            const enabled = this.data.settings.enabled === 'true';
+            const rows = st.rows || [];
+            const offline = rows.filter((r) => this.rowStatus(r) === 'offline').length;
+            const lamp = el('rwt-strip-lamp');
+            let state;
+            let lampClass;
+            if (!enabled) {
+                state = 'Off: not checking';
+                lampClass = '';
+            } else if (!st.last_check_at) {
+                state = 'On: waiting for the first check';
+                lampClass = '';
+            } else if (!st.listening_since) {
+                state = 'Paused: the bot is not hearing the mesh';
+                lampClass = 'rwt-lamp--quiet';
+            } else if (offline) {
+                state = offline === 1 ? '1 repeater offline' : offline + ' repeaters offline';
+                lampClass = 'rwt-lamp--offline';
+            } else {
+                state = rows.length ? 'All watched repeaters heard' : 'Nothing watched yet';
+                lampClass = rows.length ? 'rwt-lamp--up' : '';
+            }
+            lamp.className = 'rwt-lamp ' + lampClass;
+            el('rwt-strip-state').textContent = state;
+            el('rwt-strip-count').textContent = String(rows.length);
+            el('rwt-strip-offline').textContent = String(offline);
+            el('rwt-strip-check').textContent = st.last_check_at ? ago(st.last_check_at, st.now) : 'never';
+            el('rwt-strip-check').title = clock(st.last_check_at);
+        }
+
+        renderWatched() {
+            const st = this.data.status;
+            const now = st.now;
+            const byKey = {};
+            (st.rows || []).forEach((r) => { byKey[r.public_key] = r; });
+            const candidates = {};
+            (this.data.candidates || []).forEach((c) => { candidates[c.public_key] = c; });
+            const bytes = this.data.prefix_bytes;
+            const keys = this.watch.slice();
+            (st.rows || []).forEach((r) => { if (!r.configured && !keys.includes(r.public_key)) keys.push(r.public_key); });
+            const pending = new Set(this.watch.filter((k) => !byKey[k]));
+            const labels = { up: 'Heard', quiet: 'Quiet', offline: 'Offline', unknown: 'Never heard' };
+            const threshold = this.threshold();
+            // Worst first: what needs a visit leads, then the longest-quiet.
+            const rank = { offline: 0, quiet: 1, unknown: 2, up: 3 };
+            const statusOf = (key) => (pending.has(key) ? 'unknown' : this.rowStatus(byKey[key]));
+            keys.sort((a, b) => (rank[statusOf(a)] - rank[statusOf(b)])
+                || (((byKey[b] && byKey[b].quiet_for) || 0) - ((byKey[a] && byKey[a].quiet_for) || 0)));
+
+            if (!keys.length) {
+                el('rwt-watched').innerHTML = '<tr><td colspan="6" class="rwt-empty">'
+                    + 'No repeaters watched yet. Add them below.</td></tr>';
+            } else {
+                el('rwt-watched').innerHTML = keys.map((key) => {
+                    const row = byKey[key];
+                    const cand = candidates[key] || {};
+                    const name = (row && row.name) || cand.name || key.slice(0, 8).toUpperCase();
+                    const status = pending.has(key) ? 'unknown' : this.rowStatus(row);
+                    const statusLabel = pending.has(key) ? 'Not saved' : labels[status];
+                    const quiet = row ? row.quiet_for : null;
+                    const pct = quiet == null ? 0 : Math.min(100, (quiet / threshold) * 100);
+                    const meterClass = quiet == null ? 'rwt-meter--none'
+                        : (status === 'offline' ? 'rwt-meter--offline' : (status === 'quiet' ? 'rwt-meter--quiet' : ''));
+                    const viaStar = row && !row.configured && !this.watch.includes(key);
+                    const place = cand.place || (row && row.city) || '';
+                    const action = viaStar
+                        ? '<span class="small text-muted">Starred</span>'
+                        : '<button type="button" class="btn btn-sm btn-outline-secondary" data-unwatch="'
+                          + escapeHtml(key) + '" aria-label="Stop watching ' + escapeHtml(name) + '">Remove</button>';
+                    return '<tr>'
+                        + '<td class="text-nowrap rwt-cell-status"><span class="d-inline-flex align-items-center gap-2">'
+                        +   '<span class="rwt-lamp ' + (status === 'unknown' ? '' : 'rwt-lamp--' + status) + '"></span>'
+                        +   '<span class="rwt-status-text--' + status + '">' + escapeHtml(statusLabel) + '</span></span>'
+                        +   (row && row.status === 'offline' && row.status_since
+                                ? '<div class="small text-muted rwt-num">since ' + escapeHtml(clock(row.status_since)) + '</div>' : '')
+                        + '</td>'
+                        + '<td class="rwt-cell-name"><div class="fw-semibold">' + escapeHtml(name) + '</div>'
+                        +   '<div class="rwt-key">' + escapeHtml(prefixOf(key, bytes)) + ' · ' + escapeHtml(key.slice(0, 12)) + '…'
+                        +   (place ? ' · ' + escapeHtml(place) : '') + '</div></td>'
+                        + '<td class="rwt-num" data-label="Advert" title="' + escapeHtml(clock(row && row.last_advert)) + '">'
+                        +   escapeHtml(row ? ago(row.last_advert, now) : '—') + '</td>'
+                        + '<td class="rwt-num" data-label="Relayed" title="' + escapeHtml(clock(row && row.last_relay)) + '">'
+                        +   escapeHtml(row ? ago(row.last_relay, now) : '—') + '</td>'
+                        + '<td class="rwt-cell-meter"><div class="d-flex align-items-center gap-2">'
+                        +   '<div class="rwt-meter ' + meterClass + '" role="img" aria-label="'
+                        +     escapeHtml(quiet == null ? 'No reading' : duration(quiet) + ' of ' + duration(threshold)) + '">'
+                        +     '<span style="width:' + pct.toFixed(0) + '%"></span></div>'
+                        +   '<span class="rwt-num small">' + escapeHtml(quiet == null ? '—' : duration(quiet)) + '</span>'
+                        + '</div></td>'
+                        + '<td class="text-end rwt-cell-end">' + action + '</td>'
+                        + '</tr>';
+                }).join('');
+            }
+            const listening = st.listening_since;
+            el('rwt-watched-note').textContent = listening
+                ? 'Quiet time counts from the later of the last sign of life and when the bot started listening ('
+                  + clock(listening) + '). The bar fills toward the ' + duration(threshold) + ' offline threshold.'
+                : 'The bot is not listening right now, so no repeater can be judged offline.';
+        }
+
+        renderPicker() {
+            const query = el('rwt-search').value.trim().toLowerCase();
+            const bytes = this.data.prefix_bytes;
+            const all = this.data.candidates || [];
+            const matches = all.filter((c) => !query
+                || c.name.toLowerCase().includes(query)
+                || (c.place || '').toLowerCase().includes(query)
+                || c.public_key.startsWith(query));
+            const shown = matches.slice(0, PICKER_LIMIT);
+            const now = this.data.status.now;
+            el('rwt-picker').innerHTML = shown.length ? shown.map((c) => {
+                const on = this.watch.includes(c.public_key);
+                return '<div class="list-group-item">'
+                    + '<div class="rwt-picker-main">'
+                    +   '<div class="rwt-picker-name">' + escapeHtml(c.name || c.public_key.slice(0, 8))
+                    +     (c.starred ? ' <i class="fas fa-star text-warning" aria-label="starred"></i>' : '')
+                    +     (c.role === 'roomserver' ? ' <span class="badge bg-secondary">room server</span>' : '') + '</div>'
+                    +   '<div class="rwt-key">' + escapeHtml(prefixOf(c.public_key, bytes)) + ' · ' + escapeHtml(c.public_key.slice(0, 12)) + '…'
+                    +     (c.place ? ' · ' + escapeHtml(c.place) : '') + ' · heard ' + escapeHtml(ago(c.last_heard, now)) + '</div>'
+                    + '</div>'
+                    + '<button type="button" class="btn btn-sm ' + (on ? 'btn-secondary' : 'btn-outline-primary') + '" data-key="'
+                    +   escapeHtml(c.public_key) + '" aria-pressed="' + on + '">' + (on ? '<i class="fas fa-check" aria-hidden="true"></i> Watching' : 'Watch') + '</button>'
+                    + '</div>';
+            }).join('') : '<div class="rwt-empty">' + (all.length ? 'No repeater matches.' : 'The bot has not heard any repeaters yet.') + '</div>';
+            el('rwt-picker-note').textContent = matches.length > shown.length
+                ? 'Showing ' + shown.length + ' of ' + matches.length + '. Search to narrow the list.'
+                : '';
+        }
+
+        renderPreview() {
+            if (!this.data) return;
+            const sample = {
+                name: 'Hilltop', prefix: prefixOf('a1b2c3', this.data.prefix_bytes),
+                silent_for: duration(this.threshold() + 2 * 3600), down_for: '5h', last_heard: 'Nov 3 07:42',
+            };
+            const fill = (t) => String(t || '').replace(/\{(\w+)\}/g, (m, k) => (k in sample ? sample[k] : m));
+            const lines = [fill(el('rwt-offline-msg').value || this.data.defaults.offline_message)];
+            if (el('rwt-recovery').checked) {
+                lines.push(fill(el('rwt-recovered-msg').value || this.data.defaults.recovered_message));
+            }
+            el('rwt-preview').textContent = lines.join('\n');
+            const limit = this.data.limits.channel;
+            const worst = Math.max(...lines.map((l) => encoder.encode(l).length));
+            const unknown = lines.join(' ').match(/\{(\w+)\}/g);
+            const bytesEl = el('rwt-bytes');
+            if (unknown) {
+                bytesEl.className = 'small mt-2 text-danger';
+                bytesEl.textContent = 'Unknown placeholder ' + unknown[0] + '; saving will be refused.';
+            } else if (worst > limit) {
+                bytesEl.className = 'small mt-2 text-warning';
+                bytesEl.textContent = worst + ' of ' + limit + ' bytes: a long repeater name will be cut short on a channel.';
+            } else {
+                bytesEl.className = 'small mt-2 text-muted';
+                bytesEl.textContent = worst + ' of ' + limit + ' bytes on a channel.';
+            }
+        }
+
+        renderEvents() {
+            const events = this.data.events || [];
+            const badge = {
+                offline: '<span class="badge bg-danger">Offline</span>',
+                recovered: '<span class="badge bg-success">Back</span>',
+            };
+            el('rwt-events').innerHTML = events.length ? events.map((e) => {
+                const detail = e.event === 'offline'
+                    ? (e.silent_for == null ? 'Never heard while listening' : 'Not heard for ' + duration(e.silent_for))
+                    : 'Offline ' + duration(e.down_for);
+                return '<tr>'
+                    + '<td class="rwt-num small">' + escapeHtml(clock(e.at)) + '</td>'
+                    + '<td class="rwt-cell-wide fw-semibold">' + escapeHtml(e.name) + '</td>'
+                    + '<td class="rwt-cell-end">' + (badge[e.event] || escapeHtml(e.event)) + '</td>'
+                    + '<td class="small rwt-cell-detail">' + escapeHtml(detail) + '</td>'
+                    + '</tr>';
+            }).join('') : '<tr><td colspan="4" class="rwt-empty">No outages recorded yet.</td></tr>';
+        }
+
+        async save() {
+            const btn = el('rwt-save');
+            const status = el('rwt-save-status');
+            btn.disabled = true;
+            status.className = 'small text-muted';
+            status.textContent = 'Saving…';
+            try {
+                const resp = await fetch('/api/repeater-watch/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    body: JSON.stringify(this.payload()),
+                });
+                const data = await resp.json();
+                if (!resp.ok || !data.success) throw new Error(data.error || ('HTTP ' + resp.status));
+                status.className = 'small text-success';
+                status.textContent = data.reload_queued
+                    ? 'Saved. The bot picks it up within a few seconds.'
+                    : 'Saved. Restart the bot to apply.';
+                this.saved = null;
+                await this.load();
+            } catch (err) {
+                status.className = 'small text-danger';
+                status.textContent = 'Not saved: ' + err.message;
+            } finally {
+                btn.disabled = false;
+            }
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => { new RepeaterWatchPage(); });
+})();
+</script>
+{% endblock %}
