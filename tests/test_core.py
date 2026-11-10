@@ -334,7 +334,9 @@ class TestLoopExceptionHandler:
 
         mock_loop.set_exception_handler.side_effect = capture_handler
 
-        with patch.object(bot, "connect", return_value=False):
+        with patch.object(bot, "connect", return_value=False), patch.object(
+            bot, "_attempt_reconnect", return_value=False
+        ):
             with patch("asyncio.get_running_loop", return_value=mock_loop):
                 asyncio.run(bot.start())
 
@@ -380,7 +382,9 @@ class TestLoopExceptionHandler:
         captured: list = []
         mock_loop.set_exception_handler.side_effect = lambda h: captured.append(h)
 
-        with patch.object(bot, "connect", return_value=False):
+        with patch.object(bot, "connect", return_value=False), patch.object(
+            bot, "_attempt_reconnect", return_value=False
+        ):
             with patch("asyncio.get_running_loop", return_value=mock_loop):
                 asyncio.run(bot.start())
 
@@ -915,6 +919,87 @@ class TestTransportReconnect:
         assert bot.keep_running is True
 
 
+class TestStartupConnectionRetry:
+    """A failed first connect falls back to the runtime reconnect loop."""
+
+    def _make_bot(self, tmp_path: Path) -> MeshCoreBot:
+        config_file = tmp_path / "config.ini"
+        db_path = tmp_path / "bot.db"
+        _write_config(config_file, db_path)
+        bot = MeshCoreBot(config_file=str(config_file))
+        bot.config.set("Connection", "reconnect_delay_seconds", "0")
+        bot.config.set("Connection", "reconnect_max_delay_seconds", "0")
+        return bot
+
+    def _stub_post_connect_startup(self, bot: MeshCoreBot) -> None:
+        """Keep the post-connect startup short and end the main loop at once."""
+        bot.scheduler.setup_scheduled_messages = MagicMock()
+        bot.scheduler.start = MagicMock()
+        bot.feed_manager = None
+        bot._admin_server = None
+        bot.services = {}
+        bot.command_manager._start_queue_processor = MagicMock()
+        bot.send_startup_advert = AsyncMock()
+
+    def test_retry_succeeds_and_start_continues(self, tmp_path):
+        bot = self._make_bot(tmp_path)
+        self._stub_post_connect_startup(bot)
+        viewer = MagicMock(enabled=True)
+        bot.web_viewer_integration = viewer
+        attempts = 0
+        viewer_seen_at_retry: list[bool] = []
+
+        async def fake_connect() -> bool:
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                return False
+            viewer_seen_at_retry.append(viewer.start_viewer.called)
+            bot.connected = True
+            # This run is done as soon as the post-connect setup finishes.
+            bot._shutdown_event.set()
+            return True
+
+        bot.connect = fake_connect
+
+        assert asyncio.run(bot.start()) is True
+
+        assert attempts == 2
+        assert viewer_seen_at_retry == [True]
+        viewer.stop_viewer.assert_not_called()
+        assert bot.db_manager.get_metadata("bot.initializing") == "false"
+
+    def test_retries_exhausted_returns_false(self, tmp_path):
+        bot = self._make_bot(tmp_path)
+        bot.config.set("Connection", "reconnect_max_retries", "2")
+
+        with patch.object(bot, "connect", return_value=False) as connect:
+            assert asyncio.run(bot.start()) is False
+
+        # The first attempt plus two retries.
+        assert connect.await_count == 3
+        assert bot.db_manager.get_metadata("bot.initializing") == "false"
+
+    def test_shutdown_during_retries_is_a_clean_stop(self, tmp_path):
+        bot = self._make_bot(tmp_path)
+        attempts = 0
+
+        async def fake_connect() -> bool:
+            nonlocal attempts
+            attempts += 1
+            if attempts > 1:
+                # A signal handler sets the event while the bot is waiting.
+                bot._shutdown_event.set()
+            return False
+
+        bot.connect = fake_connect
+
+        assert asyncio.run(bot.start()) is True
+
+        assert attempts == 2
+        assert bot.db_manager.get_metadata("bot.initializing") == "false"
+
+
 class TestRadioOfflineState:
     """Tests for _record_send_failure / _record_send_success / is_radio_offline."""
 
@@ -933,17 +1018,13 @@ class TestRadioOfflineState:
         bot.db_manager.set_metadata('bot.radio_offline', 'true')
         bot.db_manager.set_metadata('bot.radio_offline_since', '2026-10-15T14:42:58+00:00')
 
-        with patch.object(bot, "connect", return_value=False):
+        with patch.object(bot, "connect", return_value=False), patch.object(
+            bot, "_attempt_reconnect", return_value=False
+        ):
             asyncio.run(bot.start())
 
         assert bot.db_manager.get_metadata('bot.radio_offline') == 'false'
         assert bot.db_manager.get_metadata('bot.radio_offline_since') == ''
-
-    def test_start_reports_a_failed_connection_to_the_entrypoint(self, tmp_path):
-        """start() must not return None on failure: the caller maps False to exit 1."""
-        bot = self._make_bot(tmp_path)
-        with patch.object(bot, "connect", return_value=False):
-            assert asyncio.run(bot.start()) is False
 
     def test_start_publishes_before_the_web_viewer_starts(self, tmp_path):
         """The early viewer must not render the stale banner from the first request."""
@@ -955,7 +1036,9 @@ class TestRadioOfflineState:
             bot.db_manager.get_metadata('bot.radio_offline'))
         bot.web_viewer_integration = viewer
 
-        with patch.object(bot, "connect", return_value=False):
+        with patch.object(bot, "connect", return_value=False), patch.object(
+            bot, "_attempt_reconnect", return_value=False
+        ):
             asyncio.run(bot.start())
 
         assert seen == ['false']

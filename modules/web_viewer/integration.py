@@ -956,7 +956,7 @@ class WebViewerIntegration:
     def start_viewer(self):
         """Start the web viewer in a separate thread"""
         if self.running:
-            self.logger.warning("Web viewer is already running")
+            self.logger.debug("Web viewer is already running")
             return
 
         if not self._preflight_database_path():

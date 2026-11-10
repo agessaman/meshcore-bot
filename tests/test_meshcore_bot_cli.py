@@ -159,10 +159,11 @@ def _run_main_with_fake_bot(
 
 
 class TestStartupExitStatus:
-    """A startup connection failure must look like a failure to launchd and the
-    Supervisor watchdog; a clean shutdown must keep exit status 0."""
+    """start() returns False only after startup reconnects are exhausted, and
+    that must look like a failure to launchd and the Supervisor watchdog; a
+    clean shutdown, including one while waiting for the radio, keeps exit 0."""
 
-    def test_failed_startup_connection_exits_1(
+    def test_exhausted_startup_reconnects_exit_1(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         fake = _run_main_with_fake_bot(monkeypatch, tmp_path, started=False)

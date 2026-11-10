@@ -19,7 +19,7 @@ uart: true
 # Bluetooth Low Energy is experimental and uses the host BlueZ daemon.
 host_dbus: true
 map:
-  - addon_config:rw
+  - app_config:rw
 ports:
   "8080/tcp": null
 ports_description:

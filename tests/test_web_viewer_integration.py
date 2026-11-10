@@ -626,6 +626,30 @@ class TestWebViewerIntegrationValidation:
         thread.start.assert_called_once()
         assert wvi.running is True
 
+    def test_start_viewer_twice_is_idempotent_and_quiet(self, tmp_path):
+        from modules.web_viewer.integration import WebViewerIntegration
+
+        bot = _make_bot()
+        bot.config_file = str(tmp_path / "config.ini")
+        Path(bot.config_file).write_text("[Bot]\n", encoding="utf-8")
+        bot.config.set("Web_Viewer", "db_path", "viewer.db")
+        bot.db_manager.db_path = str(tmp_path / "bot.db")
+
+        with patch("modules.web_viewer.integration.BotIntegration._init_http_session"), \
+             patch("modules.web_viewer.integration.BotIntegration._init_packet_stream_table"), \
+             patch("modules.web_viewer.integration.BotIntegration._start_drain_thread"):
+            wvi = WebViewerIntegration(bot)
+
+        with patch("modules.web_viewer.integration.threading.Thread") as thread_cls:
+            wvi.start_viewer()
+            wvi.start_viewer()
+
+        thread_cls.return_value.start.assert_called_once()
+        warnings = [str(call.args[0]) for call in bot.logger.warning.call_args_list]
+        assert not any("already running" in message for message in warnings)
+        debug = [str(call.args[0]) for call in bot.logger.debug.call_args_list]
+        assert any("already running" in message for message in debug)
+
 
 class TestNormalizedWebViewerPassword:
     def test_blank_and_null_placeholders(self):

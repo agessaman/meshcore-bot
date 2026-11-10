@@ -207,7 +207,7 @@ def test_addon_version_matches_pyproject() -> None:
     assert config["uart"] is True
     assert config["host_dbus"] is True
     assert config["panel_icon"] == "mdi:radio-tower"
-    assert config["map"] == ["addon_config:rw"]
+    assert config["map"] == ["app_config:rw"]
     assert config.get("host_network", False) is False
     assert "options" not in config
 

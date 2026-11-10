@@ -33,7 +33,9 @@ tcp_port = 5000
 timeout = 30
 
 # Automatic reconnection settings
-# Reconnect when the connection is lost (applies to all connection types: serial, BLE, TCP)
+# Applies to all connection types (serial, BLE, TCP) and both when the connection
+# is lost and when the radio is not reachable yet at startup (for example just
+# after a reboot). The bot retries with backoff instead of exiting at once.
 
 # Maximum number of reconnect attempts before giving up and shutting down
 # 0 = unlimited (keep trying forever) — recommended for unattended deployments

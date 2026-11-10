@@ -887,9 +887,11 @@ class MeshCoreBot(ServiceSupervisorMixin, RadioLinkMixin, RadioOfflineBreaker, D
         Initiates the connection to the node, sets up scheduling, services,
         and starts the main execution loop.
 
-        Returns True when the bot ran and shut down cleanly, or False when it
-        could not connect to the radio at startup. The entrypoint turns False
-        into a non-zero exit status so service managers restart the bot.
+        Returns True when the bot ran and shut down cleanly, including a
+        shutdown while waiting for the radio at startup. Returns False only
+        when the startup connection retries run out (reconnect_max_retries >
+        0); the entrypoint turns False into a non-zero exit status so service
+        managers restart the bot.
         """
         self.logger.info("Starting MeshCore Bot...")
 
@@ -956,14 +958,40 @@ class MeshCoreBot(ServiceSupervisorMixin, RadioLinkMixin, RadioOfflineBreaker, D
                 failed="Failed to start service 'webhook' early",
             )
 
-        # Connect to MeshCore node
+        # Connect to MeshCore node. A failed first connect is not fatal: the
+        # radio may not be ready yet (for example just after a reboot). Fall
+        # back to the same backoff loop used when an established link drops, so
+        # startup and runtime reconnects share one mechanism and one set of
+        # [Connection] settings.
         if not await self.connect():
-            self.logger.error("Failed to connect to MeshCore node")
-            try:
-                self.db_manager.set_metadata('bot.initializing', 'false')
-            except Exception:
-                pass
-            return False
+            max_retries = self.config.getint(
+                'Connection', 'reconnect_max_retries', fallback=0
+            )
+            retry_policy = (
+                "unlimited attempts"
+                if max_retries == 0
+                else f"{max_retries} attempt(s)"
+            )
+            self.logger.warning(
+                "Initial connection to MeshCore node failed; retrying with "
+                "exponential backoff (%s per [Connection] reconnect_max_retries). "
+                "The web viewer keeps serving while the bot waits.",
+                retry_policy,
+            )
+            if not await self._attempt_reconnect():
+                try:
+                    self.db_manager.set_metadata('bot.initializing', 'false')
+                except Exception:
+                    pass
+                # Shutdown and a manual stop are clean exits, not a failed
+                # launch. A manual stop is the viewer's "Stop Bot" action.
+                if self._shutdown_event.is_set() or self._manual_radio_disconnect:
+                    self.logger.info(
+                        "Shutdown requested while waiting for the radio; stopping"
+                    )
+                    return True
+                self.logger.error("Failed to connect to MeshCore node")
+                return False
 
         # Bot is now connected — clear the initializing flag
         try:

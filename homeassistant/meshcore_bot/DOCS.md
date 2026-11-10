@@ -1,13 +1,14 @@
 # MeshCore Bot
 
-The add-on runs the MeshCore radio bot and opens its web viewer from the Home Assistant sidebar.
+The add-on runs the MeshCore radio bot. Turn on **Show in sidebar** on its Info page to open the web viewer from the Home Assistant sidebar.
 
 ## Install
 
 1. In Home Assistant, open **Settings**, then **Add-ons**, then **Add-on store**.
 2. Open the menu in the upper corner and choose **Repositories**.
 3. Add `https://github.com/agessaman/meshcore-bot` and install **MeshCore Bot**.
-4. Start the add-on. The first start copies `config.ini.example` to `/config/config.ini` if the file is not there yet.
+4. On the add-on's **Info** page, turn on **Show in sidebar**. This adds the web viewer to the sidebar; the **Open Web UI** button works either way.
+5. Start the add-on. The first start copies `config.ini.example` to `/config/config.ini` if the file is not there yet.
 
 The add-on is built for 64-bit systems (amd64 and aarch64). The image is `ghcr.io/agessaman/meshcore-bot-ha`.
 
@@ -38,11 +39,13 @@ Choose one connection type. Leave the fields for the other types empty so they d
 
 ## Startup failure
 
-If the add-on cannot reach the radio when it starts, the bot exits with status 1 instead of stopping cleanly. Turn on the add-on's **Watchdog** toggle so Home Assistant restarts it automatically, for example when the radio is not ready yet after a reboot.
+If the add-on cannot reach the radio when it starts, the bot keeps retrying with exponential backoff instead of stopping. This covers a radio that is not ready yet after a reboot. The retry settings are `reconnect_max_retries`, `reconnect_delay_seconds` and `reconnect_max_delay_seconds` in `[Connection]`; the default retries forever. The web viewer stays available while the bot waits. When `reconnect_max_retries` is not 0 and the attempts run out, the bot exits with status 1 so the Supervisor can restart it.
+
+Turn on the add-on's **Watchdog** toggle to cover crashes. The Supervisor restarts an add-on at most 10 times in 30 minutes, which is why the bot retries the radio itself instead of exiting on the first failed connection.
 
 ## config.ini
 
-Inside the add-on the file is `/config/config.ini`. On the host it is `/addon_configs/<prefix>_meshcore_bot/config.ini`. Open it with the File Editor add-on or the Samba add-on. `<prefix>` is the id Home Assistant assigns this repository.
+Inside the add-on the file is `/config/config.ini`. On the host it is `/app_configs/<prefix>_meshcore_bot/config.ini`. On older Home Assistant versions the same folder is shown as `/addon_configs/<prefix>_meshcore_bot/config.ini`. Open it with the File Editor add-on or the Samba add-on. `<prefix>` is the id Home Assistant assigns this repository.
 
 ## Data and local files
 
@@ -52,7 +55,7 @@ Local plugins, their translation overrides, and an optional local config overlay
 
 ## Sidebar
 
-The add-on adds a sidebar entry that opens the web viewer. Home Assistant users are signed in automatically, so the viewer password is not needed there. The viewer listens on port 8080 inside the add-on, and the sidebar works with that port left unpublished.
+The Supervisor installs the add-on with **Show in sidebar** off. On the add-on's **Info** page, turn it on to add a sidebar entry that opens the web viewer. The **Open Web UI** button works either way. Home Assistant users are signed in automatically, so the viewer password is not needed there. The viewer listens on port 8080 inside the add-on, and the sidebar works with that port left unpublished.
 
 ## Publishing the viewer port
 
