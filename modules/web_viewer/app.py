@@ -62,8 +62,12 @@ from modules.db_retention import (  # noqa: F401  kept for modules.web_viewer.ap
     delete_timestamp_rows_in_chunks,
     retention_delete_settings,
 )
-from modules.ini_writer import IniValueError, update_ini_values
+from modules.ini_writer import (
+    IniValueError,
+    update_ini_values,  # noqa: F401  kept for modules.web_viewer.app.update_ini_values
+)
 from modules.maintenance import MaintenanceRunner
+from modules.managed_keys import ManagedKeyError
 from modules.models import CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD, channel_body_limit
 from modules.scheduled_message_admin import (
     SECTION as SCHEDULED_MESSAGES_SECTION,
@@ -96,6 +100,11 @@ from modules.web_viewer.dashboard_stats import (
 
 # RFC 8594 Sunset date advertised on the deprecated /api/stats endpoint.
 STATS_ENDPOINT_SUNSET = "Fri, 01 Jan 2027 00:00:00 GMT"
+
+
+def _managed_key_response(exc: ManagedKeyError):
+    """400 JSON for a save that would change a Home Assistant managed key."""
+    return jsonify({'success': False, 'error': str(exc)}), 400
 
 # The bot rewrites system_health every 30 s; four missed beats means it has stopped.
 BOT_HEARTBEAT_STALE_S = 120
@@ -773,6 +782,15 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
                 saved.append(field)
         return saved
 
+    def _write_config_ini(self, updates, deletes=None):
+        """Persist config.ini. Refuses keys Home Assistant owns.
+
+        Every config.ini write from this process goes through the settings
+        store, which applies that check once for updates and deletes.
+        """
+        store = get_settings_store(self.config, self.config_path, self.db_manager)
+        return store.write_sections(updates or {}, deletes)
+
     def _api_errors(self, message: str) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         """Route decorator: log ``"<message>: <error>"`` and answer 500 with the error text.
 
@@ -784,6 +802,8 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
             def wrapper(*args: Any, **kwargs: Any) -> Any:
                 try:
                     return view(*args, **kwargs)
+                except ManagedKeyError as exc:
+                    return _managed_key_response(exc)
                 except Exception as e:
                     self.logger.error(f"{message}: {e}")
                     return jsonify({'error': str(e)}), 500
@@ -884,6 +904,10 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
                 error_title='Internal Server Error',
                 error_message='Something went wrong on our end. The error has been logged.',
             ), 500)
+
+        @self.app.errorhandler(ManagedKeyError)
+        def managed_key_rejected(exc: ManagedKeyError):
+            return _managed_key_response(exc)
 
         # Authentication middleware (BUG-001).
         # Fail closed when a password is configured: only the public allowlist
@@ -1722,9 +1746,7 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
                         # Persist first: alert_email is free-form client JSON, so
                         # a rejected value must not leave the in-memory config
                         # holding something that was never written to disk.
-                        update_ini_values(self.config_path, {'Connection': ini_updates})
-                        for ini_key, ini_val in ini_updates.items():
-                            self.config.set('Connection', ini_key, ini_val)
+                        self._write_config_ini({'Connection': ini_updates})
                     config_saved = True
                     self.logger.info("Zombie alert settings written to config.ini")
                 except IniValueError as exc:
@@ -1806,11 +1828,8 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
 
                 if write_to_config:
                     try:
-                        if not self.config.has_section('Connection'):
-                            self.config.add_section('Connection')
                         val = 'true' if enabled else 'false'
-                        self.config.set('Connection', 'radio_debug', val)
-                        update_ini_values(self.config_path, {'Connection': {'radio_debug': val}})
+                        self._write_config_ini({'Connection': {'radio_debug': val}})
                         config_saved = True
                         self.logger.info(
                             "radio_debug=%s written to config.ini by web UI", val
@@ -1828,6 +1847,8 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
                     self.logger.info("Radio reconnect queued (op_id=%s) to apply radio_debug=%s", op_id, enabled)
 
                 return jsonify({'success': True, 'config_saved': config_saved, 'op_id': op_id})
+            except ManagedKeyError as exc:
+                return _managed_key_response(exc)
             except Exception as exc:
                 self.logger.exception("Error saving radio debug config")
                 return jsonify({'success': False, 'error': str(exc)}), 500
@@ -1874,14 +1895,14 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
                 config_saved = False
                 if data.get('save_to_config', False):
                     try:
-                        self.config.set('Connection', 'radio_probe_interval_seconds', str(probe_interval))
-                        self.config.set('Connection', 'radio_probe_fail_threshold', str(probe_fail_threshold))
-                        update_ini_values(self.config_path, {'Connection': {
+                        self._write_config_ini({'Connection': {
                             'radio_probe_interval_seconds': str(probe_interval),
                             'radio_probe_fail_threshold': str(probe_fail_threshold),
                         }})
                         config_saved = True
                         self.logger.info("Radio probe settings written to config.ini")
+                    except ManagedKeyError as exc:
+                        return _managed_key_response(exc)
                     except Exception as exc:
                         self.logger.error("Failed to write radio probe settings to config.ini: %s", exc)
 
@@ -1944,11 +1965,11 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
                         # Persist first: alert_email is free-form client input, so
                         # a rejected value must not leave the in-memory config
                         # holding something that was never written to disk.
-                        update_ini_values(self.config_path, {'Connection': offline_ini})
-                        for ini_key, ini_val in offline_ini.items():
-                            self.config.set('Connection', ini_key, ini_val)
+                        self._write_config_ini({'Connection': offline_ini})
                         config_saved = True
                         self.logger.info("Radio offline alert settings written to config.ini")
+                    except ManagedKeyError as exc:
+                        return _managed_key_response(exc)
                     except Exception as exc:
                         self.logger.error("Failed to write radio offline alert settings to config.ini: %s", exc)
 
@@ -4249,7 +4270,7 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
                 deletes = {SCHEDULED_MESSAGES_SECTION: [replacing]}
 
             try:
-                summary = update_ini_values(self.config_path, updates, deletes)
+                summary = self._write_config_ini(updates, deletes)
             except IniValueError as exc:
                 return jsonify({'success': False, 'error': str(exc)}), 400
             except OSError as exc:
@@ -4324,9 +4345,11 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
                             'error': f"No scheduled message for '{schedule}'",
                         }), 404
                     try:
-                        update_ini_values(
-                            self.config_path, {}, {SCHEDULED_MESSAGES_SECTION: [schedule]}
+                        self._write_config_ini(
+                            {}, {SCHEDULED_MESSAGES_SECTION: [schedule]}
                         )
+                    except ManagedKeyError as exc:
+                        return _managed_key_response(exc)
                     except OSError as exc:
                         self.logger.error("Failed to delete scheduled message: %s", exc)
                         return jsonify({

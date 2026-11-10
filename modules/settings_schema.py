@@ -44,6 +44,7 @@ from typing import Any, Optional
 # Legacy [section] enabled aliases (shared with BaseCommand.get_config_value)
 # so a plugin's on/off state displays correctly before the first canonical save.
 from modules.config_schema import LEGACY_ENABLED_ALIASES as _ENABLED_LEGACY_ALIASES
+from modules.managed_keys import is_managed, load_managed_keys
 
 VALID_TYPES = {"bool", "int", "float", "str", "enum", "list", "password"}
 
@@ -355,8 +356,10 @@ def build_plugin_settings_view(
          enabled, source, has_schema, fields, values}
 
     ``fields`` is the plugin's ``settings_schema`` with a resolved ``value`` on
-    each field.  ``values`` is the raw current config section (minus ``enabled``)
-    used by the generic editor for plugins without a schema.
+    each field.  A field Home Assistant owns also has ``managed`` set.  ``values``
+    is the raw current config section (minus ``enabled``) used by the generic
+    editor for plugins without a schema.  Raw keys Home Assistant owns are listed
+    on ``managed_keys``, and ``enabled_managed`` marks the on/off toggle.
 
     ``local_commands_dir`` and ``local_services_dir`` auto-detect the
     ``local/commands`` and ``local/service_plugins`` directories (relative to
@@ -369,6 +372,7 @@ def build_plugin_settings_view(
     here = os.path.dirname(__file__)
     commands_dir = commands_dir or os.path.join(here, "commands")
     services_dir = services_dir or os.path.join(here, "service_plugins")
+    managed = load_managed_keys()
 
     view: list[dict] = []
 
@@ -389,6 +393,7 @@ def build_plugin_settings_view(
                 # 'enabled' with fallback=False in __init__).
                 enabled_default=bool(getattr(cls, "settings_enabled_default", True)),
                 source="base",
+                managed=managed,
             ))
         except Exception as exc:  # noqa: BLE001 - one bad plugin must not break the list
             if logger:
@@ -428,6 +433,7 @@ def build_plugin_settings_view(
                     category=getattr(cls, "category", "general") or "general",
                     enabled_default=bool(getattr(cls, "settings_enabled_default", True)),
                     source="local",
+                    managed=managed,
                 ))
             except Exception as exc:  # noqa: BLE001 - one bad plugin must not break the list
                 if logger:
@@ -445,6 +451,7 @@ def build_plugin_settings_view(
                 category="service",
                 enabled_default=bool(getattr(cls, "settings_enabled_default", False)),
                 source="base",
+                managed=managed,
             ))
         except Exception as exc:  # noqa: BLE001 - one bad plugin must not break the list
             if logger:
@@ -483,6 +490,7 @@ def build_plugin_settings_view(
                     category="service",
                     enabled_default=bool(getattr(cls, "settings_enabled_default", False)),
                     source="local",
+                    managed=managed,
                 ))
             except Exception as exc:  # noqa: BLE001 - one bad plugin must not break the list
                 if logger:
@@ -504,7 +512,10 @@ def _assemble_entry(
     category: str,
     enabled_default: bool,
     source: str = "base",
+    managed: Optional[frozenset[tuple[str, str]]] = None,
 ) -> dict:
+    if managed is None:
+        managed = load_managed_keys()
     schema = list(getattr(cls, "settings_schema", []) or [])
     fields: list[dict] = []
     for field in schema:
@@ -552,7 +563,12 @@ def _assemble_entry(
                 continue
             values[key] = raw
 
-    return {
+    for field in fields:
+        target = field.get("section") or section
+        if is_managed(str(target), str(field["key"]), managed):
+            field["managed"] = True
+
+    entry = {
         "name": name,
         "kind": kind,
         "section": section,
@@ -564,13 +580,22 @@ def _assemble_entry(
         "has_schema": bool(fields),
         "fields": fields,
         "values": values,
-        "dynamic_sections": _read_dynamic_sections(config, cls),
-        "repeating_blocks": _read_repeating_blocks(config, cls, section),
+        "dynamic_sections": _read_dynamic_sections(config, cls, managed),
+        "repeating_blocks": _read_repeating_blocks(config, cls, section, managed),
     }
+    if is_managed(section, "enabled", managed):
+        entry["enabled_managed"] = True
+    managed_value_keys = [key for key in values if is_managed(section, key, managed)]
+    if managed_value_keys:
+        entry["managed_keys"] = managed_value_keys
+    return entry
 
 
 def _read_repeating_blocks(
-    config: configparser.ConfigParser, cls: type, section: str
+    config: configparser.ConfigParser,
+    cls: type,
+    section: str,
+    managed: Optional[frozenset[tuple[str, str]]] = None,
 ) -> list[dict]:
     """Build the repeating structured-block editors a plugin declares.
 
@@ -596,11 +621,27 @@ def _read_repeating_blocks(
                 if m:
                     groups.setdefault(int(m.group(1)), {})[m.group(2)] = raw
         blocks = []
+        schema_keys = [
+            field.get("key")
+            for field in d.get("fields", [])
+            if isinstance(field, dict) and isinstance(field.get("key"), str)
+        ]
         for idx in sorted(groups):
             sub = groups[idx]
             enabled = str(sub.get(enabled_field, "true")).strip().lower() in _TRUE
             values = {k: v for k, v in sub.items() if k != enabled_field}
-            blocks.append({"index": idx, "enabled": enabled, "values": values})
+            block: dict = {"index": idx, "enabled": enabled, "values": values}
+            if managed:
+                owned = [
+                    subkey
+                    for subkey in list(values) + schema_keys
+                    if is_managed(section, f"{bid}{idx}_{subkey}", managed)
+                ]
+                if owned:
+                    block["managed_keys"] = sorted(set(owned))
+                if is_managed(section, f"{bid}{idx}_{enabled_field}", managed):
+                    block["enabled_managed"] = True
+            blocks.append(block)
         result.append({
             "id": bid,
             "label": d.get("label", bid),
@@ -614,7 +655,10 @@ def _read_repeating_blocks(
 
 
 def read_section_items(
-    config: configparser.ConfigParser, section: str, prefix: str = ""
+    config: configparser.ConfigParser,
+    section: str,
+    prefix: str = "",
+    managed: Optional[frozenset[tuple[str, str]]] = None,
 ) -> list[dict]:
     """Return a section's key/value pairs as ``[{"key", "value"}, ...]`` (raw).
 
@@ -632,13 +676,20 @@ def read_section_items(
         if prefix:
             if not key.lower().startswith(pl):
                 continue
-            items.append({"key": key[len(prefix):], "value": raw})
+            item = {"key": key[len(prefix):], "value": raw}
         else:
-            items.append({"key": key, "value": raw})
+            item = {"key": key, "value": raw}
+        if managed and is_managed(section, key, managed):
+            item["managed"] = True
+        items.append(item)
     return items
 
 
-def _read_dynamic_sections(config: configparser.ConfigParser, cls: type) -> list[dict]:
+def _read_dynamic_sections(
+    config: configparser.ConfigParser,
+    cls: type,
+    managed: Optional[frozenset[tuple[str, str]]] = None,
+) -> list[dict]:
     """Build the dynamic key/value section editors a plugin declares.
 
     A plugin may declare ``settings_dynamic_sections`` — a list of descriptors
@@ -662,6 +713,6 @@ def _read_dynamic_sections(config: configparser.ConfigParser, cls: type) -> list
             "value_label": ds.get("value_label", "Value"),
             "key_placeholder": ds.get("key_placeholder", ""),
             "value_placeholder": ds.get("value_placeholder", ""),
-            "items": read_section_items(config, sec, prefix),
+            "items": read_section_items(config, sec, prefix, managed),
         })
     return result

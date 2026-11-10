@@ -8,11 +8,13 @@ modules/settings_store.py (INI backend), and the /api/plugins endpoints.
 from __future__ import annotations
 
 import configparser
+import json
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
+from modules.ha_addon import MANAGED_KEYS_ENV
 from modules.ini_writer import backup_config, update_ini_values
 from modules.settings_schema import (
     _assemble_entry,
@@ -752,3 +754,193 @@ class TestTemplatePreviewApi:
             json={"key": "response_format", "template": "x" * 2001},
         )
         assert resp.status_code == 400
+
+
+def _manage(monkeypatch, tmp_path, pairs):
+    path = tmp_path / "ha_managed_keys.json"
+    path.write_text(json.dumps(pairs), encoding="utf-8")
+    monkeypatch.setenv(MANAGED_KEYS_ENV, str(path))
+
+
+def _plugin(payload, kind, name):
+    return next(item for item in payload["plugins"] if item["kind"] == kind and item["name"] == name)
+
+
+class TestHomeAssistantManagedKeys:
+    def test_schema_marks_managed_fields(self, viewer, monkeypatch, tmp_path):
+        _manage(monkeypatch, tmp_path, [["Test_Command", "Distance_Unit"]])
+        client = viewer.app.test_client()
+        resp = client.get("/api/plugins")
+        assert resp.status_code == 200
+        plugin = _plugin(resp.get_json(), "command", "test")
+        fields = {field["key"]: field for field in plugin["fields"]}
+        assert fields["distance_unit"]["managed"] is True
+        assert "managed" not in fields["response_format"]
+        assert "enabled_managed" not in plugin
+
+    def test_schema_unmarked_without_env(self, viewer, monkeypatch):
+        monkeypatch.delenv(MANAGED_KEYS_ENV, raising=False)
+        client = viewer.app.test_client()
+        resp = client.get("/api/plugins")
+        plugin = _plugin(resp.get_json(), "command", "test")
+        fields = {field["key"]: field for field in plugin["fields"]}
+        assert "managed" not in fields["distance_unit"]
+        assert "managed_keys" not in plugin
+        assert "enabled_managed" not in plugin
+
+    def test_refuses_managed_update_and_keeps_unmanaged_write(self, viewer, monkeypatch, tmp_path):
+        _manage(monkeypatch, tmp_path, [["Test_Command", "distance_unit"]])
+        client = viewer.app.test_client()
+        refused = client.post(
+            "/api/plugins/command/test",
+            json={"enabled": True, "values": {"distance_unit": "km", "response_format": "hello"}},
+        )
+        assert refused.status_code == 400
+        body = refused.get_json()
+        assert body["success"] is False
+        assert "Managed by Home Assistant" in body["error"]
+        assert "distance_unit" in body["error"]
+        text = Path(viewer.config_path).read_text(encoding="utf-8")
+        assert "hello" not in text
+        assert "km" not in text
+
+        accepted = client.post(
+            "/api/plugins/command/test",
+            json={"enabled": True, "values": {"response_format": "hello"}},
+        )
+        assert accepted.status_code == 200, accepted.get_json()
+        cfg = configparser.ConfigParser()
+        cfg.read(viewer.config_path, encoding="utf-8")
+        assert cfg.get("Test_Command", "response_format") == "hello"
+        assert not cfg.has_option("Test_Command", "distance_unit")
+
+    def test_unchanged_managed_key_does_not_block_other_edits(self, viewer, monkeypatch, tmp_path):
+        path = Path(viewer.config_path)
+        path.write_text(
+            path.read_text(encoding="utf-8") + "\n[Test_Command]\nenabled = true\ndistance_unit = auto\n",
+            encoding="utf-8",
+        )
+        _manage(monkeypatch, tmp_path, [["Test_Command", "distance_unit"]])
+        client = viewer.app.test_client()
+        resp = client.post(
+            "/api/plugins/command/test",
+            json={"enabled": True, "values": {"distance_unit": "auto", "response_format": "hello"}},
+        )
+        assert resp.status_code == 200, resp.get_json()
+        cfg = configparser.ConfigParser()
+        cfg.read(viewer.config_path, encoding="utf-8")
+        assert cfg.get("Test_Command", "distance_unit") == "auto"
+        assert cfg.get("Test_Command", "response_format") == "hello"
+
+    def test_refuses_managed_delete(self, viewer, monkeypatch, tmp_path):
+        _manage(monkeypatch, tmp_path, [["Channels_List", "Tacoma"]])
+        client = viewer.app.test_client()
+        resp = client.get("/api/plugins")
+        channels = _plugin(resp.get_json(), "command", "channels")
+        listed = next(item for item in channels["dynamic_sections"] if item["section"] == "Channels_List")
+        rows = {row["key"]: row for row in listed["items"]}
+        assert rows["tacoma"]["managed"] is True
+        assert "managed" not in rows["seattle"]
+
+        refused = client.post(
+            "/api/plugins/command/channels",
+            json={
+                "enabled": True,
+                "values": {},
+                "dynamic_sections": {
+                    "Channels_List": [
+                        {"key": "seattle", "value": "Seattle chat"},
+                        {"key": "olympia", "value": "Olympia chat"},
+                    ]
+                },
+            },
+        )
+        assert refused.status_code == 400
+        assert "tacoma" in refused.get_json()["error"]
+        cfg = configparser.ConfigParser()
+        cfg.read(viewer.config_path, encoding="utf-8")
+        assert cfg.get("Channels_List", "tacoma") == "Tacoma chat"
+        assert not cfg.has_option("Channels_List", "olympia")
+
+        accepted = client.post(
+            "/api/plugins/command/channels",
+            json={
+                "enabled": True,
+                "values": {},
+                "dynamic_sections": {
+                    "Channels_List": [
+                        {"key": "seattle", "value": "Seattle chat"},
+                        {"key": "tacoma", "value": "Tacoma chat"},
+                        {"key": "olympia", "value": "Olympia chat"},
+                    ]
+                },
+            },
+        )
+        assert accepted.status_code == 200, accepted.get_json()
+        cfg.read(viewer.config_path, encoding="utf-8")
+        assert cfg.get("Channels_List", "tacoma") == "Tacoma chat"
+        assert cfg.get("Channels_List", "olympia") == "Olympia chat"
+
+    def test_update_still_accepted_without_env(self, viewer, monkeypatch, tmp_path):
+        monkeypatch.delenv(MANAGED_KEYS_ENV, raising=False)
+        client = viewer.app.test_client()
+        resp = client.post(
+            "/api/plugins/command/test",
+            json={"enabled": True, "values": {"distance_unit": "km"}},
+        )
+        assert resp.status_code == 200, resp.get_json()
+        cfg = configparser.ConfigParser()
+        cfg.read(viewer.config_path, encoding="utf-8")
+        assert cfg.get("Test_Command", "distance_unit") == "km"
+
+    def test_other_config_writers_refuse_managed_keys(self, viewer, monkeypatch, tmp_path):
+        _manage(
+            monkeypatch,
+            tmp_path,
+            [
+                ["Connection", "radio_debug"],
+                ["Connection", "radio_probe_interval_seconds"],
+                ["Connection", "radio_zombie_alert_email"],
+                ["Connection", "radio_offline_threshold"],
+                ["Scheduled_Messages", "@daily"],
+            ],
+        )
+        path = Path(viewer.config_path)
+        path.write_text(
+            path.read_text(encoding="utf-8") + "\n[Scheduled_Messages]\n@daily = general:hello\n",
+            encoding="utf-8",
+        )
+        before = path.read_text(encoding="utf-8")
+        client = viewer.app.test_client()
+
+        cases = [
+            ("/api/config/radio-debug", {"enabled": "true", "write_to_config": "true"}),
+            (
+                "/api/config/radio-probe",
+                {"probe_interval_seconds": 360, "probe_fail_threshold": 3, "save_to_config": True},
+            ),
+            (
+                "/api/config/zombie-alert",
+                {"alert_enabled": "true", "alert_email": "ops@example.com", "write_to_config": "true"},
+            ),
+            (
+                "/api/config/radio-offline-alert",
+                {
+                    "offline_threshold": 4,
+                    "alert_enabled": False,
+                    "alert_email": "",
+                    "save_to_config": True,
+                },
+            ),
+        ]
+        for url, payload in cases:
+            resp = client.post(url, json=payload)
+            assert resp.status_code == 400, (url, resp.status_code, resp.get_json())
+            assert resp.get_json()["success"] is False
+            assert "Managed by Home Assistant" in resp.get_json()["error"]
+            assert path.read_text(encoding="utf-8") == before
+
+        deleted = client.delete("/api/scheduled-messages", json={"schedule": "@daily"})
+        assert deleted.status_code == 400, deleted.get_json()
+        assert "Managed by Home Assistant" in deleted.get_json()["error"]
+        assert "@daily = general:hello" in path.read_text(encoding="utf-8")
