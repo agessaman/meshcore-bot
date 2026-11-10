@@ -2634,6 +2634,7 @@ avatar_style = color
 
 # Channel mappings: bridge.<meshcore_channel> = <discord_webhook_url>[, <discord_webhook_url>...]
 # Only channels explicitly listed here will be bridged to Discord
+# Channel names are case-insensitive and may include or omit the leading # (bridge.test matches #test)
 # Get webhook URLs from Discord: Channel Settings → Integrations → Webhooks → Create Webhook
 #
 # SECURITY WARNING: Webhook URLs contain authentication tokens
