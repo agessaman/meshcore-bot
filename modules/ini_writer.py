@@ -50,6 +50,11 @@ def _normalize_key(key: str) -> str:
     return key.strip().lower()
 
 
+def _normalize_section(section: str) -> str:
+    """Match this writer's section handling (case-insensitive, stripped)."""
+    return section.strip().lower()
+
+
 def _separator_for(sep: str, new_value: str) -> str:
     """Keep a space before a filled-in value on a ``key =`` line.
 
@@ -226,14 +231,14 @@ def _update_ini_values_locked(
     pending: dict[str, dict[str, str]] = {}
     section_case: dict[str, str] = {}  # normalized section -> caller's casing
     for section, kv in (updates or {}).items():
-        norm_section = section.strip().lower()
+        norm_section = _normalize_section(section)
         section_case[norm_section] = section
         pending[norm_section] = {_normalize_key(k): str(v) for k, v in kv.items()}
 
     # Normalized set of keys to delete, per normalized section.
     delete_norm: dict[str, set[str]] = {}
     for section, keys in (deletes or {}).items():
-        norm_section = section.strip().lower()
+        norm_section = _normalize_section(section)
         delete_norm[norm_section] = {_normalize_key(k) for k in keys}
 
     changed: list[tuple[str, str]] = []
@@ -265,7 +270,7 @@ def _update_ini_values_locked(
         if section_match:
             # Leaving the previous section: remember where its body ended.
             _record_section_boundary()
-            current_norm = section_match.group("name").strip().lower()
+            current_norm = _normalize_section(section_match.group("name"))
             out.append(raw)
             continue
 

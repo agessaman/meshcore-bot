@@ -8,10 +8,9 @@ A missing variable or a missing file yields an empty set and is not logged.
 A file that cannot be read, or that is not a JSON list of ``[section, key]``
 string pairs, is logged and also yields an empty set.
 
-Sections keep their spelling (configparser and the settings UI compare them
-with exact equality). Keys are normalized with
-:func:`modules.ini_writer._normalize_key` (strip, then lowercase), which is
-also how the settings UI compares keys.
+Sections and keys are normalized with the same helpers the INI writer uses
+(strip, then lowercase), so a managed key is matched regardless of the
+section spelling a caller uses.
 """
 
 from __future__ import annotations
@@ -24,7 +23,7 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 
 from modules.ha_addon import MANAGED_KEYS_ENV
-from modules.ini_writer import IniValueError, _normalize_key
+from modules.ini_writer import IniValueError, _normalize_key, _normalize_section
 
 logger = logging.getLogger("MeshCoreBot")
 
@@ -44,8 +43,8 @@ class ManagedKeyError(IniValueError):
 
 
 def normalize_managed_pair(section: str, key: str) -> tuple[str, str]:
-    """Section spelling preserved (stripped); key stripped and lowercased."""
-    return (section.strip(), _normalize_key(key))
+    """Section and key stripped and lowercased (matches ``ini_writer``)."""
+    return (_normalize_section(section), _normalize_key(key))
 
 
 def load_managed_keys() -> frozenset[tuple[str, str]]:
@@ -156,13 +155,19 @@ def _stored_value(
 ) -> str | None:
     if config is None:
         return None
-    name = section.strip()
-    if not name or not config.has_section(name) or not config.has_option(name, key):
+    name = _normalize_section(section)
+    if not name:
         return None
-    try:
-        return config.get(name, key, raw=True)
-    except (configparser.Error, ValueError):
-        return None
+    for stored in config.sections():
+        if _normalize_section(stored) != name:
+            continue
+        if not config.has_option(stored, key):
+            return None
+        try:
+            return config.get(stored, key, raw=True)
+        except (configparser.Error, ValueError):
+            return None
+    return None
 
 
 def _pairs_from_payload(payload: object) -> frozenset[tuple[str, str]] | None:

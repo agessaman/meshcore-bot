@@ -109,13 +109,13 @@ def test_normal_file_normalizes_keys(
     with _watch(caplog):
         loaded = load_managed_keys()
     assert loaded == {
-        ("Web_Viewer", "port"),
-        ("Bot", "db_path"),
-        ("Connection", "hostname"),
+        ("web_viewer", "port"),
+        ("bot", "db_path"),
+        ("connection", "hostname"),
     }
     assert not caplog.records
     assert is_managed("Web_Viewer", "PORT", loaded)
-    assert not is_managed("web_viewer", "port", loaded)
+    assert is_managed("web_viewer", "port", loaded)
     assert not is_managed("Bot", "bot_name", loaded)
 
 
@@ -157,13 +157,13 @@ def test_guard_rejects_a_changed_managed_key(monkeypatch: pytest.MonkeyPatch, tm
     path.write_text(json.dumps([["Bot", "db_path"], ["Connection", "hostname"]]), encoding="utf-8")
     _point(monkeypatch, path)
     config = _config("[Bot]\ndb_path = /data/db\n")
-    with pytest.raises(ManagedKeyError, match=r"Managed by Home Assistant: \[Bot\] db_path") as caught:
+    with pytest.raises(ManagedKeyError, match=r"Managed by Home Assistant: \[bot\] db_path") as caught:
         guard_managed_writes(
             {"Bot": {"db_path": "/other", "bot_name": "Zed"}},
             {"Connection": ["hostname"]},
             config,
         )
-    assert caught.value.conflicts == [("Bot", "db_path"), ("Connection", "hostname")]
+    assert caught.value.conflicts == [("bot", "db_path"), ("connection", "hostname")]
     assert issubclass(ManagedKeyError, IniValueError)
 
 
@@ -185,6 +185,49 @@ def test_store_refuses_managed_write_and_leaves_disk_and_memory(
     text = config_path.read_text(encoding="utf-8")
     assert "db_path = /data/db" in text
     assert "bot_name = B" not in text
+
+
+@pytest.mark.parametrize(
+    ("managed_section", "write_section"),
+    [("Web_Viewer", "web_viewer"), ("web_viewer", "Web_Viewer")],
+)
+def test_store_refuses_managed_write_across_section_case(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    managed_section: str,
+    write_section: str,
+) -> None:
+    config_path = tmp_path / "config.ini"
+    original = "[Web_Viewer]\nport = 8080\n"
+    config_path.write_text(original, encoding="utf-8")
+    managed = tmp_path / "managed.json"
+    managed.write_text(json.dumps([[managed_section, "port"]]), encoding="utf-8")
+    _point(monkeypatch, managed)
+    config = configparser.ConfigParser()
+    config.read(config_path, encoding="utf-8")
+    store = ConfigIniStore(config, str(config_path))
+    with pytest.raises(ManagedKeyError):
+        store.write_values(write_section, {"port": "9"})
+    assert config.get("Web_Viewer", "port") == "8080"
+    assert config_path.read_text(encoding="utf-8") == original
+
+
+def test_store_allows_unchanged_managed_write_with_different_section_case(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    config_path = tmp_path / "config.ini"
+    original = "[Web_Viewer]\nport = 8080\n"
+    config_path.write_text(original, encoding="utf-8")
+    managed = tmp_path / "managed.json"
+    managed.write_text(json.dumps([["web_viewer", "port"]]), encoding="utf-8")
+    _point(monkeypatch, managed)
+    config = configparser.ConfigParser()
+    config.read(config_path, encoding="utf-8")
+    store = ConfigIniStore(config, str(config_path))
+    store.write_values("web_viewer", {"port": "8080"})
+    assert config.get("Web_Viewer", "port") == "8080"
+    assert not config.has_section("web_viewer")
+    assert config_path.read_text(encoding="utf-8") == original
 
 
 def test_store_writes_unmanaged_keys_and_leaves_an_unchanged_managed_line(
