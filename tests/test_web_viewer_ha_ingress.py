@@ -71,11 +71,17 @@ def _fake_setup_logging(self: BotDataViewer) -> None:
     self.logger.propagate = False
 
 
-def _write_config(path: Path, db_path: str, *, ha_ingress: bool) -> None:
+def _write_config(
+    path: Path,
+    db_path: str,
+    *,
+    ha_ingress: bool,
+    password: str | None = PASSWORD,
+) -> None:
     cfg = configparser.ConfigParser()
     cfg["Bot"] = {"bot_name": "TestBot", "db_path": db_path, "prefix_bytes": "1"}
     cfg["Web_Viewer"] = {
-        "web_viewer_password": PASSWORD,
+        "web_viewer_password": password if password is not None else "",
         "ha_ingress": "true" if ha_ingress else "false",
     }
     cfg["Path_Command"] = {
@@ -86,13 +92,19 @@ def _write_config(path: Path, db_path: str, *, ha_ingress: bool) -> None:
         cfg.write(fh)
 
 
-def _make_viewer(tmp_path_factory, name: str, *, ha_ingress: bool) -> BotDataViewer:
+def _make_viewer(
+    tmp_path_factory,
+    name: str,
+    *,
+    ha_ingress: bool,
+    password: str | None = PASSWORD,
+) -> BotDataViewer:
     from unittest.mock import patch
 
     tmp = tmp_path_factory.mktemp(name)
     db_path = str(tmp / "test.db")
     config_path = tmp / "config.ini"
-    _write_config(config_path, db_path, ha_ingress=ha_ingress)
+    _write_config(config_path, db_path, ha_ingress=ha_ingress, password=password)
     with (
         patch.object(BotDataViewer, "_setup_logging", _fake_setup_logging),
         patch.object(BotDataViewer, "_start_database_polling", lambda self: None),
@@ -115,6 +127,20 @@ def plain_viewer(tmp_path_factory):
     return _make_viewer(tmp_path_factory, "ha_ingress_off", ha_ingress=False)
 
 
+@pytest.fixture(scope="module")
+def ingress_open_viewer(tmp_path_factory):
+    return _make_viewer(
+        tmp_path_factory, "ha_ingress_on_open", ha_ingress=True, password=None
+    )
+
+
+@pytest.fixture(scope="module")
+def plain_open_viewer(tmp_path_factory):
+    return _make_viewer(
+        tmp_path_factory, "ha_ingress_off_open", ha_ingress=False, password=None
+    )
+
+
 @pytest.fixture
 def ingress_client(ingress_viewer):
     ingress_viewer.connected_clients.clear()
@@ -126,6 +152,20 @@ def ingress_client(ingress_viewer):
 @pytest.fixture
 def plain_client(plain_viewer):
     with plain_viewer.app.test_client() as client:
+        yield client
+
+
+@pytest.fixture
+def ingress_open_client(ingress_open_viewer):
+    ingress_open_viewer.connected_clients.clear()
+    with ingress_open_viewer.app.test_client() as client:
+        yield client
+    ingress_open_viewer.connected_clients.clear()
+
+
+@pytest.fixture
+def plain_open_client(plain_open_viewer):
+    with plain_open_viewer.app.test_client() as client:
         yield client
 
 
@@ -337,6 +377,71 @@ class TestIngressMiddlewareAndAuth:
         assert _polling(plain_client, origin=ha, remote=PROXY, header=PREFIX).status_code == 400
         assert not callable(plain_viewer.socketio.server.eio.cors_allowed_origins)
         assert callable(ingress_viewer.socketio.server.eio.cors_allowed_origins)
+
+
+class TestFailClosedWithoutPassword:
+    """ha_ingress on with no password: direct access is refused, ingress works."""
+
+    @pytest.mark.parametrize("path", ["/", "/logs"])
+    def test_non_ingress_pages_are_forbidden(self, ingress_open_client, path):
+        resp = ingress_open_client.get(path)
+        assert resp.status_code == 403
+        assert "web_viewer_password" in resp.get_data(as_text=True)
+
+    def test_non_ingress_api_is_json_forbidden(self, ingress_open_client):
+        resp = ingress_open_client.get("/api/connected_clients")
+        assert resp.status_code == 403
+        assert resp.is_json
+        assert "error" in resp.get_json()
+
+    def test_login_is_forbidden_instead_of_redirecting(self, ingress_open_client):
+        resp = ingress_open_client.get("/login")
+        assert resp.status_code == 403
+        assert "Location" not in resp.headers
+
+    def test_ingress_requests_still_work(self, ingress_open_client):
+        page = _ingress(ingress_open_client, "get", "/logs")
+        assert page.status_code == 200
+        api = _ingress(ingress_open_client, "get", "/api/connected_clients")
+        assert api.status_code == 200
+
+    def test_socketio_non_ingress_is_rejected(self, ingress_open_viewer):
+        direct = ingress_open_viewer.app.test_client()
+        direct.environ_base["REMOTE_ADDR"] = "10.0.0.9"
+        sock = ingress_open_viewer.socketio.test_client(
+            ingress_open_viewer.app,
+            flask_test_client=direct,
+            headers={"X-Ingress-Path": PREFIX},
+        )
+        assert not sock.is_connected()
+
+    def test_socketio_ingress_is_allowed(self, ingress_open_viewer):
+        allowed = ingress_open_viewer.app.test_client()
+        allowed.environ_base["REMOTE_ADDR"] = PROXY
+        sock = ingress_open_viewer.socketio.test_client(
+            ingress_open_viewer.app,
+            flask_test_client=allowed,
+            headers={"X-Ingress-Path": PREFIX},
+        )
+        assert sock.is_connected()
+        sock.disconnect()
+
+
+class TestOpenModeWithoutIngress:
+    """ha_ingress off with no password: legacy open mode is unchanged."""
+
+    def test_pages_and_admin_api_are_open(self, plain_open_client):
+        assert plain_open_client.get("/logs").status_code == 200
+        assert plain_open_client.get("/api/connected_clients").status_code == 200
+
+    def test_socketio_connects_without_a_password(self, plain_open_viewer):
+        client = plain_open_viewer.app.test_client()
+        sock = plain_open_viewer.socketio.test_client(
+            plain_open_viewer.app,
+            flask_test_client=client,
+        )
+        assert sock.is_connected()
+        sock.disconnect()
 
 
 @pytest.mark.parametrize("value", ["maybe", "", "2"])

@@ -363,6 +363,11 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
         self.ha_ingress = ha_ingress_enabled(self.config)
         if self.web_viewer_password:
             self.logger.info("Web viewer authentication enabled")
+        elif self.ha_ingress:
+            self.logger.info(
+                "Home Assistant ingress enabled; direct access is disabled until "
+                "web_viewer_password is set in [Web_Viewer]."
+            )
         else:
             self.logger.warning(
                 "Web viewer has NO authentication. Set web_viewer_password in [Web_Viewer] config "
@@ -582,6 +587,19 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
         if not self.ha_ingress:
             return False
         return ingress_prefix(request.environ) is not None
+
+    def _auth_enforced(self) -> bool:
+        """Return True when this request must authenticate or be refused.
+
+        With ``ha_ingress`` off, auth applies only when a password is set
+        (legacy open mode). With it on, every non-ingress request must
+        authenticate, even when no password is set; in that case there is no
+        login to succeed, so the request is refused. Ingress is already
+        authenticated by Home Assistant.
+        """
+        if self.is_ha_ingress_request():
+            return False
+        return self.ha_ingress or bool(self.web_viewer_password)
 
     def _setup_template_context(self):
         """Setup template context processor to inject global variables"""
@@ -979,6 +997,17 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
                 path = path.rstrip('/')
             return path or '/'
 
+        def _direct_access_disabled(path: str) -> Response:
+            """Refuse direct access when ingress is on but no login is possible."""
+            message = (
+                "Direct access is disabled because Home Assistant ingress is "
+                "enabled and no web viewer password is set. Set web_viewer_password "
+                "in the add-on options to allow direct access."
+            )
+            if path.startswith('/api/'):
+                return make_response(jsonify({'error': message}), 403)
+            return Response(message + '\n', status=403, mimetype='text/plain')
+
         @self.app.before_request
         def create_csp_nonce():
             """Create a per-response nonce for templates migrated off inline-script CSP."""
@@ -987,12 +1016,20 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
         @self.app.before_request
         def require_auth():
             """Enforce admin auth except for the explicit public allowlist."""
-            if not self.web_viewer_password:
-                return  # Auth disabled — no password configured (legacy open mode)
-            if self.is_ha_ingress_request():
-                return  # Home Assistant already authenticated this user
+            if not self._auth_enforced():
+                return  # Legacy open mode, or Home Assistant already authenticated
             path = _normalize_request_path(request.path)
-            if path in _EXEMPT_PATHS or path.startswith('/static/'):
+            if path.startswith('/static/'):
+                return
+            if not self.web_viewer_password:
+                # Ingress is on with no password: there is no login to succeed,
+                # so direct access fails closed instead of falling back to open
+                # mode. The bot's ingest endpoint uses X-Stream-Token, not the
+                # admin session.
+                if path == '/api/stream_data':
+                    return
+                return _direct_access_disabled(path)
+            if path in _EXEMPT_PATHS:
                 return
             if session.get('authenticated_admin'):
                 return

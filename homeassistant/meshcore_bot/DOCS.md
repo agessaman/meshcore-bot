@@ -56,7 +56,7 @@ The add-on adds a sidebar entry that opens the web viewer. Home Assistant users 
 
 ## Publishing the viewer port
 
-The **Network** section lists port 8080, turned off until you enable it. Publish it only after you set `web_viewer_password` in the add-on options. Requests to the published port are not covered by your Home Assistant login; the sidebar is. The viewer password applies only to the published port. The add-on sets `[Web_Viewer] ha_ingress`, so the usual log warning about an open viewer without a password is skipped.
+The **Network** section lists port 8080, turned off until you enable it. The sidebar does not need it: Home Assistant reaches the viewer through ingress, and those requests are already signed in. Requests to the published port are not covered by your Home Assistant login. The add-on sets `[Web_Viewer] ha_ingress`, so the viewer fails closed for anything that does not come through the Supervisor: until you set `web_viewer_password` in the add-on options, direct requests get 403 and the sidebar keeps working. Set a password before publishing the port to sign in directly.
 
 ## Sharing a USB radio
 

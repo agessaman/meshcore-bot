@@ -870,8 +870,9 @@ class WebViewerIntegration:
 
         # Insecure but allowed: binding to all interfaces without a password.
         # Only warn when the web viewer is configured to run at startup.
-        # Home Assistant ingress does not publish that port; the Supervisor
-        # is the only client and has already authenticated the user.
+        # With Home Assistant ingress the viewer fails closed: requests that do
+        # not come through the Supervisor are refused with 403 until a password
+        # is set, so the open-bind warning does not apply.
         ha_ingress = ha_ingress_enabled(self.bot.config)
         if self.enabled and self.host == "0.0.0.0" and not ha_ingress:
             if not normalized_web_viewer_password(self.bot.config):
