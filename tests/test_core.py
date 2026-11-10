@@ -969,6 +969,35 @@ class TestStartupConnectionRetry:
         viewer.stop_viewer.assert_not_called()
         assert bot.db_manager.get_metadata("bot.initializing") == "false"
 
+    def test_stale_radio_operations_are_discarded_after_connect(self, tmp_path):
+        bot = self._make_bot(tmp_path)
+        self._stub_post_connect_startup(bot)
+        bot.web_viewer_integration = MagicMock(enabled=False)
+        with bot.db_manager.connection() as conn:
+            conn.executemany(
+                "INSERT INTO channel_operations (operation_type, status) VALUES (?, 'pending')",
+                [('radio_connect',), ('radio_disconnect',), ('radio_advert',)],
+            )
+            conn.commit()
+
+        async def fake_connect() -> bool:
+            bot.connected = True
+            bot._shutdown_event.set()
+            return True
+
+        bot.connect = fake_connect
+
+        assert asyncio.run(bot.start()) is True
+
+        rows = bot.db_manager.execute_query(
+            "SELECT operation_type, status FROM channel_operations ORDER BY id"
+        )
+        statuses = {row["operation_type"]: row["status"] for row in rows}
+        assert statuses["radio_connect"] == "interrupted"
+        assert statuses["radio_disconnect"] == "interrupted"
+        # Unrelated queued work is untouched.
+        assert statuses["radio_advert"] == "pending"
+
     def test_retries_exhausted_returns_false(self, tmp_path):
         bot = self._make_bot(tmp_path)
         bot.config.set("Connection", "reconnect_max_retries", "2")

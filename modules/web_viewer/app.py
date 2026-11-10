@@ -4759,6 +4759,13 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
             action = data.get('action', '')
             if action not in ('connect', 'disconnect'):
                 return jsonify({'error': "action must be 'connect' or 'disconnect'"}), 400
+            if action == 'connect' and self.db_manager.get_metadata(
+                'bot.initializing'
+            ) == 'true':
+                return jsonify({
+                    'error': 'The bot is still connecting to the radio at startup. '
+                             'Wait for startup to finish.'
+                }), 409
             op_type = 'radio_connect' if action == 'connect' else 'radio_disconnect'
             op_id = self._queue_operation(op_type)
             return jsonify({'success': True, 'pending': True, 'operation_id': op_id})

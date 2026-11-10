@@ -45,7 +45,7 @@ Turn on the add-on's **Watchdog** toggle to cover crashes. The Supervisor restar
 
 ## config.ini
 
-Inside the add-on the file is `/config/config.ini`. On the host it is `/app_configs/<prefix>_meshcore_bot/config.ini`. On older Home Assistant versions the same folder is shown as `/addon_configs/<prefix>_meshcore_bot/config.ini`. Open it with the File Editor add-on or the Samba add-on. `<prefix>` is the id Home Assistant assigns this repository.
+Inside the add-on the file is `/config/config.ini`. On the host it is `/app_configs/<prefix>_meshcore_bot/config.ini`. Open it with the File Editor add-on or the Samba add-on. `<prefix>` is the id Home Assistant assigns this repository.
 
 ## Data and local files
 

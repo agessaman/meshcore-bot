@@ -993,6 +993,28 @@ class MeshCoreBot(ServiceSupervisorMixin, RadioLinkMixin, RadioOfflineBreaker, D
                 self.logger.error("Failed to connect to MeshCore node")
                 return False
 
+        # A connect or disconnect queued while startup was still waiting on the
+        # radio predates this link. Running it now would tear down what connect()
+        # just opened, so resolve it as interrupted instead of leaving it pending
+        # for the scheduler to claim.
+        stale = self.db_manager.execute_update(
+            "UPDATE channel_operations "
+            "SET status = 'interrupted', processed_at = CURRENT_TIMESTAMP, "
+            "error_message = ? "
+            "WHERE status = 'pending' "
+            "AND operation_type IN ('radio_connect', 'radio_disconnect')",
+            (
+                "Startup connected the radio before this operation ran, so it "
+                "was discarded.",
+            ),
+        )
+        if stale:
+            self.logger.info(
+                "Discarded %s stale radio connect/disconnect operation(s) "
+                "queued during startup",
+                stale,
+            )
+
         # Bot is now connected — clear the initializing flag
         try:
             self.db_manager.set_metadata('bot.initializing', 'false')
