@@ -1,37 +1,13 @@
 # Home Assistant
 
-MeshCore Bot runs as a Home Assistant add-on. The store entry lives in this repository, and the sidebar opens the web viewer.
+MeshCore Bot is available as a Home Assistant add-on for Home Assistant OS and Supervised installs. It runs the bot, keeps its database and settings in Home Assistant's add-on storage, and adds a sidebar entry for the web viewer.
 
 ## Add the repository
 
-In Home Assistant, open Settings, then Add-ons, then Add-on store. Open the menu in the upper corner and choose Repositories. Add:
+1. In Home Assistant, open Settings, then Add-ons, then Add-on store.
+2. Open the menu in the upper corner and choose Repositories.
+3. Add `https://github.com/agessaman/meshcore-bot`, then install MeshCore Bot and start it.
 
-```text
-https://github.com/agessaman/meshcore-bot
-```
+The add-on image is built for 64-bit systems only (amd64 and aarch64). On a 32-bit install, use the regular [Docker image](docker.md) or a [normal install](installation.md) instead.
 
-Install MeshCore Bot and start it. The image is `ghcr.io/agessaman/meshcore-bot-ha`, built for 64-bit Intel and ARM (amd64 and aarch64).
-
-The add-on's Documentation tab has the connection choices, the sidebar, and the published viewer port. Short version:
-
-- **Serial:** pick the USB device. A `/dev/serial/by-id/` path stays on the same radio across reboots.
-- **TCP:** point the add-on at a MeshCore TCP companion.
-- **Bluetooth Low Energy:** experimental, and it needs the host Bluetooth daemon.
-
-## Startup failure
-
-If the add-on cannot reach the radio when it starts, it exits with a failure status instead of stopping cleanly. Turn on the add-on's **Watchdog** toggle so Home Assistant restarts it automatically, for example when the radio is not ready yet after a reboot.
-
-## Configuration
-
-On each start the add-on writes `/config/config.ini`. On the host that file is `/addon_configs/<prefix>_meshcore_bot/config.ini`. Edit it with the File Editor or Samba add-on.
-
-Options you set in the add-on configuration replace the matching keys on every start. An option you leave empty leaves that key in `config.ini` alone.
-
-The database is `/data/databases/meshcore_bot.db`. Local plugins, their translation overrides, and the optional local config overlay are in `/config/local`, which you can edit with the File Editor or Samba add-on. If the overlay `/config/local/config.ini` sets a key the add-on manages, the add-on removes that key from the overlay so its own value wins. Logs go to the add-on log.
-
-The sidebar uses your Home Assistant login. Publish the viewer port from the add-on's Network section when you also want it on the LAN, and set a web viewer password first.
-
-## One radio, one serial owner
-
-Sharing one USB radio with the meshcore-ha integration is not supported. A serial port has one owner. Use a TCP companion, a second radio, or the community proxy add-on at <https://github.com/vipje/Meshcore-bot-for-Home-Assistant>.
+The add-on's Documentation tab covers the connection options, `config.ini`, backups, the sidebar, and publishing the viewer port. It is also on GitHub: [MeshCore Bot add-on documentation](https://github.com/agessaman/meshcore-bot/blob/main/homeassistant/meshcore_bot/DOCS.md).
