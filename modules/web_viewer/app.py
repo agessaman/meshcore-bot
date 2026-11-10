@@ -189,6 +189,7 @@ from modules.web_viewer.feeds import (  # noqa: F401  _read_limited_requests_res
     _read_limited_requests_response,
     _validate_feed_interval,
 )
+from modules.web_viewer.ha_ingress import HaIngressMiddleware, ingress_prefix, socketio_cors_allowed
 from modules.web_viewer.integration import normalized_web_viewer_password
 from modules.web_viewer.live_stream import (  # noqa: F401  _ANSI_ESCAPE_RE re-exported
     _ANSI_ESCAPE_RE,
@@ -345,6 +346,10 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
 
         # Optional password authentication for web viewer (BUG-001)
         self.web_viewer_password = normalized_web_viewer_password(self.config)
+        try:
+            self.ha_ingress = self.config.getboolean("Web_Viewer", "ha_ingress", fallback=False)
+        except (configparser.Error, ValueError, TypeError):
+            self.ha_ingress = False
         if self.web_viewer_password:
             self.logger.info("Web viewer authentication enabled")
         else:
@@ -363,13 +368,30 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
 
         self._init_dashboard_service()
 
-        # Configure CORS for SocketIO — default to same-origin (no cross-origin)
+        # Configure CORS for SocketIO. Unset means same-origin (engineio's default).
+        # Ingress keeps that policy for every other client and, only on Supervisor
+        # requests, also accepts the browser's public Home Assistant origin.
         cors_raw = self.config.get('Web_Viewer', 'cors_allowed_origins', fallback='').strip()
-        if cors_raw:
-            cors_origins = cors_raw if cors_raw == '*' else [o.strip() for o in cors_raw.split(',') if o.strip()]
+        if cors_raw == '*':
+            cors_origins: str | list[str] | None = '*'
+        elif cors_raw:
+            cors_origins = [o.strip() for o in cors_raw.split(',') if o.strip()]
+        else:
+            cors_origins = None
+        if self.ha_ingress:
+            self._socketio_kwargs['cors_allowed_origins'] = (
+                lambda origin, environ, configured=cors_origins: socketio_cors_allowed(
+                    configured, origin, environ
+                )
+            )
+        elif cors_origins is not None:
             self._socketio_kwargs['cors_allowed_origins'] = cors_origins
         # Initialize SocketIO with Flask app now that config is loaded
         self.socketio.init_app(self.app, **self._socketio_kwargs)
+        if self.ha_ingress:
+            # Outside Socket.IO's middleware so the prefix applies to HTTP and
+            # to the engine.io handshake alike.
+            self.app.wsgi_app = HaIngressMiddleware(self.app.wsgi_app)
 
         # Version info for footer (tag or branch/commit/date); computed once at startup
         self._version_info = self._get_version_info()
@@ -538,6 +560,18 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
             "date": info.get("date"),
         }
 
+    def is_ha_ingress_request(self) -> bool:
+        """Return True when Home Assistant ingress proxied this request.
+
+        Ingress requests are already authenticated as a Home Assistant user, so
+        they count as admin. The HTTP auth hook, the template admin flag, and
+        Socket.IO connect all call this method. False when ha_ingress is off,
+        even if the header is present.
+        """
+        if not self.ha_ingress:
+            return False
+        return ingress_prefix(request.environ) is not None
+
     def _setup_template_context(self):
         """Setup template context processor to inject global variables"""
         version_info = self._version_info
@@ -571,8 +605,9 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
                     radio_offline_since = None
                     bot_initializing = False
                 auth_enabled = bool(self.web_viewer_password)
-                # Session bit only — missing password is not an admin session.
-                is_admin = bool(session.get('authenticated_admin'))
+                # Session bit, or an ingress request (already authenticated by
+                # Home Assistant). A missing password is not an admin session.
+                is_admin = bool(session.get('authenticated_admin')) or self.is_ha_ingress_request()
                 return {
                     'greeter_enabled': greeter_enabled,
                     'feed_manager_enabled': feed_manager_enabled,
@@ -904,6 +939,15 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
             parsed = urlparse(url)
             return not (parsed.scheme or parsed.netloc)
 
+        def _with_script_root(url: str) -> str:
+            """Prefix an in-app path with the ingress mount, once."""
+            root = (request.script_root or '').rstrip('/')
+            if not root:
+                return url
+            if url == root or url.startswith((root + '/', root + '?', root + '#')):
+                return url
+            return root + url
+
         def _normalize_request_path(path: str) -> str:
             if path != '/' and path.endswith('/'):
                 path = path.rstrip('/')
@@ -919,6 +963,8 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
             """Enforce admin auth except for the explicit public allowlist."""
             if not self.web_viewer_password:
                 return  # Auth disabled — no password configured (legacy open mode)
+            if self.is_ha_ingress_request():
+                return  # Home Assistant already authenticated this user
             path = _normalize_request_path(request.path)
             if path in _EXEMPT_PATHS or path.startswith('/static/'):
                 return
@@ -1049,7 +1095,7 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
                     next_url = request.args.get('next', '/')
                     if not _is_local_redirect(next_url):
                         next_url = '/'
-                    return redirect(next_url)
+                    return redirect(_with_script_root(next_url))
                 return render_template('login.html', error='Invalid password')
             return render_template('login.html')
 
@@ -1100,7 +1146,7 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
         @self.app.route('/cache')
         def cache():
             """Legacy cache URL redirects to the database config panel."""
-            return redirect('/config#database')
+            return redirect(url_for('config_page', _anchor='database'))
 
 
         @self.app.route('/multibyte-rollout')

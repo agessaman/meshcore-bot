@@ -1098,7 +1098,7 @@
 {% block content %}
 <div class="rt-head">
     <h1 class="h3"><i class="fas fa-broadcast-tower" aria-hidden="true"></i> Real-time</h1>
-    <a href="/logs" class="btn btn-sm btn-outline-secondary">
+    <a href="{{ url_for('logs') }}" class="btn btn-sm btn-outline-secondary">
         <i class="fas fa-file-alt" aria-hidden="true"></i> Logs
     </a>
 </div>
@@ -1341,7 +1341,7 @@
     // socket.on('connect') from firing (the module deferred execution caused a
     // race between two Socket.IO managers, with the module's socket never
     // receiving its connect event).
-    const decoderReady = import('/static/js/meshcore-browser.mjs').then(function(m) {
+    const decoderReady = import(window.appUrl('/static/js/meshcore-browser.mjs')).then(function(m) {
         window.meshCoreDecoder = m;
         window._MeshCoreKeyStore = m.MeshCoreKeyStore;
         return m;
@@ -2562,9 +2562,9 @@
         if (waited >= QUIET_HINT_S) {
             const hint = makeElement('div', 'rt-waiting-hint');
             const radio = makeElement('a', '', 'Radio settings');
-            radio.href = '/radio';
+            radio.href = window.appUrl('/radio');
             const logs = makeElement('a', '', 'the Logs');
-            logs.href = '/logs';
+            logs.href = window.appUrl('/logs');
             hint.append(
                 `Nothing in ${agoSpan(waited)}. On a quiet mesh that can be normal; if you expected traffic, check the frequency and preset in `,
                 radio, ', or look in ', logs, '.'

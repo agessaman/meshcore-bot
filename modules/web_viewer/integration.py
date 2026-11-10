@@ -869,7 +869,10 @@ class WebViewerIntegration:
 
         # Insecure but allowed: binding to all interfaces without a password.
         # Only warn when the web viewer is configured to run at startup.
-        if self.enabled and self.host == "0.0.0.0":
+        # Home Assistant ingress does not publish that port; the Supervisor
+        # is the only client and has already authenticated the user.
+        ha_ingress = self.bot.config.getboolean("Web_Viewer", "ha_ingress", fallback=False)
+        if self.enabled and self.host == "0.0.0.0" and not ha_ingress:
             if not normalized_web_viewer_password(self.bot.config):
                 self.logger.error(
                     "Web viewer is configured with host = 0.0.0.0 and no "

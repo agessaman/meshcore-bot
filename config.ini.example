@@ -1881,6 +1881,14 @@ debug = false
 # false: Start web viewer manually (recommended)
 auto_start = false
 
+# Serve the viewer through Home Assistant ingress (the sidebar panel).
+# true: trust requests from the Supervisor (172.30.32.2) that send
+# X-Ingress-Path, skip the password login for those requests, and prefix
+# links with that path. The add-on does not publish a host port, so the
+# open-bind warning is skipped.
+# false: ignore ingress headers (default). Direct access is unchanged.
+ha_ingress = false
+
 # Enable multibyte monitor page (/multibyte-rollout)
 # false: hide page/nav/API endpoint
 # true: expose page/nav/API endpoint

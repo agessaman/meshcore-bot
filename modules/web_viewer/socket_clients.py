@@ -47,7 +47,10 @@ class SocketClientsMixin:
                 # Reject unauthenticated SocketIO connections when auth is enabled.
                 # Live packet/message/log streams stay admin-only — they can carry
                 # decrypted channel traffic and operator logs (deviation from #240).
-                if self.web_viewer_password and not session.get('authenticated_admin'):
+                # Ingress uses the same predicate as the HTTP auth hook.
+                if self.web_viewer_password and not (
+                    session.get('authenticated_admin') or self.is_ha_ingress_request()
+                ):
                     self.logger.warning(f"Rejected unauthenticated SocketIO connection from {client_id}")
                     with suppress(Exception):
                         disconnect()

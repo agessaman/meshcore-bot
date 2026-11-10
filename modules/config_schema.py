@@ -194,6 +194,8 @@ SECTIONS: dict[str, SectionMeta] = {
         "web_viewer_password": KeyMeta(),
         "auto_start": KeyMeta(type="bool"),
         "debug": KeyMeta(type="bool"),
+        # Home Assistant sidebar. Off unless the add-on sets it.
+        "ha_ingress": KeyMeta(type="bool", default="false"),
         # Advanced; read by the viewer but not shown in config.ini.example.
         "cors_allowed_origins": KeyMeta(),
         "packet_stream_write_queue_max": KeyMeta(type="int", default="1000"),
