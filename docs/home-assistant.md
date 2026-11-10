@@ -24,7 +24,7 @@ On each start the add-on writes `/config/config.ini`. On the host that file is `
 
 Options you set in the add-on configuration replace the matching keys on every start. An option you leave empty leaves that key in `config.ini` alone.
 
-The database is `/data/databases/meshcore_bot.db`. Local plugins are in `/data/local`. Logs go to the add-on log.
+The database is `/data/databases/meshcore_bot.db`. Local plugins, their translation overrides, and the optional local config overlay are in `/config/local`, which you can edit with the File Editor or Samba add-on. If the overlay `/config/local/config.ini` sets a key the add-on manages, the add-on removes that key from the overlay so its own value wins. Logs go to the add-on log.
 
 The sidebar uses your Home Assistant login. Publish the viewer port from the add-on's Network section when you also want it on the LAN, and set a web viewer password first.
 

@@ -32,7 +32,7 @@ schema:
   serial_port: "device(subsystem=tty)?"
   tcp_host: "str?"
   tcp_port: "port?"
-  ble_address: "str?"
+  ble_device_name: "str?"
   bot_name: "str?"
   log_level: "list(DEBUG|INFO|WARNING|ERROR|CRITICAL)?"
   web_viewer_password: "password?"

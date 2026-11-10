@@ -24,10 +24,9 @@ LABEL io.hass.type="addon" \
 ARG TARGETARCH=amd64
 FROM addon-${TARGETARCH}
 
-# Python disables the per-user site directory for uid 0, so point the
-# interpreter at the packages the base image installed under this path.
+# Python disables the per-user site directory for uid 0, so put the base
+# image's --user packages on PYTHONPATH explicitly.
 USER root
-ENV PYTHONUSERBASE=/home/meshcore/.local \
-    PYTHONPATH=/home/meshcore/.local/lib/python3.11/site-packages
+ENV PYTHONPATH=/home/meshcore/.local/lib/python3.11/site-packages
 
 CMD ["python3", "-m", "modules.ha_addon"]

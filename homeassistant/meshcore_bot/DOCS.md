@@ -19,7 +19,7 @@ Choose one connection type. Leave the other connection fields empty so they do n
 
 **TCP.** Set the connection type to `tcp` and enter the hostname (or IP address) and port of a MeshCore TCP companion. The port field maps to `tcp_port`. The host field maps to `hostname`. The companion's usual port is 5000.
 
-**Bluetooth Low Energy.** Experimental. Set the connection type to `ble` and, if you want a specific radio, its device name or address. Leave the address empty to let the bot discover one. The add-on sets `host_dbus` so it can talk to the host BlueZ daemon. BLE depends on that daemon and does not work on every Home Assistant install.
+**Bluetooth Low Energy.** Experimental. Set the connection type to `ble` and, if you want a specific radio, its device name or address. Leave the device name empty to let the bot discover one. The add-on sets `host_dbus` so it can talk to the host BlueZ daemon. BLE depends on that daemon and does not work on every Home Assistant install.
 
 ## config.ini
 
@@ -29,7 +29,7 @@ The first start copies `config.ini.example` into that path when the file is miss
 
 Options you set in the add-on configuration are written into the matching keys on every start. An option you leave empty is not written, so a value you changed in `config.ini` stays. Fixed add-on paths (the database, local plugins, and an empty log file so logs go to the add-on log) are applied on every start.
 
-The database is `/data/databases/meshcore_bot.db`. The web viewer uses that same file. Local plugins and the local config overlay live in `/data/local`. Home Assistant includes `/data` in add-on backups. Configuration backups the add-on takes before it rewrites `config.ini` are in `/data/backups`.
+The database is `/data/databases/meshcore_bot.db`. The web viewer uses that same file. Local plugins, their translation overrides, and the optional local config overlay live in `/config/local`, which you can open with the File Editor or Samba add-on. If the local overlay `/config/local/config.ini` sets a key the add-on manages, the add-on removes that key from the overlay so its own value wins. Home Assistant includes `/data` in add-on backups. Configuration backups the add-on takes before it rewrites `config.ini` are in `/data/backups`.
 
 ## Sidebar
 

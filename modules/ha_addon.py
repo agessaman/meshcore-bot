@@ -14,6 +14,14 @@ A blank string and JSON ``null`` count as unset: the matching ``config.ini``
 key is left alone. Home Assistant submits an empty configuration field that
 way, and writing it would wipe a value the user edited in the file.
 
+Values are written with ``%`` doubled, because the bot reads ``config.ini``
+with configparser's default interpolation. Comparisons against the raw file use
+the same escaped form, so a restart writes nothing.
+
+The bot merges ``<local_dir_path>/config.ini`` over the base file. After the
+base write, any managed key the local overlay also defines is deleted from the
+overlay so the add-on's value wins.
+
 ``ha_managed_keys.json`` is a JSON list of ``[section, key]`` pairs, sorted.
 It holds the fixed keys plus the option keys the user set on this start. The
 path is exported as ``MESHCORE_HA_MANAGED_KEYS`` for the bot and the web
@@ -34,7 +42,7 @@ import tempfile
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from modules.ini_writer import update_ini_values
 
@@ -47,6 +55,10 @@ EXAMPLE_FILENAME = "config.ini.example"
 OPTIONS_FILENAME = "options.json"
 MANAGED_KEYS_FILENAME = "ha_managed_keys.json"
 MANAGED_KEYS_ENV = "MESHCORE_HA_MANAGED_KEYS"
+
+# Fixed paths, relative to the base directory each INI_MAP row names.
+DB_PATH = "databases/meshcore_bot.db"
+LOCAL_DIR = "local"
 
 # The viewer binds this port. config.yaml's ingress_port and published port
 # use the same number; tests keep the three in step.
@@ -106,10 +118,9 @@ class IniMap:
     """One ``config.ini`` assignment the add-on owns.
 
     ``option`` is the key in Home Assistant's ``options.json``. ``None`` means
-    a fixed setting; ``constant`` is written on every start. ``under_data``
-    stores ``constant`` as a path relative to the data directory (a path with
-    a suffix is a file, and its parent directory is created; any other path
-    is a directory).
+    a fixed setting; ``constant`` is written on every start. ``base`` roots a
+    fixed path: ``"data"`` for the data directory, ``"config"`` for the
+    user-visible configuration directory. ``None`` leaves ``constant`` as-is.
     """
 
     section: str
@@ -117,7 +128,7 @@ class IniMap:
     convert: Callable[[Any], str]
     option: str | None = None
     constant: Any = None
-    under_data: bool = False
+    base: Literal["data", "config"] | None = None
 
 
 def _option(option: str, section: str, key: str, convert: Callable[[Any], str]) -> IniMap:
@@ -130,9 +141,9 @@ def _fixed(
     convert: Callable[[Any], str],
     constant: Any,
     *,
-    under_data: bool = False,
+    base: Literal["data", "config"] | None = None,
 ) -> IniMap:
-    return IniMap(section, key, convert, constant=constant, under_data=under_data)
+    return IniMap(section, key, convert, constant=constant, base=base)
 
 
 # HA option path -> (section, key, converter), plus fixed rows with constants.
@@ -142,12 +153,12 @@ INI_MAP: tuple[IniMap, ...] = (
     _option("serial_port", "Connection", "serial_port", as_str),
     _option("tcp_host", "Connection", "hostname", as_str),
     _option("tcp_port", "Connection", "tcp_port", as_int),
-    _option("ble_address", "Connection", "ble_device_name", as_str),
+    _option("ble_device_name", "Connection", "ble_device_name", as_str),
     _option("bot_name", "Bot", "bot_name", as_str),
     _option("log_level", "Logging", "log_level", as_log_level),
     _option("web_viewer_password", "Web_Viewer", "web_viewer_password", as_str),
-    _fixed("Bot", "db_path", as_str, "databases/meshcore_bot.db", under_data=True),
-    _fixed("Bot", "local_dir_path", as_str, "local", under_data=True),
+    _fixed("Bot", "db_path", as_str, DB_PATH, base="data"),
+    _fixed("Bot", "local_dir_path", as_str, LOCAL_DIR, base="config"),
     _fixed("Logging", "log_file", as_str, ""),
     _fixed("Web_Viewer", "enabled", as_bool, True),
     _fixed("Web_Viewer", "host", as_str, "0.0.0.0"),
@@ -171,13 +182,23 @@ def _is_set(value: object) -> bool:
     return True
 
 
-def _constant(row: IniMap, data_dir: Path) -> Any:
-    if row.under_data:
-        return str(data_dir / str(row.constant))
-    return row.constant
+def _constant(row: IniMap, config_dir: Path, data_dir: Path) -> Any:
+    if row.base is None:
+        return row.constant
+    root = data_dir if row.base == "data" else config_dir
+    return str(root / str(row.constant))
 
 
-def _assignments(options: Mapping[str, Any], data_dir: Path) -> list[tuple[IniMap, str]]:
+def _escape_percent(value: str) -> str:
+    """Escape ``%`` for configparser's default interpolation on read."""
+    return value.replace("%", "%%")
+
+
+def _assignments(
+    options: Mapping[str, Any],
+    config_dir: Path,
+    data_dir: Path,
+) -> list[tuple[IniMap, str]]:
     """Fixed rows first, then options the user set. Later rows win on a shared key."""
     rows = [row for row in INI_MAP if row.option is None]
     for row in INI_MAP:
@@ -188,13 +209,13 @@ def _assignments(options: Mapping[str, Any], data_dir: Path) -> list[tuple[IniMa
 
     rendered: list[tuple[IniMap, str]] = []
     for row in rows:
-        raw = options[row.option] if row.option is not None else _constant(row, data_dir)
+        raw = options[row.option] if row.option is not None else _constant(row, config_dir, data_dir)
         try:
             value = row.convert(raw)
         except ValueError as exc:
             label = row.option or f"[{row.section}] {row.key}"
             raise ValueError(f"Invalid value for {label}: {exc}") from exc
-        rendered.append((row, value))
+        rendered.append((row, _escape_percent(value)))
     return rendered
 
 
@@ -231,12 +252,9 @@ def _prepare_directories(config_dir: Path, data_dir: Path) -> Path:
     data_dir.mkdir(parents=True, exist_ok=True)
     backup_dir = data_dir / "backups"
     backup_dir.mkdir(parents=True, exist_ok=True)
-    for row in INI_MAP:
-        if not row.under_data or row.option is not None:
-            continue
-        target = data_dir / str(row.constant)
-        # A suffix marks a file (the database). Anything else is a directory.
-        (target.parent if target.suffix else target).mkdir(parents=True, exist_ok=True)
+    # The database's parent and the user-visible local directory.
+    for directory in (data_dir / Path(DB_PATH).parent, config_dir / LOCAL_DIR):
+        directory.mkdir(parents=True, exist_ok=True)
     return backup_dir
 
 
@@ -275,9 +293,29 @@ def _atomic_write(path: Path, text: str) -> None:
         raise
 
 
+def _managed_pairs(assignments: list[tuple[IniMap, str]]) -> list[tuple[str, str]]:
+    return sorted({(row.section, row.key) for row, _value in assignments})
+
+
 def _write_managed_keys(path: Path, assignments: list[tuple[IniMap, str]]) -> None:
-    pairs = sorted({(row.section, row.key) for row, _value in assignments})
-    _atomic_write(path, json.dumps(pairs, indent=2) + "\n")
+    _atomic_write(path, json.dumps(_managed_pairs(assignments), indent=2) + "\n")
+
+
+def _local_config_path(config_dir: Path) -> Path:
+    return config_dir / LOCAL_DIR / CONFIG_FILENAME
+
+
+def _overlay_deletes(
+    overlay_path: Path,
+    assignments: list[tuple[IniMap, str]],
+) -> dict[str, list[str]]:
+    """Managed keys the local overlay defines, shaped for ``update_ini_values``."""
+    parser = _read_config(overlay_path)
+    deletes: dict[str, list[str]] = {}
+    for section, key in _managed_pairs(assignments):
+        if parser.has_option(section, key):
+            deletes.setdefault(section, []).append(key)
+    return deletes
 
 
 def run(
@@ -296,7 +334,7 @@ def run(
         _seed_config(config_path, repo_root / EXAMPLE_FILENAME)
         print(f"Seeded {config_path} from {EXAMPLE_FILENAME}", flush=True)
 
-    assignments = _assignments(_load_options(data_dir / OPTIONS_FILENAME), data_dir)
+    assignments = _assignments(_load_options(data_dir / OPTIONS_FILENAME), config_dir, data_dir)
     updates = _updates_for(config_path, assignments)
     if updates:
         update_ini_values(str(config_path), updates, backup_dir=str(backup_dir))
@@ -304,6 +342,22 @@ def run(
         print(f"Updated {config_path} ({count} keys)", flush=True)
     else:
         print(f"{config_path} already matches add-on settings", flush=True)
+
+    overlay_path = _local_config_path(config_dir)
+    if overlay_path.is_file():
+        deletes = _overlay_deletes(overlay_path, assignments)
+        if deletes:
+            update_ini_values(
+                str(overlay_path), {}, deletes=deletes, backup_dir=str(backup_dir)
+            )
+            removed = ", ".join(
+                f"[{section}] {key}" for section, keys in deletes.items() for key in keys
+            )
+            print(
+                f"Removed {removed} from {overlay_path}: "
+                f"the add-on writes these keys in {config_path}",
+                flush=True,
+            )
 
     managed_path = data_dir / MANAGED_KEYS_FILENAME
     _write_managed_keys(managed_path, assignments)

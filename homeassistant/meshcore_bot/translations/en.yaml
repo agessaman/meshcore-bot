@@ -11,8 +11,8 @@ configuration:
   tcp_port:
     name: TCP port
     description: Port of the TCP companion. The companion default is 5000.
-  ble_address:
-    name: BLE address
+  ble_device_name:
+    name: BLE device name
     description: Bluetooth device name or address to connect to. Leave this empty to discover a radio. Experimental.
   bot_name:
     name: Bot name

@@ -29,10 +29,6 @@ from modules.ha_addon import (
 ROOT = Path(__file__).resolve().parents[1]
 ADDON = ROOT / "homeassistant" / "meshcore_bot"
 
-# The web viewer work package adds this key. Until that lands it is the only
-# mapped key config_schema.py does not know.
-PENDING_KEY = ("Web_Viewer", "ha_ingress")
-
 MINI_EXAMPLE = """\
 # keep me
 [Connection]
@@ -221,7 +217,7 @@ def test_schema_and_mapping_agree_both_ways() -> None:
     assert schema["serial_port"] == "device(subsystem=tty)?"
     assert schema["tcp_host"] == "str?"
     assert schema["tcp_port"] == "port?"
-    assert schema["ble_address"] == "str?"
+    assert schema["ble_device_name"] == "str?"
     assert schema["bot_name"] == "str?"
     assert schema["log_level"] == "list(DEBUG|INFO|WARNING|ERROR|CRITICAL)?"
     assert schema["web_viewer_password"] == "password?"
@@ -234,7 +230,7 @@ def test_option_rows_target_the_config_keys() -> None:
         "serial_port": ("Connection", "serial_port"),
         "tcp_host": ("Connection", "hostname"),
         "tcp_port": ("Connection", "tcp_port"),
-        "ble_address": ("Connection", "ble_device_name"),
+        "ble_device_name": ("Connection", "ble_device_name"),
         "bot_name": ("Bot", "bot_name"),
         "log_level": ("Logging", "log_level"),
         "web_viewer_password": ("Web_Viewer", "web_viewer_password"),
@@ -244,9 +240,9 @@ def test_option_rows_target_the_config_keys() -> None:
 def test_fixed_rows_are_constants() -> None:
     fixed = {(row.section, row.key): row for row in INI_MAP if row.option is None}
     assert fixed["Bot", "db_path"].constant == "databases/meshcore_bot.db"
-    assert fixed["Bot", "db_path"].under_data is True
+    assert fixed["Bot", "db_path"].base == "data"
     assert fixed["Bot", "local_dir_path"].constant == "local"
-    assert fixed["Bot", "local_dir_path"].under_data is True
+    assert fixed["Bot", "local_dir_path"].base == "config"
     assert fixed["Logging", "log_file"].constant == ""
     assert fixed["Web_Viewer", "enabled"].constant is True
     assert fixed["Web_Viewer", "host"].constant == "0.0.0.0"
@@ -255,16 +251,14 @@ def test_fixed_rows_are_constants() -> None:
     assert fixed["Web_Viewer", "auto_start"].constant is True
 
 
-def test_mapped_keys_are_known_except_pending_ha_ingress() -> None:
-    """ha_ingress is pending until the web viewer work package documents it."""
+def test_every_mapped_key_is_known() -> None:
     example = load_documented_keys_from_example(ROOT / "config.ini.example")
     missing = [
         (row.section, row.key)
         for row in INI_MAP
         if not is_known_config_key(row.section, row.key, example)
     ]
-    allowed = {PENDING_KEY} if not is_known_config_key(*PENDING_KEY, example) else set()
-    assert set(missing) == allowed
+    assert missing == []
 
 
 def test_addon_version_matches_pyproject() -> None:
@@ -343,7 +337,7 @@ def test_first_start_seeds_and_applies_fixed_settings(
     cfg = _ini(config_path)
     data = layout["data_dir"]
     assert cfg.get("Bot", "db_path") == str(data / "databases" / "meshcore_bot.db")
-    assert cfg.get("Bot", "local_dir_path") == str(data / "local")
+    assert cfg.get("Bot", "local_dir_path") == str(layout["config_dir"] / "local")
     assert cfg.get("Logging", "log_file") == ""
     assert cfg.get("Logging", "log_level") == "INFO"
     assert cfg.get("Web_Viewer", "enabled") == "true"
@@ -356,7 +350,8 @@ def test_first_start_seeds_and_applies_fixed_settings(
     assert cfg.get("Feed_Command", "enabled") == "false"
     assert cfg.get("Connection", "serial_port") == "/dev/ttyUSB0"
     assert (data / "databases").is_dir()
-    assert (data / "local").is_dir()
+    assert (layout["config_dir"] / "local").is_dir()
+    assert not (layout["config_dir"] / "local" / "config.ini").exists()
     backups = list((data / "backups").glob("config.ini.bak.*"))
     assert len(backups) == 1
     assert "db_path = meshcore_bot.db" in backups[0].read_text(encoding="utf-8")
@@ -399,7 +394,7 @@ def test_set_options_override(layout: dict[str, Path]) -> None:
         layout["data_dir"],
         {
             "connection_type": "ble",
-            "ble_address": "AA:BB:CC:DD:EE:FF",
+            "ble_device_name": "AA:BB:CC:DD:EE:FF",
             "bot_name": "HA Radio",
             "tcp_port": 4000,
             "ignored_extra": "left alone",
@@ -422,6 +417,71 @@ def test_restart_writes_nothing_when_unchanged(layout: dict[str, Path]) -> None:
     assert backups
     run(**layout)
     assert config_path.read_bytes() == written
+    assert sorted(path.name for path in (layout["data_dir"] / "backups").iterdir()) == backups
+
+
+def test_percent_in_password_survives_configparser(layout: dict[str, Path]) -> None:
+    _options(layout["data_dir"], {"web_viewer_password": "abc%xyz"})
+    run(**layout)
+    config_path = layout["config_dir"] / "config.ini"
+    assert "web_viewer_password = abc%%xyz" in config_path.read_text(encoding="utf-8")
+
+    # The bot reads config.ini with the default interpolation, so %% must come
+    # back as the single % the user entered.
+    plain = configparser.ConfigParser()
+    plain.read(config_path, encoding="utf-8")
+    assert plain.get("Web_Viewer", "web_viewer_password") == "abc%xyz"
+
+    written = config_path.read_bytes()
+    backups = sorted(path.name for path in (layout["data_dir"] / "backups").iterdir())
+    run(**layout)
+    assert config_path.read_bytes() == written
+    assert sorted(path.name for path in (layout["data_dir"] / "backups").iterdir()) == backups
+
+
+def test_overlay_managed_keys_are_deleted(
+    layout: dict[str, Path],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    run(**layout)
+    overlay = layout["config_dir"] / "local" / "config.ini"
+    overlay.write_text(
+        "; local comment\n"
+        "[Bot]\n"
+        "bot_name = Override\n"
+        "local_dir_path = /elsewhere\n"
+        "[Feed_Command]\n"
+        "enabled = true\n",
+        encoding="utf-8",
+    )
+    _options(layout["data_dir"], {"bot_name": "HA Radio"})
+    run(**layout)
+    cfg = _ini(overlay)
+    assert not cfg.has_option("Bot", "bot_name")
+    assert not cfg.has_option("Bot", "local_dir_path")
+    assert cfg.get("Feed_Command", "enabled") == "true"
+    assert "; local comment" in overlay.read_text(encoding="utf-8")
+
+    out = capsys.readouterr().out
+    assert "[Bot] bot_name" in out
+    assert "[Bot] local_dir_path" in out
+    assert "the add-on writes these keys" in out
+
+
+def test_overlay_without_managed_keys_is_ignored(layout: dict[str, Path]) -> None:
+    run(**layout)
+    overlay = layout["config_dir"] / "local" / "config.ini"
+    assert not overlay.exists()
+    backups = sorted(path.name for path in (layout["data_dir"] / "backups").iterdir())
+
+    run(**layout)
+    assert not overlay.exists()
+    assert sorted(path.name for path in (layout["data_dir"] / "backups").iterdir()) == backups
+
+    content = "; local only\n[Feed_Command]\nenabled = true\n"
+    overlay.write_text(content, encoding="utf-8")
+    run(**layout)
+    assert overlay.read_text(encoding="utf-8") == content
     assert sorted(path.name for path in (layout["data_dir"] / "backups").iterdir()) == backups
 
 
@@ -451,7 +511,7 @@ def test_real_example_with_sample_options(tmp_path: Path, blocked_exec: list[tup
     assert cfg.get("Web_Viewer", "auto_start") == "true"
     assert cfg.get("Feed_Command", "enabled") == "false"
     assert cfg.get("Bot", "db_path") == str(data_dir / "databases" / "meshcore_bot.db")
-    assert cfg.get("Bot", "local_dir_path") == str(data_dir / "local")
+    assert cfg.get("Bot", "local_dir_path") == str(config_dir / "local")
     owned = _managed(data_dir)
     fixed = {(row.section, row.key) for row in INI_MAP if row.option is None}
     assert owned == fixed | {
