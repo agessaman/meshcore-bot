@@ -17,6 +17,7 @@ import pytest
 from modules.web_viewer.app import BotDataViewer
 from modules.web_viewer.ha_ingress import (
     HA_INGRESS_PROXY_IP,
+    ha_ingress_enabled,
     ingress_prefix,
     is_browser_origin,
     normalize_ingress_path,
@@ -55,8 +56,10 @@ _SAFE_CALL = re.compile(
 _REQUEST_PATH_CMP = re.compile(r"request\.path\s*[=!]=\s*$")
 _ATTR = re.compile(r"(?:href|src|action)\s*=\s*$", re.IGNORECASE)
 _SINK = re.compile(
-    r"(?:\.href|\.src|location(?:\.href)?\s*=|window\.open\s*\(|EventSource\s*\(|"
-    r"\bimport\s*\(|new\s+URL\s*\(|history\.(?:pushState|replaceState)\s*\(|\bpath\s*:)\s*$"
+    r"(?:\.(?:href|src|action)\s*=?|location(?:\.href)?\s*=|window\.open\s*\(|"
+    r"new\s+(?:EventSource|Worker|Audio|Image)\s*\(|\bEventSource\s*\(|"
+    r"\bimport\s*\(|new\s+URL\s*\(|history\.(?:pushState|replaceState)\s*\(|"
+    r"\bio\s*\(|\bpath\s*:)\s*$"
 )
 
 
@@ -336,6 +339,13 @@ class TestIngressMiddlewareAndAuth:
         assert callable(ingress_viewer.socketio.server.eio.cors_allowed_origins)
 
 
+@pytest.mark.parametrize("value", ["maybe", "", "2"])
+def test_malformed_ha_ingress_value_is_treated_as_off(value: str) -> None:
+    cfg = configparser.ConfigParser()
+    cfg["Web_Viewer"] = {"ha_ingress": value}
+    assert ha_ingress_enabled(cfg) is False
+
+
 def _viewer_sources():
     root = Path(__file__).resolve().parent.parent / "modules" / "web_viewer"
     files = list((root / "templates").rglob("*.html"))
@@ -351,6 +361,36 @@ def _line_at(text: str, index: int) -> str:
     return text[start:end]
 
 
+def _scan_source(rel: str, text: str, used: dict[tuple[str, str, str], bool]) -> list[str]:
+    """Return root-relative URL literals in ``text`` that bypass appUrl/fetch."""
+    violations = []
+    for match in _LITERAL.finditer(text):
+        literal = match.group("path")
+        if not (literal == "/" or _URL_PATH.fullmatch(literal)):
+            continue
+        before = text[: match.start()].rstrip()
+        line = _line_at(text, match.start())
+        if _SAFE_CALL.search(before) or _REQUEST_PATH_CMP.search(before):
+            continue
+        navigates = bool(_ATTR.search(before) or _SINK.search(before))
+        # A quoted "/" is a character test (appUrl, path slicing), not a URL.
+        if literal == "/" and not navigates:
+            continue
+        allow = next(
+            (entry for entry in _ALLOWLIST if entry[0] == rel and entry[1] in line),
+            None,
+        )
+        if allow is not None:
+            used[allow] = True
+            continue
+        # /api/... strings ride the fetch wrapper unless a sink resolves them
+        # itself. /api-explorer is a page, so the slash after "api" matters.
+        if literal.startswith("/api/") and not navigates:
+            continue
+        violations.append(f"{rel}:{text[:match.start()].count(chr(10)) + 1}: {line.strip()}")
+    return violations
+
+
 def test_root_relative_urls_go_through_url_for_app_url_or_fetch():
     """New root-relative URLs have to use url_for, appUrl, or the fetch wrapper.
 
@@ -364,31 +404,27 @@ def test_root_relative_urls_go_through_url_for_app_url_or_fetch():
     for path in _viewer_sources():
         text = path.read_text(encoding="utf-8")
         rel = str(path.relative_to(Path(__file__).resolve().parent.parent / "modules" / "web_viewer"))
-        for match in _LITERAL.finditer(text):
-            literal = match.group("path")
-            if not (literal == "/" or _URL_PATH.fullmatch(literal)):
-                continue
-            before = text[: match.start()].rstrip()
-            line = _line_at(text, match.start())
-            if _SAFE_CALL.search(before) or _REQUEST_PATH_CMP.search(before):
-                continue
-            navigates = bool(_ATTR.search(before) or _SINK.search(before))
-            # A quoted "/" is a character test (appUrl, path slicing), not a URL.
-            if literal == "/" and not navigates:
-                continue
-            allow = next(
-                (entry for entry in _ALLOWLIST if entry[0] == rel and entry[1] in line),
-                None,
-            )
-            if allow is not None:
-                used[allow] = True
-                continue
-            # /api/... strings ride the fetch wrapper unless a sink resolves them
-            # itself. /api-explorer is a page, so the slash after "api" matters.
-            if literal.startswith("/api/") and not navigates:
-                continue
-            violations.append(f"{rel}:{text[:match.start()].count(chr(10)) + 1}: {line.strip()}")
+        violations.extend(_scan_source(rel, text, used))
 
     stale = [entry[1] for entry, hit in used.items() if not hit]
     assert stale == [], f"allowlist entries matched nothing: {stale}"
     assert violations == [], "root-relative URL bypasses url_for/appUrl/fetch:\n" + "\n".join(violations)
+
+
+@pytest.mark.parametrize(
+    "snippet",
+    [
+        "a.href = '/api/export';\n",
+        "img.src = '/api/image';\n",
+        "form.action = '/api/save';\n",
+        "const source = new EventSource('/api/stream');\n",
+        "const worker = new Worker('/api/worker.js');\n",
+        "const audio = new Audio('/api/sound.mp3');\n",
+        "const image = new Image('/api/picture.png');\n",
+        "const socket = io('/api/socket');\n",
+    ],
+)
+def test_sink_patterns_flag_root_relative_urls(snippet: str) -> None:
+    """Each self-resolving sink must flag a root-relative literal, not exempt it."""
+    used = dict.fromkeys(_ALLOWLIST, False)
+    assert _scan_source("templates/synthetic.html", snippet, used) != []

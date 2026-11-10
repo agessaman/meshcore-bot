@@ -95,7 +95,7 @@ def guard_managed_writes(
     updates: Mapping[str, Mapping[str, str]] | None,
     deletes: Mapping[str, Iterable[str]] | None,
     config: configparser.ConfigParser | None = None,
-) -> tuple[Mapping[str, Mapping[str, str]], Mapping[str, Iterable[str]] | None]:
+) -> tuple[dict[str, dict[str, str]], dict[str, list[str] | set[str]] | None]:
     """Drop unchanged managed keys and reject real changes.
 
     Rewriting a managed key with the value already stored is not a change (the
@@ -103,20 +103,19 @@ def guard_managed_writes(
     any delete of a managed key raises :class:`ManagedKeyError` and nothing
     should be written.
 
-    When no keys are managed, ``updates`` and ``deletes`` are returned unchanged.
+    When no keys are managed, ``updates`` and ``deletes`` are returned as
+    equivalent concrete dicts.
     """
     managed = load_managed_keys()
     if not managed:
-        return updates or {}, deletes
-    return _guard_against(managed, updates, deletes, config)
+        concrete_deletes: dict[str, list[str] | set[str]] = {
+            section: list(keys) for section, keys in (deletes or {}).items()
+        }
+        return (
+            {section: dict(values) for section, values in (updates or {}).items()},
+            concrete_deletes or None,
+        )
 
-
-def _guard_against(
-    managed: frozenset[tuple[str, str]],
-    updates: Mapping[str, Mapping[str, str]] | None,
-    deletes: Mapping[str, Iterable[str]] | None,
-    config: configparser.ConfigParser | None,
-) -> tuple[dict[str, dict[str, str]], dict[str, list[str]] | None]:
     conflicts: list[tuple[str, str]] = []
     filtered: dict[str, dict[str, str]] = {}
     for section, values in (updates or {}).items():
@@ -132,7 +131,7 @@ def _guard_against(
         if kept:
             filtered[section] = kept
 
-    filtered_deletes: dict[str, list[str]] = {}
+    filtered_deletes: dict[str, list[str] | set[str]] = {}
     for section, keys in (deletes or {}).items():
         kept_keys: list[str] = []
         for key in keys:

@@ -198,7 +198,12 @@ from modules.web_viewer.feeds import (  # noqa: F401  _read_limited_requests_res
     _read_limited_requests_response,
     _validate_feed_interval,
 )
-from modules.web_viewer.ha_ingress import HaIngressMiddleware, ingress_prefix, socketio_cors_allowed
+from modules.web_viewer.ha_ingress import (
+    HaIngressMiddleware,
+    ha_ingress_enabled,
+    ingress_prefix,
+    socketio_cors_allowed,
+)
 from modules.web_viewer.integration import normalized_web_viewer_password
 from modules.web_viewer.live_stream import (  # noqa: F401  _ANSI_ESCAPE_RE re-exported
     _ANSI_ESCAPE_RE,
@@ -355,10 +360,7 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
 
         # Optional password authentication for web viewer (BUG-001)
         self.web_viewer_password = normalized_web_viewer_password(self.config)
-        try:
-            self.ha_ingress = self.config.getboolean("Web_Viewer", "ha_ingress", fallback=False)
-        except (configparser.Error, ValueError, TypeError):
-            self.ha_ingress = False
+        self.ha_ingress = ha_ingress_enabled(self.config)
         if self.web_viewer_password:
             self.logger.info("Web viewer authentication enabled")
         else:

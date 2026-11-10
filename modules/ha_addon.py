@@ -59,6 +59,7 @@ MANAGED_KEYS_ENV = "MESHCORE_HA_MANAGED_KEYS"
 # Fixed paths, relative to the base directory each INI_MAP row names.
 DB_PATH = "databases/meshcore_bot.db"
 LOCAL_DIR = "local"
+LOCAL_BACKUP_DIR = "local"
 
 # The viewer binds this port. config.yaml's ingress_port and published port
 # use the same number; tests keep the three in step.
@@ -251,7 +252,9 @@ def _prepare_directories(config_dir: Path, data_dir: Path) -> Path:
     config_dir.mkdir(parents=True, exist_ok=True)
     data_dir.mkdir(parents=True, exist_ok=True)
     backup_dir = data_dir / "backups"
-    backup_dir.mkdir(parents=True, exist_ok=True)
+    # Both files are named config.ini and backups are timestamped to the second,
+    # so the overlay needs its own directory to keep its backup separate.
+    (backup_dir / LOCAL_BACKUP_DIR).mkdir(parents=True, exist_ok=True)
     # The database's parent and the user-visible local directory.
     for directory in (data_dir / Path(DB_PATH).parent, config_dir / LOCAL_DIR):
         directory.mkdir(parents=True, exist_ok=True)
@@ -308,13 +311,13 @@ def _local_config_path(config_dir: Path) -> Path:
 def _overlay_deletes(
     overlay_path: Path,
     assignments: list[tuple[IniMap, str]],
-) -> dict[str, list[str]]:
+) -> dict[str, list[str] | set[str]]:
     """Managed keys the local overlay defines, shaped for ``update_ini_values``."""
     parser = _read_config(overlay_path)
-    deletes: dict[str, list[str]] = {}
+    deletes: dict[str, list[str] | set[str]] = {}
     for section, key in _managed_pairs(assignments):
         if parser.has_option(section, key):
-            deletes.setdefault(section, []).append(key)
+            deletes[section] = [*deletes.get(section, []), key]
     return deletes
 
 
@@ -348,7 +351,10 @@ def run(
         deletes = _overlay_deletes(overlay_path, assignments)
         if deletes:
             update_ini_values(
-                str(overlay_path), {}, deletes=deletes, backup_dir=str(backup_dir)
+                str(overlay_path),
+                {},
+                deletes=deletes,
+                backup_dir=str(backup_dir / LOCAL_BACKUP_DIR),
             )
             removed = ", ".join(
                 f"[{section}] {key}" for section, keys in deletes.items() for key in keys

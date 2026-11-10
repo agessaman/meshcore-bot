@@ -542,6 +542,20 @@ class TestWebViewerIntegrationValidation:
                 WebViewerIntegration(bot)
         bot.logger.error.assert_not_called()
 
+    def test_malformed_ha_ingress_value_is_treated_as_off(self):
+        from modules.web_viewer.integration import WebViewerIntegration
+        bot = _make_bot()
+        bot.config.set("Web_Viewer", "enabled", "true")
+        bot.config.set("Web_Viewer", "host", "0.0.0.0")
+        bot.config.set("Web_Viewer", "web_viewer_password", "")
+        bot.config.set("Web_Viewer", "ha_ingress", "maybe")
+        with patch.object(WebViewerIntegration, "start_viewer"):
+            with patch("modules.web_viewer.integration.BotIntegration._init_http_session"), \
+                 patch("modules.web_viewer.integration.BotIntegration._init_packet_stream_table"), \
+                 patch("modules.web_viewer.integration.BotIntegration._start_drain_thread"):
+                WebViewerIntegration(bot)  # must not raise from getboolean
+        bot.logger.error.assert_called()
+
     def test_zero_host_without_password_does_not_log_when_disabled(self):
         from modules.web_viewer.integration import WebViewerIntegration
         bot = _make_bot()

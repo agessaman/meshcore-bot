@@ -21,6 +21,7 @@ from ..db_retention import (
     retention_delete_settings,
 )
 from ..utils import resolve_path
+from .ha_ingress import ha_ingress_enabled
 
 
 def normalized_web_viewer_password(config) -> str:
@@ -871,7 +872,7 @@ class WebViewerIntegration:
         # Only warn when the web viewer is configured to run at startup.
         # Home Assistant ingress does not publish that port; the Supervisor
         # is the only client and has already authenticated the user.
-        ha_ingress = self.bot.config.getboolean("Web_Viewer", "ha_ingress", fallback=False)
+        ha_ingress = ha_ingress_enabled(self.bot.config)
         if self.enabled and self.host == "0.0.0.0" and not ha_ingress:
             if not normalized_web_viewer_password(self.bot.config):
                 self.logger.error(

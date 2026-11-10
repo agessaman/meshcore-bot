@@ -27,6 +27,7 @@ class SocketClientsMixin:
     config: Any
     connected_clients: Any
     db_path: Any
+    is_ha_ingress_request: Any
     logger: Any
     max_clients: Any
     socketio: Any

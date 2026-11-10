@@ -485,6 +485,27 @@ def test_overlay_without_managed_keys_is_ignored(layout: dict[str, Path]) -> Non
     assert sorted(path.name for path in (layout["data_dir"] / "backups").iterdir()) == backups
 
 
+def test_base_and_overlay_backups_do_not_collide(
+    layout: dict[str, Path],
+    blocked_exec: list[tuple[str, list[str]]],
+) -> None:
+    overlay = layout["config_dir"] / "local" / "config.ini"
+    overlay.parent.mkdir(parents=True, exist_ok=True)
+    overlay.write_text("[Bot]\nbot_name = Override\n", encoding="utf-8")
+    _options(layout["data_dir"], {"bot_name": "HA Radio"})
+
+    run(**layout)
+
+    base_backups = list((layout["data_dir"] / "backups").glob("config.ini.bak.*"))
+    overlay_backups = list(
+        (layout["data_dir"] / "backups" / "local").glob("config.ini.bak.*")
+    )
+    assert len(base_backups) == 1
+    assert len(overlay_backups) == 1
+    assert "bot_name = MeshCoreBot" in base_backups[0].read_text(encoding="utf-8")
+    assert "bot_name = Override" in overlay_backups[0].read_text(encoding="utf-8")
+
+
 def test_real_example_with_sample_options(tmp_path: Path, blocked_exec: list[tuple[str, list[str]]]) -> None:
     config_dir = tmp_path / "config"
     data_dir = tmp_path / "data"

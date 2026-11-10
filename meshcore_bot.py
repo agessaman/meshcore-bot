@@ -303,8 +303,11 @@ def main():
         # Cleanup already handled in run_bot's finally block
         print("\nShutdown complete.")
     except Exception as e:
-        # Cleanup already handled in run_bot's finally block
+        # Cleanup already handled in run_bot's finally block. A failure that
+        # escapes asyncio.run (e.g. BleakError from the BLE adapter) must exit
+        # non-zero so launchd and the Supervisor watchdog restart the bot.
         print(f"Error: {e}")
+        sys.exit(1)
     else:
         if not started:
             # A startup connection failure must exit non-zero: launchd

@@ -676,7 +676,7 @@ def read_section_items(
         if prefix:
             if not key.lower().startswith(pl):
                 continue
-            item = {"key": key[len(prefix):], "value": raw}
+            item: dict[str, Any] = {"key": key[len(prefix):], "value": raw}
         else:
             item = {"key": key, "value": raw}
         if managed and is_managed(section, key, managed):

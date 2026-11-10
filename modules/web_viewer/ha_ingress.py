@@ -8,6 +8,7 @@ an ingress panel, so a request that passes these checks is already authenticated
 
 from __future__ import annotations
 
+import configparser
 import re
 from collections.abc import Mapping
 
@@ -25,6 +26,14 @@ _PATH_SEGMENT = re.compile(r"^[A-Za-z0-9._~-]+$")
 _BROWSER_ORIGIN = re.compile(
     r"^https?://(?:[A-Za-z0-9.-]{1,253}|\[[0-9A-Fa-f:.]{2,64}\])(?::\d{1,5})?$"
 )
+
+
+def ha_ingress_enabled(config: configparser.ConfigParser) -> bool:
+    """True when ``[Web_Viewer] ha_ingress`` is set; malformed values are off."""
+    try:
+        return config.getboolean("Web_Viewer", "ha_ingress", fallback=False)
+    except (configparser.Error, ValueError, TypeError):
+        return False
 
 
 def normalize_ingress_path(value: object) -> str | None:

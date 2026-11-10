@@ -121,14 +121,17 @@ class _RecordingLogger:
 class _FakeBot:
     """Stands in for MeshCoreBot so main() can run without a radio or config."""
 
-    def __init__(self, started: bool):
+    def __init__(self, started: bool, start_error: Exception | None = None):
         self.logger = _RecordingLogger()
         self.connected = False
         self._shutdown_event = None
         self._started = started
+        self._start_error = start_error
         self.stop_calls = 0
 
     async def start(self) -> bool:
+        if self._start_error is not None:
+            raise self._start_error
         return self._started
 
     async def stop(self) -> None:
@@ -136,9 +139,13 @@ class _FakeBot:
 
 
 def _run_main_with_fake_bot(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *, started: bool
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    *,
+    started: bool,
+    start_error: Exception | None = None,
 ) -> _FakeBot:
-    fake = _FakeBot(started)
+    fake = _FakeBot(started, start_error)
     import modules.core
 
     monkeypatch.setattr(modules.core, "MeshCoreBot", lambda config_file: fake)
@@ -174,6 +181,26 @@ class TestStartupExitStatus:
         main()  # returning normally is exit status 0
 
         assert fake.stop_calls == 1
+
+    def test_start_exception_exits_1(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        fake = _run_main_with_fake_bot(
+            monkeypatch,
+            tmp_path,
+            started=False,
+            start_error=RuntimeError("BLE adapter unavailable"),
+        )
+
+        with pytest.raises(SystemExit) as exc:
+            main()
+
+        assert exc.value.code == 1
+        assert fake.stop_calls == 1  # cleanup ran before the exit
+        assert "Error: BLE adapter unavailable" in capsys.readouterr().out
 
 
 class TestReportConfigIssues:
