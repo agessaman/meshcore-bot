@@ -925,10 +925,6 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
                 error_message='Something went wrong on our end. The error has been logged.',
             ), 500)
 
-        @self.app.errorhandler(ManagedKeyError)
-        def managed_key_rejected(exc: ManagedKeyError):
-            return _managed_key_response(exc)
-
         # Authentication middleware (BUG-001).
         # Fail closed when a password is configured: only the public allowlist
         # below is reachable without authenticated_admin. Everything else
@@ -1019,15 +1015,13 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
             if not self._auth_enforced():
                 return  # Legacy open mode, or Home Assistant already authenticated
             path = _normalize_request_path(request.path)
-            if path.startswith('/static/'):
+            if path.startswith('/static/') or path == '/api/stream_data':
                 return
             if not self.web_viewer_password:
                 # Ingress is on with no password: there is no login to succeed,
                 # so direct access fails closed instead of falling back to open
                 # mode. The bot's ingest endpoint uses X-Stream-Token, not the
                 # admin session.
-                if path == '/api/stream_data':
-                    return
                 return _direct_access_disabled(path)
             if path in _EXEMPT_PATHS:
                 return

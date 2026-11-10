@@ -511,11 +511,9 @@ def _assemble_entry(
     description: str,
     category: str,
     enabled_default: bool,
+    managed: frozenset[tuple[str, str]],
     source: str = "base",
-    managed: Optional[frozenset[tuple[str, str]]] = None,
 ) -> dict:
-    if managed is None:
-        managed = load_managed_keys()
     schema = list(getattr(cls, "settings_schema", []) or [])
     fields: list[dict] = []
     for field in schema:
@@ -595,7 +593,7 @@ def _read_repeating_blocks(
     config: configparser.ConfigParser,
     cls: type,
     section: str,
-    managed: Optional[frozenset[tuple[str, str]]] = None,
+    managed: frozenset[tuple[str, str]],
 ) -> list[dict]:
     """Build the repeating structured-block editors a plugin declares.
 
@@ -631,16 +629,15 @@ def _read_repeating_blocks(
             enabled = str(sub.get(enabled_field, "true")).strip().lower() in _TRUE
             values = {k: v for k, v in sub.items() if k != enabled_field}
             block: dict = {"index": idx, "enabled": enabled, "values": values}
-            if managed:
-                owned = [
-                    subkey
-                    for subkey in list(values) + schema_keys
-                    if is_managed(section, f"{bid}{idx}_{subkey}", managed)
-                ]
-                if owned:
-                    block["managed_keys"] = sorted(set(owned))
-                if is_managed(section, f"{bid}{idx}_{enabled_field}", managed):
-                    block["enabled_managed"] = True
+            owned = [
+                subkey
+                for subkey in list(values) + schema_keys
+                if is_managed(section, f"{bid}{idx}_{subkey}", managed)
+            ]
+            if owned:
+                block["managed_keys"] = sorted(set(owned))
+            if is_managed(section, f"{bid}{idx}_{enabled_field}", managed):
+                block["enabled_managed"] = True
             blocks.append(block)
         result.append({
             "id": bid,
@@ -657,8 +654,8 @@ def _read_repeating_blocks(
 def read_section_items(
     config: configparser.ConfigParser,
     section: str,
-    prefix: str = "",
-    managed: Optional[frozenset[tuple[str, str]]] = None,
+    prefix: str,
+    managed: frozenset[tuple[str, str]],
 ) -> list[dict]:
     """Return a section's key/value pairs as ``[{"key", "value"}, ...]`` (raw).
 
@@ -679,7 +676,7 @@ def read_section_items(
             item: dict[str, Any] = {"key": key[len(prefix):], "value": raw}
         else:
             item = {"key": key, "value": raw}
-        if managed and is_managed(section, key, managed):
+        if is_managed(section, key, managed):
             item["managed"] = True
         items.append(item)
     return items
@@ -688,7 +685,7 @@ def read_section_items(
 def _read_dynamic_sections(
     config: configparser.ConfigParser,
     cls: type,
-    managed: Optional[frozenset[tuple[str, str]]] = None,
+    managed: frozenset[tuple[str, str]],
 ) -> list[dict]:
     """Build the dynamic key/value section editors a plugin declares.
 

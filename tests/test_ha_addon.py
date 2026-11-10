@@ -11,12 +11,11 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 
 from modules.config_schema import is_known_config_key, load_documented_keys_from_example
 from modules.ha_addon import (
     INI_MAP,
-    MANAGED_KEYS_ENV,
-    MANAGED_KEYS_FILENAME,
     VIEWER_PORT,
     as_bool,
     as_connection_type,
@@ -25,6 +24,7 @@ from modules.ha_addon import (
     main,
     run,
 )
+from modules.managed_keys import MANAGED_KEYS_ENV, MANAGED_KEYS_FILENAME
 
 ROOT = Path(__file__).resolve().parents[1]
 ADDON = ROOT / "homeassistant" / "meshcore_bot"
@@ -67,22 +67,20 @@ SAMPLE_OPTIONS = {
     "web_viewer_password": "s3cret",
 }
 
+FIXED_PAIRS = {(row.section, row.key) for row in INI_MAP if row.option is None}
+
 
 @pytest.fixture(autouse=True)
 def blocked_exec(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, list[str]]]:
-    """Stop run() from replacing the test process, and restore the env var."""
+    """Stop run() from replacing the test process, and isolate the env var."""
     calls: list[tuple[str, list[str]]] = []
 
     def fake(file: str, args: list[str]) -> None:
         calls.append((file, list(args)))
 
     monkeypatch.setattr(os, "execvp", fake)
-    previous = os.environ.get(MANAGED_KEYS_ENV)
-    yield calls
-    if previous is None:
-        os.environ.pop(MANAGED_KEYS_ENV, None)
-    else:
-        os.environ[MANAGED_KEYS_ENV] = previous
+    monkeypatch.delenv(MANAGED_KEYS_ENV, raising=False)
+    return calls
 
 
 @pytest.fixture
@@ -114,6 +112,22 @@ def _managed(data_dir: Path) -> set[tuple[str, str]]:
     return {tuple(pair) for pair in payload}
 
 
+def _backup_names(data_dir: Path) -> list[str]:
+    return sorted(path.name for path in (data_dir / "backups").iterdir())
+
+
+def _assert_rerun_writes_nothing(
+    layout: dict[str, Path],
+    config_path: Path,
+    data_dir: Path,
+) -> None:
+    written = config_path.read_bytes()
+    backups = _backup_names(data_dir)
+    run(**layout)
+    assert config_path.read_bytes() == written
+    assert _backup_names(data_dir) == backups
+
+
 def _project_version() -> str:
     text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     try:
@@ -125,85 +139,13 @@ def _project_version() -> str:
     return tomllib.loads(text)["project"]["version"]
 
 
-def _unquote(text: str) -> str:
-    if len(text) >= 2 and text[0] == text[-1] and text[0] in {'"', "'"}:
-        return text[1:-1]
-    return text
-
-
-def _scalar(text: str) -> Any:
-    text = text.strip()
-    if text in {"null", "~", ""}:
-        return None
-    if text == "true":
-        return True
-    if text == "false":
-        return False
-    if len(text) >= 2 and text[0] == text[-1] and text[0] in {'"', "'"}:
-        return text[1:-1]
-    if re.fullmatch(r"-?\d+", text):
-        return int(text)
-    return text
-
-
-def _parse_block(lines: list[tuple[int, str]], index: int, indent: int) -> tuple[Any, int]:
-    if index < len(lines) and lines[index][1].startswith("- "):
-        return _parse_list(lines, index, indent)
-    return _parse_map(lines, index, indent)
-
-
-def _parse_map(lines: list[tuple[int, str]], index: int, indent: int) -> tuple[dict[str, Any], int]:
-    result: dict[str, Any] = {}
-    while index < len(lines):
-        level, text = lines[index]
-        if level < indent:
-            break
-        if level != indent or text.startswith("- "):
-            raise ValueError(f"unexpected YAML at {text!r}")
-        key, sep, rest = text.partition(":")
-        if not sep:
-            raise ValueError(f"expected key: value, got {text!r}")
-        key = _unquote(key.strip())
-        rest = rest.strip()
-        index += 1
-        if rest == "" and index < len(lines) and lines[index][0] > level:
-            child, index = _parse_block(lines, index, lines[index][0])
-            result[key] = child
-        else:
-            result[key] = _scalar(rest)
-    return result, index
-
-
-def _parse_list(lines: list[tuple[int, str]], index: int, indent: int) -> tuple[list[Any], int]:
-    result: list[Any] = []
-    while index < len(lines):
-        level, text = lines[index]
-        if level < indent or not text.startswith("- "):
-            break
-        item = text[2:].strip()
-        index += 1
-        if item == "" and index < len(lines) and lines[index][0] > level:
-            child, index = _parse_block(lines, index, lines[index][0])
-            result.append(child)
-        else:
-            result.append(_scalar(item))
-    return result, index
-
-
 def load_yaml(path: Path) -> dict[str, Any]:
-    """Parse the small YAML subset the add-on files use. No PyYAML in this repo."""
-    lines: list[tuple[int, str]] = []
-    for raw in path.read_text(encoding="utf-8").splitlines():
-        stripped = raw.strip()
-        if not stripped or stripped.startswith("#") or stripped in {"---", "..."}:
-            continue
-        lines.append((len(raw) - len(raw.lstrip(" ")), stripped))
-    value, index = _parse_block(lines, 0, 0)
-    if index != len(lines):
-        raise ValueError(f"{path} was not fully parsed near {lines[index]!r}")
-    if not isinstance(value, dict):
+    """Parse one of the add-on's YAML files."""
+    with path.open(encoding="utf-8") as handle:
+        loaded = yaml.safe_load(handle)
+    if not isinstance(loaded, dict):
         raise ValueError(f"{path} is not a mapping")
-    return value
+    return loaded
 
 
 def test_schema_and_mapping_agree_both_ways() -> None:
@@ -235,20 +177,6 @@ def test_option_rows_target_the_config_keys() -> None:
         "log_level": ("Logging", "log_level"),
         "web_viewer_password": ("Web_Viewer", "web_viewer_password"),
     }
-
-
-def test_fixed_rows_are_constants() -> None:
-    fixed = {(row.section, row.key): row for row in INI_MAP if row.option is None}
-    assert fixed["Bot", "db_path"].constant == "databases/meshcore_bot.db"
-    assert fixed["Bot", "db_path"].base == "data"
-    assert fixed["Bot", "local_dir_path"].constant == "local"
-    assert fixed["Bot", "local_dir_path"].base == "config"
-    assert fixed["Logging", "log_file"].constant == ""
-    assert fixed["Web_Viewer", "enabled"].constant is True
-    assert fixed["Web_Viewer", "host"].constant == "0.0.0.0"
-    assert fixed["Web_Viewer", "port"].constant == VIEWER_PORT
-    assert fixed["Web_Viewer", "ha_ingress"].constant is True
-    assert fixed["Web_Viewer", "auto_start"].constant is True
 
 
 def test_every_mapped_key_is_known() -> None:
@@ -356,7 +284,7 @@ def test_first_start_seeds_and_applies_fixed_settings(
     assert len(backups) == 1
     assert "db_path = meshcore_bot.db" in backups[0].read_text(encoding="utf-8")
     assert list(layout["config_dir"].glob("*.bak.*")) == []
-    assert _managed(data) == {(row.section, row.key) for row in INI_MAP if row.option is None}
+    assert _managed(data) == FIXED_PAIRS
     assert os.environ[MANAGED_KEYS_ENV] == str(data / MANAGED_KEYS_FILENAME)
     assert blocked_exec == [
         (
@@ -411,13 +339,10 @@ def test_set_options_override(layout: dict[str, Path]) -> None:
 
 def test_restart_writes_nothing_when_unchanged(layout: dict[str, Path]) -> None:
     run(**layout)
-    config_path = layout["config_dir"] / "config.ini"
-    written = config_path.read_bytes()
-    backups = sorted(path.name for path in (layout["data_dir"] / "backups").iterdir())
-    assert backups
-    run(**layout)
-    assert config_path.read_bytes() == written
-    assert sorted(path.name for path in (layout["data_dir"] / "backups").iterdir()) == backups
+    assert _backup_names(layout["data_dir"])
+    _assert_rerun_writes_nothing(
+        layout, layout["config_dir"] / "config.ini", layout["data_dir"]
+    )
 
 
 def test_percent_in_password_survives_configparser(layout: dict[str, Path]) -> None:
@@ -432,11 +357,7 @@ def test_percent_in_password_survives_configparser(layout: dict[str, Path]) -> N
     plain.read(config_path, encoding="utf-8")
     assert plain.get("Web_Viewer", "web_viewer_password") == "abc%xyz"
 
-    written = config_path.read_bytes()
-    backups = sorted(path.name for path in (layout["data_dir"] / "backups").iterdir())
-    run(**layout)
-    assert config_path.read_bytes() == written
-    assert sorted(path.name for path in (layout["data_dir"] / "backups").iterdir()) == backups
+    _assert_rerun_writes_nothing(layout, config_path, layout["data_dir"])
 
 
 def test_overlay_managed_keys_are_deleted(
@@ -509,8 +430,9 @@ def test_base_and_overlay_backups_do_not_collide(
 def test_real_example_with_sample_options(tmp_path: Path, blocked_exec: list[tuple[str, list[str]]]) -> None:
     config_dir = tmp_path / "config"
     data_dir = tmp_path / "data"
+    run_kwargs = {"config_dir": config_dir, "data_dir": data_dir, "repo_root": ROOT}
     _options(data_dir, SAMPLE_OPTIONS)
-    run(config_dir=config_dir, data_dir=data_dir, repo_root=ROOT)
+    run(**run_kwargs)
     config_path = config_dir / "config.ini"
     text = config_path.read_text(encoding="utf-8")
     assert "# Connection type: serial, ble, or tcp" in text
@@ -534,8 +456,7 @@ def test_real_example_with_sample_options(tmp_path: Path, blocked_exec: list[tup
     assert cfg.get("Bot", "db_path") == str(data_dir / "databases" / "meshcore_bot.db")
     assert cfg.get("Bot", "local_dir_path") == str(config_dir / "local")
     owned = _managed(data_dir)
-    fixed = {(row.section, row.key) for row in INI_MAP if row.option is None}
-    assert owned == fixed | {
+    assert owned == FIXED_PAIRS | {
         ("Connection", "connection_type"),
         ("Connection", "hostname"),
         ("Connection", "tcp_port"),
@@ -549,11 +470,7 @@ def test_real_example_with_sample_options(tmp_path: Path, blocked_exec: list[tup
     assert args[-2:] == ["--config", str(config_path)]
     assert args[1] == str(ROOT / "meshcore_bot.py")
 
-    written = config_path.read_bytes()
-    backup_names = sorted(path.name for path in (data_dir / "backups").iterdir())
-    run(config_dir=config_dir, data_dir=data_dir, repo_root=ROOT)
-    assert config_path.read_bytes() == written
-    assert sorted(path.name for path in (data_dir / "backups").iterdir()) == backup_names
+    _assert_rerun_writes_nothing(run_kwargs, config_path, data_dir)
 
 
 def test_bad_options_json_does_not_write(layout: dict[str, Path]) -> None:

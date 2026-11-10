@@ -1,8 +1,8 @@
 """Home Assistant managed config.ini keys.
 
 The add-on writes a JSON list of ``[section, key]`` pairs and exports the file
-path in :data:`modules.ha_addon.MANAGED_KEYS_ENV`. The web viewer reads that
-file so it can show those settings as read-only and refuse to save over them.
+path in :data:`MANAGED_KEYS_ENV`. The web viewer reads that file so it can show
+those settings as read-only and refuse to save over them.
 
 A missing variable or a missing file yields an empty set and is not logged.
 A file that cannot be read, or that is not a JSON list of ``[section, key]``
@@ -19,13 +19,15 @@ import configparser
 import json
 import logging
 import os
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable
 from pathlib import Path
 
-from modules.ha_addon import MANAGED_KEYS_ENV
 from modules.ini_writer import IniValueError, _normalize_key, _normalize_section
 
 logger = logging.getLogger("MeshCoreBot")
+
+MANAGED_KEYS_FILENAME = "ha_managed_keys.json"
+MANAGED_KEYS_ENV = "MESHCORE_HA_MANAGED_KEYS"
 
 
 class ManagedKeyError(IniValueError):
@@ -81,18 +83,15 @@ def load_managed_keys() -> frozenset[tuple[str, str]]:
 def is_managed(
     section: str,
     key: str,
-    managed: frozenset[tuple[str, str]] | None = None,
+    managed: frozenset[tuple[str, str]],
 ) -> bool:
     """True when ``(section, key)`` is in the managed set."""
-    pairs = load_managed_keys() if managed is None else managed
-    if not pairs:
-        return False
-    return normalize_managed_pair(section, key) in pairs
+    return normalize_managed_pair(section, key) in managed
 
 
 def guard_managed_writes(
-    updates: Mapping[str, Mapping[str, str]] | None,
-    deletes: Mapping[str, Iterable[str]] | None,
+    updates: dict[str, dict[str, str]] | None,
+    deletes: dict[str, list[str] | set[str]] | None,
     config: configparser.ConfigParser | None = None,
 ) -> tuple[dict[str, dict[str, str]], dict[str, list[str] | set[str]] | None]:
     """Drop unchanged managed keys and reject real changes.
@@ -107,13 +106,7 @@ def guard_managed_writes(
     """
     managed = load_managed_keys()
     if not managed:
-        concrete_deletes: dict[str, list[str] | set[str]] = {
-            section: list(keys) for section, keys in (deletes or {}).items()
-        }
-        return (
-            {section: dict(values) for section, values in (updates or {}).items()},
-            concrete_deletes or None,
-        )
+        return updates or {}, deletes or None
 
     conflicts: list[tuple[str, str]] = []
     filtered: dict[str, dict[str, str]] = {}

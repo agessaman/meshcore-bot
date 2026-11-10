@@ -5,14 +5,15 @@ from __future__ import annotations
 import configparser
 import json
 import logging
+from collections.abc import Callable
 from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
 
-from modules.ha_addon import MANAGED_KEYS_ENV
 from modules.ini_writer import IniValueError
 from modules.managed_keys import (
+    MANAGED_KEYS_ENV,
     ManagedKeyError,
     guard_managed_writes,
     is_managed,
@@ -38,6 +39,25 @@ def _watch(caplog: pytest.LogCaptureFixture):
 
 def _point(monkeypatch: pytest.MonkeyPatch, path: Path) -> None:
     monkeypatch.setenv(MANAGED_KEYS_ENV, str(path))
+
+
+def _managed_file(tmp_path: Path, pairs: list[tuple[str, str]]) -> Path:
+    path = tmp_path / "managed.json"
+    path.write_text(json.dumps(pairs), encoding="utf-8")
+    return path
+
+
+@pytest.fixture
+def make_store(tmp_path: Path) -> Callable[[str], ConfigIniStore]:
+    """Build an INI-backed store over a fresh ``config.ini`` with ``text``."""
+    def _make(text: str) -> ConfigIniStore:
+        config_path = tmp_path / "config.ini"
+        config_path.write_text(text, encoding="utf-8")
+        config = configparser.ConfigParser()
+        config.read(config_path, encoding="utf-8")
+        return ConfigIniStore(config, str(config_path))
+
+    return _make
 
 
 def test_missing_env_is_empty(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
@@ -139,9 +159,7 @@ def _config(text: str) -> configparser.ConfigParser:
 def test_guard_drops_unchanged_managed_key_and_keeps_the_rest(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    path = tmp_path / "managed.json"
-    path.write_text(json.dumps([["Bot", "DB_Path"]]), encoding="utf-8")
-    _point(monkeypatch, path)
+    _point(monkeypatch, _managed_file(tmp_path, [("Bot", "DB_Path")]))
     config = _config("[Bot]\ndb_path = /data/db\n")
     updates, deletes = guard_managed_writes(
         {"Bot": {"DB_Path": "/data/db", "bot_name": "Zed"}},
@@ -153,9 +171,10 @@ def test_guard_drops_unchanged_managed_key_and_keeps_the_rest(
 
 
 def test_guard_rejects_a_changed_managed_key(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    path = tmp_path / "managed.json"
-    path.write_text(json.dumps([["Bot", "db_path"], ["Connection", "hostname"]]), encoding="utf-8")
-    _point(monkeypatch, path)
+    _point(
+        monkeypatch,
+        _managed_file(tmp_path, [("Bot", "db_path"), ("Connection", "hostname")]),
+    )
     config = _config("[Bot]\ndb_path = /data/db\n")
     with pytest.raises(ManagedKeyError, match=r"Managed by Home Assistant: \[bot\] db_path") as caught:
         guard_managed_writes(
@@ -168,20 +187,17 @@ def test_guard_rejects_a_changed_managed_key(monkeypatch: pytest.MonkeyPatch, tm
 
 
 def test_store_refuses_managed_write_and_leaves_disk_and_memory(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    make_store: Callable[[str], ConfigIniStore],
 ) -> None:
-    config_path = tmp_path / "config.ini"
-    config_path.write_text("[Bot]\ndb_path = /data/db\nbot_name = A\n", encoding="utf-8")
-    managed = tmp_path / "managed.json"
-    managed.write_text(json.dumps([["Bot", "db_path"]]), encoding="utf-8")
-    _point(monkeypatch, managed)
-    config = configparser.ConfigParser()
-    config.read(config_path, encoding="utf-8")
-    store = ConfigIniStore(config, str(config_path))
+    store = make_store("[Bot]\ndb_path = /data/db\nbot_name = A\n")
+    config_path = Path(store.config_path)
+    _point(monkeypatch, _managed_file(tmp_path, [("Bot", "db_path")]))
     with pytest.raises(ManagedKeyError):
         store.write_values("Bot", {"db_path": "/other", "bot_name": "B"})
-    assert config.get("Bot", "db_path") == "/data/db"
-    assert config.get("Bot", "bot_name") == "A"
+    assert store.config.get("Bot", "db_path") == "/data/db"
+    assert store.config.get("Bot", "bot_name") == "A"
     text = config_path.read_text(encoding="utf-8")
     assert "db_path = /data/db" in text
     assert "bot_name = B" not in text
@@ -194,57 +210,46 @@ def test_store_refuses_managed_write_and_leaves_disk_and_memory(
 def test_store_refuses_managed_write_across_section_case(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    make_store: Callable[[str], ConfigIniStore],
     managed_section: str,
     write_section: str,
 ) -> None:
-    config_path = tmp_path / "config.ini"
-    original = "[Web_Viewer]\nport = 8080\n"
-    config_path.write_text(original, encoding="utf-8")
-    managed = tmp_path / "managed.json"
-    managed.write_text(json.dumps([[managed_section, "port"]]), encoding="utf-8")
-    _point(monkeypatch, managed)
-    config = configparser.ConfigParser()
-    config.read(config_path, encoding="utf-8")
-    store = ConfigIniStore(config, str(config_path))
+    store = make_store("[Web_Viewer]\nport = 8080\n")
+    config_path = Path(store.config_path)
+    original = config_path.read_text(encoding="utf-8")
+    _point(monkeypatch, _managed_file(tmp_path, [(managed_section, "port")]))
     with pytest.raises(ManagedKeyError):
         store.write_values(write_section, {"port": "9"})
-    assert config.get("Web_Viewer", "port") == "8080"
+    assert store.config.get("Web_Viewer", "port") == "8080"
     assert config_path.read_text(encoding="utf-8") == original
 
 
 def test_store_allows_unchanged_managed_write_with_different_section_case(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    make_store: Callable[[str], ConfigIniStore],
 ) -> None:
-    config_path = tmp_path / "config.ini"
-    original = "[Web_Viewer]\nport = 8080\n"
-    config_path.write_text(original, encoding="utf-8")
-    managed = tmp_path / "managed.json"
-    managed.write_text(json.dumps([["web_viewer", "port"]]), encoding="utf-8")
-    _point(monkeypatch, managed)
-    config = configparser.ConfigParser()
-    config.read(config_path, encoding="utf-8")
-    store = ConfigIniStore(config, str(config_path))
+    store = make_store("[Web_Viewer]\nport = 8080\n")
+    config_path = Path(store.config_path)
+    original = config_path.read_text(encoding="utf-8")
+    _point(monkeypatch, _managed_file(tmp_path, [("web_viewer", "port")]))
     store.write_values("web_viewer", {"port": "8080"})
-    assert config.get("Web_Viewer", "port") == "8080"
-    assert not config.has_section("web_viewer")
+    assert store.config.get("Web_Viewer", "port") == "8080"
+    assert not store.config.has_section("web_viewer")
     assert config_path.read_text(encoding="utf-8") == original
 
 
 def test_store_writes_unmanaged_keys_and_leaves_an_unchanged_managed_line(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    make_store: Callable[[str], ConfigIniStore],
 ) -> None:
-    config_path = tmp_path / "config.ini"
-    original = "[Bot]\ndb_path = /data/db\nbot_name = A\n"
-    config_path.write_text(original, encoding="utf-8")
-    managed = tmp_path / "managed.json"
-    managed.write_text(json.dumps([["Bot", "db_path"]]), encoding="utf-8")
-    _point(monkeypatch, managed)
-    config = configparser.ConfigParser()
-    config.read(config_path, encoding="utf-8")
-    store = ConfigIniStore(config, str(config_path))
+    store = make_store("[Bot]\ndb_path = /data/db\nbot_name = A\n")
+    config_path = Path(store.config_path)
+    _point(monkeypatch, _managed_file(tmp_path, [("Bot", "db_path")]))
     store.write_values("Bot", {"db_path": "/data/db", "bot_name": "B"})
-    assert config.get("Bot", "bot_name") == "B"
-    assert config.get("Bot", "db_path") == "/data/db"
+    assert store.config.get("Bot", "bot_name") == "B"
+    assert store.config.get("Bot", "db_path") == "/data/db"
     text = config_path.read_text(encoding="utf-8")
     assert "db_path = /data/db" in text
     assert "bot_name = B" in text

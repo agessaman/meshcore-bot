@@ -253,6 +253,8 @@
 
 {% block extra_js %}
 <script nonce="{{ g.csp_nonce }}">
+const MANAGED_NOTE = 'Managed by Home Assistant';
+
 class PluginsManager {
     constructor() {
         this.loadingEl = document.getElementById('plugins-loading');
@@ -362,7 +364,7 @@ class PluginsManager {
             managedNote = document.createElement('span');
             managedNote.className = 'text-muted small';
             managedNote.id = toggleId + '-managed';
-            managedNote.textContent = 'Managed by Home Assistant';
+            managedNote.textContent = MANAGED_NOTE;
             toggle.setAttribute('aria-describedby', managedNote.id);
         }
         // The title area is a real button so the card opens from the keyboard;
@@ -666,7 +668,7 @@ class PluginsManager {
 function applyManagedState(wrapper, input, field) {
     if (!field || !field.managed) return;
     input.disabled = true;
-    wrapper.appendChild(helpText('Managed by Home Assistant'));
+    wrapper.appendChild(helpText(MANAGED_NOTE));
 }
 
 // `plugin` ({kind, name}) is only needed by template fields, for their preview.
@@ -1143,10 +1145,10 @@ function buildDynamicEditor(ds) {
             ki.disabled = true;
             vi.disabled = true;
             rm.disabled = true;
-            rm.title = 'Managed by Home Assistant';
+            rm.title = MANAGED_NOTE;
             const noteCol = document.createElement('div');
             noteCol.className = 'col-12';
-            noteCol.appendChild(helpText('Managed by Home Assistant'));
+            noteCol.appendChild(helpText(MANAGED_NOTE));
             row.appendChild(noteCol);
         }
         rowsContainer.appendChild(row);
@@ -1239,7 +1241,7 @@ function buildRepeatingBlockEditor(rb) {
         sw.checked = (block ? block.enabled !== false : true);
         if (enabledManaged) {
             sw.disabled = true;
-            sw.title = 'Managed by Home Assistant';
+            sw.title = MANAGED_NOTE;
         }
         swWrap.appendChild(sw);
         const title = document.createElement('span');
@@ -1250,11 +1252,11 @@ function buildRepeatingBlockEditor(rb) {
         rm.innerHTML = '<i class="fas fa-trash" aria-hidden="true"></i>';
         if (managedKeys.size || enabledManaged) {
             rm.disabled = true;
-            rm.title = 'Managed by Home Assistant';
+            rm.title = MANAGED_NOTE;
         }
         rm.addEventListener('click', () => { card.remove(); renumber(); });
         header.append(swWrap, title, rm);
-        if (enabledManaged) header.appendChild(helpText('Managed by Home Assistant'));
+        if (enabledManaged) header.appendChild(helpText(MANAGED_NOTE));
         card.appendChild(header);
 
         const body = document.createElement('div');

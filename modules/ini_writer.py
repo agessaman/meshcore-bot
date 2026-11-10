@@ -23,6 +23,7 @@ import shutil
 import tempfile
 import threading
 from datetime import datetime
+from pathlib import Path
 
 # A section header line: ``[Section]`` (optionally indented / trailing space).
 _SECTION_RE = re.compile(r"^\s*\[(?P<name>[^\]]+)\]\s*$")
@@ -65,6 +66,27 @@ def _separator_for(sep: str, new_value: str) -> str:
     if new_value and sep[:1].isspace() and not sep[-1:].isspace():
         return sep + " "
     return sep
+
+
+def write_text_atomic(path: str | Path, text: str) -> None:
+    """Write ``text`` to ``path`` via a same-directory temp file and replace.
+
+    The temp file lives in the target's directory so ``os.replace`` stays on
+    one filesystem. It is removed if the write or replace fails.
+    """
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(dir=target.parent, prefix=f".{target.name}.")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(text)
+        os.replace(tmp_name, target)
+    except BaseException:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
 
 
 class IniValueError(ValueError):
@@ -344,19 +366,7 @@ def _update_ini_values_locked(
     # Take the backup *before* replacing the file.
     backup_path = backup_config(config_path, backup_dir=backup_dir)
 
-    # Atomic write: temp file in the same directory, then os.replace.
-    directory = os.path.dirname(os.path.abspath(config_path))
-    fd, tmp_path = tempfile.mkstemp(dir=directory, prefix=".ini_tmp_")
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as tmp:
-            tmp.writelines(out)
-        os.replace(tmp_path, config_path)
-    except BaseException:
-        try:
-            os.remove(tmp_path)
-        except OSError:
-            pass
-        raise
+    write_text_atomic(config_path, "".join(out))
 
     return {
         "backup_path": backup_path,

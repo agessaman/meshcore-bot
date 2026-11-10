@@ -38,13 +38,13 @@ import json
 import os
 import shutil
 import sys
-import tempfile
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
-from modules.ini_writer import update_ini_values
+from modules.ini_writer import update_ini_values, write_text_atomic
+from modules.managed_keys import MANAGED_KEYS_ENV, MANAGED_KEYS_FILENAME
 
 CONFIG_DIR = Path("/config")
 DATA_DIR = Path("/data")
@@ -53,8 +53,6 @@ REPO_ROOT = Path("/app")
 CONFIG_FILENAME = "config.ini"
 EXAMPLE_FILENAME = "config.ini.example"
 OPTIONS_FILENAME = "options.json"
-MANAGED_KEYS_FILENAME = "ha_managed_keys.json"
-MANAGED_KEYS_ENV = "MESHCORE_HA_MANAGED_KEYS"
 
 # Fixed paths, relative to the base directory each INI_MAP row names.
 DB_PATH = "databases/meshcore_bot.db"
@@ -67,8 +65,6 @@ VIEWER_PORT = 8080
 
 _CONNECTION_TYPES = ("serial", "tcp", "ble")
 _LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
-_TRUE = frozenset({"1", "true", "yes", "on"})
-_FALSE = frozenset({"0", "false", "no", "off"})
 
 
 def as_str(value: object) -> str:
@@ -79,12 +75,11 @@ def as_bool(value: object) -> str:
     """Render a boolean the way ``config.ini`` spells it."""
     if isinstance(value, bool):
         return "true" if value else "false"
-    text = as_str(value).lower()
-    if text in _TRUE:
-        return "true"
-    if text in _FALSE:
-        return "false"
-    raise ValueError(f"expected a boolean, got {value!r}")
+    try:
+        state = configparser.ConfigParser.BOOLEAN_STATES[as_str(value).lower()]
+    except KeyError:
+        raise ValueError(f"expected a boolean, got {value!r}") from None
+    return "true" if state else "false"
 
 
 def as_int(value: object) -> str:
@@ -202,11 +197,11 @@ def _assignments(
 ) -> list[tuple[IniMap, str]]:
     """Fixed rows first, then options the user set. Later rows win on a shared key."""
     rows = [row for row in INI_MAP if row.option is None]
-    for row in INI_MAP:
-        if row.option is None or row.option not in options:
-            continue
-        if _is_set(options[row.option]):
-            rows.append(row)
+    rows += [
+        row
+        for row in INI_MAP
+        if row.option is not None and _is_set(options.get(row.option))
+    ]
 
     rendered: list[tuple[IniMap, str]] = []
     for row in rows:
@@ -281,27 +276,12 @@ def _load_options(path: Path) -> dict[str, Any]:
     return loaded
 
 
-def _atomic_write(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            handle.write(text)
-        os.replace(tmp_name, path)
-    except BaseException:
-        try:
-            os.unlink(tmp_name)
-        except OSError:
-            pass
-        raise
-
-
 def _managed_pairs(assignments: list[tuple[IniMap, str]]) -> list[tuple[str, str]]:
     return sorted({(row.section, row.key) for row, _value in assignments})
 
 
 def _write_managed_keys(path: Path, assignments: list[tuple[IniMap, str]]) -> None:
-    _atomic_write(path, json.dumps(_managed_pairs(assignments), indent=2) + "\n")
+    write_text_atomic(path, json.dumps(_managed_pairs(assignments), indent=2) + "\n")
 
 
 def _local_config_path(config_dir: Path) -> Path:

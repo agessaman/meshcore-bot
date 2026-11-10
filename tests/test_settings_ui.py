@@ -14,8 +14,8 @@ from unittest.mock import patch
 
 import pytest
 
-from modules.ha_addon import MANAGED_KEYS_ENV
 from modules.ini_writer import backup_config, update_ini_values
+from modules.managed_keys import MANAGED_KEYS_ENV
 from modules.settings_schema import (
     _assemble_entry,
     build_plugin_settings_view,
@@ -438,6 +438,7 @@ class TestBuildViewPasswordRedaction:
             description="",
             category="general",
             enabled_default=True,
+            managed=frozenset(),
         )
         return next(f for f in entry["fields"] if f["key"] == "api_password")
 
