@@ -1,0 +1,38 @@
+name: MeshCore Bot
+version: "1.1.0"
+slug: meshcore_bot
+description: MeshCore radio bot with a sidebar web viewer. Connect a USB radio, a TCP companion, or Bluetooth Low Energy.
+url: https://github.com/agessaman/meshcore-bot
+arch:
+  - amd64
+  - aarch64
+image: ghcr.io/agessaman/meshcore-bot-ha
+# startup (application) and boot (auto) are Home Assistant defaults. The
+# add-on linter rejects a key that only restates its default, so both are
+# omitted. init is false because this image has no s6 init: the process
+# below is PID 1.
+init: false
+ingress: true
+ingress_port: 8080
+panel_icon: "mdi:radio-tower"
+uart: true
+# Bluetooth Low Energy is experimental and uses the host BlueZ daemon.
+host_dbus: true
+map:
+  - addon_config:rw
+ports:
+  "8080/tcp": null
+ports_description:
+  "8080/tcp": Web viewer. Publish this only after you set a web viewer password.
+# Every entry is optional. An empty options map is the default, and the
+# linter rejects stating it. A field left empty is absent (or blank) in
+# options.json, and the entrypoint does not change that config.ini key.
+schema:
+  connection_type: "list(serial|tcp|ble)?"
+  serial_port: "device(subsystem=tty)?"
+  tcp_host: "str?"
+  tcp_port: "port?"
+  ble_address: "str?"
+  bot_name: "str?"
+  log_level: "list(DEBUG|INFO|WARNING|ERROR|CRITICAL)?"
+  web_viewer_password: "password?"

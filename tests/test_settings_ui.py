@@ -54,6 +54,11 @@ class TestUpdateIniValues:
         assert "; bot name comment" in text
         assert ("Bot", "rate_limit_seconds") in result["changed"]
 
+    def test_filling_empty_spaced_value_keeps_a_space(self, tmp_path):
+        p = self._write(tmp_path, "[Connection]\nhostname =\n")
+        update_ini_values(str(p), {"Connection": {"hostname": "radio.local"}})
+        assert p.read_text(encoding="utf-8") == "[Connection]\nhostname = radio.local\n"
+
     def test_unchanged_value_not_reported_changed(self, tmp_path):
         p = self._write(tmp_path)
         result = update_ini_values(str(p), {"Bot": {"bot_name": "MeshCoreBot"}})

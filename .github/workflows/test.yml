@@ -117,6 +117,17 @@ jobs:
             fi
           done
 
+  lint-addon:
+    name: Lint Home Assistant add-on
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Home Assistant add-on linter
+        uses: frenck/action-addon-linter@v2
+        with:
+          path: homeassistant/meshcore_bot
+
   typecheck:
     name: Type check (mypy)
     runs-on: ubuntu-latest

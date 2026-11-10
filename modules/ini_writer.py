@@ -50,6 +50,18 @@ def _normalize_key(key: str) -> str:
     return key.strip().lower()
 
 
+def _separator_for(sep: str, new_value: str) -> str:
+    """Keep a space before a filled-in value on a ``key =`` line.
+
+    An empty value has nothing after ``=``, so the captured separator is
+    `` =`` and writing the new value would produce ``key =value``. A line
+    that was already ``key=value`` (no spaces) is left in that style.
+    """
+    if new_value and sep[:1].isspace() and not sep[-1:].isspace():
+        return sep + " "
+    return sep
+
+
 class IniValueError(ValueError):
     """A section/key/value would corrupt the INI file if written verbatim."""
 
@@ -155,6 +167,8 @@ def update_ini_values(
     config_path: str,
     updates: dict[str, dict[str, str]],
     deletes: dict[str, list[str] | set[str]] | None = None,
+    *,
+    backup_dir: str | None = None,
 ) -> dict:
     """Surgically apply ``updates`` (and optional ``deletes``) to an INI file.
 
@@ -162,6 +176,10 @@ def update_ini_values(
     ``{section: [key, ...]}`` of keys to remove (used by dynamic-list editors
     where rows can be deleted).  Values must already be stringified.  A backup
     is taken before writing and the write is atomic.
+
+    ``backup_dir``, when set, receives that timestamped backup instead of the
+    config file's own directory.  The directory must already exist.  Which
+    lines get rewritten does not change.
 
     Returns a summary dict::
 
@@ -190,13 +208,14 @@ def update_ini_values(
     _check_writable(updates, deletes)
 
     with _WRITE_LOCK:
-        return _update_ini_values_locked(config_path, updates, deletes)
+        return _update_ini_values_locked(config_path, updates, deletes, backup_dir)
 
 
 def _update_ini_values_locked(
     config_path: str,
     updates: dict[str, dict[str, str]],
     deletes: dict[str, list[str] | set[str]] | None,
+    backup_dir: str | None = None,
 ) -> dict:
     """Body of :func:`update_ini_values`, run while holding ``_WRITE_LOCK``."""
     with open(config_path, encoding="utf-8") as fh:
@@ -272,7 +291,7 @@ def _update_ini_values_locked(
                         changed.append((section_case[current_norm], norm_key))
                     rebuilt = (
                         f"{key_match.group('indent')}{key_match.group('key')}"
-                        f"{key_match.group('sep')}{new_value}{line_ending}"
+                        f"{_separator_for(key_match.group('sep'), new_value)}{new_value}{line_ending}"
                     )
                     out.append(rebuilt)
                     continue
@@ -318,7 +337,7 @@ def _update_ini_values_locked(
             created_sections.append(section_case[norm_section])
 
     # Take the backup *before* replacing the file.
-    backup_path = backup_config(config_path)
+    backup_path = backup_config(config_path, backup_dir=backup_dir)
 
     # Atomic write: temp file in the same directory, then os.replace.
     directory = os.path.dirname(os.path.abspath(config_path))

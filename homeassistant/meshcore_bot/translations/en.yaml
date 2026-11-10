@@ -1,0 +1,27 @@
+configuration:
+  connection_type:
+    name: Connection type
+    description: How the bot reaches the radio. Serial is a USB device, TCP is a companion on the network, and BLE is Bluetooth Low Energy (experimental).
+  serial_port:
+    name: Serial port
+    description: USB serial device. A /dev/serial/by-id path keeps the same radio when the machine reboots.
+  tcp_host:
+    name: TCP host
+    description: Hostname or IP address of a MeshCore TCP companion. Saved as the hostname setting.
+  tcp_port:
+    name: TCP port
+    description: Port of the TCP companion. The companion default is 5000.
+  ble_address:
+    name: BLE address
+    description: Bluetooth device name or address to connect to. Leave this empty to discover a radio. Experimental.
+  bot_name:
+    name: Bot name
+    description: Name the bot uses on the mesh and in its logs.
+  log_level:
+    name: Log level
+    description: How much detail is written to the add-on log. DEBUG, INFO, WARNING, ERROR, or CRITICAL.
+  web_viewer_password:
+    name: Web viewer password
+    description: Password for the web viewer. Set one before publishing the viewer port. The sidebar uses your Home Assistant login.
+network:
+  "8080/tcp": Web viewer. Publish this only after you set a web viewer password.
