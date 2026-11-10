@@ -704,6 +704,54 @@ class TestPluginsApi:
         )
         assert resp.status_code == 400
 
+    def test_dynamic_key_with_leading_hash_under_prefix_saved(self, viewer, tmp_path):
+        """A hashtag channel is a valid bridge key: the full option is bridge.#test."""
+        url = "https://discord.com/api/webhooks/1/abc"
+        client = viewer.app.test_client()
+        resp = client.post(
+            "/api/plugins/service/discordbridge",
+            json={
+                "enabled": False,
+                "values": {},
+                "dynamic_sections": {"DiscordBridge": [{"key": "#test", "value": url}]},
+            },
+        )
+        assert resp.status_code == 200, resp.get_json()
+        cfg = configparser.ConfigParser()
+        cfg.read(tmp_path / "config.ini", encoding="utf-8")
+        assert cfg.get("DiscordBridge", "bridge.#test") == url
+
+    def test_dynamic_key_typed_with_prefix_not_doubled(self, viewer, tmp_path):
+        """Typing the prefix by hand must not write bridge.bridge.#test."""
+        url = "https://discord.com/api/webhooks/1/abc"
+        client = viewer.app.test_client()
+        resp = client.post(
+            "/api/plugins/service/discordbridge",
+            json={
+                "enabled": False,
+                "values": {},
+                "dynamic_sections": {"DiscordBridge": [{"key": "Bridge.#test", "value": url}]},
+            },
+        )
+        assert resp.status_code == 200, resp.get_json()
+        cfg = configparser.ConfigParser()
+        cfg.read(tmp_path / "config.ini", encoding="utf-8")
+        assert cfg.get("DiscordBridge", "bridge.#test") == url
+        assert not cfg.has_option("DiscordBridge", "bridge.bridge.#test")
+
+    def test_dynamic_key_with_leading_hash_without_prefix_rejected(self, viewer):
+        """Without a prefix a leading # would turn the option into a comment."""
+        client = viewer.app.test_client()
+        resp = client.post(
+            "/api/plugins/command/channels",
+            json={
+                "enabled": True,
+                "values": {},
+                "dynamic_sections": {"Channels_List": [{"key": "#test", "value": "x"}]},
+            },
+        )
+        assert resp.status_code == 400
+
     def test_reload_status_endpoint(self, viewer):
         client = viewer.app.test_client()
         resp = client.get("/api/plugins/reload-status")

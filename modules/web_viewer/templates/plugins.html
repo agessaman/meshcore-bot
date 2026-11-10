@@ -559,7 +559,7 @@ class PluginsManager {
         const dynamicPayload = {};
         dynamicEditors.forEach(ed => {
             const rows = ed.getRows();
-            const err = validateDynamicRows(rows);
+            const err = validateDynamicRows(rows, ed.prefix);
             if (err && !firstError) firstError = err;
             if (JSON.stringify(rows) !== ed.original) changedCount++;
             dynamicPayload[ed.section] = rows;
@@ -1058,6 +1058,7 @@ function sectionBadge(section) {
 // --- Dynamic key/value section editor (add/edit/delete rows) -------------
 
 function buildDynamicEditor(ds) {
+    const prefix = String(ds.key_prefix ?? '');
     const el = document.createElement('div');
     el.className = 'dynamic-section mt-3';
 
@@ -1127,7 +1128,11 @@ function buildDynamicEditor(ds) {
     const getRows = () => {
         const out = [];
         rowsContainer.querySelectorAll('.dynamic-row').forEach(r => {
-            const key = r.querySelector('.dyn-key').value.trim();
+            let key = r.querySelector('.dyn-key').value.trim();
+            // Drop a prefix typed by hand ("bridge.#test"): it is added back on save.
+            if (prefix && key.toLowerCase().startsWith(prefix.toLowerCase())) {
+                key = key.slice(prefix.length).trim();
+            }
             const value = r.querySelector('.dyn-value').value;
             if (key === '' && value.trim() === '') return;  // skip blank rows
             out.push({ key, value });
@@ -1136,15 +1141,17 @@ function buildDynamicEditor(ds) {
     };
 
     // Snapshot via getRows() so change-detection matches the save serialization.
-    return { section: ds.section, el, getRows, original: JSON.stringify(getRows()) };
+    return { section: ds.section, prefix, el, getRows, original: JSON.stringify(getRows()) };
 }
 
-function validateDynamicRows(rows) {
+function validateDynamicRows(rows, prefix = '') {
     const seen = new Set();
     for (const { key } of rows) {
         if (key === '') return 'A list row is missing its key';
         if (/[=:\[\]\n\r]/.test(key)) return `Invalid key "${key}": cannot contain = : [ ] or newlines`;
-        if (key[0] === '#' || key[0] === ';') return `Invalid key "${key}": cannot start with # or ;`;
+        // Only the full option name (prefix + key) matters: "#test" is fine under "bridge.".
+        const full = prefix + key;
+        if (full[0] === '#' || full[0] === ';') return `Invalid key "${key}": cannot start with # or ;`;
         if (seen.has(key.toLowerCase())) return `Duplicate key "${key}"`;
         seen.add(key.toLowerCase());
     }

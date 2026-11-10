@@ -109,15 +109,28 @@ PACKET_LOOKUP_AFTER_S = 30
 PACKET_LOOKUP_LIMIT = 50
 
 
-def _validate_dynamic_key(key: str) -> "str | None":
+def _strip_dynamic_prefix(key: str, prefix: str) -> str:
+    """Drop a key_prefix the user typed themselves (``bridge.#test`` -> ``#test``).
+
+    The editor shows keys without their prefix and adds it back on save, so a
+    typed prefix would otherwise be written twice (``bridge.bridge.#test``).
+    """
+    if prefix and key.lower().startswith(prefix.lower()):
+        return key[len(prefix):].strip()
+    return key
+
+
+def _validate_dynamic_key(key: str, prefix: str = "") -> "str | None":
     """Validate a dynamic-section row key. Returns an error message or None.
 
     Keys become INI option names, so they must not contain the separators or
-    comment markers that would corrupt the file on the next read.
+    comment markers that would corrupt the file on the next read. Only the
+    full option name (prefix + key) is checked for a leading # or ;, so
+    ``#test`` is fine under the ``bridge.`` prefix.
     """
     if any(ch in key for ch in ('=', ':', '\n', '\r', '[', ']')):
         return f'Invalid key "{key}": cannot contain = : [ ] or newlines'
-    if key[:1] in ('#', ';'):
+    if f"{prefix}{key}"[:1] in ('#', ';'):
         return f'Invalid key "{key}": cannot start with # or ;'
     return None
 
@@ -1274,9 +1287,10 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
                         rkey = (str(row.get('key', '')) or '').strip()
                         rval = row.get('value', '')
                         rval = '' if rval is None else str(rval)
+                        rkey = _strip_dynamic_prefix(rkey, prefix)
                         if not rkey:
                             continue  # skip blank rows
-                        key_err = _validate_dynamic_key(rkey)
+                        key_err = _validate_dynamic_key(rkey, prefix)
                         if key_err:
                             return jsonify({'success': False, 'error': key_err}), 400
                         if rkey.lower() in seen_disp:
