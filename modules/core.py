@@ -881,11 +881,15 @@ class MeshCoreBot(ServiceSupervisorMixin, RadioLinkMixin, RadioOfflineBreaker, D
 
         self.logger.info("Message handlers setup complete")
 
-    async def start(self) -> None:
+    async def start(self) -> bool:
         """Start the bot.
 
         Initiates the connection to the node, sets up scheduling, services,
         and starts the main execution loop.
+
+        Returns True when the bot ran and shut down cleanly, or False when it
+        could not connect to the radio at startup. The entrypoint turns False
+        into a non-zero exit status so service managers restart the bot.
         """
         self.logger.info("Starting MeshCore Bot...")
 
@@ -959,7 +963,7 @@ class MeshCoreBot(ServiceSupervisorMixin, RadioLinkMixin, RadioOfflineBreaker, D
                 self.db_manager.set_metadata('bot.initializing', 'false')
             except Exception:
                 pass
-            return
+            return False
 
         # Bot is now connected — clear the initializing flag
         try:
@@ -1077,6 +1081,7 @@ class MeshCoreBot(ServiceSupervisorMixin, RadioLinkMixin, RadioOfflineBreaker, D
             self.logger.info("Received interrupt signal")
         # Shutdown is owned by the entrypoint (e.g. meshcore_bot.run_bot finally)
         # so stop() runs exactly once; see stop() idempotency guard.
+        return True
 
     async def stop(self) -> None:
         """Stop the bot.

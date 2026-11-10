@@ -939,6 +939,12 @@ class TestRadioOfflineState:
         assert bot.db_manager.get_metadata('bot.radio_offline') == 'false'
         assert bot.db_manager.get_metadata('bot.radio_offline_since') == ''
 
+    def test_start_reports_a_failed_connection_to_the_entrypoint(self, tmp_path):
+        """start() must not return None on failure: the caller maps False to exit 1."""
+        bot = self._make_bot(tmp_path)
+        with patch.object(bot, "connect", return_value=False):
+            assert asyncio.run(bot.start()) is False
+
     def test_start_publishes_before_the_web_viewer_starts(self, tmp_path):
         """The early viewer must not render the stale banner from the first request."""
         bot = self._make_bot(tmp_path)

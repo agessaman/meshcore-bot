@@ -18,6 +18,10 @@ The add-on's Documentation tab has the connection choices, the sidebar, and the 
 - **TCP:** point the add-on at a MeshCore TCP companion.
 - **Bluetooth Low Energy:** experimental, and it needs the host Bluetooth daemon.
 
+## Startup failure
+
+If the add-on cannot reach the radio when it starts, it exits with a failure status instead of stopping cleanly. Turn on the add-on's **Watchdog** toggle so Home Assistant restarts it automatically, for example when the radio is not ready yet after a reboot.
+
 ## Configuration
 
 On each start the add-on writes `/config/config.ini`. On the host that file is `/addon_configs/<prefix>_meshcore_bot/config.ini`. Edit it with the File Editor or Samba add-on.

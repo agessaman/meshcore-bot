@@ -214,8 +214,13 @@ def main():
     # Use asyncio.run() which handles KeyboardInterrupt properly
     # For SIGTERM, we'll handle it in the async context
     async def run_bot():
-        """Run bot with proper signal handling"""
+        """Run bot with proper signal handling.
+
+        Returns True when the bot shut down cleanly, or False when it could not
+        connect to the radio at startup.
+        """
         loop = asyncio.get_running_loop()
+        started = True
 
         def meshcore_task_exception_handler(loop, context):
             """Log unhandled exceptions from asyncio tasks (e.g. meshcore reader)."""
@@ -276,28 +281,36 @@ def main():
                     #    (cancellation is not immediate - the task must be awaited for the
                     #     CancelledError to be raised and the task to fully terminate)
                     try:
-                        await bot_task
+                        started = await bot_task
                     except asyncio.CancelledError:
                         # Expected when cancelled, ignore
-                        pass
+                        started = True
             finally:
                 # Always ensure cleanup happens
                 await bot.stop()
+            return started
         else:
             # Windows: just run and catch KeyboardInterrupt
             try:
-                await bot.start()
+                started = await bot.start()
             finally:
                 await bot.stop()
+            return started
 
     try:
-        asyncio.run(run_bot())
+        started = asyncio.run(run_bot())
     except KeyboardInterrupt:
         # Cleanup already handled in run_bot's finally block
         print("\nShutdown complete.")
     except Exception as e:
         # Cleanup already handled in run_bot's finally block
         print(f"Error: {e}")
+    else:
+        if not started:
+            # A startup connection failure must exit non-zero: launchd
+            # (KeepAlive SuccessfulExit=false) and the Supervisor watchdog only
+            # restart failed exits, and a zero status reads as an intentional stop.
+            sys.exit(1)
 
 
 if __name__ == "__main__":

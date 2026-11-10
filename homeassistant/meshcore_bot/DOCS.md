@@ -21,6 +21,10 @@ Choose one connection type. Leave the other connection fields empty so they do n
 
 **Bluetooth Low Energy.** Experimental. Set the connection type to `ble` and, if you want a specific radio, its device name or address. Leave the device name empty to let the bot discover one. The add-on sets `host_dbus` so it can talk to the host BlueZ daemon. BLE depends on that daemon and does not work on every Home Assistant install.
 
+## Startup failure
+
+If the add-on cannot reach the radio when it starts, it exits with a failure status instead of stopping cleanly. Turn on the add-on's **Watchdog** toggle so Home Assistant restarts it automatically, for example when the radio is not ready yet after a reboot.
+
 ## config.ini
 
 Inside the add-on the file is `/config/config.ini`. On the host it is `/addon_configs/<prefix>_meshcore_bot/config.ini`. Open it with the File Editor add-on or the Samba add-on. `<prefix>` is the id Home Assistant assigns this repository.
