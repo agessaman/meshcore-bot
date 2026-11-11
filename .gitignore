@@ -190,3 +190,4 @@ local/service_plugins/*
 # Local debugging scratch (captured configs and logs — may contain real settings)
 _debug/
 aqi_http_cache.sqlite
+.subagents/memory/
