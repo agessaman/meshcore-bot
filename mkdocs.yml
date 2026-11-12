@@ -53,6 +53,7 @@ nav:
   - Installation:
     - Overview: installation.md
     - Docker: docker.md
+    - Home Assistant: home-assistant.md
     - Service: service-installation.md
   - Configuration:
     - Overview: configuration.md

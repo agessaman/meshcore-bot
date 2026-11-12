@@ -44,7 +44,6 @@ logs/
 backups/
 *.ini
 config.ini
-config.ini.example
 config.ini.minimal-example
 config.min.ini
 

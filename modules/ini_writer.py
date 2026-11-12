@@ -23,6 +23,7 @@ import shutil
 import tempfile
 import threading
 from datetime import datetime
+from pathlib import Path
 
 # A section header line: ``[Section]`` (optionally indented / trailing space).
 _SECTION_RE = re.compile(r"^\s*\[(?P<name>[^\]]+)\]\s*$")
@@ -48,6 +49,44 @@ _WRITE_LOCK = threading.Lock()
 def _normalize_key(key: str) -> str:
     """Match configparser's key handling (case-insensitive, stripped)."""
     return key.strip().lower()
+
+
+def _normalize_section(section: str) -> str:
+    """Match this writer's section handling (case-insensitive, stripped)."""
+    return section.strip().lower()
+
+
+def _separator_for(sep: str, new_value: str) -> str:
+    """Keep a space before a filled-in value on a ``key =`` line.
+
+    An empty value has nothing after ``=``, so the captured separator is
+    `` =`` and writing the new value would produce ``key =value``. A line
+    that was already ``key=value`` (no spaces) is left in that style.
+    """
+    if new_value and sep[:1].isspace() and not sep[-1:].isspace():
+        return sep + " "
+    return sep
+
+
+def write_text_atomic(path: str | Path, text: str) -> None:
+    """Write ``text`` to ``path`` via a same-directory temp file and replace.
+
+    The temp file lives in the target's directory so ``os.replace`` stays on
+    one filesystem. It is removed if the write or replace fails.
+    """
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(dir=target.parent, prefix=f".{target.name}.")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(text)
+        os.replace(tmp_name, target)
+    except BaseException:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
 
 
 class IniValueError(ValueError):
@@ -155,6 +194,8 @@ def update_ini_values(
     config_path: str,
     updates: dict[str, dict[str, str]],
     deletes: dict[str, list[str] | set[str]] | None = None,
+    *,
+    backup_dir: str | None = None,
 ) -> dict:
     """Surgically apply ``updates`` (and optional ``deletes``) to an INI file.
 
@@ -162,6 +203,10 @@ def update_ini_values(
     ``{section: [key, ...]}`` of keys to remove (used by dynamic-list editors
     where rows can be deleted).  Values must already be stringified.  A backup
     is taken before writing and the write is atomic.
+
+    ``backup_dir``, when set, receives that timestamped backup instead of the
+    config file's own directory.  The directory must already exist.  Which
+    lines get rewritten does not change.
 
     Returns a summary dict::
 
@@ -190,13 +235,14 @@ def update_ini_values(
     _check_writable(updates, deletes)
 
     with _WRITE_LOCK:
-        return _update_ini_values_locked(config_path, updates, deletes)
+        return _update_ini_values_locked(config_path, updates, deletes, backup_dir)
 
 
 def _update_ini_values_locked(
     config_path: str,
     updates: dict[str, dict[str, str]],
     deletes: dict[str, list[str] | set[str]] | None,
+    backup_dir: str | None = None,
 ) -> dict:
     """Body of :func:`update_ini_values`, run while holding ``_WRITE_LOCK``."""
     with open(config_path, encoding="utf-8") as fh:
@@ -207,14 +253,14 @@ def _update_ini_values_locked(
     pending: dict[str, dict[str, str]] = {}
     section_case: dict[str, str] = {}  # normalized section -> caller's casing
     for section, kv in (updates or {}).items():
-        norm_section = section.strip().lower()
+        norm_section = _normalize_section(section)
         section_case[norm_section] = section
         pending[norm_section] = {_normalize_key(k): str(v) for k, v in kv.items()}
 
     # Normalized set of keys to delete, per normalized section.
     delete_norm: dict[str, set[str]] = {}
     for section, keys in (deletes or {}).items():
-        norm_section = section.strip().lower()
+        norm_section = _normalize_section(section)
         delete_norm[norm_section] = {_normalize_key(k) for k in keys}
 
     changed: list[tuple[str, str]] = []
@@ -246,7 +292,7 @@ def _update_ini_values_locked(
         if section_match:
             # Leaving the previous section: remember where its body ended.
             _record_section_boundary()
-            current_norm = section_match.group("name").strip().lower()
+            current_norm = _normalize_section(section_match.group("name"))
             out.append(raw)
             continue
 
@@ -272,7 +318,7 @@ def _update_ini_values_locked(
                         changed.append((section_case[current_norm], norm_key))
                     rebuilt = (
                         f"{key_match.group('indent')}{key_match.group('key')}"
-                        f"{key_match.group('sep')}{new_value}{line_ending}"
+                        f"{_separator_for(key_match.group('sep'), new_value)}{new_value}{line_ending}"
                     )
                     out.append(rebuilt)
                     continue
@@ -318,21 +364,9 @@ def _update_ini_values_locked(
             created_sections.append(section_case[norm_section])
 
     # Take the backup *before* replacing the file.
-    backup_path = backup_config(config_path)
+    backup_path = backup_config(config_path, backup_dir=backup_dir)
 
-    # Atomic write: temp file in the same directory, then os.replace.
-    directory = os.path.dirname(os.path.abspath(config_path))
-    fd, tmp_path = tempfile.mkstemp(dir=directory, prefix=".ini_tmp_")
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as tmp:
-            tmp.writelines(out)
-        os.replace(tmp_path, config_path)
-    except BaseException:
-        try:
-            os.remove(tmp_path)
-        except OSError:
-            pass
-        raise
+    write_text_atomic(config_path, "".join(out))
 
     return {
         "backup_path": backup_path,

@@ -21,6 +21,7 @@ from ..db_retention import (
     retention_delete_settings,
 )
 from ..utils import resolve_path
+from .ha_ingress import ha_ingress_enabled
 
 
 def normalized_web_viewer_password(config) -> str:
@@ -869,7 +870,11 @@ class WebViewerIntegration:
 
         # Insecure but allowed: binding to all interfaces without a password.
         # Only warn when the web viewer is configured to run at startup.
-        if self.enabled and self.host == "0.0.0.0":
+        # With Home Assistant ingress the viewer fails closed: requests that do
+        # not come through the Supervisor are refused with 403 until a password
+        # is set, so the open-bind warning does not apply.
+        ha_ingress = ha_ingress_enabled(self.bot.config)
+        if self.enabled and self.host == "0.0.0.0" and not ha_ingress:
             if not normalized_web_viewer_password(self.bot.config):
                 self.logger.error(
                     "Web viewer is configured with host = 0.0.0.0 and no "
@@ -951,7 +956,7 @@ class WebViewerIntegration:
     def start_viewer(self):
         """Start the web viewer in a separate thread"""
         if self.running:
-            self.logger.warning("Web viewer is already running")
+            self.logger.debug("Web viewer is already running")
             return
 
         if not self._preflight_database_path():

@@ -406,6 +406,39 @@ class TestRadioRoutes:
         )
         assert resp.status_code == 400
 
+    def test_radio_connect_refused_while_bot_initializing(self, client, viewer):
+        viewer.db_manager.set_metadata("bot.initializing", "true")
+        try:
+            before = viewer.db_manager.execute_query(
+                "SELECT COALESCE(MAX(id), 0) AS id FROM channel_operations"
+            )[0]["id"]
+            resp = client.post(
+                "/api/radio/connect",
+                json={"action": "connect"},
+                content_type="application/json",
+            )
+            assert resp.status_code == 409
+            assert "still connecting to the radio at startup" in resp.get_json()["error"]
+            after = viewer.db_manager.execute_query(
+                "SELECT COALESCE(MAX(id), 0) AS id FROM channel_operations"
+            )[0]["id"]
+            assert after == before
+        finally:
+            viewer.db_manager.set_metadata("bot.initializing", "false")
+
+    def test_radio_connect_allowed_after_initializing(self, client, viewer):
+        viewer.db_manager.set_metadata("bot.initializing", "false")
+        resp = client.post(
+            "/api/radio/connect",
+            json={"action": "connect"},
+            content_type="application/json",
+        )
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["success"] is True
+        assert data["pending"] is True
+        assert data["operation_id"] is not None
+
 
 # ===========================================================================
 # Contact routes
