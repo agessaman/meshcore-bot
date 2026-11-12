@@ -4,6 +4,56 @@ This document describes changes that may affect users upgrading from previous ve
 
 For the full release history, see [CHANGELOG.md](https://github.com/agessaman/meshcore-bot/blob/main/CHANGELOG.md).
 
+## Upgrading from v1.1.0 to v1.2.0
+
+v1.2.0 adds features and fixes without removing or renaming any configuration key, command or service plugin. Existing configuration files continue to work. Back up `config.ini`, `local/` and the bot database before upgrading, then use the normal installer or container update path. Read **Web viewer access** and **Behavior changes** below before you upgrade: one changes who can see the viewer, and a few change what goes on air.
+
+### Dependencies and database
+
+No dependency changes: `meshcore` 2.3.14 or newer is still required. There are no new database migrations.
+
+### Web viewer access
+
+- **With `web_viewer_password` set, the Dashboard, Contacts, Mesh Graph and Multibyte pages (and the read-only APIs behind them) are now readable without logging in.** In v1.1.0 a password put every page behind the login. Real-time, Radio, Config, Logs, the settings pages and every API that changes something still require an admin login, and Real-time drops out of an anonymous visitor's navigation because its streams carry decrypted traffic and channel keys. If node names, positions and the mesh graph shouldn't be public on your network, keep the viewer off the internet or put it behind your own proxy authentication.
+- Sessions from v1.1.0 are not carried over, so everyone logs in again once after the upgrade.
+- The viewer serves its own Bootstrap, Font Awesome, Socket.IO, Chart.js, Leaflet, MapLibre and font files, and its Content-Security-Policy no longer allows any CDN host. Every page works on a LAN without internet; only map tiles still need it. A local template or customization that loads a script or stylesheet from a CDN is now blocked by the browser.
+
+### Home Assistant
+
+The bot is available as an official Home Assistant add-on for Home Assistant OS and Supervised installs. Add `https://github.com/agessaman/meshcore-bot` as an add-on repository; see [Home Assistant](home-assistant.md). The add-on image is 64-bit only (amd64 and aarch64). The regular Docker image keeps its 32-bit ARM build.
+
+`[Web_Viewer] ha_ingress` (default `false`) is what serves the viewer in Home Assistant's sidebar. Leave it off outside the add-on.
+
+### Configuration
+
+All new keys are optional, and leaving them unset keeps v1.1.0 behavior unless noted under **Behavior changes**.
+
+- `[Repeater_Watch]` is new and off by default: it reports watched repeaters that go quiet, from **Settings → Repeater Watch** or by hand. See [Repeater watch](repeater-watch.md).
+- `[Scheduled_Messages]` values take optional `start=`, `end=` and `week=` options ahead of the channel, and the day-of-month field takes `last-fri`, `4th-tue` and similar. See [Scheduled messages](scheduled-messages.md).
+- `[Weather] openmeteo_fallback` (default `false`) lets `wx` on NOAA answer places outside NWS coverage from Open-Meteo. `[Weather] always_show_location` (default `false`) names the place in every `wx` and `gwx` reply.
+- `[Weather_Service] weather_alerts_enabled` (default `true`) turns NOAA alert polling off without disabling the rest of the weather service.
+- `[Bot] dm_min_ack_timeout`, `[Localization] place_name_language` and `[Region_Warnings] flood_scope` are new; their defaults change behavior and are covered below.
+
+### Behavior changes
+
+- **A radio that can't be reached at startup no longer stops the bot.** The bot retries with the same backoff as a dropped connection (`[Connection] reconnect_max_retries`, `reconnect_delay_seconds`, `reconnect_max_delay_seconds`) while the web viewer keeps serving. With the default `reconnect_max_retries = 0` it retries forever. When a nonzero limit runs out, the bot now exits with status 1 instead of 0, so the shipped systemd unit and launchd plist restart it. A startup failure that escapes the bot (a Bluetooth adapter error, for example) also exits with status 1 now.
+- **`last` in a schedule key now means what it says.** APScheduler used to read `last` as a prefix, so a key written as `0 19 last-fri * *` ran on the last day of the month. It now runs on the last Friday. Malformed positional days (`last--fri`, `lastfri`, `last-fri/2`), a positional day combined with a day of the week (`0 19 1st-tue * mon`, which never fires) and a schedule with no runs left are now rejected with a warning at startup instead of being scheduled. After upgrading, check the log for `Invalid schedule` and `not scheduled` lines.
+- **A DM that is never acknowledged takes longer to report failure.** `[Bot] dm_min_ack_timeout` (default 8 seconds) is a floor on each attempt's ACK wait, because the radio's own timeout gave up on fast presets before the recipient's ACK could arrive. An ACK still ends the wait at once, so delivered DMs are no slower, but an unacknowledged DM now takes at least 24 seconds with the default three attempts. Set it to `0` for the old timing.
+- **Region warnings follow the channel's flood scope.** With `delivery = channel` they used to go out at global scope; they now use `[Region_Warnings] flood_scope`, then `flood_scope.<channel>`, then `outgoing_flood_scope_override`. Set `[Region_Warnings] flood_scope = *` to keep sending them globally.
+- **Place names are in the bot's language.** `wx`, `gwx` and other location replies name places in `[Localization] language` (falling back to English) instead of each place's local language, so `gwx Tokyo` says `Chiyoda, JP` rather than `千代田区, JP`. Set `place_name_language = local` for the old names. Cached reverse lookups are now kept per language, so places are looked up again once after the upgrade unless you set `local`.
+- **`wx` follows `[Weather] temperature_unit` and `wind_speed_unit`** on NOAA, as `gwx` already did; it used to answer in °F and mph whatever they said. Defaults are unchanged. A `[Wx_Command]` unit setting still overrides `[Weather]` for `wx`, so remove any you copied there if you want `[Weather]` to apply to both.
+- **`gwx` names the place only when that adds information**, as `wx` does: a city in your `default_country` (and `default_state` in the US) is no longer prefixed with its own name. `gwx` with no location forecasts the sender's or the bot's coordinates instead of a geocoded town name.
+- **Channel messages are sized to 155 bytes** of `"<name>: <text>"` instead of 160, which saves a whole extra encrypted block of airtime. Long replies split a little sooner. Any channel send over the budget (from a service, a scheduled message or a plugin) is now split into parts tagged ` (1/2)`, ` (2/2)` instead of being handed to the radio whole.
+- **`trace` waits longer by default:** 2.0 s base and 1.5 s per hop (were 1.0 s and 0.5 s), and a reply to any attempt counts until the last attempt times out. Configured timeouts are kept.
+- **Webhook posts longer than one message are split** across several channel messages. `[Webhook] max_message_length` is now the total text accepted per request, and a successful response reports the part count: `{"ok": true, "parts": 2}`.
+- A channel message or DM repeated within 5 seconds is dropped as a duplicate, which stops double replies after a Bluetooth reconnect.
+
+### Local plugins and scripts
+
+- `MessageHandler`'s pending-message correlation was removed, including `store_message_for_correlation`, `correlate_message_with_rf_data`, `cleanup_old_messages`, `try_correlate_pending_messages`, the `pending_messages` attribute and `PendingMessageEntry`. A local plugin that called them needs updating; nothing read their results.
+- `truncate_to_bytes` moved to `modules.utils`. `modules.region_warning` still re-exports it.
+- `send_channel_message` now splits an over-budget body itself, and `channel_body_budget` reports the byte budget for a channel and scope.
+
 ## Upgrading from v1.0.0 to v1.1.0
 
 v1.1.0 adds features without removing or renaming the stable configuration,
