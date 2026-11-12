@@ -1,6 +1,97 @@
 # Scheduled messages (`[Scheduled_Messages]`)
 
-Each entry is `<schedule_key> = <value>` where the value is normally **`channel:message`** (first colon separates channel from body). For **regional flood scope** on that send only, use **`channel:#scope:message`**: the middle segment must start with `#` (same convention as `flood_scopes` / `outgoing_flood_scope_override`). The message body may contain more colons. Omit the middle field for classic global flood. See `config.ini.example` under `[Scheduled_Messages]` for examples. The **`schedule`** command lists each job with `(#scope)` when set.
+Each line of `[Scheduled_Messages]` posts one message to a channel on a schedule. The format is summarized in the reference below; the sections after it explain each part with examples. The **`schedule`** command lists every job, with `(#scope)` when one is set.
+
+## Format reference
+
+```ini
+<schedule key> = [start=YYYY-MM-DD] [end=YYYY-MM-DD] [week=<weeks>] <channel>:[#<scope>:]<message>
+```
+
+```ini
+[Scheduled_Messages]
+0 8 * * *         = Public:Good morning
+30 12 * * mon-fri = Public:#sea:Lunch net in 30 minutes
+0 19 last-fri * * = start=2027-01-01 end=2027-03-31 Public:Winter net starts now
+0 20 * * tue      = week=*/2 Public:#sea:Fortnightly net
+```
+
+Times are in `[Bot] timezone`. Each schedule key can appear only once in the section.
+
+### Schedule key
+
+A key is one of:
+
+| Form | Example | Meaning |
+| --- | --- | --- |
+| Five crontab fields | `30 12 * * mon` | `minute hour day-of-month month day-of-week` |
+| Preset | `@daily` | `@yearly`/`@annually` `0 0 1 1 *`, `@monthly` `0 0 1 * *`, `@weekly` `0 0 * * 0` (Monday), `@daily`/`@midnight` `0 0 * * *`, `@hourly` `0 * * * *` |
+| `HHMM` (deprecated) | `0800` | Every day at 08:00. Still works, logs a warning; write `0 8 * * *` instead. |
+
+The five fields:
+
+| Field | Values | Names | Also |
+| --- | --- | --- | --- |
+| minute | `0`–`59` | | |
+| hour | `0`–`23` | | |
+| day-of-month | `1`–`31` | | `last` (last day of the month); `1st`…`5th` or `last`, a `-` or `_`, and a weekday: `last-fri`, `2nd-wed` |
+| month | `1`–`12` | `jan`–`dec` | |
+| day-of-week | `0`–`6`, **`0` is Monday** | `mon`–`sun` | |
+
+Every field takes `*` (any), a value (`5`), a range (`1-5`, `mon-fri`), a step (`*/15`, `0-30/10`) and a comma list of any of these (`0,30`, `1st-tue,3rd-tue`). Names and positional days are case-insensitive.
+
+A positional day (`last-fri`, `4th-tue`) already names its weekday, so day-of-week must be `*` when you use one. It must stand alone between commas, and it is only valid in the day-of-month field. A month without a fifth Tuesday skips `5th-tue`.
+
+### Value
+
+| Part | Required | Format | Meaning |
+| --- | --- | --- | --- |
+| `start=` | no | `YYYY-MM-DD` | First day the schedule may run |
+| `end=` | no | `YYYY-MM-DD` | Last day it may run, through the end of that day |
+| `week=` | no | ISO week numbers `1`–`53`, with the field syntax above | `*/2` odd weeks, `2-53/2` even weeks, `1-26` first half of the year |
+| channel | yes | channel name, no `:` | Where the message goes |
+| `#scope` | no | `#name`, no `:` | Regional flood scope for this send only; leave it out for the channel's usual scope |
+| message | yes | text, may contain `:` | What is sent |
+
+The three options come first, in any order, each followed by a space, and each at most once. The option names are case-insensitive. The first `:` ends the channel. When the next segment starts with `#` and is followed by another `:`, it is the scope; everything after is the message.
+
+### Message text
+
+- `\n` is a line break, `\t` a tab, `\r` a carriage return, and `\\` a literal backslash (`\\n` sends a backslash and an `n`).
+- `{cmd:<command> [args]}` inserts a command's reply. See [Broadcasting a command's output](#broadcasting-a-commands-output-cmd) for its limits, including the 15-minute minimum between runs.
+- Mesh counts can be inserted by name:
+    - Ever heard: `{total_contacts}`, `{total_repeaters}`, `{total_companions}`, `{total_roomservers}`, `{total_sensors}`
+    - Heard in the last 30 days: `{total_contacts_30d}`, `{total_repeaters_30d}`, `{total_companions_30d}`, `{total_roomservers_30d}`, `{total_sensors_30d}`
+    - First heard in the last 7 days: `{new_companions_7d}`, `{new_repeaters_7d}`, `{new_roomservers_7d}`, `{new_sensors_7d}`
+    - Unique users active in the last 24 hours: `{recent_activity_24h}`
+    - Old names: `{repeaters}` and `{companions}`, the same as `{total_repeaters}` and `{total_companions}`
+- A message longer than one channel message is split into parts and sent as several messages.
+
+### What is rejected
+
+The bot logs a warning at startup and does not schedule an entry it can't run as written. The web viewer refuses the same entries when you save, with the reason.
+
+| Written | Problem | Write instead |
+| --- | --- | --- |
+| `0 12 * * 7` | Day-of-week stops at `6` (Sunday) | `0 12 * * sun` |
+| `0 8 * *` | Four fields | Five fields: `0 8 * * *` |
+| `0 19 lastfri * *`, `0 19 last--fri * *` | Not a day-of-month | `0 19 last-fri * *` |
+| `0 19 1st-tue-3rd-tue * *` | Two positional days joined | `0 19 1st-tue,3rd-tue * *` |
+| `0 19 last-fri/2 * *` | Positional days take no step | `week=*/2` on the value |
+| `0 19 1st-tue * mon` | Positional day with a day-of-week (would never fire) | `0 19 1st-tue * *` |
+| `0 19 * * last-fri` | Positional day in the day-of-week field | `0 19 last-fri * *` |
+| `start=20270101` | Date not written `YYYY-MM-DD` | `start=2027-01-01` |
+| `start=2027-02-01 end=2027-01-01` | End before start | Swap the dates |
+| `start=…` given twice | Option repeated | Give it once |
+| `start=2027-01-01` alone | No channel or message after the options | `start=2027-01-01 Public:Hello` |
+| `week=60` | ISO weeks stop at `53` | `week=1-53/2` or similar |
+| A schedule whose runs are all past | Nothing left to run | Move or remove `end=` |
+| `{cmd:...}` in a schedule that runs more often than every 15 minutes | Airtime guard | Run it every 15 minutes or less often |
+
+Two entries only the web viewer can catch, since by hand they are valid but mean something else:
+
+- A message with no scope that starts with `#name:`, such as `Public:#net: tonight at 7`, is read as the scope `#net` with the message `tonight at 7`. Set a scope, or reword the start.
+- A channel whose name starts with `start=`, `end=` or `week=` followed by a space is read as an option.
 
 ## Managing schedules from the web viewer
 
@@ -45,7 +136,7 @@ Even within the floor, mind the cost: a `*/15 * * * *` forecast is 96 transmissi
 
 ## Schedule keys (APScheduler cron, not Vixie)
 
-Schedule keys are parsed by **APScheduler** `CronTrigger.from_crontab` (plus `@` presets and deprecated `HHMM`). Field order is the usual five: `minute hour day-of-month month day-of-week`.
+Schedule keys become **APScheduler** cron triggers, built the way `CronTrigger.from_crontab` builds them, with positional days of the month, `@` presets and the deprecated `HHMM` form added on top. Field order is the usual five: `minute hour day-of-month month day-of-week`.
 
 **Day-of-week numbering differs from classic Vixie / crontab(5):**
 
@@ -88,7 +179,7 @@ APScheduler's day-of-month field understands positional expressions like `last f
 
 Prefixes are `1st` `2nd` `3rd` `4th` `5th` `last`, followed by `mon`–`sun`. They are valid **only in the day-of-month field** — `0 19 * * last-fri` is rejected.
 
-Two things to keep in mind. A month may have no fifth Tuesday, so `5th tue` simply skips those months. And `1st-tue,3rd-tue` is a 14/14/21-day cadence across a month boundary, not a strict fortnight: crontab matches calendar patterns and has no way to say "every 14 days". If you need an exact fortnight, note that anchoring one drifts an hour across a DST change, which is usually worse for an announced net time than the 21-day gap.
+Two things to keep in mind. A month may have no fifth Tuesday, so `5th tue` simply skips those months. And `1st-tue,3rd-tue` is a 14/14/21-day cadence across a month boundary, not a strict fortnight: crontab matches calendar patterns and has no way to say "every 14 days". For a strict fortnight, use `week=` (next section).
 
 ### Every other week
 
