@@ -420,7 +420,7 @@ For production deployments:
 
 1. **Use specific image tags** instead of `latest`:
    ```yaml
-   image: ghcr.io/your-username/meshcore-bot:v1.1.0
+   image: ghcr.io/your-username/meshcore-bot:v1.2.0
    ```
 
 2. **Set resource limits** in `docker-compose.yml`:

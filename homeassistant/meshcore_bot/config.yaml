@@ -1,5 +1,5 @@
 name: MeshCore Bot
-version: "1.1.0"
+version: "1.2.0"
 slug: meshcore_bot
 description: MeshCore radio bot with a sidebar web viewer. Connect a USB radio, a TCP companion, or Bluetooth Low Energy.
 url: https://github.com/agessaman/meshcore-bot

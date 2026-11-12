@@ -6,6 +6,8 @@ semantic versioning.
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-11
+
 ### Added
 
 - Home Assistant add-on in `homeassistant/meshcore_bot`. Add `https://github.com/agessaman/meshcore-bot` as a repository in the add-on store. Options set in the add-on configuration override the matching `config.ini` keys on each start. Options left empty leave those keys alone. The web viewer opens from the sidebar. The image is `ghcr.io/agessaman/meshcore-bot-ha` (amd64 and aarch64).
@@ -1298,7 +1300,8 @@ hardening fixes.
   v0.9.0.
 - Discord integration, kg7qin integration notes (`f2936be`, `de6279c`).
 
-[Unreleased]: https://github.com/agessaman/meshcore-bot/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/agessaman/meshcore-bot/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/agessaman/meshcore-bot/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/agessaman/meshcore-bot/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/agessaman/meshcore-bot/compare/v0.9.3...v1.0.0
 [0.9.3]: https://github.com/agessaman/meshcore-bot/compare/v0.9.2...v0.9.3
