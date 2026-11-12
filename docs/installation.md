@@ -5,6 +5,7 @@ Choose how to run the bot:
 | Method | Best for |
 |--------|----------|
 | **[Docker](docker.md)** | Containers, consistent environments, easy updates |
+| **[Home Assistant](home-assistant.md)** | Home Assistant OS and Supervised |
 | **[Service (systemd)](service-installation.md)** | Linux servers, run at boot, no containers |
 | **Debian package** | `make deb` in the repo — see [README](https://github.com/agessaman/meshcore-bot/blob/main/README.md) |
 | **[pipx](#pipx)** | A single-user install with no repo checkout and no venv management |

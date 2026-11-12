@@ -185,14 +185,6 @@ class TelegramBridgeService(ChannelBridgeBase):
             self.message_queues[chat_id] = []
             self.send_times[chat_id] = deque()
 
-    def _targets_for(self, channel_name: str) -> Optional[str]:
-        # Normalize: strip leading # and compare case-insensitively so bridge.HowlTest matches #howltest
-        channel_key = channel_name.lstrip('#').lower()
-        for config_channel, cid in self.channel_chat_ids.items():
-            if config_channel.lstrip('#').lower() == channel_key:
-                return cid
-        return None
-
     async def _deliver(self, targets: str, sender_name: str, message_text: str, channel_name: str) -> None:
         full_text = self._build_message_text(sender_name, message_text, channel_name)
         full_text = self._truncate_text(full_text)

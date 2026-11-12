@@ -37,7 +37,7 @@ Do not use `host` or `port` under `[Connection]` — those names are for `[Web_V
 
 ### Connection: transport reconnect
 
-`[Connection]` options `reconnect_max_retries` (0 = unlimited), `reconnect_delay_seconds`, and `reconnect_max_delay_seconds` apply to **serial, BLE, and TCP**. When the meshcore transport drops, the bot schedules reconnect with exponential backoff.
+`[Connection]` options `reconnect_max_retries` (0 = unlimited), `reconnect_delay_seconds`, and `reconnect_max_delay_seconds` apply to **serial, BLE, and TCP**. When the meshcore transport drops, or the radio is not reachable yet at startup, the bot reconnects with exponential backoff.
 
 - **TCP** — meshcore emits `DISCONNECTED` on socket loss; the bot reconnects immediately (the main loop also polls every 5s as a backup). If `radio_probe_fail_threshold` consecutive `get_time` probes fail or time out, the bot reconnects the TCP session instead of declaring a zombie radio (serial/BLE probes still use zombie detection for unresponsive firmware).
 - **Serial** — USB unplug triggers the same reconnect path; zombie detection remains for “port open but firmware dead” cases.

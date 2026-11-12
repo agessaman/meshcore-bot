@@ -353,6 +353,21 @@ class MeshCoreBot(ServiceSupervisorMixin, RadioLinkMixin, RadioOfflineBreaker, D
             ) / 1000.0,
         )
 
+        # Task that holds the relink lock. The lock object is
+        # _transport_reconnect_lock, created on first use.
+        # disconnect_radio() sets _manual_radio_disconnect so a reconnect
+        # retry loop drops the lock, and leaves it set so a reconnect already
+        # waiting cannot bring the radio back. reconnect_radio() and
+        # reboot_radio() clear it once they hold the lock. While it is set,
+        # automatic transport reconnects do not run.
+        self._relink_lock_owner: asyncio.Task[Any] | None = None
+        self._manual_radio_disconnect = False
+
+        # setup_message_handlers is once per MeshCore instance. The list is
+        # that call's Subscription objects (issue #364).
+        self._message_handlers_meshcore: Any = None
+        self._message_handler_subscriptions: list[Any] = []
+
     def _default_local_translation_path(self, config: configparser.ConfigParser) -> str:
         """Default local catalog directory: ``<local_dir_path>/translations``.
 
@@ -777,25 +792,40 @@ class MeshCoreBot(ServiceSupervisorMixin, RadioLinkMixin, RadioOfflineBreaker, D
         Times out after 30 seconds if contacts are not loaded.
         """
         self.logger.info("Waiting for contacts to load...")
+        # Stay on the instance connect() handed us. A relink can replace
+        # self.meshcore while next_cmd is in flight.
+        mc = self.meshcore
 
         # Try to manually load contacts first
         try:
             from meshcore_cli.meshcore_cli import next_cmd
             self.logger.info("Manually requesting contacts from device...")
-            result = await next_cmd(self.meshcore, ["contacts"])
+            result = await next_cmd(mc, ["contacts"])
             self.logger.info(f"Contacts command result: {len(result) if result else 0} contacts")
         except (OSError, AttributeError, ValueError) as e:
             self.logger.warning(f"Error manually loading contacts: {e}")
 
         # MeshCore.contacts is a property that always exists (possibly empty).
-        self.logger.info(f"Contacts loaded: {len(self.meshcore.contacts)} contacts")
+        contacts = getattr(mc, "contacts", None) if mc is not None else None
+        self.logger.info(f"Contacts loaded: {len(contacts) if contacts is not None else 0} contacts")
 
     async def setup_message_handlers(self) -> None:
         """Setup event handlers for messages.
 
         Registers callbacks for various meshcore events including contact messages,
         channel messages, RF data, and raw data packets.
+
+        Idempotent per MeshCore instance: a second call for the instance already
+        subscribed does nothing. Subscribes on the instance captured here, not
+        on whatever ``self.meshcore`` is after an await.
         """
+        mc = self.meshcore
+        if mc is not None and mc is self._message_handlers_meshcore:
+            self.logger.debug(
+                "Message handlers already installed on this MeshCore instance"
+            )
+            return
+
         # Handle contact messages (DMs)
         async def on_contact_message(event, metadata=None):
             await self.message_handler.handle_contact_message(event, metadata)
@@ -822,35 +852,46 @@ class MeshCoreBot(ServiceSupervisorMixin, RadioLinkMixin, RadioOfflineBreaker, D
             await self._schedule_transport_reconnect(reason)
 
         # Subscribe to events
-        self.meshcore.subscribe(EventType.DISCONNECTED, on_disconnected)
-        self.meshcore.subscribe(EventType.CONTACT_MSG_RECV, on_contact_message)
-        self.meshcore.subscribe(EventType.CHANNEL_MSG_RECV, on_channel_message)
-        self.meshcore.subscribe(EventType.RX_LOG_DATA, on_rf_data)
-
-        # Subscribe to RAW_DATA events for full packet data
-        self.meshcore.subscribe(EventType.RAW_DATA, on_raw_data)
+        subscriptions = [
+            mc.subscribe(EventType.DISCONNECTED, on_disconnected),
+            mc.subscribe(EventType.CONTACT_MSG_RECV, on_contact_message),
+            mc.subscribe(EventType.CHANNEL_MSG_RECV, on_channel_message),
+            mc.subscribe(EventType.RX_LOG_DATA, on_rf_data),
+            # Subscribe to RAW_DATA events for full packet data
+            mc.subscribe(EventType.RAW_DATA, on_raw_data),
+        ]
+        # Record before the first await so a second call during auto-fetch
+        # or the readiness delay does not subscribe again.
+        self._message_handlers_meshcore = mc
+        self._message_handler_subscriptions = subscriptions
 
         # Note: Debug mode commands are not available in current meshcore-cli version
         # The meshcore library handles debug output automatically when needed
 
         # Start auto message fetching
-        await self.meshcore.start_auto_message_fetching()
+        await mc.start_auto_message_fetching()
 
         # Delay NEW_CONTACT subscription to ensure device is fully ready
         self.logger.info("Delaying NEW_CONTACT subscription to ensure device readiness...")
         await asyncio.sleep(5)  # Wait 5 seconds for device to be fully ready
 
         # Subscribe to NEW_CONTACT events for automatic contact management
-        self.meshcore.subscribe(EventType.NEW_CONTACT, on_new_contact)
+        subscriptions.append(mc.subscribe(EventType.NEW_CONTACT, on_new_contact))
         self.logger.info("NEW_CONTACT subscription active - ready to receive new contact events")
 
         self.logger.info("Message handlers setup complete")
 
-    async def start(self) -> None:
+    async def start(self) -> bool:
         """Start the bot.
 
         Initiates the connection to the node, sets up scheduling, services,
         and starts the main execution loop.
+
+        Returns True when the bot ran and shut down cleanly, including a
+        shutdown while waiting for the radio at startup. Returns False only
+        when the startup connection retries run out (reconnect_max_retries >
+        0); the entrypoint turns False into a non-zero exit status so service
+        managers restart the bot.
         """
         self.logger.info("Starting MeshCore Bot...")
 
@@ -917,14 +958,62 @@ class MeshCoreBot(ServiceSupervisorMixin, RadioLinkMixin, RadioOfflineBreaker, D
                 failed="Failed to start service 'webhook' early",
             )
 
-        # Connect to MeshCore node
+        # Connect to MeshCore node. A failed first connect is not fatal: the
+        # radio may not be ready yet (for example just after a reboot). Fall
+        # back to the same backoff loop used when an established link drops, so
+        # startup and runtime reconnects share one mechanism and one set of
+        # [Connection] settings.
         if not await self.connect():
-            self.logger.error("Failed to connect to MeshCore node")
-            try:
-                self.db_manager.set_metadata('bot.initializing', 'false')
-            except Exception:
-                pass
-            return
+            max_retries = self.config.getint(
+                'Connection', 'reconnect_max_retries', fallback=0
+            )
+            retry_policy = (
+                "unlimited attempts"
+                if max_retries == 0
+                else f"{max_retries} attempt(s)"
+            )
+            self.logger.warning(
+                "Initial connection to MeshCore node failed; retrying with "
+                "exponential backoff (%s per [Connection] reconnect_max_retries). "
+                "The web viewer keeps serving while the bot waits.",
+                retry_policy,
+            )
+            if not await self._attempt_reconnect():
+                try:
+                    self.db_manager.set_metadata('bot.initializing', 'false')
+                except Exception:
+                    pass
+                # Shutdown and a manual stop are clean exits, not a failed
+                # launch. A manual stop is the viewer's "Stop Bot" action.
+                if self._shutdown_event.is_set() or self._manual_radio_disconnect:
+                    self.logger.info(
+                        "Shutdown requested while waiting for the radio; stopping"
+                    )
+                    return True
+                self.logger.error("Failed to connect to MeshCore node")
+                return False
+
+        # A connect or disconnect queued while startup was still waiting on the
+        # radio predates this link. Running it now would tear down what connect()
+        # just opened, so resolve it as interrupted instead of leaving it pending
+        # for the scheduler to claim.
+        stale = self.db_manager.execute_update(
+            "UPDATE channel_operations "
+            "SET status = 'interrupted', processed_at = CURRENT_TIMESTAMP, "
+            "error_message = ? "
+            "WHERE status = 'pending' "
+            "AND operation_type IN ('radio_connect', 'radio_disconnect')",
+            (
+                "Startup connected the radio before this operation ran, so it "
+                "was discarded.",
+            ),
+        )
+        if stale:
+            self.logger.info(
+                "Discarded %s stale radio connect/disconnect operation(s) "
+                "queued during startup",
+                stale,
+            )
 
         # Bot is now connected — clear the initializing flag
         try:
@@ -1042,6 +1131,7 @@ class MeshCoreBot(ServiceSupervisorMixin, RadioLinkMixin, RadioOfflineBreaker, D
             self.logger.info("Received interrupt signal")
         # Shutdown is owned by the entrypoint (e.g. meshcore_bot.run_bot finally)
         # so stop() runs exactly once; see stop() idempotency guard.
+        return True
 
     async def stop(self) -> None:
         """Stop the bot.

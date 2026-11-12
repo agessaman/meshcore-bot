@@ -197,10 +197,10 @@
                         Admin Tools
                     </p>
                     <nav class="nav flex-column" aria-labelledby="config-nav-admin">
-                        <a class="nav-link px-2 py-1" href="/api-explorer">
+                        <a class="nav-link px-2 py-1" href="{{ url_for('api_explorer') }}">
                             <i class="fas fa-plug me-2"></i>API
                         </a>
-                        <a class="nav-link px-2 py-1" href="/admin/config">
+                        <a class="nav-link px-2 py-1" href="{{ url_for('admin_config') }}">
                             <i class="fas fa-file-code me-2"></i>Raw Config
                         </a>
                     </nav>
