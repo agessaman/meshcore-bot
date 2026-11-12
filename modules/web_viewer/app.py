@@ -52,7 +52,7 @@ from flask_socketio import (  # noqa: F401  kept for modules.web_viewer.app.disc
     emit,
 )
 
-from modules import flood_scope, region_warning
+from modules import flood_scope, region_warning, repeater_watch
 from modules.database_restore import (
     DEFAULT_MAX_RESTORE_BYTES,
     DatabaseRestoreError,
@@ -1097,6 +1097,7 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
                 'plugins_page',
                 'greeter',
                 'region_warnings_page',
+                'repeater_watch_page',
                 'logs',
                 'multibyte_rollout',
                 'mesh',
@@ -1235,6 +1236,11 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
         def region_warnings_page():
             """Regional flood scope monitoring and warning settings."""
             return render_template('region_warnings.html')
+
+        @self.app.route('/repeater-watch')
+        def repeater_watch_page():
+            """Watched-repeater offline reporting: status and settings."""
+            return render_template('repeater_watch.html')
 
         @self.app.route('/feeds')
         def feeds():
@@ -4029,6 +4035,196 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
                 'backup_path': backup_path,
                 'reload_queued': reload_queued,
                 'settings': region_warning.settings_to_config_values(settings),
+            })
+
+        # ── Repeater watch ([Repeater_Watch], #353) ─────────────────────────
+
+        @self.app.route('/api/repeater-watch')
+        def api_repeater_watch():
+            """Watched repeaters' status, the settings, the picker list and recent events."""
+            try:
+                self.config = self._load_merged_config()
+                settings = repeater_watch.load_settings(self.config)
+                values = repeater_watch.settings_to_config_values(settings)
+                # Secrets stay on the server; the form only learns whether one is set.
+                for secret in ('discord_webhook_urls', 'telegram_bot_token'):
+                    values[secret + '_set'] = 'true' if values.get(secret) else 'false'
+                    values[secret] = ''
+
+                known_channels = []
+                try:
+                    known_channels = [c.get('name') for c in self._get_channels() if c.get('name')]
+                except Exception:
+                    pass
+                companions = []
+                try:
+                    companions = [
+                        r['name'] for r in self.db_manager.execute_query(
+                            "SELECT name FROM complete_contact_tracking WHERE role = 'companion' "
+                            "AND name != '' GROUP BY name ORDER BY MAX(last_heard) DESC LIMIT 200"
+                        )
+                    ]
+                except Exception:
+                    pass
+
+                try:
+                    prefix_bytes = int(self.config.get('Bot', 'prefix_bytes', fallback='1') or 1)
+                except (TypeError, ValueError):
+                    prefix_bytes = 1
+
+                return jsonify({
+                    'settings': values,
+                    'defaults': repeater_watch.settings_to_config_values(
+                        repeater_watch.RepeaterWatchSettings()
+                    ),
+                    'status': repeater_watch.status_view(self.db_manager, self.config),
+                    'candidates': repeater_watch.candidate_repeaters(self.db_manager),
+                    'events': repeater_watch.recent_events(self.db_manager),
+                    'known_channels': known_channels,
+                    'companions': companions,
+                    'prefix_bytes': prefix_bytes,
+                    'limits': {
+                        'dm': repeater_watch.DM_BODY_LIMIT,
+                        'channel': _region_warning_channel_limit(),
+                        'offline_after_hours': list(repeater_watch.OFFLINE_HOURS_RANGE),
+                        'check_interval_minutes': list(repeater_watch.CHECK_MINUTES_RANGE),
+                        'max_watched': repeater_watch.MAX_WATCHED,
+                    },
+                    'template_fields': list(repeater_watch.TEMPLATE_FIELDS),
+                })
+            except Exception:
+                self.logger.exception("Error building repeater watch view")
+                return jsonify({'error': 'Internal error — see server logs'}), 500
+
+        @self.app.route('/api/repeater-watch/settings', methods=['POST'])
+        def api_repeater_watch_save():
+            """Persist [Repeater_Watch] and queue a hot config reload."""
+            data = request.get_json(silent=True) or {}
+            current = repeater_watch.load_settings(self._load_merged_config())
+
+            def _as_bool(key, default):
+                raw = data.get(key, default)
+                if isinstance(raw, bool):
+                    return raw
+                return str(raw).strip().lower() in ('1', 'true', 'yes', 'on')
+
+            def _as_number(key, default, bounds, label):
+                raw = data.get(key, default)
+                try:
+                    value = float(raw)
+                except (TypeError, ValueError):
+                    raise ValueError(f'{label} must be a number')
+                low, high = bounds
+                if not low <= value <= high:
+                    raise ValueError(f'{label} must be between {low:g} and {high:g}')
+                return value
+
+            def _as_list(key):
+                raw = data.get(key)
+                parts = raw if isinstance(raw, list) else str(raw or '').split(',')
+                out = []
+                for part in parts:
+                    text = str(part).strip()
+                    if text and text not in out:
+                        out.append(text)
+                return out
+
+            def _template(key, default, label):
+                text = str(data.get(key) or '').strip() or default
+                if '\n' in text or '\r' in text:
+                    raise ValueError(f'{label} must be a single line')
+                if '%' in text:
+                    raise ValueError(f'{label} cannot contain "%"; write "percent" instead')
+                if len(text) > 200:
+                    raise ValueError(f'{label} must be 200 characters or fewer')
+                problems = repeater_watch.template_errors(text)
+                if problems:
+                    raise ValueError(f'{label}: ' + '; '.join(problems))
+                return text
+
+            try:
+                watch = []
+                for entry in _as_list('watch'):
+                    key = repeater_watch.normalize_key(entry)
+                    if not key:
+                        raise ValueError(f'"{entry[:20]}" is not a repeater public key')
+                    if key not in watch:
+                        watch.append(key)
+                if len(watch) > repeater_watch.MAX_WATCHED:
+                    raise ValueError(f'At most {repeater_watch.MAX_WATCHED} repeaters can be watched')
+
+                scope_name = str(data.get('flood_scope') or '').strip()
+                if scope_name:
+                    try:
+                        scope_name = flood_scope.validate_scope_name(scope_name)
+                    except ValueError as exc:
+                        raise ValueError(f'Flood scope: {exc}')
+
+                discord = _as_list('discord_webhook_urls')
+                if data.get('discord_webhook_urls_keep') and not discord:
+                    discord = list(current.discord_webhook_urls)
+                from modules.bridge_outbound import is_valid_discord_webhook_url
+                for url in discord:
+                    if not is_valid_discord_webhook_url(url):
+                        raise ValueError('Discord webhook URLs must be https://discord.com/api/webhooks/… links')
+                token = str(data.get('telegram_bot_token') or '').strip()
+                if data.get('telegram_bot_token_keep') and not token:
+                    token = current.telegram_bot_token
+
+                settings = repeater_watch.RepeaterWatchSettings(
+                    enabled=_as_bool('enabled', False),
+                    watch=tuple(watch),
+                    watch_starred=_as_bool('watch_starred', False),
+                    offline_after_hours=_as_number(
+                        'offline_after_hours', 24, repeater_watch.OFFLINE_HOURS_RANGE, 'Offline after'
+                    ),
+                    check_interval_minutes=_as_number(
+                        'check_interval_minutes', 15, repeater_watch.CHECK_MINUTES_RANGE, 'Check every'
+                    ),
+                    notify_recovery=_as_bool('notify_recovery', True),
+                    channels=tuple(_as_list('channels')),
+                    dm_recipients=tuple(_as_list('dm_recipients')),
+                    flood_scope=scope_name,
+                    offline_message=_template(
+                        'offline_message', repeater_watch.DEFAULT_OFFLINE_MESSAGE, 'Offline message'
+                    ),
+                    recovered_message=_template(
+                        'recovered_message', repeater_watch.DEFAULT_RECOVERED_MESSAGE, 'Back-online message'
+                    ),
+                    discord_webhook_urls=tuple(discord),
+                    telegram_chat_ids=tuple(_as_list('telegram_chat_ids')),
+                    telegram_bot_token=token,
+                )
+            except ValueError as exc:
+                return jsonify({'success': False, 'error': str(exc)}), 400
+
+            section = repeater_watch.CONFIG_SECTION
+            target_path = (
+                self.local_config_path
+                if section in self._local_sections
+                else self.config_path
+            )
+            try:
+                store = get_settings_store(self.config, target_path, self.db_manager)
+                result = store.write_values(
+                    section, repeater_watch.settings_to_config_values(settings)
+                )
+            except IniValueError as exc:
+                return jsonify({'success': False, 'error': str(exc)}), 400
+            except Exception:
+                self.logger.exception("Error saving repeater watch settings")
+                return jsonify({'success': False, 'error': 'Internal error — see server logs'}), 500
+
+            backup_path = result.get('backup_path', '') if isinstance(result, dict) else ''
+            reload_queued = _queue_config_reload()
+            self.logger.info(
+                "Repeater watch settings saved (enabled=%s, watching=%d)",
+                settings.enabled, len(settings.watch),
+            )
+            return jsonify({
+                'success': True,
+                'backup_path': backup_path,
+                'reload_queued': reload_queued,
             })
 
         # ── Region scopes ([Channels] flood_scopes) ──────────────────────────

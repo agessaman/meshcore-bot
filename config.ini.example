@@ -406,6 +406,59 @@ mesh_cooldown_minutes = 30
 # unlimited (not recommended).
 max_warnings_per_day = 6
 
+[Repeater_Watch]
+# Report when a repeater you look after goes quiet (see docs/repeater-watch.md).
+#
+# The bot already hears two signs that a repeater works: its adverts, and the
+# packets it relays (as hops in the paths the bot sees). A watched repeater
+# counts as offline once neither has been heard for offline_after_hours. One
+# notice goes out when it goes offline and, with notify_recovery, one when it
+# is heard again; nothing repeats while it stays down.
+#
+# The bot only judges silence it was listening for: the clock starts when the
+# bot starts or its radio reconnects, and checks pause while the bot hears no
+# node at all, so a fault on the bot's own radio is not reported as every
+# repeater going down. The Repeater watch page in the web viewer picks
+# repeaters and shows their status. Off by default.
+enabled = false
+
+# Public keys of the repeaters to watch, comma-separated. A key prefix of at
+# least 8 hex characters also works and matches the most recently heard
+# repeater with it.
+watch =
+
+# Also watch every repeater starred in the web viewer's Contacts page.
+watch_starred = false
+
+# Hours with no advert and no relayed traffic before a repeater is offline
+# (1 to 720). Repeaters advertise every few hours, so leave room for that.
+offline_after_hours = 24
+
+# How often to check, in minutes (5 to 1440).
+check_interval_minutes = 15
+
+# Also send a notice when an offline repeater is heard again.
+notify_recovery = true
+
+# Where notices go. Any mix of channels, DMs and the external targets below;
+# with none set, transitions are only logged and shown on the page.
+channels =
+# Contact names (or public keys) to DM.
+dm_recipients =
+# Optional regional TC_FLOOD scope for channel notices (e.g. #west).
+flood_scope =
+
+# Notice wording. Placeholders: {name}, {prefix}, {silent_for}, {down_for},
+# {last_heard}. Several transitions in one check share a message where they fit.
+offline_message = Repeater offline: {name} ({prefix}), not heard for {silent_for}
+recovered_message = Repeater back: {name} ({prefix}), was offline {down_for}
+
+# Optional Discord/Telegram copies of each notice.
+discord_webhook_urls =
+telegram_chat_ids =
+# Blank uses TELEGRAM_BOT_TOKEN, then [TelegramBridge] api_token.
+telegram_bot_token =
+
 [Banned_Users]
 # List of banned sender names (comma-separated). Matching is prefix (starts-with):
 # "Awful Username" also matches "Awful Username 🍆". No bot responses in channels or DMs.
