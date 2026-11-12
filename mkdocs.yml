@@ -57,6 +57,7 @@ nav:
     - Service: service-installation.md
   - Configuration:
     - Overview: configuration.md
+    - Scheduled messages: scheduled-messages.md
     - Data retention: data-retention.md
     - Local plugins and services: local-plugins.md
     - Check-in API: checkin-api.md
