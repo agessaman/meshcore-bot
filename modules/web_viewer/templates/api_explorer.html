@@ -255,7 +255,7 @@
 
     // Curl examples
     function buildCurl(method, path) {
-        var url = host + path;
+        var url = host + window.appUrl(path);
         if (method === 'GET') {
             return 'curl -s -X GET \\\n  -H "X-Requested-With: XMLHttpRequest" \\\n  ' + url;
         }

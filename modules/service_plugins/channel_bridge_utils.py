@@ -58,8 +58,40 @@ class ChannelBridgeBase(BaseServicePlugin):
         raise NotImplementedError
 
     def _targets_for(self, channel_name: str) -> Any:
-        """The configured destination(s) for a channel, or None."""
-        raise NotImplementedError
+        """The configured destination(s) for a channel, or None.
+
+        An exact match (ignoring case) wins. Otherwise a leading ``#`` is
+        ignored on both sides, so ``bridge.test`` matches the ``#test``
+        channel and ``bridge.#test`` matches ``test``.
+        """
+        mappings = self._bridge_mappings
+        wanted = channel_name.lower()
+        for config_channel, targets in mappings.items():
+            if config_channel.lower() == wanted:
+                return targets
+        wanted = wanted.lstrip('#')
+        for config_channel, targets in mappings.items():
+            if config_channel.lstrip('#').lower() == wanted:
+                return targets
+        return None
+
+    def _log_unmapped_channel(self, channel_name: str) -> None:
+        """Say once, at info level, that a channel has no mapping.
+
+        Later messages from the same channel log at debug only, so a mapping
+        that never matches is visible in a normal log without flooding it.
+        """
+        seen = self.__dict__.setdefault('_unmapped_channels_logged', set())
+        key = channel_name.lower()
+        if key in seen:
+            self.logger.debug(f"Channel '{channel_name}' not configured for {self.bridge_label} bridge")
+            return
+        seen.add(key)
+        configured = ', '.join(sorted(self._bridge_mappings)) or '(none)'
+        self.logger.info(
+            f"{self.bridge_label} bridge: not bridging channel '{channel_name}', no mapping matches it "
+            f"(configured: {configured})"
+        )
 
     def _prepare_message_text(self, message_text: str) -> str:
         """Hook applied to the message text before the profanity filter."""
@@ -168,7 +200,7 @@ class ChannelBridgeBase(BaseServicePlugin):
 
             targets = self._targets_for(channel_name)
             if not targets:
-                self.logger.debug(f"Channel '{channel_name}' not configured for {self.bridge_label} bridge")
+                self._log_unmapped_channel(channel_name)
                 return
 
             message_text = self._prepare_message_text(message_text)

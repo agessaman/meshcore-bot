@@ -118,6 +118,92 @@ class _RecordingLogger:
         self.errors.append(msg)
 
 
+class _FakeBot:
+    """Stands in for MeshCoreBot so main() can run without a radio or config."""
+
+    def __init__(self, started: bool, start_error: Exception | None = None):
+        self.logger = _RecordingLogger()
+        self.connected = False
+        self._shutdown_event = None
+        self._started = started
+        self._start_error = start_error
+        self.stop_calls = 0
+
+    async def start(self) -> bool:
+        if self._start_error is not None:
+            raise self._start_error
+        return self._started
+
+    async def stop(self) -> None:
+        self.stop_calls += 1
+
+
+def _run_main_with_fake_bot(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    *,
+    started: bool,
+    start_error: Exception | None = None,
+) -> _FakeBot:
+    fake = _FakeBot(started, start_error)
+    import modules.core
+
+    monkeypatch.setattr(modules.core, "MeshCoreBot", lambda config_file: fake)
+    monkeypatch.setattr("meshcore_bot._collect_config_issues", lambda path: [])
+    monkeypatch.setattr(
+        "modules.database_restore.apply_pending_restores_from_config", lambda path: []
+    )
+    monkeypatch.setattr("meshcore_bot._configure_unix_signal_handlers", lambda *args: None)
+    monkeypatch.setattr(sys, "argv", ["meshcore_bot.py", "--config", str(tmp_path / "config.ini")])
+    return fake
+
+
+class TestStartupExitStatus:
+    """start() returns False only after startup reconnects are exhausted, and
+    that must look like a failure to launchd and the Supervisor watchdog; a
+    clean shutdown, including one while waiting for the radio, keeps exit 0."""
+
+    def test_exhausted_startup_reconnects_exit_1(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        fake = _run_main_with_fake_bot(monkeypatch, tmp_path, started=False)
+
+        with pytest.raises(SystemExit) as exc:
+            main()
+
+        assert exc.value.code == 1
+        assert fake.stop_calls == 1  # cleanup ran before the exit
+
+    def test_clean_run_and_shutdown_exits_0(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        fake = _run_main_with_fake_bot(monkeypatch, tmp_path, started=True)
+
+        main()  # returning normally is exit status 0
+
+        assert fake.stop_calls == 1
+
+    def test_start_exception_exits_1(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        fake = _run_main_with_fake_bot(
+            monkeypatch,
+            tmp_path,
+            started=False,
+            start_error=RuntimeError("BLE adapter unavailable"),
+        )
+
+        with pytest.raises(SystemExit) as exc:
+            main()
+
+        assert exc.value.code == 1
+        assert fake.stop_calls == 1  # cleanup ran before the exit
+        assert "Error: BLE adapter unavailable" in capsys.readouterr().out
+
+
 class TestReportConfigIssues:
     """Startup config findings must reach the configured log file, not just stderr:
     an operator reading logs/ never saw the linter name their misspelled key."""

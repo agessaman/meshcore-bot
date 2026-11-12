@@ -56,8 +56,8 @@
     {% if not auth_enabled or is_admin %}
     <p class="first-run__note">How soon depends on how busy your mesh is. Real-time shows each transmission the moment it arrives; this page catches up within a few minutes.</p>
     <div class="first-run__actions">
-        <a class="btn btn-primary btn-sm" href="/realtime"><i class="fas fa-broadcast-tower me-1"></i>Watch Real-time</a>
-        <a class="btn btn-outline-secondary btn-sm" href="/radio"><i class="fas fa-sliders-h me-1"></i>Check radio settings</a>
+        <a class="btn btn-primary btn-sm" href="{{ url_for('realtime') }}"><i class="fas fa-broadcast-tower me-1"></i>Watch Real-time</a>
+        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('radio') }}"><i class="fas fa-sliders-h me-1"></i>Check radio settings</a>
     </div>
     {% else %}
     <p class="first-run__note mb-0">How soon depends on how busy your mesh is; this page catches up within a few minutes.</p>

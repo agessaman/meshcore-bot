@@ -26,6 +26,18 @@ jobs:
       contents: read
       packages: write
 
+    env:
+      # Shared by the base and add-on metadata steps. type=ref,event=pr only
+      # affects the base build; the add-on never runs on PRs.
+      IMAGE_TAGS: |
+        type=ref,event=branch
+        type=ref,event=pr
+        type=semver,pattern={{version}}
+        type=semver,pattern={{major}}.{{minor}}
+        type=semver,pattern={{major}}
+        type=sha,prefix=sha-
+        type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' }}
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -53,23 +65,20 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            type=sha,prefix=sha-
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' }}
+          tags: ${{ env.IMAGE_TAGS }}
 
-      - name: Set version for web viewer footer
+      # Footer keeps the tag as-is; the add-on label drops the leading "v".
+      - name: Set versions
         id: version
         run: |
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            echo "version=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            version="$GITHUB_REF_NAME"
           else
-            echo "version=dev" >> $GITHUB_OUTPUT
+            version="dev"
           fi
+          # Home Assistant compares the add-on version without the leading v.
+          addon_version="${version#v}"
+          printf 'version=%s\naddon_version=%s\n' "$version" "$addon_version" >> "$GITHUB_OUTPUT"
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v7
@@ -90,5 +99,44 @@ jobs:
           #   linux/arm/v7 — Raspberry Pi 3 and older (32-bit Raspbian / Raspberry Pi OS)
           platforms: linux/amd64,linux/arm64,linux/arm/v7
           # Provenance attestations improve supply-chain transparency (SLSA level 1).
+          provenance: true
+          sbom: true
+
+      # The add-on builds FROM the base image tag just pushed, so it only runs
+      # on events that push. PRs still lint the add-on config in test.yml.
+      - name: Resolve add-on images
+        if: github.event_name != 'pull_request'
+        id: addon
+        env:
+          BASE_TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          # The base image's immutable sha- tag; metadata-action already lowercased it.
+          base=$(printf '%s\n' "$BASE_TAGS" | grep -m1 ':sha-')
+          printf 'base=%s\nimage=%s-ha\n' "$base" "${base%%:*}" >> "$GITHUB_OUTPUT"
+
+      - name: Extract metadata (tags, labels) for the add-on image
+        if: github.event_name != 'pull_request'
+        id: addon_meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ steps.addon.outputs.image }}
+          tags: ${{ env.IMAGE_TAGS }}
+
+      - name: Build and push add-on image
+        if: github.event_name != 'pull_request'
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile.ha
+          push: true
+          tags: ${{ steps.addon_meta.outputs.tags }}
+          labels: ${{ steps.addon_meta.outputs.labels }}
+          build-args: |
+            BASE_IMAGE=${{ steps.addon.outputs.base }}
+            BUILD_VERSION=${{ steps.version.outputs.addon_version }}
+          platforms: linux/amd64,linux/arm64
+          # Separate cache scope so the add-on layers don't evict the base cache.
+          cache-from: type=gha,scope=addon
+          cache-to: type=gha,mode=max,scope=addon
           provenance: true
           sbom: true

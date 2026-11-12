@@ -33,7 +33,9 @@ tcp_port = 5000
 timeout = 30
 
 # Automatic reconnection settings
-# Reconnect when the connection is lost (applies to all connection types: serial, BLE, TCP)
+# Applies to all connection types (serial, BLE, TCP) and both when the connection
+# is lost and when the radio is not reachable yet at startup (for example just
+# after a reboot). The bot retries with backoff instead of exiting at once.
 
 # Maximum number of reconnect attempts before giving up and shutting down
 # 0 = unlimited (keep trying forever) — recommended for unattended deployments
@@ -1934,6 +1936,15 @@ debug = false
 # false: Start web viewer manually (recommended)
 auto_start = false
 
+# Serve the viewer through Home Assistant ingress (the sidebar panel).
+# true: trust requests from the Supervisor (172.30.32.2) that send
+# X-Ingress-Path, skip the password login for those requests, and prefix
+# links with that path. When no web_viewer_password is set, any request that
+# does not come through the Supervisor is refused with 403 instead of falling
+# back to open mode; this is why the open-bind warning is skipped.
+# false: ignore ingress headers (default). Direct access is unchanged.
+ha_ingress = false
+
 # Enable multibyte monitor page (/multibyte-rollout)
 # false: hide page/nav/API endpoint
 # true: expose page/nav/API endpoint
@@ -2687,6 +2698,7 @@ avatar_style = color
 
 # Channel mappings: bridge.<meshcore_channel> = <discord_webhook_url>[, <discord_webhook_url>...]
 # Only channels explicitly listed here will be bridged to Discord
+# Channel names are case-insensitive and may include or omit the leading # (bridge.test matches #test)
 # Get webhook URLs from Discord: Channel Settings → Integrations → Webhooks → Create Webhook
 #
 # SECURITY WARNING: Webhook URLs contain authentication tokens

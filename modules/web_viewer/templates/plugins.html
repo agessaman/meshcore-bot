@@ -253,6 +253,8 @@
 
 {% block extra_js %}
 <script nonce="{{ g.csp_nonce }}">
+const MANAGED_NOTE = 'Managed by Home Assistant';
+
 class PluginsManager {
     constructor() {
         this.loadingEl = document.getElementById('plugins-loading');
@@ -356,6 +358,15 @@ class PluginsManager {
         toggle.checked = Boolean(plugin.enabled);
         toggle.setAttribute('aria-label', `Enable ${String(plugin.label ?? plugin.name)}`);
         switchWrapper.appendChild(toggle);
+        let managedNote = null;
+        if (plugin.enabled_managed) {
+            toggle.disabled = true;
+            managedNote = document.createElement('span');
+            managedNote.className = 'text-muted small';
+            managedNote.id = toggleId + '-managed';
+            managedNote.textContent = MANAGED_NOTE;
+            toggle.setAttribute('aria-describedby', managedNote.id);
+        }
         // The title area is a real button so the card opens from the keyboard;
         // the enable switch stays outside it.
         const headText = document.createElement('button');
@@ -377,6 +388,7 @@ class PluginsManager {
         chevron.className = 'fas fa-chevron-down plugin-chevron';
         chevron.setAttribute('aria-hidden', 'true');
         header.append(switchWrapper, headText, chevron);
+        if (managedNote) switchWrapper.after(managedNote);
         card.appendChild(header);
 
         const body = document.createElement('div');
@@ -429,6 +441,7 @@ class PluginsManager {
 
         const schemaKeys = new Set((plugin.fields || []).filter(f => !f.section).map(f => f.key));
         const values = plugin.values || {};
+        const haManagedValues = new Set(plugin.managed_keys || []);
         // Keys managed by a dynamic editor on this same section (by prefix) are
         // excluded from the raw "Other config values" list to avoid duplication.
         const ownPrefixes = (plugin.dynamic_sections || [])
@@ -450,7 +463,10 @@ class PluginsManager {
                 sub.className = 'col-12 text-muted small mt-1';
                 sub.textContent = 'Other config values';
                 grid.appendChild(sub);
-                extraKeys.forEach(key => addField({ key, label: key, type: 'str' }, values[key]));
+                extraKeys.forEach(key => addField(
+                    { key, label: key, type: 'str', managed: haManagedValues.has(key) },
+                    values[key],
+                ));
             }
         } else if (extraKeys.length === 0) {
             // Nothing beyond the on/off toggle in the header.
@@ -463,7 +479,10 @@ class PluginsManager {
             note.className = 'text-muted small mb-2';
             note.textContent = 'No typed schema for this plugin; editing raw values.';
             form.insertBefore(note, grid);
-            extraKeys.forEach(key => addField({ key, label: key, type: 'str' }, values[key]));
+            extraKeys.forEach(key => addField(
+                { key, label: key, type: 'str', managed: haManagedValues.has(key) },
+                values[key],
+            ));
         }
 
         // Dynamic key/value section editors (add/edit/delete rows).
@@ -559,7 +578,7 @@ class PluginsManager {
         const dynamicPayload = {};
         dynamicEditors.forEach(ed => {
             const rows = ed.getRows();
-            const err = validateDynamicRows(rows);
+            const err = validateDynamicRows(rows, ed.prefix);
             if (err && !firstError) firstError = err;
             if (JSON.stringify(rows) !== ed.original) changedCount++;
             dynamicPayload[ed.section] = rows;
@@ -644,6 +663,14 @@ class PluginsManager {
 
 // --- Field rendering & validation helpers -------------------------------
 
+// Home Assistant owns this key. The add-on rewrites it on every start, so the
+// control is disabled and the save API rejects a change.
+function applyManagedState(wrapper, input, field) {
+    if (!field || !field.managed) return;
+    input.disabled = true;
+    wrapper.appendChild(helpText(MANAGED_NOTE));
+}
+
 // `plugin` ({kind, name}) is only needed by template fields, for their preview.
 function renderField(field, overrideValue, plugin) {
     const rendered = renderFieldControl(field, overrideValue, plugin);
@@ -699,6 +726,7 @@ function renderFieldControl(field, overrideValue, plugin) {
         sw.appendChild(input);
         wrapper.appendChild(sw);
         if (field.help) wrapper.appendChild(helpText(field.help));
+        applyManagedState(wrapper, input, field);
         return { wrapper, input };
     }
 
@@ -741,6 +769,7 @@ function renderFieldControl(field, overrideValue, plugin) {
         group.appendChild(fb);
         wrapper.appendChild(group);
         if (field.help) wrapper.appendChild(helpText(field.help));
+        applyManagedState(wrapper, input, field);
         return { wrapper, input };
     } else if (field.type === 'password') {
         const group = document.createElement('div');
@@ -776,6 +805,7 @@ function renderFieldControl(field, overrideValue, plugin) {
         group.appendChild(fb);
         wrapper.appendChild(group);
         if (field.help) wrapper.appendChild(helpText(field.help));
+        applyManagedState(wrapper, input, field);
         return { wrapper, input };
     } else if (field.template) {
         const group = document.createElement('div');
@@ -794,7 +824,9 @@ function renderFieldControl(field, overrideValue, plugin) {
         fb.className = 'invalid-feedback';
         group.append(input, refBtn, fb);
         wrapper.appendChild(group);
+        if (field.managed) refBtn.disabled = true;
         if (field.help) wrapper.appendChild(helpText(field.help));
+        applyManagedState(wrapper, input, field);
         wrapper.appendChild(buildTemplateReference(field, input, refBtn, plugin));
         return { wrapper, input };
     } else {
@@ -812,6 +844,7 @@ function renderFieldControl(field, overrideValue, plugin) {
     feedback.className = 'invalid-feedback';
     wrapper.appendChild(feedback);
     if (field.help) wrapper.appendChild(helpText(field.help));
+    applyManagedState(wrapper, input, field);
     return { wrapper, input };
 }
 
@@ -1058,6 +1091,7 @@ function sectionBadge(section) {
 // --- Dynamic key/value section editor (add/edit/delete rows) -------------
 
 function buildDynamicEditor(ds) {
+    const prefix = String(ds.key_prefix ?? '');
     const el = document.createElement('div');
     el.className = 'dynamic-section mt-3';
 
@@ -1085,7 +1119,7 @@ function buildDynamicEditor(ds) {
     rowsContainer.className = 'dynamic-rows';
     el.appendChild(rowsContainer);
 
-    const addRow = (key = '', value = '') => {
+    const addRow = (key = '', value = '', managed = false) => {
         const row = document.createElement('div');
         row.className = 'row g-2 align-items-center mb-1 dynamic-row';
         const kc = document.createElement('div'); kc.className = 'col-12 col-md-5';
@@ -1108,11 +1142,21 @@ function buildDynamicEditor(ds) {
         rm.addEventListener('click', () => row.remove());
         bc.appendChild(rm);
         row.appendChild(kc); row.appendChild(vc); row.appendChild(bc);
+        if (managed) {
+            ki.disabled = true;
+            vi.disabled = true;
+            rm.disabled = true;
+            rm.title = MANAGED_NOTE;
+            const noteCol = document.createElement('div');
+            noteCol.className = 'col-12';
+            noteCol.appendChild(helpText(MANAGED_NOTE));
+            row.appendChild(noteCol);
+        }
         rowsContainer.appendChild(row);
         return row;
     };
 
-    (ds.items || []).forEach(it => addRow(it.key, it.value));
+    (ds.items || []).forEach(it => addRow(it.key, it.value, !!it.managed));
 
     const addBtn = document.createElement('button');
     addBtn.type = 'button';
@@ -1127,7 +1171,11 @@ function buildDynamicEditor(ds) {
     const getRows = () => {
         const out = [];
         rowsContainer.querySelectorAll('.dynamic-row').forEach(r => {
-            const key = r.querySelector('.dyn-key').value.trim();
+            let key = r.querySelector('.dyn-key').value.trim();
+            // Drop a prefix typed by hand ("bridge.#test"): it is added back on save.
+            if (prefix && key.toLowerCase().startsWith(prefix.toLowerCase())) {
+                key = key.slice(prefix.length).trim();
+            }
             const value = r.querySelector('.dyn-value').value;
             if (key === '' && value.trim() === '') return;  // skip blank rows
             out.push({ key, value });
@@ -1136,15 +1184,17 @@ function buildDynamicEditor(ds) {
     };
 
     // Snapshot via getRows() so change-detection matches the save serialization.
-    return { section: ds.section, el, getRows, original: JSON.stringify(getRows()) };
+    return { section: ds.section, prefix, el, getRows, original: JSON.stringify(getRows()) };
 }
 
-function validateDynamicRows(rows) {
+function validateDynamicRows(rows, prefix = '') {
     const seen = new Set();
     for (const { key } of rows) {
         if (key === '') return 'A list row is missing its key';
         if (/[=:\[\]\n\r]/.test(key)) return `Invalid key "${key}": cannot contain = : [ ] or newlines`;
-        if (key[0] === '#' || key[0] === ';') return `Invalid key "${key}": cannot start with # or ;`;
+        // Only the full option name (prefix + key) matters: "#test" is fine under "bridge.".
+        const full = prefix + key;
+        if (full[0] === '#' || full[0] === ';') return `Invalid key "${key}": cannot start with # or ;`;
         if (seen.has(key.toLowerCase())) return `Duplicate key "${key}"`;
         seen.add(key.toLowerCase());
     }
@@ -1180,6 +1230,8 @@ function buildRepeatingBlockEditor(rb) {
 
     const addBlock = (block) => {
         const values = (block && block.values) || {};
+        const managedKeys = new Set((block && block.managed_keys) || []);
+        const enabledManaged = !!(block && block.enabled_managed);
         // Preserve sub-keys not covered by the schema (e.g. jwt overrides).
         const extras = {};
         Object.keys(values).forEach(k => { if (!schemaKeys.has(k)) extras[k] = values[k]; });
@@ -1194,6 +1246,10 @@ function buildRepeatingBlockEditor(rb) {
         const sw = document.createElement('input');
         sw.className = 'form-check-input rb-block-enable'; sw.type = 'checkbox'; sw.role = 'switch';
         sw.checked = (block ? block.enabled !== false : true);
+        if (enabledManaged) {
+            sw.disabled = true;
+            sw.title = MANAGED_NOTE;
+        }
         swWrap.appendChild(sw);
         const title = document.createElement('span');
         title.className = 'rb-block-title fw-semibold flex-grow-1';
@@ -1201,8 +1257,13 @@ function buildRepeatingBlockEditor(rb) {
         rm.type = 'button'; rm.className = 'btn btn-outline-danger btn-sm';
         rm.title = 'Remove'; rm.className += ' rb-block-remove';
         rm.innerHTML = '<i class="fas fa-trash" aria-hidden="true"></i>';
+        if (managedKeys.size || enabledManaged) {
+            rm.disabled = true;
+            rm.title = MANAGED_NOTE;
+        }
         rm.addEventListener('click', () => { card.remove(); renumber(); });
         header.append(swWrap, title, rm);
+        if (enabledManaged) header.appendChild(helpText(MANAGED_NOTE));
         card.appendChild(header);
 
         const body = document.createElement('div');
@@ -1213,7 +1274,10 @@ function buildRepeatingBlockEditor(rb) {
         rb.fields.forEach(field => {
             const col = document.createElement('div');
             col.className = fieldColClass(field);
-            const { wrapper, input } = renderField(field, values[field.key]);
+            const renderedField = managedKeys.has(field.key)
+                ? { ...field, managed: true }
+                : field;
+            const { wrapper, input } = renderField(renderedField, values[field.key]);
             col.appendChild(wrapper);
             grid.appendChild(col);
             inputs.push({ field, input });

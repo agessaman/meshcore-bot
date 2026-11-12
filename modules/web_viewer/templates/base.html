@@ -754,7 +754,7 @@
     {% block extra_css %}{% endblock %}
 </head>
 
-<body data-is-admin="{{ 'true' if (not auth_enabled or is_admin) else 'false' }}">
+<body data-is-admin="{{ 'true' if (not auth_enabled or is_admin) else 'false' }}" data-app-root="{{ request.script_root }}">
     <a class="skip-link" href="#main-content">Skip to content</a>
     <script nonce="{{ g.csp_nonce }}">
         // Font Awesome draws its glyphs as CSS content, which screen readers
@@ -801,7 +801,7 @@
     <!-- Navigation -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark" aria-label="Main">
         <div class="container-fluid">
-            <a class="navbar-brand" href="/">
+            <a class="navbar-brand" href="{{ url_for('index') }}">
                 <i class="fas fa-satellite-dish"></i> {{ bot_name|default('MeshCore Bot') }}
             </a>
 
@@ -812,37 +812,37 @@
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav me-auto">
                     <li class="nav-item">
-                        <a class="nav-link {{ 'active' if request.path == '/' }}" href="/">
+                        <a class="nav-link {{ 'active' if request.path == '/' }}" href="{{ url_for('index') }}">
                             <i class="fas fa-tachometer-alt"></i> Dashboard
                         </a>
                     </li>
                     {% if not auth_enabled or is_admin %}
                     <li class="nav-item">
-                        <a class="nav-link {{ 'active' if request.path == '/realtime' }}" href="/realtime">
+                        <a class="nav-link {{ 'active' if request.path == '/realtime' }}" href="{{ url_for('realtime') }}">
                             <i class="fas fa-broadcast-tower"></i> Real-time
                         </a>
                     </li>
                     {% endif %}
                     <li class="nav-item">
-                        <a class="nav-link {{ 'active' if request.path == '/contacts' }}" href="/contacts">
+                        <a class="nav-link {{ 'active' if request.path == '/contacts' }}" href="{{ url_for('contacts') }}">
                             <i class="fas fa-users"></i> Contacts
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link {{ 'active' if request.path == '/mesh' }}" href="/mesh">
+                        <a class="nav-link {{ 'active' if request.path == '/mesh' }}" href="{{ url_for('mesh') }}">
                             <i class="fas fa-project-diagram"></i> Mesh Graph
                         </a>
                     </li>
                     {% if multibyte_monitor_enabled %}
                     <li class="nav-item">
-                        <a class="nav-link {{ 'active' if request.path == '/multibyte-rollout' }}" href="/multibyte-rollout">
+                        <a class="nav-link {{ 'active' if request.path == '/multibyte-rollout' }}" href="{{ url_for('multibyte_rollout') }}">
                             <i class="fas fa-code-branch"></i> Multibyte
                         </a>
                     </li>
                     {% endif %}
                     {% if not auth_enabled or is_admin %}
                     <li class="nav-item">
-                        <a class="nav-link {{ 'active' if request.path == '/logs' }}" href="/logs">
+                        <a class="nav-link {{ 'active' if request.path == '/logs' }}" href="{{ url_for('logs') }}">
                             <i class="fas fa-file-alt"></i> Logs
                         </a>
                     </li>
@@ -858,47 +858,47 @@
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="settingsDropdown">
                             <li>
-                                <a class="dropdown-item {{ 'active' if request.path == '/radio' }}" href="/radio">
+                                <a class="dropdown-item {{ 'active' if request.path == '/radio' }}" href="{{ url_for('radio') }}">
                                     <i class="fas fa-broadcast-tower fa-fw me-2"></i>Radio
                                 </a>
                             </li>
                             <li>
-                                <a class="dropdown-item {{ 'active' if request.path == '/schedule' }}" href="/schedule">
+                                <a class="dropdown-item {{ 'active' if request.path == '/schedule' }}" href="{{ url_for('schedule_page') }}">
                                     <i class="fas fa-clock fa-fw me-2"></i>Scheduled Messages
                                 </a>
                             </li>
                             {% if greeter_enabled %}
                             <li>
-                                <a class="dropdown-item {{ 'active' if request.path == '/greeter' }}" href="/greeter">
+                                <a class="dropdown-item {{ 'active' if request.path == '/greeter' }}" href="{{ url_for('greeter') }}">
                                     <i class="fas fa-hand-sparkles fa-fw me-2"></i>Greeter
                                 </a>
                             </li>
                             {% endif %}
                             {% if feed_manager_enabled %}
                             <li>
-                                <a class="dropdown-item {{ 'active' if request.path == '/feeds' }}" href="/feeds">
+                                <a class="dropdown-item {{ 'active' if request.path == '/feeds' }}" href="{{ url_for('feeds') }}">
                                     <i class="fas fa-rss fa-fw me-2"></i>Feeds
                                 </a>
                             </li>
                             {% endif %}
                             <li>
-                                <a class="dropdown-item {{ 'active' if request.path == '/region-warnings' }}" href="/region-warnings">
+                                <a class="dropdown-item {{ 'active' if request.path == '/region-warnings' }}" href="{{ url_for('region_warnings_page') }}">
                                     <i class="fas fa-globe fa-fw me-2"></i>Region Warnings
                                 </a>
                             </li>
                             <li>
-                                <a class="dropdown-item {{ 'active' if request.path == '/repeater-watch' }}" href="/repeater-watch">
+                                <a class="dropdown-item {{ 'active' if request.path == '/repeater-watch' }}" href="{{ url_for('repeater_watch_page') }}">
                                     <i class="fas fa-heart-pulse fa-fw me-2"></i>Repeater Watch
                                 </a>
                             </li>
                             <li>
-                                <a class="dropdown-item {{ 'active' if request.path == '/plugins' }}" href="/plugins">
+                                <a class="dropdown-item {{ 'active' if request.path == '/plugins' }}" href="{{ url_for('plugins_page') }}">
                                     <i class="fas fa-puzzle-piece fa-fw me-2"></i>Plugins
                                 </a>
                             </li>
                             <li><hr class="dropdown-divider"></li>
                             <li>
-                                <a class="dropdown-item {{ 'active' if request.path == '/config' }}" href="/config">
+                                <a class="dropdown-item {{ 'active' if request.path == '/config' }}" href="{{ url_for('config_page') }}">
                                     <i class="fas fa-sliders-h fa-fw me-2"></i>Configuration
                                 </a>
                             </li>
@@ -912,11 +912,11 @@
                     {% if auth_enabled %}
                     <div class="nav-item me-3">
                         {% if is_admin %}
-                        <a href="/logout" class="btn btn-sm btn-outline-light">
+                        <a href="{{ url_for('logout') }}" class="btn btn-sm btn-outline-light">
                             <i class="fas fa-sign-out-alt"></i> Logout
                         </a>
                         {% else %}
-                        <a href="/login" class="btn btn-sm btn-outline-light">
+                        <a href="{{ url_for('login') }}" class="btn btn-sm btn-outline-light">
                             <i class="fas fa-sign-in-alt"></i> Admin Login
                         </a>
                         {% endif %}
@@ -1022,6 +1022,25 @@
     </div>
 
     <script nonce="{{ g.csp_nonce }}">
+        // Ingress serves the app under a prefix. Root-relative paths would
+        // otherwise resolve at the origin root. Read from a data attribute so
+        // this script stays plain JS for ESLint, same as data-is-admin.
+        window.APP_ROOT = document.body.dataset.appRoot || '';
+        window.appUrl = function (path) {
+            if (typeof path !== 'string' || path.charAt(0) !== '/' || path.charAt(1) === '/') {
+                return path;
+            }
+            var root = window.APP_ROOT;
+            if (root.charAt(root.length - 1) === '/') {
+                root = root.slice(0, -1);
+            }
+            if (!root || path === root || path.indexOf(root + '/') === 0
+                    || path.indexOf(root + '?') === 0 || path.indexOf(root + '#') === 0) {
+                return path;
+            }
+            return root + path;
+        };
+
         // One toast stack for every page. `message` is a string or a node the
         // caller has already filled with text; nothing is parsed as HTML.
         window.viewerToast = function (message, kind, timeout) {
@@ -1049,13 +1068,39 @@
 
         // Global 401 interceptor: redirect to login when session expires mid-page.
         // Wraps window.fetch so all AJAX calls in every template are covered.
+        // String URLs also pick up the ingress prefix here, so fetch('/api/...')
+        // call sites stay as they are.
         (function () {
+            function viewerApiPath(url) {
+                if (typeof url !== 'string') {
+                    return '';
+                }
+                var path = url;
+                var scheme = path.indexOf('://');
+                if (scheme !== -1) {
+                    var slash = path.indexOf('/', scheme + 3);
+                    path = slash === -1 ? '/' : path.slice(slash);
+                }
+                var cut = path.search(/[?#]/);
+                if (cut !== -1) {
+                    path = path.slice(0, cut);
+                }
+                var root = window.APP_ROOT || '';
+                if (root && (path === root || path.indexOf(root + '/') === 0)) {
+                    path = path.slice(root.length) || '/';
+                }
+                return path;
+            }
+
             var _origFetch = window.fetch;
             window.fetch = function (url, options) {
-                return _origFetch.apply(this, arguments).then(function (response) {
-                    if (response.status === 401 && typeof url === 'string' && url.startsWith('/api/')) {
+                if (typeof url === 'string') {
+                    url = window.appUrl(url);
+                }
+                return _origFetch.call(this, url, options).then(function (response) {
+                    if (response.status === 401 && viewerApiPath(url).indexOf('/api/') === 0) {
                         var next = encodeURIComponent(window.location.pathname + window.location.search);
-                        window.location.href = '/login?next=' + next;
+                        window.location.href = window.appUrl('/login?next=' + next);
                     }
                     return response;
                 });
@@ -1376,6 +1421,7 @@
                 // this same manager/socket.  forceNew created a second independent
                 // connection that interfered with the realtime-page socket.
                 this.socket = io({
+                    path: window.appUrl('/socket.io'),
                     transports: ['websocket', 'polling'],
                     timeout: 5000
                 });

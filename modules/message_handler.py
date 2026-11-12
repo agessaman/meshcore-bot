@@ -57,6 +57,12 @@ from .utils import (
     format_elapsed_display,
 )
 
+# A second copy of the same push (a duplicate subscription, or the radio
+# replaying a packet) arrives within a few seconds and shares the sender
+# timestamp. Someone sending that text again gets a new timestamp.
+_DUPLICATE_MESSAGE_WINDOW_SECONDS = 5.0
+_DUPLICATE_MESSAGE_CACHE_MAX = 512
+
 
 class MessageHandler(MeshGraphRecorderMixin, ContactEventsMixin, RfCorrelationMixin, RfLogMixin, ChannelMessageMixin):
     """Handles incoming messages and routes them to command processors.
@@ -107,6 +113,10 @@ class MessageHandler(MeshGraphRecorderMixin, ContactEventsMixin, RfCorrelationMi
 
         # Multitest command listener (for collecting paths during listening window)
         self.multitest_listener: Any | None = None
+
+        # Recent channel and contact message identities, oldest first.
+        self._recent_channel_ids: OrderedDict[str, float] = OrderedDict()
+        self._recent_contact_ids: OrderedDict[tuple[Any, ...], float] = OrderedDict()
 
         self.logger.info(f"RF Data Correlation: timeout={self.rf_data_timeout}s, enhanced={self.enhanced_correlation}")
 
@@ -206,6 +216,62 @@ class MessageHandler(MeshGraphRecorderMixin, ContactEventsMixin, RfCorrelationMi
             # If we can't parse timestamp, process the message (safer to process than skip)
             return False
 
+    def _claim_recent_message(self, cache: OrderedDict[Any, float], key: Any) -> bool:
+        """Return True if ``key`` was seen inside the window. Otherwise record it.
+
+        No await, so two handlers on this loop cannot both pass the check.
+        Callers run this before their first await.
+        """
+        now = time.monotonic()
+        while cache:
+            oldest_at = next(iter(cache.values()))
+            if now - oldest_at < _DUPLICATE_MESSAGE_WINDOW_SECONDS:
+                break
+            cache.popitem(last=False)
+        if key in cache:
+            return True
+        cache[key] = now
+        cache.move_to_end(key)
+        while len(cache) > _DUPLICATE_MESSAGE_CACHE_MAX:
+            cache.popitem(last=False)
+        return False
+
+    def _drop_duplicate_channel_message(self, payload: dict[str, Any]) -> bool:
+        """True if this channel push was already seen. Missing fields are kept."""
+        identity = self._channel_message_identity(
+            payload.get("channel_idx"),
+            payload.get("sender_timestamp"),
+            payload.get("txt_type"),
+            payload.get("text"),
+        )
+        if identity is None:
+            return False
+        if not self._claim_recent_message(self._recent_channel_ids, identity):
+            return False
+        self.logger.info(
+            "Dropping duplicate channel message (channel %s, timestamp %s)",
+            payload.get("channel_idx"),
+            payload.get("sender_timestamp"),
+        )
+        return True
+
+    def _drop_duplicate_contact_message(self, payload: dict[str, Any]) -> bool:
+        """True if this DM was already seen. A missing sender or text is kept."""
+        prefix = payload.get("pubkey_prefix")
+        text = payload.get("text")
+        timestamp = payload.get("sender_timestamp")
+        if not isinstance(prefix, str) or prefix == "" or not isinstance(text, str) or timestamp is None:
+            return False
+        key = (prefix, timestamp, payload.get("txt_type"), text)
+        if not self._claim_recent_message(self._recent_contact_ids, key):
+            return False
+        self.logger.info(
+            "Dropping duplicate contact message from %s (timestamp %s)",
+            sanitize_name(prefix),
+            timestamp,
+        )
+        return True
+
     def _find_contact(self, predicate: Callable[[dict[str, Any]], bool]) -> dict[str, Any] | None:
         """The first radio contact matching ``predicate``, or None (also when there are no contacts)."""
         contacts = getattr(self.bot.meshcore, "contacts", None)
@@ -269,6 +335,8 @@ class MessageHandler(MeshGraphRecorderMixin, ContactEventsMixin, RfCorrelationMi
             payload = copy.deepcopy(event.payload) if hasattr(event, "payload") else None
             if payload is None:
                 self.logger.warning("Contact message event has no payload")
+                return
+            if self._drop_duplicate_contact_message(payload):
                 return
 
             # Debug: Log the full payload structure
@@ -750,6 +818,8 @@ class MessageHandler(MeshGraphRecorderMixin, ContactEventsMixin, RfCorrelationMi
             payload = copy.deepcopy(event.payload) if hasattr(event, "payload") else None
             if payload is None:
                 self.logger.warning("Channel message event has no payload")
+                return
+            if self._drop_duplicate_channel_message(payload):
                 return
 
             channel_idx = payload.get("channel_idx", 0)
