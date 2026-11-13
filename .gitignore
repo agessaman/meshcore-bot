@@ -191,3 +191,6 @@ local/service_plugins/*
 _debug/
 aqi_http_cache.sqlite
 .subagents/memory/
+
+# Single-instance lock beside the bot database
+*.db.lock

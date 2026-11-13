@@ -100,6 +100,40 @@ def _report_config_issues(issues: list[tuple[str, str]], logger=None) -> None:
         )
 
 
+def _acquire_instance_lock(config_path: str):
+    """Refuse to start when another bot already runs against this database.
+
+    Exits 1 when the lock is held. A lock file that cannot be created is only a
+    warning: the guard must not stop a bot that would otherwise run.
+    """
+    from modules.database_restore import configured_bot_database_path
+    from modules.instance_lock import InstanceAlreadyRunning, acquire_instance_lock
+
+    database_path = configured_bot_database_path(config_path)
+    if database_path is None:
+        return None
+    try:
+        return acquire_instance_lock(database_path)
+    except InstanceAlreadyRunning as exc:
+        holder = f"PID {exc.pid}" if exc.pid is not None else "another process"
+        print(
+            f"Error: meshcore-bot is already running against {database_path} ({holder}).",
+            file=sys.stderr,
+        )
+        print(
+            "Two instances on one radio disconnect each other in a loop. "
+            "Stop the running instance before starting another.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    except OSError as exc:
+        print(
+            f"Warning: could not take the single-instance lock beside {database_path}: {exc}",
+            file=sys.stderr,
+        )
+        return None
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="MeshCore Bot - Mesh network bot for MeshCore devices"
@@ -175,13 +209,22 @@ def main():
     # bot's logger exists so the findings reach the configured log file.
     _config_issues = _collect_config_issues(args.config)
 
-    # A restore requested by the viewer is applied only here, before importing
-    # and constructing MeshCoreBot (which opens the DB and launches writers).
-    # The service manager must restart the bot and viewer as one unit.
     from modules.database_restore import (
         DatabaseRestoreError,
         apply_pending_restores_from_config,
     )
+
+    # Taken before a pending restore so a second instance can never replace the
+    # database under a running bot. Held until the process exits.
+    try:
+        _instance_lock = _acquire_instance_lock(args.config)  # noqa: F841 - held for process life
+    except DatabaseRestoreError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    # A restore requested by the viewer is applied only here, before importing
+    # and constructing MeshCoreBot (which opens the DB and launches writers).
+    # The service manager must restart the bot and viewer as one unit.
 
     try:
         restore_results = apply_pending_restores_from_config(args.config)

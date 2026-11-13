@@ -6,6 +6,10 @@ semantic versioning.
 
 ## [Unreleased]
 
+### Fixed
+
+- The bot refuses to start when another instance is already running against the same database, and names that instance's PID. Two instances on one radio evicted each other from single-client companion servers in an endless reconnect loop. The lock is a `<db_path>.lock` file beside the bot database and is released by the OS when the process exits, so a killed bot never leaves a stale lock behind.
+
 ## [1.2.0] - 2026-11-11
 
 ### Added

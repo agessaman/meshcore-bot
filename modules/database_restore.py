@@ -354,7 +354,9 @@ def apply_pending_database_restore(database_path: str | Path) -> RestoreResult |
         raise DatabaseRestoreError(f"Could not apply pending database restore: {exc}") from exc
 
 
-def _configured_database_paths(config_path: str | Path) -> list[Path]:
+def _configured_database_paths(
+    config_path: str | Path, *, include_viewer: bool = True
+) -> list[Path]:
     path = Path(config_path).resolve()
     if not path.exists():
         return []
@@ -380,7 +382,7 @@ def _configured_database_paths(config_path: str | Path) -> list[Path]:
 
     raw_paths = [config.get("Bot", "db_path", fallback="meshcore_bot.db")]
     viewer_path = config.get("Web_Viewer", "db_path", fallback="").strip()
-    if viewer_path:
+    if viewer_path and include_viewer:
         raw_paths.append(viewer_path)
 
     resolved: list[Path] = []
@@ -394,6 +396,15 @@ def _configured_database_paths(config_path: str | Path) -> list[Path]:
         if candidate not in resolved:
             resolved.append(candidate)
     return resolved
+
+
+def configured_bot_database_path(config_path: str | Path) -> Path | None:
+    """The bot database path from config, or None when it is unset or in-memory.
+
+    Reads the config directly so startup can use it before the bot exists.
+    """
+    paths = _configured_database_paths(config_path, include_viewer=False)
+    return paths[0] if paths else None
 
 
 def apply_pending_restores_from_config(config_path: str | Path) -> list[RestoreResult]:
