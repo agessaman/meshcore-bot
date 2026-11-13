@@ -7,11 +7,34 @@ Uses a modular structure for command creation and organization
 import argparse
 import asyncio
 import configparser
+import contextlib
 import json
+import os
 import signal
 import sys
 
 from modules.config_snapshot import config_to_redacted_sections, redacted_sections_to_ini_text
+
+
+def _has_controlling_terminal() -> bool:
+    """True while this process has a usable controlling terminal.
+
+    False under systemd, launchd, and Docker without a tty, and also once the
+    terminal the bot was started from has been closed.
+    """
+    try:
+        fd = os.open("/dev/tty", os.O_RDWR | os.O_NOCTTY)
+    except OSError:
+        return False
+    try:
+        # macOS still opens /dev/tty after a hangup; only a write shows it is
+        # dead. An empty write sends nothing to a live terminal.
+        os.write(fd, b"")
+    except OSError:
+        return False
+    finally:
+        os.close(fd)
+    return True
 
 
 def _configure_unix_signal_handlers(loop, bot, shutdown_event: asyncio.Event) -> None:
@@ -19,13 +42,16 @@ def _configure_unix_signal_handlers(loop, bot, shutdown_event: asyncio.Event) ->
 
     def shutdown_handler():
         """Signal handler for graceful shutdown."""
-        print("\nShutting down...")
         # asyncio.add_signal_handler replaces SIGINT/SIGTERM handling for the loop; the
         # bot's threading.Event + connected flag must be set here too or the main loop
         # can run another iteration and restart the web viewer before stop() runs.
+        # Set the flags before anything that can fail: a print to a closed
+        # terminal raises OSError, and that used to swallow the signal.
         bot._shutdown_event.set()
         bot.connected = False
         shutdown_event.set()
+        with contextlib.suppress(OSError, ValueError):
+            print("\nShutting down...")
 
     def reload_handler():
         """Reload config on SIGHUP without exiting."""
@@ -36,13 +62,31 @@ def _configure_unix_signal_handlers(loop, bot, shutdown_event: asyncio.Event) ->
         else:
             bot.logger.warning("SIGHUP config reload failed: %s", msg)
 
+    # A bot started from a terminal gets SIGHUP when that terminal closes. It
+    # must exit then, not reload and run on unattended. Under nohup the caller
+    # asked for the bot to outlive the terminal, so SIGHUP stays a reload.
+    has_sighup = hasattr(signal, "SIGHUP")
+    exits_with_terminal = (
+        has_sighup
+        and signal.getsignal(signal.SIGHUP) is not signal.SIG_IGN
+        and _has_controlling_terminal()
+    )
+
+    def hangup_handler():
+        """Shut down if SIGHUP means the terminal closed; otherwise reload."""
+        if exits_with_terminal and not _has_controlling_terminal():
+            bot.logger.info("Terminal closed (SIGHUP), shutting down...")
+            shutdown_handler()
+        else:
+            reload_handler()
+
     # Register shutdown signals
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(sig, shutdown_handler)
 
     # Register config reload signal (Unix daemons convention)
-    if hasattr(signal, "SIGHUP"):
-        loop.add_signal_handler(signal.SIGHUP, reload_handler)
+    if has_sighup:
+        loop.add_signal_handler(signal.SIGHUP, hangup_handler)
 
 
 _MAX_CONFIG_ISSUES_SHOWN = 15
