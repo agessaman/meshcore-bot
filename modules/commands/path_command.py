@@ -13,6 +13,7 @@ from ..location import latest_contact_position_rows
 from ..models import MeshMessage
 from ..path_inference import (
     PathInferenceConfig,
+    infer_path_nodes,
     select_node_repeater,
     select_repeater_by_graph,
 )
@@ -79,6 +80,16 @@ class PathCommand(BaseCommand):
         {"key": "recency_decay_half_life_hours", "label": "Recency half-life", "type": "float",
          "min": 0, "default": 12.0, "unit": "h",
          "help": "Half-life for the recency score decay."},
+        {"key": "path_inference_mode", "label": "Path inference", "type": "enum",
+         "options": [
+             {"value": "greedy", "label": "Greedy (per hop — default)"},
+             {"value": "joint", "label": "Joint (whole path)"},
+         ],
+         "default": "greedy",
+         "help": "Joint scores the whole path at once and stops one node taking two hops. "
+                 "Worth enabling on 1-byte prefix meshes. Covers this command, test's "
+                 "distance placeholders and the web viewer's path decoding. "
+                 "Tuning lives in config.ini."},
         {"key": "star_bias_multiplier", "label": "Starred bias", "type": "float",
          "min": 0, "default": 2.5,
          "help": "Confidence multiplier applied to starred repeaters."},
@@ -285,6 +296,12 @@ class PathCommand(BaseCommand):
         self.star_bias_multiplier = bot.config.getfloat('Path_Command', 'star_bias_multiplier', fallback=2.5)
         self.star_bias_multiplier = max(1.0, self.star_bias_multiplier)  # Ensure at least 1.0
 
+        # 'joint' resolves the whole path at once; 'greedy' keeps the per-hop selection.
+        # An attribute so tests can flip it after construction, like the knobs above.
+        self.path_inference_mode = PathInferenceConfig.joint_fields_from_config(
+            bot.config
+        )['path_inference_mode']
+
         # Get confidence indicator symbols from config
         self.high_confidence_symbol = bot.config.get('Path_Command', 'high_confidence_symbol', fallback='🎯')
         self.medium_confidence_symbol = bot.config.get('Path_Command', 'medium_confidence_symbol', fallback='📍')
@@ -344,6 +361,8 @@ class PathCommand(BaseCommand):
         Read fresh on each call so tests that mutate ``self.*`` after construction are honored.
         ``bot_command=True`` selects the bot `path` command's selection semantics in the engine.
         """
+        joint_fields = PathInferenceConfig.joint_fields_from_config(self.bot.config)
+        joint_fields['path_inference_mode'] = self.path_inference_mode
         return PathInferenceConfig(
             geographic_guessing_enabled=self.geographic_guessing_enabled,
             bot_latitude=self.bot_latitude,
@@ -380,6 +399,7 @@ class PathCommand(BaseCommand):
             graph_path_validation_max_bonus=self.graph_path_validation_max_bonus,
             graph_path_validation_obs_divisor=self.graph_path_validation_obs_divisor,
             star_bias_multiplier=self.star_bias_multiplier,
+            **joint_fields,
             bot_command=True,
         )
 
@@ -544,14 +564,24 @@ class PathCommand(BaseCommand):
         self,
         node_ids: list[str],
         lookup_func: Optional[Callable[[str], list[dict[str, Any]]]] = None,
-    ) -> dict[str, dict[str, Any]]:
+    ) -> dict[Any, dict[str, Any]]:
         """Look up repeater names for given node IDs.
 
         Args:
             node_ids: List of node prefixes to look up.
             lookup_func: Optional test hook. When provided, used instead of
                 repeater_manager/db_manager. Callable(node_id) -> list of repeater dicts.
+
+        Returns:
+            Hop info keyed by node id, or — in ``joint`` mode — by hop index. Read it
+            through :meth:`_hop_entry`, which handles both.
         """
+        if self.path_inference_mode == 'joint':
+            try:
+                return await self._lookup_repeater_names_joint(node_ids, lookup_func)
+            except Exception as e:
+                self.logger.error(f"Joint path inference failed, falling back to per-hop: {e}")
+
         repeater_info = {}
 
         try:
@@ -582,6 +612,89 @@ class PathCommand(BaseCommand):
                 }
 
         return repeater_info
+
+    async def _lookup_repeater_names_joint(
+        self,
+        node_ids: list[str],
+        lookup_func: Optional[Callable[[str], list[dict[str, Any]]]] = None,
+    ) -> dict[Any, dict[str, Any]]:
+        """Resolve every hop together; the result is keyed by hop index, not node id.
+
+        Keying by node id is what forced the per-hop path to resolve a repeated
+        1-byte prefix once and show the same repeater at both hops. Here the two
+        occurrences are two hops, and the engine will not give them one node.
+        """
+        cfg = self._inference_config()
+        candidates = [
+            (await self._repeater_candidates(node_id, lookup_func)) or []
+            for node_id in node_ids
+        ]
+
+        observer = None
+        if self.bot_latitude is not None and self.bot_longitude is not None:
+            observer = (self.bot_latitude, self.bot_longitude)
+        sender_location = self._get_sender_location() if self.geographic_guessing_enabled else None
+
+        hops = infer_path_nodes(
+            node_ids, candidates, cfg,
+            mesh_graph=getattr(self.bot, 'mesh_graph', None),
+            logger=self.logger,
+            sender_location=sender_location,
+            observer_location=observer,
+        )
+
+        repeater_info: dict[Any, dict[str, Any]] = {}
+        for index, hop in enumerate(hops):
+            if hop.repeater is not None:
+                repeater_info[index] = self._joint_repeater_entry(hop)
+            elif hop.matches > 1:
+                # Several nodes share the prefix and none of them fits the route.
+                repeater_info[index] = {
+                    'found': True,
+                    'collision': True,
+                    'matches': hop.matches,
+                    'node_id': hop.node_id,
+                    'repeaters': [alt['repeater'] for alt in hop.alternatives if alt['repeater']],
+                }
+            elif candidates[index]:
+                # The one candidate was rejected: naming it would be a guess.
+                repeater_info[index] = {'found': False, 'node_id': hop.node_id}
+            else:
+                # Nothing in the database — the radio's own contacts may still know it.
+                self._resolve_from_device_contacts(hop.node_id, repeater_info, key=index)
+        return repeater_info
+
+    def _joint_repeater_entry(self, hop) -> dict[str, Any]:
+        """One resolved hop in ``repeater_info``'s shape.
+
+        A hop whose prefix had only one candidate was not a choice, so it carries
+        no confidence indicator, matching the per-hop path's ``single`` verdict.
+        """
+        repeater = hop.repeater
+        entry = {
+            'name': repeater['name'],
+            'public_key': repeater['public_key'],
+            'device_type': repeater['device_type'],
+            'last_seen': repeater['last_seen'],
+            'is_active': repeater.get('is_active', True),
+            'found': True,
+            'collision': False,
+            # Carried through for {path_distance}; without these the
+            # distance calculation can never find a coordinate.
+            'latitude': repeater.get('latitude'),
+            'longitude': repeater.get('longitude'),
+        }
+        if hop.matches > 1:
+            entry['joint_guess'] = True
+            entry['confidence'] = hop.confidence
+        return entry
+
+    @staticmethod
+    def _hop_entry(repeater_info: dict[Any, dict[str, Any]], index: int, node_id: str) -> dict[str, Any]:
+        """One hop's info, whether the mapping is keyed by hop index or by node id."""
+        if index in repeater_info:
+            return repeater_info[index]
+        return repeater_info.get(node_id, {})
 
     async def _repeater_candidates(self, node_id, lookup_func):
         """Candidate repeaters for a path prefix: the injected test lookup, else the
@@ -799,8 +912,14 @@ class PathCommand(BaseCommand):
                 'node_id': node_id
             }
 
-    def _resolve_from_device_contacts(self, node_id, repeater_info):
-        """Set ``repeater_info[node_id]`` from the radio's own contacts when no database candidate matched."""
+    def _resolve_from_device_contacts(self, node_id, repeater_info, key=None):
+        """Set the radio's own contacts for ``node_id`` when no database candidate matched.
+
+        ``key`` is where to store it, defaulting to ``node_id``; joint mode passes the
+        hop index so a repeated prefix keeps one entry per hop.
+        """
+        if key is None:
+            key = node_id
         # Also check device contacts for active repeaters
         device_matches = []
         if hasattr(self.bot.meshcore, 'contacts'):
@@ -824,7 +943,7 @@ class PathCommand(BaseCommand):
         if device_matches:
             if len(device_matches) > 1:
                 # Multiple device matches - show collision warning
-                repeater_info[node_id] = {
+                repeater_info[key] = {
                     'found': True,
                     'collision': True,
                     'matches': len(device_matches),
@@ -834,7 +953,7 @@ class PathCommand(BaseCommand):
             else:
                 # Single device match
                 match = device_matches[0]
-                repeater_info[node_id] = {
+                repeater_info[key] = {
                     'name': match['name'],
                     'public_key': match['public_key'],
                     'device_type': match['device_type'],
@@ -847,7 +966,7 @@ class PathCommand(BaseCommand):
                     'longitude': match.get('longitude'),
                 }
         else:
-            repeater_info[node_id] = {
+            repeater_info[key] = {
                 'found': False,
                 'node_id': node_id
             }
@@ -902,7 +1021,7 @@ class PathCommand(BaseCommand):
     def _calculate_path_distance_km(
         self,
         node_ids: list[str],
-        repeater_info: dict[str, dict[str, Any]],
+        repeater_info: dict[Any, dict[str, Any]],
         message: Optional[MeshMessage] = None,
     ) -> Optional[float]:
         """Total distance along sender -> each hop -> bot, in kilometres.
@@ -920,8 +1039,8 @@ class PathCommand(BaseCommand):
             return None
         chain.append(sender)
 
-        for node_id in node_ids:
-            info = repeater_info.get(node_id, {})
+        for index, node_id in enumerate(node_ids):
+            info = self._hop_entry(repeater_info, index, node_id)
             # A prefix collision has no single node to measure from.
             if not info.get('found', False) or info.get('collision', False):
                 return None
@@ -938,7 +1057,7 @@ class PathCommand(BaseCommand):
             total += calculate_distance(lat1, lon1, lat2, lon2)
         return total
 
-    def _format_path_response(self, node_ids: list[str], repeater_info: dict[str, dict[str, Any]]) -> str:
+    def _format_path_response(self, node_ids: list[str], repeater_info: dict[Any, dict[str, Any]]) -> str:
         """Format the path decode response
 
         Maintains the order of repeaters as they appear in the path (first to last)
@@ -947,16 +1066,20 @@ class PathCommand(BaseCommand):
         lines = []
 
         # Process nodes in path order (first to last as message traveled)
-        for node_id in node_ids:
-            info = repeater_info.get(node_id, {})
+        for index, node_id in enumerate(node_ids):
+            info = self._hop_entry(repeater_info, index, node_id)
 
             if info.get('found', False):
                 if info.get('collision', False):
                     # Multiple repeaters with same prefix
                     matches = info.get('matches', 0)
                     line = self.translate('commands.path.node_collision', node_id=node_id, matches=matches)
-                elif info.get('geographic_guess', False) or info.get('graph_guess', False):
-                    # Geographic or graph-based selection
+                elif (
+                    info.get('geographic_guess', False)
+                    or info.get('graph_guess', False)
+                    or info.get('joint_guess', False)
+                ):
+                    # Geographic, graph-based, or joint whole-path selection
                     name = info.get('name', self.translate('commands.path.unknown_name'))
                     confidence = info.get('confidence', 0.0)
 
