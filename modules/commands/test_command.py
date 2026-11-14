@@ -11,6 +11,7 @@ from typing import Any, Optional
 
 from ..location import latest_contact_position_rows
 from ..models import MeshMessage
+from ..path_names import format_path_names, template_uses_path_names
 from ..response_template import format_piped_template
 from ..template_reference import MESSAGE_PLACEHOLDERS, template_spec
 from ..utils import (
@@ -47,11 +48,14 @@ class TestCommand(BaseCommand):
          "help": "Template for the test reply. Empty uses the default format.",
          "template": template_spec(
              "piped",
-             MESSAGE_PLACEHOLDERS + ("phrase", "phrase_part", "elapsed", "path_distance", "firstlast_distance"),
+             MESSAGE_PLACEHOLDERS + ("phrase", "phrase_part", "elapsed", "path_distance", "firstlast_distance",
+                                     "path_names"),
              notes=[
                  "Blank uses [Keywords] test if set, else the default the preview shows.",
                  "{path_distance} and {firstlast_distance} are N/A on a direct message, which "
                  "counts as not empty: put hops_min:1 before prefix_if_nonempty to drop them there.",
+                 "{path_names} names a hop only on a 2- or 3-byte path with a confident match; "
+                 "other hops keep their hex prefix. Length settings are under [Path_Command].",
                  "\\n starts a new line.",
              ],
              samples={"path_distance": {"direct": "N/A"}, "firstlast_distance": {"direct": "N/A"}},
@@ -752,6 +756,11 @@ class TestCommand(BaseCommand):
                 'path_distance': self._calculate_path_distance(message) or '',
                 'firstlast_distance': self._calculate_firstlast_distance(message) or '',
             })
+            # A database lookup per hop, so only when the template asks for it.
+            fields['path_names'] = (
+                format_path_names(self.bot, message)
+                if template_uses_path_names(response_format) else ''
+            )
             if extra:
                 fields.update(extra)
             return format_piped_template(
