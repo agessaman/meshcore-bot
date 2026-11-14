@@ -6,6 +6,10 @@ semantic versioning.
 
 ## [Unreleased]
 
+### Added
+
+- `{path_names}` placeholder for `[Test_Command] response_format` and `[Keywords]` replies: the route as short repeater names, `BlackHls▸KalamaSum▸KelsoG3` instead of `a1b2,c3d4,e5f6 (3 hops)`. Only a hop on a 2- or 3-byte path whose prefix has a single recent repeater, or a collision resolved with at least `path_names_min_confidence` (default 0.9), gets a name; every other hop keeps its hex prefix. Names are compacted to fit one message: emoji, filler words and callsigns dropped (`N7JMV-EVERETT-RP` → `Everett`), CamelCase, place-word abbreviations, then vowels and letters as needed. `[Path_Command] path_names_max_name_length`, `path_names_max_bytes`, `path_names_separator` and `path_names_min_confidence` tune it.
+
 ### Fixed
 
 - The bot refuses to start when another instance is already running against the same database, and names that instance's PID. Two instances on one radio evicted each other from single-client companion servers in an endless reconnect loop. The lock is a `<db_path>.lock` file beside the bot database and is released by the OS when the process exits, so a killed bot never leaves a stale lock behind.
