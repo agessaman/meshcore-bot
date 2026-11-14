@@ -12,6 +12,7 @@ import json
 import os
 import signal
 import sys
+import time
 
 from modules.config_snapshot import config_to_redacted_sections, redacted_sections_to_ini_text
 
@@ -144,38 +145,66 @@ def _report_config_issues(issues: list[tuple[str, str]], logger=None) -> None:
         )
 
 
-def _acquire_instance_lock(config_path: str):
+# How often a --wait-for-lock start retries the single-instance lock.
+_LOCK_WAIT_INTERVAL_SECONDS = 5.0
+
+
+def _acquire_instance_lock(config_path: str, wait: bool = False):
     """Refuse to start when another bot already runs against this database.
 
-    Exits 1 when the lock is held. A lock file that cannot be created is only a
-    warning: the guard must not stop a bot that would otherwise run.
+    Exits 1 when the lock is held, unless *wait* is set: then this blocks until
+    the holder exits, which keeps a service manager's restart budget from being
+    spent by a manual run that is about to finish. A lock file that cannot be
+    created is only a warning: the guard must not stop a bot that would
+    otherwise run.
     """
     from modules.database_restore import configured_bot_database_path
     from modules.instance_lock import InstanceAlreadyRunning, acquire_instance_lock
 
-    database_path = configured_bot_database_path(config_path)
-    if database_path is None:
-        return None
-    try:
-        return acquire_instance_lock(database_path)
-    except InstanceAlreadyRunning as exc:
-        holder = f"PID {exc.pid}" if exc.pid is not None else "another process"
-        print(
-            f"Error: meshcore-bot is already running against {database_path} ({holder}).",
-            file=sys.stderr,
-        )
-        print(
-            "Two instances on one radio disconnect each other in a loop. "
-            "Stop the running instance before starting another.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-    except OSError as exc:
-        print(
-            f"Warning: could not take the single-instance lock beside {database_path}: {exc}",
-            file=sys.stderr,
-        )
-        return None
+    announced_wait = False
+    while True:
+        # Resolved on every attempt: db_path can be edited during a long wait,
+        # and startup must hold the lock for the database it will open.
+        database_path = configured_bot_database_path(config_path)
+        if database_path is None:
+            return None
+        try:
+            lock = acquire_instance_lock(database_path)
+        except InstanceAlreadyRunning as exc:
+            holder = f"PID {exc.pid}" if exc.pid is not None else "another process"
+            if not wait:
+                print(
+                    f"Error: meshcore-bot is already running against {database_path} ({holder}).",
+                    file=sys.stderr,
+                )
+                print(
+                    "Two instances on one radio disconnect each other in a loop. "
+                    "Stop the running instance before starting another.",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            # Once only: repeating it on every retry would fill the journal.
+            if not announced_wait:
+                print(
+                    f"Another meshcore-bot instance ({holder}) holds {database_path}; "
+                    "waiting for it to exit.",
+                    file=sys.stderr,
+                )
+                announced_wait = True
+            time.sleep(_LOCK_WAIT_INTERVAL_SECONDS)
+        except OSError as exc:
+            print(
+                f"Warning: could not take the single-instance lock beside {database_path}: {exc}",
+                file=sys.stderr,
+            )
+            return None
+        else:
+            if announced_wait:
+                print(
+                    f"Acquired the single-instance lock for {database_path}.",
+                    file=sys.stderr,
+                )
+            return lock
 
 
 def main():
@@ -201,6 +230,14 @@ def main():
         "--show-config-json",
         action="store_true",
         help="Print resolved config.ini as redacted JSON and exit",
+    )
+    parser.add_argument(
+        "--wait-for-lock",
+        action="store_true",
+        help=(
+            "Wait for another running instance to release the single-instance lock "
+            "instead of exiting 1; meant for service managers that restart the bot"
+        ),
     )
 
     args = parser.parse_args()
@@ -261,7 +298,9 @@ def main():
     # Taken before a pending restore so a second instance can never replace the
     # database under a running bot. Held until the process exits.
     try:
-        _instance_lock = _acquire_instance_lock(args.config)  # noqa: F841 - held for process life
+        _instance_lock = _acquire_instance_lock(  # noqa: F841 - held for process life
+            args.config, wait=args.wait_for_lock
+        )
     except DatabaseRestoreError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         sys.exit(1)

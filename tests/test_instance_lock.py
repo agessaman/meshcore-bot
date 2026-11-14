@@ -5,14 +5,17 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 import pytest
 
+import meshcore_bot
 from meshcore_bot import main
 from modules.database_restore import configured_bot_database_path
 from modules.instance_lock import (
     InstanceAlreadyRunning,
+    InstanceLock,
     acquire_instance_lock,
     instance_lock_path,
 )
@@ -97,6 +100,137 @@ class TestAcquireInstanceLock:
         second = acquire_instance_lock(tmp_path / "b.db")
         first.release()
         second.release()
+
+
+class TestWaitForLock:
+    @staticmethod
+    def _acquire_in_thread(config: Path, outcome: dict[str, object]) -> threading.Thread:
+        def _acquire() -> None:
+            try:
+                outcome["lock"] = meshcore_bot._acquire_instance_lock(str(config), wait=True)
+            except Exception as exc:  # surfaced by the caller's assertions
+                outcome["error"] = exc
+
+        return threading.Thread(target=_acquire, daemon=True)
+
+    def test_waits_for_the_holder_to_exit_then_takes_the_lock(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+    ):
+        config = tmp_path / "config.ini"
+        database = tmp_path / "bot.db"
+        _write_config(config, str(database))
+        monkeypatch.setattr(meshcore_bot, "_LOCK_WAIT_INTERVAL_SECONDS", 0.05)
+
+        holder = _spawn_holder(database)
+        outcome: dict[str, object] = {}
+        thread = self._acquire_in_thread(config, outcome)
+        lock = None
+        try:
+            thread.start()
+            thread.join(0.3)
+            assert thread.is_alive(), "the waiting acquire returned while the lock was held"
+
+            holder.kill()
+            holder.wait()
+
+            thread.join(5)
+            assert not thread.is_alive(), "the waiting acquire never picked up the freed lock"
+            assert "error" not in outcome
+            lock = outcome.get("lock")
+            assert isinstance(lock, InstanceLock)
+            assert lock.path == instance_lock_path(database)
+        finally:
+            if holder.poll() is None:
+                holder.kill()
+            holder.wait()
+            if lock is not None:
+                lock.release()
+
+        err = capsys.readouterr().err
+        assert err.count("waiting for it to exit") == 1
+        assert str(database) in err
+        assert f"PID {holder.pid}" in err
+        assert "Acquired the single-instance lock" in err
+
+    def test_free_lock_returns_without_waiting(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+    ):
+        config = tmp_path / "config.ini"
+        database = tmp_path / "bot.db"
+        _write_config(config, str(database))
+        monkeypatch.setattr(meshcore_bot, "_LOCK_WAIT_INTERVAL_SECONDS", 0.05)
+
+        lock = meshcore_bot._acquire_instance_lock(str(config), wait=True)
+        try:
+            assert lock is not None
+            assert lock.path == instance_lock_path(database)
+        finally:
+            lock.release()
+
+        assert "waiting for it to exit" not in capsys.readouterr().err
+
+    def test_held_lock_still_exits_1_without_wait(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+    ):
+        config = tmp_path / "config.ini"
+        database = tmp_path / "bot.db"
+        _write_config(config, str(database))
+        monkeypatch.setattr(meshcore_bot, "_LOCK_WAIT_INTERVAL_SECONDS", 0.05)
+
+        holder = _spawn_holder(database)
+        try:
+            with pytest.raises(SystemExit) as exc:
+                meshcore_bot._acquire_instance_lock(str(config))
+        finally:
+            holder.kill()
+            holder.wait()
+
+        assert exc.value.code == 1
+        err = capsys.readouterr().err
+        assert "already running" in err
+        assert f"PID {holder.pid}" in err
+        assert "waiting for it to exit" not in err
+
+    @pytest.mark.parametrize(
+        ("extra_argv", "expected_wait"),
+        [(["--wait-for-lock"], True), ([], False)],
+    )
+    def test_main_passes_the_flag_to_the_lock(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        extra_argv: list[str],
+        expected_wait: bool,
+    ):
+        config = tmp_path / "config.ini"
+        _write_config(config, str(tmp_path / "bot.db"))
+        calls: list[tuple[str, bool]] = []
+
+        def _record(config_path, wait=False):
+            calls.append((config_path, wait))
+            raise SystemExit(0)  # stop before the radio work
+
+        monkeypatch.setattr(meshcore_bot, "_acquire_instance_lock", _record)
+        monkeypatch.setattr("meshcore_bot._collect_config_issues", lambda path: [])
+        monkeypatch.setattr(
+            sys, "argv", ["meshcore_bot.py", *extra_argv, "--config", str(config)]
+        )
+
+        with pytest.raises(SystemExit) as exc:
+            main()
+
+        assert exc.value.code == 0
+        assert calls == [(str(config), expected_wait)]
+
+
+@pytest.mark.parametrize("relative_path", ["meshcore-bot.service", "scripts/build-deb.sh"])
+def test_service_unit_starts_with_wait_for_lock(relative_path: str) -> None:
+    text = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
+    exec_starts = [
+        line.strip() for line in text.splitlines() if line.strip().startswith("ExecStart=")
+    ]
+    assert exec_starts
+    assert all(line.endswith("--wait-for-lock") for line in exec_starts)
 
 
 class TestConfiguredBotDatabasePath:
@@ -192,3 +326,32 @@ class TestMainRefusesSecondInstance:
 
         assert exc.value.code == 0
         assert "[Bot]" in capsys.readouterr().out
+
+
+def test_waiting_follows_a_db_path_edited_during_the_wait(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The lock taken must be for the database startup will open, not the one first seen."""
+    import meshcore_bot
+
+    config = tmp_path / "config.ini"
+    first = tmp_path / "first.db"
+    second = tmp_path / "second.db"
+    _write_config(config, str(first))
+    monkeypatch.setattr(meshcore_bot, "_LOCK_WAIT_INTERVAL_SECONDS", 0.0)
+
+    def _edit_config_instead_of_sleeping(seconds):
+        _write_config(config, str(second))
+
+    monkeypatch.setattr(meshcore_bot.time, "sleep", _edit_config_instead_of_sleeping)
+
+    holder = _spawn_holder(first)
+    try:
+        lock = meshcore_bot._acquire_instance_lock(str(config), wait=True)
+    finally:
+        holder.kill()
+        holder.wait()
+    try:
+        assert lock.path == instance_lock_path(second.resolve())
+    finally:
+        lock.release()
