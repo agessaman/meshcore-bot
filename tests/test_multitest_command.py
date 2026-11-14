@@ -8,6 +8,7 @@ import pytest
 
 import modules.commands.multitest_command as multitest_module
 from modules.clients.corescope_client import ScopePacket
+from modules.template_reference import MESSAGE_PLACEHOLDERS
 from modules.commands.multitest_command import (
     MultitestCommand,
     _condense_path_lines,
@@ -1131,3 +1132,66 @@ class TestScopePlaceholders:
         cmd = self._cmd()
         out = await self._render(cmd, cmd.DEFAULT_FORMAT, scope=self._scope())
         assert out == "Paths(40):\ndb82\ndb82,e34c"
+
+
+class TestCorescopeSettingsSchema:
+    """The Plugins page fields for CoreScope mode."""
+
+    def _fields(self):
+        return {f["key"]: f for f in MultitestCommand.settings_schema}
+
+    def _card_fields(self, config=None):
+        from modules.settings_schema import build_plugin_settings_view
+
+        view = build_plugin_settings_view(config or configparser.ConfigParser())
+        card = [c for c in view if c.get("name") == "multitest"][0]
+        return {f["key"]: f for f in card["fields"]}
+
+    def test_every_corescope_key_has_a_field(self):
+        keys = set(self._fields())
+        assert {
+            "corescope_enabled", "corescope_url", "corescope_settle_seconds",
+            "corescope_ack_message", "corescope_timeout", "corescope_cache_seconds",
+        } <= keys
+
+    def test_the_types_are_what_the_loader_reads(self):
+        fields = self._fields()
+        assert fields["corescope_enabled"]["type"] == "bool"
+        assert fields["corescope_url"]["type"] == "str"
+        assert fields["corescope_settle_seconds"]["type"] == "float"
+        assert fields["corescope_timeout"]["type"] == "float"
+        assert fields["corescope_cache_seconds"]["type"] == "int"
+
+    def test_the_url_is_read_from_the_shared_section(self):
+        """It names a site, not a multitest setting, so it lives in External_Data."""
+        assert self._fields()["corescope_url"]["section"] == "External_Data"
+        config = configparser.ConfigParser()
+        config.add_section("External_Data")
+        config.set("External_Data", "corescope_url", "https://scope.example")
+        assert self._card_fields(config)["corescope_url"]["value"] == "https://scope.example"
+
+    def test_the_settle_bounds_match_the_clamp(self):
+        field = self._fields()["corescope_settle_seconds"]
+        assert field["min"] == 0
+        assert field["max"] == MultitestCommand.MAX_SETTLE_SECONDS
+
+    def test_the_schema_defaults_match_what_the_command_loads(self):
+        """A drift between the two means the page shows a value the bot ignores."""
+        cmd = MultitestCommand(_make_bot())
+        fields = self._fields()
+        assert fields["corescope_enabled"]["default"] is False
+        assert cmd.uses_corescope is False
+        assert fields["corescope_settle_seconds"]["default"] == cmd.corescope_settle_seconds
+        assert fields["corescope_ack_message"]["default"] == cmd.corescope_ack_message
+
+    def test_the_ack_is_a_piped_template_taking_the_wait(self):
+        spec = self._fields()["corescope_ack_message"]["template"]
+        assert spec["syntax"] == "piped"
+        names = [p["name"] for p in spec["placeholders"]]
+        assert names == [*MESSAGE_PLACEHOLDERS, "wait_seconds"]
+
+    def test_a_blank_ack_is_off_not_a_default(self):
+        """Unlike the response format, blank here sends nothing — so no blank_default."""
+        spec = self._fields()["corescope_ack_message"]["template"]
+        assert "blank_default" not in spec
+        assert any("empty" in note.lower() for note in spec["notes"])

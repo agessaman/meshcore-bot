@@ -542,6 +542,46 @@ class MultitestCommand(BaseCommand):
         {"key": "require_path_bytes_failure_response", "label": "Path-byte reject reply", "type": "str",
          "default": "",
          "help": "Reply when rejected by the path-byte requirement. Empty = silent reject."},
+        {"key": "corescope_enabled", "label": "Ask CoreScope instead of listening", "type": "bool",
+         "default": False,
+         "help": "Report the paths the whole observer network heard, not just this radio's. "
+                 "The bot stops listening for packets itself: no listening window, and "
+                 "\"long\"/\"xlong\" lengthen the wait for observers instead. Needs a CoreScope "
+                 "URL below and observers covering this area — with neither, a request has "
+                 "nothing to report. Off keeps the listening window."},
+        {"key": "corescope_url", "label": "CoreScope URL", "type": "str",
+         "section": "External_Data", "default": "",
+         "help": "Base URL of the CoreScope instance, e.g. https://analyzer.comchan.net. "
+                 "Shared with anything else that links to it. Blank leaves the bot listening "
+                 "locally even when the setting above is on."},
+        {"key": "corescope_settle_seconds", "label": "Wait for observers", "type": "float",
+         "min": 0, "max": MAX_SETTLE_SECONDS, "default": DEFAULT_SETTLE_SECONDS, "unit": "s",
+         "help": "Seconds to wait before asking, so observers have reported. Asking at once "
+                 "returns only whoever reported first. The reply is this much later, and "
+                 "\"long\"/\"xlong\" wait 2x/3x. 0 asks immediately."},
+        {"key": "corescope_ack_message", "label": "Acknowledgement", "type": "str",
+         "default": DEFAULT_ACK_MESSAGE,
+         "help": "Sent as soon as the request is accepted, so the wait above does not look "
+                 "like the bot ignoring it. Empty sends nothing.",
+         "template": template_spec(
+             "piped",
+             MESSAGE_PLACEHOLDERS + ("wait_seconds",),
+             notes=[
+                 "Only sent when CoreScope is on. Leave it empty to send nothing — unlike "
+                 "the response format, blank here is off rather than a default.",
+                 "{wait_seconds} is the wait this request will actually do, so it stays "
+                 "right for \"long\" and \"xlong\" too.",
+                 "\\n starts a new line.",
+             ],
+         )},
+        {"key": "corescope_timeout", "label": "CoreScope timeout", "type": "float",
+         "min": 0.5, "max": 30, "default": DEFAULT_TIMEOUT, "unit": "s",
+         "help": "How long to wait for CoreScope to answer, on top of the wait above. "
+                 "A lookup that times out replies that no data was found."},
+        {"key": "corescope_cache_seconds", "label": "CoreScope cache", "type": "int",
+         "min": 0, "max": 3600, "default": DEFAULT_CACHE_SECONDS, "unit": "s",
+         "help": "How long one packet's answer is reused, so repeat requests for the same "
+                 "packet do not ask again."},
     ]
 
     def __init__(self, bot):

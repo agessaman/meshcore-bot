@@ -363,3 +363,18 @@ class TestMultitestScopePlaceholders:
         assert rows["direct"] == (
             "25/46 12 https://analyzer.example.net/#/map?packet=7ba8bf1119ca1fe1&paths=all"
         )
+
+    def test_the_ack_previews_generically_from_the_catalog(self):
+        """A piped field with no custom renderer still previews, offline."""
+        from unittest.mock import patch
+
+        spec = _field(MultitestCommand, "corescope_ack_message")["template"]
+        with patch("modules.clients.corescope_client.CoreScopeClient.fetch") as fetch:
+            rows = _by_id(render_preview(spec, "@[{sender}] {wait_seconds}s"))
+        fetch.assert_not_called()
+        assert rows["direct"] == "@[Alice] 30s"
+
+    def test_the_wait_is_catalogued(self):
+        from modules.template_reference import ALL_PLACEHOLDERS
+
+        assert "wait_seconds" in ALL_PLACEHOLDERS

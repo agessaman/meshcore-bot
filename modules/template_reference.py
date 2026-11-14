@@ -106,6 +106,7 @@ _EXTRA_PLACEHOLDERS: dict[str, tuple[str, Any]] = {
     "listening_duration": ("Seconds the bot listened, or waited for CoreScope", "6"),
     # Multitest with CoreScope configured. Empty when the bot listened for the
     # paths itself, so a clause built on one disappears rather than going blank.
+    "wait_seconds": ("Seconds this request will wait before it answers", "30"),
     "scope_observers": ("CoreScope: observers that heard the packet", "25"),
     "scope_observations": ("CoreScope: times it was heard, all observers", "46"),
     "scope_max_hops": ("CoreScope: hops on the longest path", "12"),
