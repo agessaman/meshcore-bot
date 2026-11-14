@@ -28,5 +28,9 @@ FROM addon-${TARGETARCH}
 # image's --user packages on PYTHONPATH explicitly.
 USER root
 ENV PYTHONPATH=/home/meshcore/.local/lib/python3.11/site-packages
+# The inherited healthcheck expands this in the shell. The add-on config is
+# /config/config.ini. Docker starts the check from the image environment, so
+# setting the variable inside ha_addon.py would not reach it.
+ENV MESHCORE_BOT_CONFIG=/config/config.ini
 
 CMD ["python3", "-m", "modules.ha_addon"]

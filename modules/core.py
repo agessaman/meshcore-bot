@@ -35,6 +35,7 @@ from .config_reload import ConfigReloadMixin
 from .db_manager import AsyncDBManager, DBManager
 from .device_setup import DeviceSetupMixin
 from .feed_manager import FeedManager
+from .heartbeat import cancel_heartbeat, start_heartbeat
 from .i18n import Translator
 from .logging_setup import configure_bot_logging, configure_meshcore_loggers, meshcore_log_level
 from .message_handler import MessageHandler
@@ -901,6 +902,10 @@ class MeshCoreBot(ServiceSupervisorMixin, RadioLinkMixin, RadioOfflineBreaker, D
         0); the entrypoint turns False into a non-zero exit status so service
         managers restart the bot.
         """
+        # Before the radio wait. A missing radio can block this method for a
+        # long time, and the process is still alive while it waits.
+        self._heartbeat_task = start_heartbeat(self.db_manager.db_path, logger=self.logger)
+
         self.logger.info("Starting MeshCore Bot...")
 
         # Store reference to main event loop for scheduler thread access
@@ -1181,6 +1186,9 @@ class MeshCoreBot(ServiceSupervisorMixin, RadioLinkMixin, RadioOfflineBreaker, D
                 self.logger.info("Stopping MeshCore Bot...")
             except (AttributeError, TypeError):
                 print("Stopping MeshCore Bot...")
+
+            # Leave the heartbeat file in place; the next start overwrites it.
+            await cancel_heartbeat(getattr(self, "_heartbeat_task", None))
 
             self._shutdown_event.set()
             self.connected = False

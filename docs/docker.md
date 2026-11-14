@@ -450,7 +450,7 @@ For production deployments:
    ```
 
 5. **Set up health checks** (already included in Dockerfile):
-   The container includes a basic health check. Monitor with:
+   The bot's event loop touches a heartbeat file next to its database every 30 seconds, and the container stays healthy while that file is at most two minutes old. An offline radio stays healthy: the bot reconnects on its own, and restarting the container would not help. A stuck event loop stops updating the file, which marks the container unhealthy. Monitor with:
    ```bash
    docker-compose ps
    ```

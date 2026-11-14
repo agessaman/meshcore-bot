@@ -194,3 +194,4 @@ aqi_http_cache.sqlite
 
 # Single-instance lock beside the bot database
 *.db.lock
+*.db.heartbeat

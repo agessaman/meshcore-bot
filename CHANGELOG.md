@@ -14,6 +14,10 @@ semantic versioning.
 - The web viewer now exits when the bot that launched it is gone. A bot killed with `kill -9` on a manual run left the viewer holding its port, and the next start could not bind it. The bot passes its PID as `--exit-with-parent`; a viewer started on its own is unchanged. A bot-launched viewer no longer uses the Werkzeug reloader in debug mode.
 - The systemd unit and the Debian package start the bot with the new `--wait-for-lock` flag. A service that found another instance running exited three times inside the start limit and stayed `failed` after the other instance stopped. It now waits for the lock and takes over.
 
+### Changed
+
+- The Docker healthcheck reports whether the bot's event loop is alive instead of whether PID 1 exists. The bot touches `<db_path>.heartbeat` every 30 seconds and `python3 -m modules.healthcheck` fails once it is more than two minutes old. An offline radio does not make the container unhealthy. The add-on image inherits the check and points it at `/config/config.ini` through `MESHCORE_BOT_CONFIG`.
+
 ## [1.2.0] - 2026-11-11
 
 ### Added
