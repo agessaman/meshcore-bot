@@ -17,7 +17,13 @@ import configparser
 import datetime
 from typing import Any
 
-from .scheduled_message_cron import parse_schedule_key, parse_scheduled_message_value
+from .scheduled_message_cron import (
+    bounds_error,
+    parse_schedule_key,
+    parse_scheduled_message_value,
+    split_schedule_options,
+    week_error,
+)
 
 SECTION = "Scheduled_Messages"
 
@@ -55,7 +61,13 @@ def next_run_times(trigger: Any, tz: Any, count: int = 5) -> list[str]:
 
 
 def describe_schedule(
-    schedule: str, tz: Any, message: str = "", count: int = 5
+    schedule: str,
+    tz: Any,
+    message: str = "",
+    count: int = 5,
+    start: str | None = None,
+    end: str | None = None,
+    week: str | None = None,
 ) -> dict[str, Any]:
     """Validate a schedule key and describe when it would fire.
 
@@ -64,6 +76,9 @@ def describe_schedule(
         tz: Timezone the bot schedules in.
         message: Message body, only needed to apply the ``{cmd:...}`` airtime floor.
         count: How many upcoming runs to return.
+        start: Optional ISO date the schedule starts on (from the entry's value).
+        end: Optional ISO date it runs through, inclusive.
+        week: Optional ISO week-number expression (``*/2`` for every other week).
 
     Returns:
         ``valid``, a human ``label``, ``next_runs``, ``interval_seconds`` (tightest gap),
@@ -72,18 +87,25 @@ def describe_schedule(
     raw = (schedule or "").strip()
     if not raw:
         return {"valid": False, "error": "Schedule is required", "next_runs": []}
+    # Same check the save path runs, so the preview never calls a window valid that
+    # saving would refuse.
+    window_error = bounds_error(start, end) or week_error(week)
+    if window_error:
+        return {"valid": False, "error": window_error, "next_runs": []}
 
     try:
-        parsed = parse_schedule_key(raw, tz)
+        parsed = parse_schedule_key(raw, tz, start, end, week)
     except Exception as exc:  # noqa: BLE001 - any parser error is just an invalid schedule
         return {"valid": False, "error": f"Could not parse schedule: {exc}", "next_runs": []}
 
     if parsed.trigger is None:
+        reason = f" ({parsed.error})" if parsed.error else ""
         return {
             "valid": False,
             "error": (
                 "Not a valid schedule. Use 5-field cron (minute hour day-of-month "
-                "month day-of-week), or a preset like @daily or @hourly."
+                "month day-of-week), a positional day-of-month such as last-fri or "
+                f"4th-tue, or a preset like @daily or @hourly.{reason}"
             ),
             "next_runs": [],
         }
@@ -97,11 +119,29 @@ def describe_schedule(
         "deprecated": bool(parsed.is_deprecated_hhmm),
         "error": None,
     }
+    warnings: list[str] = []
     if parsed.is_deprecated_hhmm:
-        result["warning"] = (
+        warnings.append(
             f"{raw} is the deprecated HHMM form and will stop working in a future "
             "release. Use 5-field cron instead."
         )
+    if not result["next_runs"]:
+        if start or end:
+            # Well-formed, just outside its window -- distinct from a malformed schedule.
+            result["finished"] = True
+            warnings.append(
+                f"This schedule has no runs left: it is bounded to "
+                f"{start or 'any date'} .. {end or 'any date'}."
+            )
+        else:
+            # e.g. "0 0 30 feb *": parses, but no date ever matches.
+            return {
+                "valid": False,
+                "error": "This schedule never fires: no date matches every field.",
+                "next_runs": [],
+            }
+    if warnings:
+        result["warning"] = " ".join(warnings)
 
     # Same floor the scheduler enforces at startup, applied here so the UI refuses it
     # up front rather than letting it be saved and silently dropped on reload.
@@ -131,20 +171,55 @@ def _humanize_seconds(seconds: float) -> str:
     return f"{seconds} seconds"
 
 
-def compose_value(channel: str, message: str, scope: str | None = None) -> str:
-    """Build the config value for an entry, matching parse_scheduled_message_value."""
+def compose_value(
+    channel: str,
+    message: str,
+    scope: str | None = None,
+    start: str | None = None,
+    end: str | None = None,
+    week: str | None = None,
+) -> str:
+    """Build the config value for an entry, matching parse_scheduled_message_value.
+
+    Date bounds and the week filter lead, so they cannot be confused with a message
+    body, and are read back off by
+    :func:`~modules.scheduled_message_cron.split_schedule_options`.
+    """
     channel = (channel or "").strip()
     message = (message or "").strip()
     scope = (scope or "").strip()
+    starts_on = (start or "").strip()
+    ends_on = (end or "").strip()
+    weeks = (week or "").strip()
+    prefix = ""
+    if starts_on:
+        prefix += f"start={starts_on} "
+    if ends_on:
+        prefix += f"end={ends_on} "
+    if weeks:
+        prefix += f"week={weeks} "
     if scope:
         if not scope.startswith("#"):
             scope = f"#{scope}"
-        return f"{channel}:{scope}:{message}"
-    return f"{channel}:{message}"
+        return f"{prefix}{channel}:{scope}:{message}"
+    return f"{prefix}{channel}:{message}"
 
 
-def validate_entry(channel: str, message: str, scope: str | None) -> str | None:
+def validate_entry(
+    channel: str,
+    message: str,
+    scope: str | None,
+    start: str | None = None,
+    end: str | None = None,
+    week: str | None = None,
+) -> str | None:
     """Return an error string for an unusable entry, or None when it is fine."""
+    starts_on = (start or "").strip()
+    ends_on = (end or "").strip()
+    weeks = (week or "").strip()
+    window_error = bounds_error(starts_on or None, ends_on or None) or week_error(weeks or None)
+    if window_error:
+        return window_error
     if not (channel or "").strip():
         return "Channel is required"
     if not (message or "").strip():
@@ -157,6 +232,31 @@ def validate_entry(channel: str, message: str, scope: str | None) -> str | None:
     for field, value in (("channel", channel), ("message", message), ("scope", scope or "")):
         if "\n" in value or "\r" in value:
             return f"The {field} cannot contain line breaks (use \\n for a mesh line break)"
+    # What is written has to read back as what was submitted. A channel that looks like
+    # a date bound, or a message that looks like a scope ("#net: tonight" with no
+    # scope), would otherwise save and then run as something else.
+    try:
+        read_start, read_end, read_week, rest = split_schedule_options(
+            compose_value(channel, message, scope, starts_on, ends_on, weeks)
+        )
+        read_back = (read_start, read_end, *parse_scheduled_message_value(rest))
+        if read_week != (weeks or None):
+            return "The channel name cannot start with start=, end= or week="
+    except ValueError as exc:
+        return f"This entry would not read back as written: {exc}"
+    expected_scope = None
+    if (scope or "").strip():
+        expected_scope = (scope or "").strip()
+        if not expected_scope.startswith("#"):
+            expected_scope = f"#{expected_scope}"
+    expected = (starts_on or None, ends_on or None, channel.strip(), message.strip(), expected_scope)
+    if read_back != expected:
+        if read_back[2] != expected[2] or read_back[:2] != expected[:2]:
+            return "The channel name cannot start with start=, end= or week="
+        return (
+            "With no scope set, the message cannot start with #name: "
+            "(it would be read as a scope). Set the scope, or reword the start."
+        )
     return None
 
 
@@ -187,10 +287,17 @@ def read_entries(config_path: str, tz: Any) -> list[dict[str, Any]]:
             "channel": "",
             "scope": None,
             "message": "",
+            "start": None,
+            "end": None,
+            "week": None,
         }
         try:
-            channel, message, scope = parse_scheduled_message_value(raw_value)
-            entry.update(channel=channel, message=message, scope=scope)
+            start, end, week, rest = split_schedule_options(raw_value)
+            channel, message, scope = parse_scheduled_message_value(rest)
+            entry.update(
+                channel=channel, message=message, scope=scope, start=start, end=end,
+                week=week,
+            )
         except ValueError as exc:
             # Keep the same shape as a described entry so callers never have to
             # special-case a malformed row to find out it is not running.
@@ -199,6 +306,10 @@ def read_entries(config_path: str, tz: Any) -> list[dict[str, Any]]:
             entry["next_runs"] = []
             entries.append(entry)
             continue
-        entry.update(describe_schedule(schedule, tz, message=message))
+        entry.update(
+            describe_schedule(
+                schedule, tz, message=message, start=start, end=end, week=week
+            )
+        )
         entries.append(entry)
     return entries

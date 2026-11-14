@@ -38,6 +38,17 @@
                         <option value="none">None / plain (port 25)</option>
                     </select>
                 </div>
+                <div class="col-12">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="allow-local-smtp">
+                        <label class="form-check-label" for="allow-local-smtp">
+                            Allow a local or private-network SMTP server
+                        </label>
+                    </div>
+                    <div class="form-text">
+                        Hosts such as localhost or 192.168.x.x are blocked by default. Turn this on only to relay through a mail server you run, such as a local Postfix.
+                    </div>
+                </div>
             </div>
 
             <h3 class="h6 text-uppercase text-muted fw-semibold mb-3" style="font-size:.75rem;letter-spacing:.05em;">

@@ -157,7 +157,7 @@ Common issues:
 
 ### Messages Not Appearing in Discord
 
-1. **Verify channel is configured**: Check that `bridge.<channelname>` exists in config
+1. **Verify channel is configured**: Check that `bridge.<channelname>` exists in config. Matching is case-insensitive and ignores a leading `#`, so `bridge.test` and `bridge.#test` both match the `#test` channel. The first message from a channel with no mapping is logged at INFO with the list of configured mappings.
 2. **Check webhook URL**: Ensure URL is correct and webhook exists in Discord
 3. **Test webhook manually**:
    ```bash

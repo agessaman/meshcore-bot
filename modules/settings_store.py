@@ -21,6 +21,7 @@ from abc import ABC, abstractmethod
 from typing import Optional
 
 from modules.ini_writer import update_ini_values
+from modules.managed_keys import guard_managed_writes
 
 logger = logging.getLogger("MeshCoreBot")
 
@@ -83,28 +84,17 @@ class ConfigIniStore(SettingsStore):
         return self.config.get(section, key, fallback=fallback)
 
     def write_values(self, section: str, values: dict[str, str]) -> dict:
-        # Persist to disk first, preserving comments and taking a backup.  A
-        # rejected payload (IniValueError) must not leave this process's
-        # in-memory config holding values that were never written.
-        result = update_ini_values(self.config_path, {section: values})
-        # Mirror into the in-memory config so this process stays consistent.
-        # Guard each set: a value containing '%' trips BasicInterpolation's
-        # before_set validation; the on-disk write above is the source of truth
-        # and is interpolation-free, so we skip the in-memory copy for such keys.
-        if not self.config.has_section(section):
-            self.config.add_section(section)
-        for key, value in values.items():
-            try:
-                self.config.set(section, key, value)
-            except ValueError:
-                logger.debug("Skipped in-memory cache of %s.%s (interpolation char)", section, key)
-        return result
+        return self.write_sections({section: values})
 
     def write_sections(
         self,
         updates: dict[str, dict[str, str]],
         deletes: Optional[dict[str, list[str] | set[str]]] = None,
     ) -> dict:
+        # Refuse Home Assistant owned keys before touching disk or memory.
+        # Unchanged managed keys are dropped so a save that rewrites them with
+        # the same value still persists the other keys.
+        updates, deletes = guard_managed_writes(updates, deletes, self.config)
         # Persist to disk first: a rejected payload (IniValueError) must not
         # leave this process's in-memory config holding unwritten values.
         result = update_ini_values(self.config_path, updates, deletes)

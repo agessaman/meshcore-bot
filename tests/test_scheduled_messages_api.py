@@ -245,3 +245,59 @@ class TestWriteSerialisation:
         }, method="put")
         assert resp.status_code == 404
         assert "back from the dead" not in _config_text(viewer)
+
+
+class TestDateBoundsThroughTheApi:
+    """start=/end= bounds through create, list, edit and preview (the routes, not the helpers)."""
+
+    def _entry(self, viewer, schedule):
+        entries = _client(viewer).get("/api/scheduled-messages").get_json()["entries"]
+        return next(e for e in entries if e["schedule"] == schedule)
+
+    def test_create_list_edit_and_clear_bounds(self, viewer):
+        resp = _post(_client(viewer), "/api/scheduled-messages",
+                     {"schedule": "0 19 last-fri * *", "channel": "Public", "message": "Net",
+                      "start": "2099-01-01", "end": "2099-03-31"})
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert (body["entry"]["start"], body["entry"]["end"]) == ("2099-01-01", "2099-03-31")
+        assert "0 19 last-fri * * = start=2099-01-01 end=2099-03-31 Public:Net" in _config_text(viewer)
+
+        entry = self._entry(viewer, "0 19 last-fri * *")
+        assert (entry["start"], entry["end"]) == ("2099-01-01", "2099-03-31")
+        assert entry["next_runs"][0].startswith("2099-01-30")
+
+        # An edit that sends the bounds back keeps them...
+        _post(_client(viewer), "/api/scheduled-messages",
+              {"original_schedule": "0 19 last-fri * *", "schedule": "0 19 last-fri * *",
+               "channel": "Public", "message": "Net moved", "start": entry["start"],
+               "end": entry["end"]}, method="put")
+        assert "start=2099-01-01 end=2099-03-31 Public:Net moved" in _config_text(viewer)
+
+        # ...and one that clears them removes them.
+        _post(_client(viewer), "/api/scheduled-messages",
+              {"original_schedule": "0 19 last-fri * *", "schedule": "0 19 last-fri * *",
+               "channel": "Public", "message": "Net moved", "start": "", "end": ""}, method="put")
+        assert "0 19 last-fri * * = Public:Net moved" in _config_text(viewer)
+
+    def test_preview_and_save_agree_on_an_inverted_window(self, viewer):
+        payload = {"schedule": "@daily", "channel": "Public", "message": "x",
+                   "start": "2099-03-31", "end": "2099-01-01"}
+        preview = _post(_client(viewer), "/api/scheduled-messages/preview", payload).get_json()
+        assert preview["valid"] is False
+        assert preview["error"] == "End date is before the start date"
+        assert _post(_client(viewer), "/api/scheduled-messages", payload).status_code == 400
+
+    @pytest.mark.parametrize("bad", ["20990101", "2099-W01-1", "2099-1-1"])
+    def test_non_canonical_dates_are_refused_up_front(self, viewer, bad):
+        resp = _post(_client(viewer), "/api/scheduled-messages",
+                     {"schedule": "@daily", "channel": "Public", "message": "x", "start": bad})
+        assert resp.status_code == 400
+        assert "ISO date" in resp.get_json()["error"]
+
+    def test_preview_reports_what_saving_would_refuse(self, viewer):
+        payload = {"schedule": "@daily", "channel": "Public", "message": "#net: tonight"}
+        preview = _post(_client(viewer), "/api/scheduled-messages/preview", payload).get_json()
+        assert preview["valid"] is True
+        assert "read as a scope" in preview["entry_error"]
+        assert _post(_client(viewer), "/api/scheduled-messages", payload).status_code == 400

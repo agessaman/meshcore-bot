@@ -30,6 +30,7 @@ from .scheduled_message_cron import (
     is_valid_legacy_hhmm,
     parse_schedule_key,
     parse_scheduled_message_value,
+    split_schedule_options,
 )
 from .security_utils import validate_external_url
 from .utils import (
@@ -129,11 +130,37 @@ class MessageScheduler:
             for schedule_key, message_info in self.bot.config.items('Scheduled_Messages'):
                 self.logger.info(f"Processing scheduled message: '{schedule_key}' -> '{message_info}'")
                 try:
-                    parsed = parse_schedule_key(schedule_key, tz)
+                    # Optional start=/end=/week= options ride on the value, since
+                    # crontab has no field for them; strip them before reading
+                    # channel:message.
+                    start_date, end_date, week, value = split_schedule_options(message_info)
+                    parsed = parse_schedule_key(schedule_key, tz, start_date, end_date, week)
                     if parsed.trigger is None:
+                        reason = f" ({parsed.error})" if parsed.error else ""
                         self.logger.warning(
-                            f"Invalid schedule '{schedule_key}' for scheduled message: {message_info}"
+                            f"Invalid schedule '{schedule_key}'{reason} for scheduled message: {message_info}"
                         )
+                        continue
+
+                    if parsed.trigger.get_next_fire_time(
+                        None, datetime.datetime.now(tz)
+                    ) is None:
+                        if start_date or end_date:
+                            self.logger.warning(
+                                "Scheduled_Messages key %r is bounded to %s..%s and has no "
+                                "runs left; not scheduled: %s",
+                                schedule_key,
+                                start_date or "any date",
+                                end_date or "any date",
+                                message_info,
+                            )
+                        else:
+                            self.logger.warning(
+                                "Scheduled_Messages key %r never fires (no date matches "
+                                "every field); not scheduled: %s",
+                                schedule_key,
+                                message_info,
+                            )
                         continue
 
                     if parsed.is_deprecated_hhmm:
@@ -148,7 +175,7 @@ class MessageScheduler:
                             cron_suggestion,
                         )
 
-                    channel, message, scope = parse_scheduled_message_value(message_info)
+                    channel, message, scope = parse_scheduled_message_value(value)
                     message = decode_escape_sequences(message)
 
                     if self._has_command_placeholders(message):
@@ -185,8 +212,8 @@ class MessageScheduler:
                     self.logger.info(
                         f"Scheduled message: {parsed.display_label} -> {channel}{scope_note}: {message}"
                     )
-                except ValueError:
-                    self.logger.warning(f"Invalid scheduled message format: {message_info}")
+                except ValueError as exc:
+                    self.logger.warning(f"Invalid scheduled message format: {message_info}: {exc}")
                 except Exception as e:
                     self.logger.warning(f"Error setting up scheduled message '{schedule_key}': {e}")
 

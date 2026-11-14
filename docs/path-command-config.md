@@ -11,6 +11,29 @@ The path command supports **1-, 2-, and 3-byte-per-hop** paths (2, 4, or 6 hex c
   - **Comma-separated** (e.g. `path 0102,5f7e`): Hop size is inferred from token length. All tokens must be the same length (2, 4, or 6 hex chars). Example: `0102,5f7e` → two 2-byte hops.
   - **Continuous hex** (e.g. `path 01025f7e`): The bot’s [Bot] **`prefix_bytes`** is used (2 hex chars = 1 byte, 4 = 2 bytes, 6 = 3 bytes). Use comma-separated input to force a multi-byte interpretation when the bot is in 1-byte mode.
 
+## Short names for test and keyword replies (`{path_names}`)
+
+`{path_names}` is a placeholder for `[Test_Command] response_format` and `[Keywords]` replies that shows the route as short repeater names, so a test reply can carry the names the path command would show, in a single line:
+
+```ini
+[Test_Command]
+response_format = ack @[{sender}]{phrase_part} | {path_names} | {elapsed}
+```
+
+renders `ack @[Alice] | BlackHls▸KalamaSum▸KelsoG3 | 842ms` for a message that came in over `a1b2,c3d4,e5f6`.
+
+- **Only confident multi-byte matches get a name.** The path must use 2 or 3 bytes per hop, and the hop's prefix must have exactly one recent repeater, or a collision that the same engine as the web viewer's path decode resolves with at least `path_names_min_confidence`. Any other hop keeps its hex prefix in its place (`BlackHls▸c3d4▸KelsoG3`), so the hop count and order are never misleading and no hop shows a guessed name. A 1-byte path renders as hex throughout (`a1▸c3▸e5`); a direct message renders `Direct`, like `{path}`.
+- **Names are compacted** (`modules/name_shortener.py`): accents folded to ASCII, emoji and punctuation dropped, filler words such as *Repeater*, *RP* and *The* removed, an amateur callsign dropped when the name has other words (`N7JMV-EVERETT-RP` → `Everett`, since one operator often runs many repeaters), words run together in CamelCase, and place words abbreviated (*Hills* → *Hls*, *Summit* → *Sum*, *Mountain* → *Mtn*). A name still over `path_names_max_name_length` loses compass words (*North* → *N*), then the word *Mesh*, then interior vowels, then trailing letters, keeping numbers to the end because they usually tell neighboring repeaters apart. A name with nothing left (all emoji) falls back to its hex prefix.
+- **The whole value fits `path_names_max_bytes`.** Names shrink together down to 4 characters; past that, hops after the first are replaced by `…`, keeping the last hops (nearest the bot).
+- The lookup costs one database query per hop, and only runs when the template contains `{path_names}`.
+
+| Setting (`[Path_Command]`) | Default | Meaning |
+|---|---|---|
+| `path_names_max_name_length` | `10` | Longest single name, in characters. |
+| `path_names_max_bytes` | `60` | Byte budget for the whole value; `0` = no limit. The default separator is 3 bytes in UTF-8. |
+| `path_names_separator` | `▸` | Text between hops. Quote it to keep spaces: `" > "`. |
+| `path_names_min_confidence` | `0.9` | Confidence a colliding prefix needs before its name is shown. |
+
 ## Reply prefix and repeater name gating
 
 These options only affect the **path** command’s reply text and whether repeater names are resolved from the database.

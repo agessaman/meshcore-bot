@@ -2898,6 +2898,18 @@ class PacketCaptureService(BaseServicePlugin):
             except Exception as exc:
                 self.logger.debug(f"Error fetching radio stats: {exc}")
 
+            try:
+                packets_result = await self.meshcore.commands.get_stats_packets()
+                if packets_result and packets_result.type == EventType.STATS_PACKETS and packets_result.payload:
+                    stats_payload.update(packets_result.payload)
+                    # Aliases meshcore-packet-capture publishes
+                    stats_payload["packets_sent"] = packets_result.payload["sent"]
+                    stats_payload["packets_received"] = packets_result.payload["recv"]
+                elif packets_result and packets_result.type == EventType.ERROR:
+                    self.logger.debug(f"Packet stats unavailable: {packets_result.payload}")
+            except Exception as exc:
+                self.logger.debug(f"Error fetching packet stats: {exc}")
+
             if stats_payload:
                 self.latest_stats = stats_payload
                 self.last_stats_fetch = time.time()

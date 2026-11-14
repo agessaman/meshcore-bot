@@ -200,13 +200,6 @@ class DiscordBridgeService(ChannelBridgeBase):
                 self.message_queues[webhook_url] = deque()
                 self.send_times[webhook_url] = deque()
 
-    def _targets_for(self, channel_name: str) -> Optional[list[str]]:
-        # Check if this channel is configured for bridging (case-insensitive)
-        for config_channel, urls in self.channel_webhooks.items():
-            if config_channel.lower() == channel_name.lower():
-                return urls
-        return None
-
     def _prepare_message_text(self, message_text: str) -> str:
         # Clean up MeshCore @ mentions: @[username] → **@username**
         message_text = self._format_mentions(message_text)

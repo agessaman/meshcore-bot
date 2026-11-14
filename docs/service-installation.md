@@ -224,7 +224,10 @@ sudo systemctl restart meshcore-bot
 - Automatic restart on failure
 - Restart delay of 10 seconds
 - Maximum 3 restart attempts per minute
+- Waits for a running instance instead of failing its restart budget
 - Logs to systemd journal
+
+The packaged unit starts the bot with `--wait-for-lock`. If another copy is already running against the same database (for example a manual run during maintenance), the service waits for it to exit and then takes over, rather than exiting and spending its start limit. Stop the manual copy when you are done so the service can resume.
 
 ### Monitoring
 - Systemd journal integration

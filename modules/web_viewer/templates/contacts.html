@@ -2846,7 +2846,7 @@ class ModernContactsManager {
 
 function exportData(dataset, fmt) {
     const since = document.getElementById('export-since').value || '30d';
-    const url = `/api/export/${dataset}?format=${fmt}&since=${since}`;
+    const url = window.appUrl(`/api/export/${dataset}?format=${fmt}&since=${since}`);
     const a = document.createElement('a');
     a.href = url;
     a.download = '';

@@ -528,6 +528,20 @@ class TestWebViewerIntegrationValidation:
         assert "0.0.0.0" in msg
         assert "web_viewer_password" in msg
 
+    def test_zero_host_without_password_does_not_log_when_ha_ingress(self):
+        from modules.web_viewer.integration import WebViewerIntegration
+        bot = _make_bot()
+        bot.config.set("Web_Viewer", "enabled", "true")
+        bot.config.set("Web_Viewer", "host", "0.0.0.0")
+        bot.config.set("Web_Viewer", "web_viewer_password", "")
+        bot.config.set("Web_Viewer", "ha_ingress", "true")
+        with patch.object(WebViewerIntegration, "start_viewer"):
+            with patch("modules.web_viewer.integration.BotIntegration._init_http_session"), \
+                 patch("modules.web_viewer.integration.BotIntegration._init_packet_stream_table"), \
+                 patch("modules.web_viewer.integration.BotIntegration._start_drain_thread"):
+                WebViewerIntegration(bot)
+        bot.logger.error.assert_not_called()
+
     def test_zero_host_without_password_does_not_log_when_disabled(self):
         from modules.web_viewer.integration import WebViewerIntegration
         bot = _make_bot()
@@ -611,6 +625,30 @@ class TestWebViewerIntegrationValidation:
 
         thread.start.assert_called_once()
         assert wvi.running is True
+
+    def test_start_viewer_twice_is_idempotent_and_quiet(self, tmp_path):
+        from modules.web_viewer.integration import WebViewerIntegration
+
+        bot = _make_bot()
+        bot.config_file = str(tmp_path / "config.ini")
+        Path(bot.config_file).write_text("[Bot]\n", encoding="utf-8")
+        bot.config.set("Web_Viewer", "db_path", "viewer.db")
+        bot.db_manager.db_path = str(tmp_path / "bot.db")
+
+        with patch("modules.web_viewer.integration.BotIntegration._init_http_session"), \
+             patch("modules.web_viewer.integration.BotIntegration._init_packet_stream_table"), \
+             patch("modules.web_viewer.integration.BotIntegration._start_drain_thread"):
+            wvi = WebViewerIntegration(bot)
+
+        with patch("modules.web_viewer.integration.threading.Thread") as thread_cls:
+            wvi.start_viewer()
+            wvi.start_viewer()
+
+        thread_cls.return_value.start.assert_called_once()
+        warnings = [str(call.args[0]) for call in bot.logger.warning.call_args_list]
+        assert not any("already running" in message for message in warnings)
+        debug = [str(call.args[0]) for call in bot.logger.debug.call_args_list]
+        assert any("already running" in message for message in debug)
 
 
 class TestNormalizedWebViewerPassword:

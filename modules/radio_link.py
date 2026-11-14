@@ -10,6 +10,7 @@ import contextlib
 import contextvars
 import functools
 import time
+from collections.abc import AsyncIterator
 from typing import Any
 
 import meshcore
@@ -73,8 +74,10 @@ class RadioLinkMixin:
     _radio_cmd_lock: Any
     _radio_cmd_min_interval: Any
     _radio_fail_count: Any
+    _manual_radio_disconnect: Any
     _radio_relinks_in_progress: Any
     _radio_zombie_detected: Any
+    _relink_lock_owner: Any
     _shutdown_event: Any
     _tcp_probe_fail_count: Any
     _transport_reconnect_in_progress: Any
@@ -117,8 +120,20 @@ class RadioLinkMixin:
         delay = self.config.getfloat('Connection', 'reconnect_delay_seconds', fallback=10.0)
         max_delay = self.config.getfloat('Connection', 'reconnect_max_delay_seconds', fallback=60.0)
 
+        async with self._relink_guard():
+            return await self._reconnect_until_shutdown(max_retries, delay, max_delay)
+
+    async def _reconnect_until_shutdown(
+        self, max_retries: int, delay: float, max_delay: float
+    ) -> bool:
+        """Retry connect() until it works, retries run out, or shutdown wins.
+
+        Caller holds the relink lock, so this does not take it again.
+        """
         attempt = 0
         while not self._shutdown_event.is_set():
+            if self._manual_radio_disconnect:
+                return False
             if max_retries > 0 and attempt >= max_retries:
                 self.logger.error(f"Reconnect failed after {max_retries} attempt(s), giving up")
                 return False
@@ -149,6 +164,8 @@ class RadioLinkMixin:
             # Interruptible sleep so shutdown isn't delayed
             elapsed = 0.0
             while elapsed < delay and not self._shutdown_event.is_set():
+                if self._manual_radio_disconnect:
+                    return False
                 await asyncio.sleep(1.0)
                 elapsed += 1.0
 
@@ -192,28 +209,106 @@ class RadioLinkMixin:
             return
         if not getattr(self, 'connected', False):
             return
+        # reboot_radio/reconnect_radio already own the teardown. A transport
+        # reconnect started from their DISCONNECTED event would connect again
+        # on top of them and subscribe to the new link twice.
+        if self._radio_relinks_in_progress or self._manual_radio_disconnect:
+            return
 
+        scheduled_for = self.meshcore
         self._transport_reconnect_in_progress = True
         self.logger.warning(
             "Transport disconnect detected (%s), scheduling reconnect...",
             reason,
         )
         self._update_radio_connected_metadata(False)
-        asyncio.create_task(self._run_transport_reconnect())
+        asyncio.create_task(self._run_transport_reconnect(scheduled_for))
 
-    async def _run_transport_reconnect(self) -> None:
-        """Run reconnect with lock; clear in-progress flag when done."""
+    async def _run_transport_reconnect(self, scheduled_for: Any = None) -> None:
+        """Run reconnect with the relink lock; clear in-progress flag when done.
+
+        ``scheduled_for`` is the MeshCore instance that dropped. If a manual
+        relink has since installed a different, connected instance, this
+        returns without tearing that link down.
+        """
         try:
-            if self._transport_reconnect_lock is None:
-                self._transport_reconnect_lock = asyncio.Lock()
-            async with self._transport_reconnect_lock:
-                if self._shutdown_event.is_set():
+            async with self._relink_guard():
+                if self._shutdown_event.is_set() or self._manual_radio_disconnect:
+                    return
+                if self._replaced_since_scheduled(scheduled_for):
+                    self.logger.info(
+                        "Skipping transport reconnect; the link it was scheduled for "
+                        "has been replaced"
+                    )
                     return
                 if not await self._attempt_reconnect():
+                    if self._manual_radio_disconnect or self._shutdown_event.is_set():
+                        return
                     self.logger.error("Could not reconnect, shutting down")
                     self.connected = False
         finally:
             self._transport_reconnect_in_progress = False
+
+    def _replaced_since_scheduled(self, scheduled_for: Any) -> bool:
+        """True when ``self.meshcore`` is a newer connection than ``scheduled_for``."""
+        if scheduled_for is None:
+            return False
+        current = self.meshcore
+        if current is None or current is scheduled_for:
+            return False
+        return bool(getattr(current, "is_connected", False))
+
+    def _get_relink_lock(self) -> asyncio.Lock:
+        """The lock that serializes every radio teardown and connect.
+
+        Transport reconnects and the web viewer's reboot, reconnect, and
+        disconnect all use it. Created lazily so it binds to the running loop.
+        Do not hold the radio command lock across this one: a relink already
+        holds it while a command send takes the radio command lock.
+        """
+        if self._transport_reconnect_lock is None:
+            self._transport_reconnect_lock = asyncio.Lock()
+        return self._transport_reconnect_lock
+
+    @contextlib.asynccontextmanager
+    async def _relink_guard(self) -> AsyncIterator[None]:
+        """Hold the relink lock for this task. The same task may enter again.
+
+        ``connect()`` runs from ``start()`` and from relinks that already hold
+        the lock. Ownership is the current task, not a context flag: asyncio
+        copies context into child tasks, and a flag would let a reconnect
+        spawned during ``connect()`` skip the lock and run beside it.
+
+        ``stop()`` must not take this lock. A connect blocked in the transport
+        holds it until that call returns, and shutdown has to finish anyway.
+        """
+        current = asyncio.current_task()
+        if current is not None and self._relink_lock_owner is current:
+            yield
+            return
+        async with self._get_relink_lock():
+            self._relink_lock_owner = current
+            try:
+                yield
+            finally:
+                self._relink_lock_owner = None
+
+    def _connect_should_abort(self, new_meshcore: Any) -> bool:
+        """True when ``connect()`` must not keep setting up ``new_meshcore``.
+
+        After an await, ``self.meshcore`` may belong to a newer relink. Finishing
+        setup then subscribes on that other instance. Shutdown is the other
+        reason to stop: ``stop()`` does not wait for this lock.
+        """
+        if self._shutdown_event.is_set():
+            self.logger.debug("Aborting connection setup; shutdown in progress")
+            return True
+        if self.meshcore is new_meshcore:
+            return False
+        self.logger.warning(
+            "Aborting connection setup; another link replaced this MeshCore instance"
+        )
+        return True
 
     def _get_radio_cmd_lock(self) -> asyncio.Lock:
         """Return the lock that serializes host->radio commands.
@@ -291,6 +386,16 @@ class RadioLinkMixin:
         Returns:
             bool: True if connection was successful, False otherwise.
         """
+        async with self._relink_guard():
+            return await self._connect_held()
+
+    async def _connect_held(self) -> bool:
+        """Open one MeshCore instance and finish setup only on that instance.
+
+        Caller holds the relink lock. After each await, give up if another
+        relink has replaced ``self.meshcore`` so this flow cannot subscribe
+        on the instance that replaced it.
+        """
         new_meshcore = None
         connection_ready = False
         try:
@@ -341,7 +446,7 @@ class RadioLinkMixin:
             # init burst — contacts, channel fetch, clock, name — runs through it).
             self._install_command_serializer()
 
-            if self.meshcore and self.meshcore.is_connected:
+            if new_meshcore is not None and new_meshcore.is_connected:
                 self.connected = True
                 self._update_radio_connected_metadata(True)
                 # Track connection time to skip processing old cached messages
@@ -355,27 +460,39 @@ class RadioLinkMixin:
                     self.db_manager.set_metadata('bot.radio_zombie_since', '')
                 except Exception:
                     pass
-                self.logger.info(f"Connected to: {self.meshcore.self_info} at {self.connection_time}")
+                self.logger.info(f"Connected to: {new_meshcore.self_info} at {self.connection_time}")
 
                 # Wait for contacts to load
                 await self.wait_for_contacts()
+                if self._connect_should_abort(new_meshcore):
+                    return False
 
                 # A connected transport without channel data cannot route replies.
                 if not await self.channel_manager.fetch_channels():
                     raise ConnectionError(
                         "MeshCore node returned no channels after retries"
                     )
+                if self._connect_should_abort(new_meshcore):
+                    return False
 
                 # Setup message event handlers
                 await self.setup_message_handlers()
+                if self._connect_should_abort(new_meshcore):
+                    return False
 
                 # Set radio clock if needed
                 await self.set_radio_clock()
+                if self._connect_should_abort(new_meshcore):
+                    return False
 
                 # Set device name to match config if needed
                 await self.set_device_name()
+                if self._connect_should_abort(new_meshcore):
+                    return False
 
                 await self._notify_services_transport_reconnected()
+                if self._connect_should_abort(new_meshcore):
+                    return False
 
                 connection_ready = True
                 return True
@@ -388,8 +505,16 @@ class RadioLinkMixin:
             return False
         finally:
             if not connection_ready:
-                self.connected = False
-                self._update_radio_connected_metadata(False)
+                # A newer relink owns self.meshcore. Disconnect only the instance
+                # this attempt opened, and leave the new link's connected flag.
+                replaced = (
+                    new_meshcore is not None
+                    and self.meshcore is not None
+                    and self.meshcore is not new_meshcore
+                )
+                if not replaced:
+                    self.connected = False
+                    self._update_radio_connected_metadata(False)
                 if new_meshcore is not None:
                     try:
                         await asyncio.wait_for(new_meshcore.disconnect(), timeout=5.0)
@@ -437,45 +562,62 @@ class RadioLinkMixin:
 
         Called by the scheduler via the operation queue.
         """
-        import asyncio
+        # Set before taking the lock so a reconnect retry loop releases it
+        # instead of spinning until its retries run out. Left set after
+        # success: a transport reconnect already waiting on this lock still
+        # sees it and does not connect again. reconnect_radio() and
+        # reboot_radio() clear it once they hold the lock, which is the user
+        # asking to be connected again. Until then a later drop is not
+        # reconnected automatically.
+        self._manual_radio_disconnect = True
         try:
-            if self.meshcore:
-                try:
-                    await asyncio.wait_for(self.meshcore.disconnect(), timeout=10)
-                except asyncio.TimeoutError:
-                    self.logger.warning("Radio disconnect timed out after 10s — forcing disconnected state")
-            self.connected = False
-            self._update_radio_connected_metadata(False)
-            self.logger.info("Radio disconnected via web viewer request")
-            return True
+            async with self._relink_guard():
+                if self.meshcore:
+                    try:
+                        await asyncio.wait_for(self.meshcore.disconnect(), timeout=10)
+                    except asyncio.TimeoutError:
+                        self.logger.warning(
+                            "Radio disconnect timed out after 10s — forcing disconnected state"
+                        )
+                self.connected = False
+                self._update_radio_connected_metadata(False)
+                self.logger.info("Radio disconnected via web viewer request")
+                return True
         except Exception as e:
+            self._manual_radio_disconnect = False
             self.logger.error(f"Error disconnecting radio: {e}")
             return False
 
     async def reboot_radio(self) -> bool:
         """Send firmware reboot command, disconnect, wait for reboot, then reconnect."""
-        import asyncio
-        # Hold the loops open (see keep_running) while connected is False
+        # Hold the loops open (see keep_running) while connected is False.
+        # Increment before the lock so a DISCONNECTED event during the wait
+        # does not schedule a second reconnect.
         self._radio_relinks_in_progress += 1
         try:
-            if self.meshcore and self.meshcore.is_connected:
-                self.logger.info("Sending firmware reboot command")
+            async with self._relink_guard():
+                # Clear only while this task holds the lock. A transport
+                # reconnect queued before Disconnect and still waiting then
+                # sees the flag and does not slip through.
+                self._manual_radio_disconnect = False
+                if self.meshcore and self.meshcore.is_connected:
+                    self.logger.info("Sending firmware reboot command")
+                    try:
+                        await asyncio.wait_for(self.meshcore.commands.reboot(), timeout=5)
+                    except (asyncio.TimeoutError, Exception) as e:
+                        # Reboot command may drop the connection before a reply arrives
+                        self.logger.debug(f"Reboot command response: {e} (expected on firmware reboot)")
+                # Disconnect cleanly (firmware may have already dropped the link)
                 try:
-                    await asyncio.wait_for(self.meshcore.commands.reboot(), timeout=5)
-                except (asyncio.TimeoutError, Exception) as e:
-                    # Reboot command may drop the connection before a reply arrives
-                    self.logger.debug(f"Reboot command response: {e} (expected on firmware reboot)")
-            # Disconnect cleanly (firmware may have already dropped the link)
-            try:
-                if self.meshcore:
-                    await asyncio.wait_for(self.meshcore.disconnect(), timeout=5)
-            except (asyncio.TimeoutError, Exception):
-                pass
-            self.connected = False
-            self._update_radio_connected_metadata(False)
-            self.logger.info("Waiting for radio to reboot (8s)…")
-            await asyncio.sleep(8)
-            return await self.connect()
+                    if self.meshcore:
+                        await asyncio.wait_for(self.meshcore.disconnect(), timeout=5)
+                except (asyncio.TimeoutError, Exception):
+                    pass
+                self.connected = False
+                self._update_radio_connected_metadata(False)
+                self.logger.info("Waiting for radio to reboot (8s)…")
+                await asyncio.sleep(8)
+                return await self.connect()
         except Exception as e:
             self.logger.error(f"Error rebooting radio: {e}")
             return False
@@ -484,18 +626,24 @@ class RadioLinkMixin:
 
     async def reconnect_radio(self) -> bool:
         """Disconnect then reconnect. Called by scheduler for connect ops."""
-        import asyncio
-        # Hold the loops open (see keep_running) while connected is False
+        # Hold the loops open (see keep_running) while connected is False.
+        # Increment before the lock so a DISCONNECTED event during teardown
+        # does not schedule a second reconnect.
         self._radio_relinks_in_progress += 1
         try:
-            if self.meshcore:
-                try:
-                    await asyncio.wait_for(self.meshcore.disconnect(), timeout=10)
-                except asyncio.TimeoutError:
-                    self.logger.warning("Disconnect timed out during reconnect — proceeding")
-            self.connected = False
-            self._update_radio_connected_metadata(False)
-            return await self.connect()
+            async with self._relink_guard():
+                # Clear only while this task holds the lock. A transport
+                # reconnect queued before Disconnect and still waiting then
+                # sees the flag and does not slip through.
+                self._manual_radio_disconnect = False
+                if self.meshcore:
+                    try:
+                        await asyncio.wait_for(self.meshcore.disconnect(), timeout=10)
+                    except asyncio.TimeoutError:
+                        self.logger.warning("Disconnect timed out during reconnect — proceeding")
+                self.connected = False
+                self._update_radio_connected_metadata(False)
+                return await self.connect()
         except Exception as e:
             self.logger.error(f"Error reconnecting radio: {e}")
             return False

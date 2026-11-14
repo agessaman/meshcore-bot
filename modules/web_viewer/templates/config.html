@@ -197,10 +197,10 @@
                         Admin Tools
                     </p>
                     <nav class="nav flex-column" aria-labelledby="config-nav-admin">
-                        <a class="nav-link px-2 py-1" href="/api-explorer">
+                        <a class="nav-link px-2 py-1" href="{{ url_for('api_explorer') }}">
                             <i class="fas fa-plug me-2"></i>API
                         </a>
-                        <a class="nav-link px-2 py-1" href="/admin/config">
+                        <a class="nav-link px-2 py-1" href="{{ url_for('admin_config') }}">
                             <i class="fas fa-file-code me-2"></i>Raw Config
                         </a>
                     </nav>
@@ -405,6 +405,7 @@ class ConfigManager {
             recipients:     document.getElementById('recipients'),
         };
         this.nightlyToggle   = document.getElementById('nightly-enabled-toggle');
+        this.allowLocalSmtp  = document.getElementById('allow-local-smtp');
         this.saveBtn         = document.getElementById('save-notifications-btn');
         this.testBtn         = document.getElementById('test-email-btn');
         this.saveStatus      = document.getElementById('save-status');
@@ -438,6 +439,7 @@ class ConfigManager {
             if (data.recipients)    this.fields.recipients.value    = data.recipients;
 
             this.nightlyToggle.checked = data.nightly_enabled === 'true';
+            this.allowLocalSmtp.checked = String(data.allow_local_smtp || '').toLowerCase() === 'true';
         } catch (err) {
             this.showStatus('Failed to load settings: ' + err.message, 'danger');
         }
@@ -477,6 +479,7 @@ class ConfigManager {
     buildPayload() {
         const payload = {
             nightly_enabled: this.nightlyToggle.checked ? 'true' : 'false',
+            allow_local_smtp: this.allowLocalSmtp.checked ? 'true' : 'false',
         };
         for (const [key, el] of Object.entries(this.fields)) {
             // Only send password if the user actually typed something

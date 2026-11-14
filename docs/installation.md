@@ -5,6 +5,7 @@ Choose how to run the bot:
 | Method | Best for |
 |--------|----------|
 | **[Docker](docker.md)** | Containers, consistent environments, easy updates |
+| **[Home Assistant](home-assistant.md)** | Home Assistant OS and Supervised |
 | **[Service (systemd)](service-installation.md)** | Linux servers, run at boot, no containers |
 | **Debian package** | `make deb` in the repo — see [README](https://github.com/agessaman/meshcore-bot/blob/main/README.md) |
 | **[pipx](#pipx)** | A single-user install with no repo checkout and no venv management |
@@ -21,7 +22,7 @@ isolated environment, which sidesteps PEP 668 (`externally-managed-environment`)
 Debian 12+, Ubuntu 23.04+, Fedora and Arch without you managing a virtualenv:
 
 ```bash
-pipx install "git+https://github.com/agessaman/meshcore-bot@v1.1.0"
+pipx install "git+https://github.com/agessaman/meshcore-bot@v1.2.0"
 ```
 
 Upgrade to a newer tag with `pipx install --force "git+https://github.com/agessaman/meshcore-bot@vX.Y.Z"`.

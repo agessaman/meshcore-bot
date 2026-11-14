@@ -22,11 +22,14 @@ TZ = datetime.timezone.utc
 
 @pytest.mark.unit
 class TestDescribeSchedule:
-    @pytest.mark.parametrize("cron", ["0 8 * * *", "0 6,12,18 * * *", "*/30 * * * *", "@daily"])
+    @pytest.mark.parametrize("cron", ["0 8 * * *", "0 6,12,18 * * *", "*/30 * * * *", "@daily",
+                                      "0 19 last-fri * *", "0 19 4th-tue * *",
+                                      "0 19 1st-tue,3rd-tue * *", "0 19 last_fri * *"])
     def test_accepts_valid_schedules(self, cron):
         assert describe_schedule(cron, TZ)["valid"] is True
 
-    @pytest.mark.parametrize("bad", ["", "   ", "nonsense", "0 8 * *", "99 99 * * *"])
+    @pytest.mark.parametrize("bad", ["", "   ", "nonsense", "0 8 * *", "99 99 * * *",
+                                     "0 19 * * last-fri", "0 19 6th-tue * *"])
     def test_rejects_invalid_schedules(self, bad):
         result = describe_schedule(bad, TZ)
         assert result["valid"] is False
@@ -142,3 +145,111 @@ class TestReadEntries:
 
     def test_missing_file_is_empty_not_an_error(self, tmp_path):
         assert read_entries(str(tmp_path / "nope.ini"), TZ) == []
+
+
+@pytest.mark.unit
+class TestDateBounds:
+    """start=/end= bounds round-trip through the value, so a UI edit cannot drop them."""
+
+    @pytest.mark.parametrize("channel, message, scope, start, end, expected", [
+        ("Public", "Hi", None, None, None, "Public:Hi"),
+        ("Public", "Hi", None, "2027-01-01", None, "start=2027-01-01 Public:Hi"),
+        ("Public", "Hi", None, None, "2027-03-31", "end=2027-03-31 Public:Hi"),
+        ("Public", "Hi", "#sea", "2027-01-01", "2027-03-31",
+         "start=2027-01-01 end=2027-03-31 Public:#sea:Hi"),
+    ])
+    def test_compose_value_places_bounds_ahead_of_the_channel(
+        self, channel, message, scope, start, end, expected
+    ):
+        assert compose_value(channel, message, scope, start, end) == expected
+
+    @pytest.mark.parametrize("raw", [
+        "Public:Hi",
+        "start=2027-01-01 Public:Hi",
+        "end=2027-03-31 Public:#sea:Hi",
+        "start=2027-01-01 end=2027-03-31 Public:#sea:Hi",
+    ])
+    def test_read_then_recompose_is_lossless(self, tmp_path, raw):
+        # The web UI edit cycle: read an entry, hand it back to compose_value unchanged.
+        config = tmp_path / "config.ini"
+        config.write_text(f"[Scheduled_Messages]\n0 19 * * * = {raw}\n", encoding="utf-8")
+        entry = read_entries(str(config), TZ)[0]
+        assert compose_value(
+            entry["channel"], entry["message"], entry["scope"],
+            entry["start"], entry["end"],
+        ) == raw
+
+    def test_bounded_schedule_previews_within_its_window(self):
+        result = describe_schedule("0 19 * * *", TZ, start="2027-03-01", end="2027-03-03")
+        assert result["valid"] is True
+        assert [r[:10] for r in result["next_runs"]] == [
+            "2027-03-01", "2027-03-02", "2027-03-03",
+        ]
+
+    def test_exhausted_schedule_is_flagged_finished_not_invalid(self):
+        result = describe_schedule("0 19 * * *", TZ, end="2020-01-01")
+        assert result["valid"] is True       # well-formed, just out of runs
+        assert result["finished"] is True
+        assert result["next_runs"] == []
+        assert "no runs left" in result["warning"]
+
+    @pytest.mark.parametrize("start, end, expected", [
+        ("2027-13-45", None, "Start date must be an ISO date (YYYY-MM-DD)"),
+        (None, "nope", "End date must be an ISO date (YYYY-MM-DD)"),
+        ("2027-03-01", "2027-01-01", "End date is before the start date"),
+        ("2027-01-01", "2027-03-01", None),
+        (None, None, None),
+    ])
+    def test_validate_entry_checks_the_dates(self, start, end, expected):
+        assert validate_entry("Public", "Hi", None, start, end) == expected
+
+
+
+    def test_preview_rejects_an_inverted_window_like_saving_does(self):
+        result = describe_schedule("@daily", TZ, start="2027-03-31", end="2027-01-01")
+        assert result["valid"] is False
+        assert result["error"] == "End date is before the start date"
+
+    def test_channel_beginning_with_start_round_trips(self, tmp_path):
+        assert validate_entry("start=ops", "Hi", None) is None
+        config = tmp_path / "config.ini"
+        config.write_text(
+            f"[Scheduled_Messages]\n0 19 * * * = {compose_value('start=ops', 'Hi', None)}\n",
+            encoding="utf-8",
+        )
+        entry = read_entries(str(config), TZ)[0]
+        assert (entry["channel"], entry["message"], entry["start"]) == ("start=ops", "Hi", None)
+
+    def test_channel_that_reads_as_a_bound_is_refused(self):
+        assert validate_entry("start=2027-01-01 Public", "Hi", None) == (
+            "The channel name cannot start with start=, end= or week="
+        )
+
+    def test_unscoped_message_that_reads_as_a_scope_is_refused(self):
+        # "Public:#net: tonight" would read back as scope #net, message "tonight".
+        error = validate_entry("Public", "#net: tonight", None)
+        assert error is not None and "read as a scope" in error
+        assert validate_entry("Public", "#net: tonight", "#west") is None
+
+    def test_week_option_round_trips_and_previews(self, tmp_path):
+        assert compose_value("Public", "Net", None, None, None, "*/2") == "week=*/2 Public:Net"
+        config = tmp_path / "config.ini"
+        config.write_text("[Scheduled_Messages]\n0 19 * * tue = week=*/2 Public:Net\n", encoding="utf-8")
+        entry = read_entries(str(config), TZ)[0]
+        assert entry["week"] == "*/2" and entry["valid"] is True
+        assert validate_entry("Public", "Net", None, week="54") is not None
+
+    def test_invalid_schedule_error_says_why(self):
+        result = describe_schedule("0 25 * * *", TZ)
+        assert result["valid"] is False
+        assert "25" in result["error"]
+
+    def test_channel_that_reads_as_a_week_option_is_refused(self):
+        assert validate_entry("week=2 Public", "Hi", None) == (
+            "The channel name cannot start with start=, end= or week="
+        )
+
+    def test_a_schedule_that_never_fires_is_invalid(self):
+        result = describe_schedule("0 0 30 feb *", TZ)
+        assert result["valid"] is False
+        assert "never fires" in result["error"]

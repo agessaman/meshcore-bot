@@ -134,6 +134,7 @@ mctomqtt.py
 bot_cli.py
 bot_start_time.txt
 *.log.*
+*.bak*
 
 # Test files and development artifacts (root level)
 test_*.py
@@ -189,3 +190,8 @@ local/service_plugins/*
 # Local debugging scratch (captured configs and logs — may contain real settings)
 _debug/
 aqi_http_cache.sqlite
+.subagents/memory/
+
+# Single-instance lock beside the bot database
+*.db.lock
+*.db.heartbeat

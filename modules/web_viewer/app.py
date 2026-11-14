@@ -52,7 +52,7 @@ from flask_socketio import (  # noqa: F401  kept for modules.web_viewer.app.disc
     emit,
 )
 
-from modules import flood_scope, region_warning
+from modules import flood_scope, region_warning, repeater_watch
 from modules.database_restore import (
     DEFAULT_MAX_RESTORE_BYTES,
     DatabaseRestoreError,
@@ -62,8 +62,12 @@ from modules.db_retention import (  # noqa: F401  kept for modules.web_viewer.ap
     delete_timestamp_rows_in_chunks,
     retention_delete_settings,
 )
-from modules.ini_writer import IniValueError, update_ini_values
+from modules.ini_writer import (
+    IniValueError,
+    update_ini_values,  # noqa: F401  kept for modules.web_viewer.app.update_ini_values
+)
 from modules.maintenance import MaintenanceRunner
+from modules.managed_keys import ManagedKeyError
 from modules.models import CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD, channel_body_limit
 from modules.scheduled_message_admin import (
     SECTION as SCHEDULED_MESSAGES_SECTION,
@@ -97,6 +101,11 @@ from modules.web_viewer.dashboard_stats import (
 # RFC 8594 Sunset date advertised on the deprecated /api/stats endpoint.
 STATS_ENDPOINT_SUNSET = "Fri, 01 Jan 2027 00:00:00 GMT"
 
+
+def _managed_key_response(exc: ManagedKeyError):
+    """400 JSON for a save that would change a Home Assistant managed key."""
+    return jsonify({'success': False, 'error': str(exc)}), 400
+
 # The bot rewrites system_health every 30 s; four missed beats means it has stopped.
 BOT_HEARTBEAT_STALE_S = 120
 
@@ -109,15 +118,28 @@ PACKET_LOOKUP_AFTER_S = 30
 PACKET_LOOKUP_LIMIT = 50
 
 
-def _validate_dynamic_key(key: str) -> "str | None":
+def _strip_dynamic_prefix(key: str, prefix: str) -> str:
+    """Drop a key_prefix the user typed themselves (``bridge.#test`` -> ``#test``).
+
+    The editor shows keys without their prefix and adds it back on save, so a
+    typed prefix would otherwise be written twice (``bridge.bridge.#test``).
+    """
+    if prefix and key.lower().startswith(prefix.lower()):
+        return key[len(prefix):].strip()
+    return key
+
+
+def _validate_dynamic_key(key: str, prefix: str = "") -> "str | None":
     """Validate a dynamic-section row key. Returns an error message or None.
 
     Keys become INI option names, so they must not contain the separators or
-    comment markers that would corrupt the file on the next read.
+    comment markers that would corrupt the file on the next read. Only the
+    full option name (prefix + key) is checked for a leading # or ;, so
+    ``#test`` is fine under the ``bridge.`` prefix.
     """
     if any(ch in key for ch in ('=', ':', '\n', '\r', '[', ']')):
         return f'Invalid key "{key}": cannot contain = : [ ] or newlines'
-    if key[:1] in ('#', ';'):
+    if f"{prefix}{key}"[:1] in ('#', ';'):
         return f'Invalid key "{key}": cannot start with # or ;'
     return None
 
@@ -188,6 +210,12 @@ from modules.web_viewer.feeds import (  # noqa: F401  _read_limited_requests_res
     FeedSubscriptionsMixin,
     _read_limited_requests_response,
     _validate_feed_interval,
+)
+from modules.web_viewer.ha_ingress import (
+    HaIngressMiddleware,
+    ha_ingress_enabled,
+    ingress_prefix,
+    socketio_cors_allowed,
 )
 from modules.web_viewer.integration import normalized_web_viewer_password
 from modules.web_viewer.live_stream import (  # noqa: F401  _ANSI_ESCAPE_RE re-exported
@@ -345,8 +373,14 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
 
         # Optional password authentication for web viewer (BUG-001)
         self.web_viewer_password = normalized_web_viewer_password(self.config)
+        self.ha_ingress = ha_ingress_enabled(self.config)
         if self.web_viewer_password:
             self.logger.info("Web viewer authentication enabled")
+        elif self.ha_ingress:
+            self.logger.info(
+                "Home Assistant ingress enabled; direct access is disabled until "
+                "web_viewer_password is set in [Web_Viewer]."
+            )
         else:
             self.logger.warning(
                 "Web viewer has NO authentication. Set web_viewer_password in [Web_Viewer] config "
@@ -363,13 +397,30 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
 
         self._init_dashboard_service()
 
-        # Configure CORS for SocketIO — default to same-origin (no cross-origin)
+        # Configure CORS for SocketIO. Unset means same-origin (engineio's default).
+        # Ingress keeps that policy for every other client and, only on Supervisor
+        # requests, also accepts the browser's public Home Assistant origin.
         cors_raw = self.config.get('Web_Viewer', 'cors_allowed_origins', fallback='').strip()
-        if cors_raw:
-            cors_origins = cors_raw if cors_raw == '*' else [o.strip() for o in cors_raw.split(',') if o.strip()]
+        if cors_raw == '*':
+            cors_origins: str | list[str] | None = '*'
+        elif cors_raw:
+            cors_origins = [o.strip() for o in cors_raw.split(',') if o.strip()]
+        else:
+            cors_origins = None
+        if self.ha_ingress:
+            self._socketio_kwargs['cors_allowed_origins'] = (
+                lambda origin, environ, configured=cors_origins: socketio_cors_allowed(
+                    configured, origin, environ
+                )
+            )
+        elif cors_origins is not None:
             self._socketio_kwargs['cors_allowed_origins'] = cors_origins
         # Initialize SocketIO with Flask app now that config is loaded
         self.socketio.init_app(self.app, **self._socketio_kwargs)
+        if self.ha_ingress:
+            # Outside Socket.IO's middleware so the prefix applies to HTTP and
+            # to the engine.io handshake alike.
+            self.app.wsgi_app = HaIngressMiddleware(self.app.wsgi_app)
 
         # Version info for footer (tag or branch/commit/date); computed once at startup
         self._version_info = self._get_version_info()
@@ -538,6 +589,31 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
             "date": info.get("date"),
         }
 
+    def is_ha_ingress_request(self) -> bool:
+        """Return True when Home Assistant ingress proxied this request.
+
+        Ingress requests are already authenticated as a Home Assistant user, so
+        they count as admin. The HTTP auth hook, the template admin flag, and
+        Socket.IO connect all call this method. False when ha_ingress is off,
+        even if the header is present.
+        """
+        if not self.ha_ingress:
+            return False
+        return ingress_prefix(request.environ) is not None
+
+    def _auth_enforced(self) -> bool:
+        """Return True when this request must authenticate or be refused.
+
+        With ``ha_ingress`` off, auth applies only when a password is set
+        (legacy open mode). With it on, every non-ingress request must
+        authenticate, even when no password is set; in that case there is no
+        login to succeed, so the request is refused. Ingress is already
+        authenticated by Home Assistant.
+        """
+        if self.is_ha_ingress_request():
+            return False
+        return self.ha_ingress or bool(self.web_viewer_password)
+
     def _setup_template_context(self):
         """Setup template context processor to inject global variables"""
         version_info = self._version_info
@@ -571,8 +647,9 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
                     radio_offline_since = None
                     bot_initializing = False
                 auth_enabled = bool(self.web_viewer_password)
-                # Session bit only — missing password is not an admin session.
-                is_admin = bool(session.get('authenticated_admin'))
+                # Session bit, or an ingress request (already authenticated by
+                # Home Assistant). A missing password is not an admin session.
+                is_admin = bool(session.get('authenticated_admin')) or self.is_ha_ingress_request()
                 return {
                     'greeter_enabled': greeter_enabled,
                     'feed_manager_enabled': feed_manager_enabled,
@@ -738,6 +815,15 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
                 saved.append(field)
         return saved
 
+    def _write_config_ini(self, updates, deletes=None):
+        """Persist config.ini. Refuses keys Home Assistant owns.
+
+        Every config.ini write from this process goes through the settings
+        store, which applies that check once for updates and deletes.
+        """
+        store = get_settings_store(self.config, self.config_path, self.db_manager)
+        return store.write_sections(updates or {}, deletes)
+
     def _api_errors(self, message: str) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         """Route decorator: log ``"<message>: <error>"`` and answer 500 with the error text.
 
@@ -749,6 +835,8 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
             def wrapper(*args: Any, **kwargs: Any) -> Any:
                 try:
                     return view(*args, **kwargs)
+                except ManagedKeyError as exc:
+                    return _managed_key_response(exc)
                 except Exception as e:
                     self.logger.error(f"{message}: {e}")
                     return jsonify({'error': str(e)}), 500
@@ -865,7 +953,7 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
         # Issue #240 public HTML surface. Realtime is admin-only: its live socket
         # is, so an anonymous visit would only ever show an empty page.
         _PUBLIC_PAGE_PATHS = frozenset([
-            '/', '/contacts', '/mesh',
+            '/', '/contacts', '/mesh', '/multibyte-rollout',
         ])
 
         # Anonymous-safe GET APIs: mesh-visible / aggregate data only. No channel
@@ -883,6 +971,9 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
             '/api/mesh/nodes',
             '/api/mesh/edges',
             '/api/mesh/stats',
+            # Multibyte rollout: per-node hash sizes and traffic counts from
+            # adverts and paths, all mesh-visible.
+            '/api/multibyte-rollout',
         ])
 
         # Read-only POST helpers used by public Contacts / Mesh info panels.
@@ -901,10 +992,30 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
             parsed = urlparse(url)
             return not (parsed.scheme or parsed.netloc)
 
+        def _with_script_root(url: str) -> str:
+            """Prefix an in-app path with the ingress mount, once."""
+            root = (request.script_root or '').rstrip('/')
+            if not root:
+                return url
+            if url == root or url.startswith((root + '/', root + '?', root + '#')):
+                return url
+            return root + url
+
         def _normalize_request_path(path: str) -> str:
             if path != '/' and path.endswith('/'):
                 path = path.rstrip('/')
             return path or '/'
+
+        def _direct_access_disabled(path: str) -> Response:
+            """Refuse direct access when ingress is on but no login is possible."""
+            message = (
+                "Direct access is disabled because Home Assistant ingress is "
+                "enabled and no web viewer password is set. Set web_viewer_password "
+                "in the add-on options to allow direct access."
+            )
+            if path.startswith('/api/'):
+                return make_response(jsonify({'error': message}), 403)
+            return Response(message + '\n', status=403, mimetype='text/plain')
 
         @self.app.before_request
         def create_csp_nonce():
@@ -914,10 +1025,18 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
         @self.app.before_request
         def require_auth():
             """Enforce admin auth except for the explicit public allowlist."""
-            if not self.web_viewer_password:
-                return  # Auth disabled — no password configured (legacy open mode)
+            if not self._auth_enforced():
+                return  # Legacy open mode, or Home Assistant already authenticated
             path = _normalize_request_path(request.path)
-            if path in _EXEMPT_PATHS or path.startswith('/static/'):
+            if path.startswith('/static/') or path == '/api/stream_data':
+                return
+            if not self.web_viewer_password:
+                # Ingress is on with no password: there is no login to succeed,
+                # so direct access fails closed instead of falling back to open
+                # mode. The bot's ingest endpoint uses X-Stream-Token, not the
+                # admin session.
+                return _direct_access_disabled(path)
+            if path in _EXEMPT_PATHS:
                 return
             if session.get('authenticated_admin'):
                 return
@@ -978,6 +1097,7 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
                 'plugins_page',
                 'greeter',
                 'region_warnings_page',
+                'repeater_watch_page',
                 'logs',
                 'multibyte_rollout',
                 'mesh',
@@ -1046,7 +1166,7 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
                     next_url = request.args.get('next', '/')
                     if not _is_local_redirect(next_url):
                         next_url = '/'
-                    return redirect(next_url)
+                    return redirect(_with_script_root(next_url))
                 return render_template('login.html', error='Invalid password')
             return render_template('login.html')
 
@@ -1097,7 +1217,7 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
         @self.app.route('/cache')
         def cache():
             """Legacy cache URL redirects to the database config panel."""
-            return redirect('/config#database')
+            return redirect(url_for('config_page', _anchor='database'))
 
 
         @self.app.route('/multibyte-rollout')
@@ -1116,6 +1236,11 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
         def region_warnings_page():
             """Regional flood scope monitoring and warning settings."""
             return render_template('region_warnings.html')
+
+        @self.app.route('/repeater-watch')
+        def repeater_watch_page():
+            """Watched-repeater offline reporting: status and settings."""
+            return render_template('repeater_watch.html')
 
         @self.app.route('/feeds')
         def feeds():
@@ -1271,9 +1396,10 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
                         rkey = (str(row.get('key', '')) or '').strip()
                         rval = row.get('value', '')
                         rval = '' if rval is None else str(rval)
+                        rkey = _strip_dynamic_prefix(rkey, prefix)
                         if not rkey:
                             continue  # skip blank rows
-                        key_err = _validate_dynamic_key(rkey)
+                        key_err = _validate_dynamic_key(rkey, prefix)
                         if key_err:
                             return jsonify({'success': False, 'error': key_err}), 400
                         if rkey.lower() in seen_disp:
@@ -1673,9 +1799,7 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
                         # Persist first: alert_email is free-form client JSON, so
                         # a rejected value must not leave the in-memory config
                         # holding something that was never written to disk.
-                        update_ini_values(self.config_path, {'Connection': ini_updates})
-                        for ini_key, ini_val in ini_updates.items():
-                            self.config.set('Connection', ini_key, ini_val)
+                        self._write_config_ini({'Connection': ini_updates})
                     config_saved = True
                     self.logger.info("Zombie alert settings written to config.ini")
                 except IniValueError as exc:
@@ -1757,11 +1881,8 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
 
                 if write_to_config:
                     try:
-                        if not self.config.has_section('Connection'):
-                            self.config.add_section('Connection')
                         val = 'true' if enabled else 'false'
-                        self.config.set('Connection', 'radio_debug', val)
-                        update_ini_values(self.config_path, {'Connection': {'radio_debug': val}})
+                        self._write_config_ini({'Connection': {'radio_debug': val}})
                         config_saved = True
                         self.logger.info(
                             "radio_debug=%s written to config.ini by web UI", val
@@ -1779,6 +1900,8 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
                     self.logger.info("Radio reconnect queued (op_id=%s) to apply radio_debug=%s", op_id, enabled)
 
                 return jsonify({'success': True, 'config_saved': config_saved, 'op_id': op_id})
+            except ManagedKeyError as exc:
+                return _managed_key_response(exc)
             except Exception as exc:
                 self.logger.exception("Error saving radio debug config")
                 return jsonify({'success': False, 'error': str(exc)}), 500
@@ -1825,14 +1948,14 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
                 config_saved = False
                 if data.get('save_to_config', False):
                     try:
-                        self.config.set('Connection', 'radio_probe_interval_seconds', str(probe_interval))
-                        self.config.set('Connection', 'radio_probe_fail_threshold', str(probe_fail_threshold))
-                        update_ini_values(self.config_path, {'Connection': {
+                        self._write_config_ini({'Connection': {
                             'radio_probe_interval_seconds': str(probe_interval),
                             'radio_probe_fail_threshold': str(probe_fail_threshold),
                         }})
                         config_saved = True
                         self.logger.info("Radio probe settings written to config.ini")
+                    except ManagedKeyError as exc:
+                        return _managed_key_response(exc)
                     except Exception as exc:
                         self.logger.error("Failed to write radio probe settings to config.ini: %s", exc)
 
@@ -1895,11 +2018,11 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
                         # Persist first: alert_email is free-form client input, so
                         # a rejected value must not leave the in-memory config
                         # holding something that was never written to disk.
-                        update_ini_values(self.config_path, {'Connection': offline_ini})
-                        for ini_key, ini_val in offline_ini.items():
-                            self.config.set('Connection', ini_key, ini_val)
+                        self._write_config_ini({'Connection': offline_ini})
                         config_saved = True
                         self.logger.info("Radio offline alert settings written to config.ini")
+                    except ManagedKeyError as exc:
+                        return _managed_key_response(exc)
                     except Exception as exc:
                         self.logger.error("Failed to write radio offline alert settings to config.ini: %s", exc)
 
@@ -3914,6 +4037,196 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
                 'settings': region_warning.settings_to_config_values(settings),
             })
 
+        # ── Repeater watch ([Repeater_Watch], #353) ─────────────────────────
+
+        @self.app.route('/api/repeater-watch')
+        def api_repeater_watch():
+            """Watched repeaters' status, the settings, the picker list and recent events."""
+            try:
+                self.config = self._load_merged_config()
+                settings = repeater_watch.load_settings(self.config)
+                values = repeater_watch.settings_to_config_values(settings)
+                # Secrets stay on the server; the form only learns whether one is set.
+                for secret in ('discord_webhook_urls', 'telegram_bot_token'):
+                    values[secret + '_set'] = 'true' if values.get(secret) else 'false'
+                    values[secret] = ''
+
+                known_channels = []
+                try:
+                    known_channels = [c.get('name') for c in self._get_channels() if c.get('name')]
+                except Exception:
+                    pass
+                companions = []
+                try:
+                    companions = [
+                        r['name'] for r in self.db_manager.execute_query(
+                            "SELECT name FROM complete_contact_tracking WHERE role = 'companion' "
+                            "AND name != '' GROUP BY name ORDER BY MAX(last_heard) DESC LIMIT 200"
+                        )
+                    ]
+                except Exception:
+                    pass
+
+                try:
+                    prefix_bytes = int(self.config.get('Bot', 'prefix_bytes', fallback='1') or 1)
+                except (TypeError, ValueError):
+                    prefix_bytes = 1
+
+                return jsonify({
+                    'settings': values,
+                    'defaults': repeater_watch.settings_to_config_values(
+                        repeater_watch.RepeaterWatchSettings()
+                    ),
+                    'status': repeater_watch.status_view(self.db_manager, self.config),
+                    'candidates': repeater_watch.candidate_repeaters(self.db_manager),
+                    'events': repeater_watch.recent_events(self.db_manager),
+                    'known_channels': known_channels,
+                    'companions': companions,
+                    'prefix_bytes': prefix_bytes,
+                    'limits': {
+                        'dm': repeater_watch.DM_BODY_LIMIT,
+                        'channel': _region_warning_channel_limit(),
+                        'offline_after_hours': list(repeater_watch.OFFLINE_HOURS_RANGE),
+                        'check_interval_minutes': list(repeater_watch.CHECK_MINUTES_RANGE),
+                        'max_watched': repeater_watch.MAX_WATCHED,
+                    },
+                    'template_fields': list(repeater_watch.TEMPLATE_FIELDS),
+                })
+            except Exception:
+                self.logger.exception("Error building repeater watch view")
+                return jsonify({'error': 'Internal error — see server logs'}), 500
+
+        @self.app.route('/api/repeater-watch/settings', methods=['POST'])
+        def api_repeater_watch_save():
+            """Persist [Repeater_Watch] and queue a hot config reload."""
+            data = request.get_json(silent=True) or {}
+            current = repeater_watch.load_settings(self._load_merged_config())
+
+            def _as_bool(key, default):
+                raw = data.get(key, default)
+                if isinstance(raw, bool):
+                    return raw
+                return str(raw).strip().lower() in ('1', 'true', 'yes', 'on')
+
+            def _as_number(key, default, bounds, label):
+                raw = data.get(key, default)
+                try:
+                    value = float(raw)
+                except (TypeError, ValueError):
+                    raise ValueError(f'{label} must be a number')
+                low, high = bounds
+                if not low <= value <= high:
+                    raise ValueError(f'{label} must be between {low:g} and {high:g}')
+                return value
+
+            def _as_list(key):
+                raw = data.get(key)
+                parts = raw if isinstance(raw, list) else str(raw or '').split(',')
+                out = []
+                for part in parts:
+                    text = str(part).strip()
+                    if text and text not in out:
+                        out.append(text)
+                return out
+
+            def _template(key, default, label):
+                text = str(data.get(key) or '').strip() or default
+                if '\n' in text or '\r' in text:
+                    raise ValueError(f'{label} must be a single line')
+                if '%' in text:
+                    raise ValueError(f'{label} cannot contain "%"; write "percent" instead')
+                if len(text) > 200:
+                    raise ValueError(f'{label} must be 200 characters or fewer')
+                problems = repeater_watch.template_errors(text)
+                if problems:
+                    raise ValueError(f'{label}: ' + '; '.join(problems))
+                return text
+
+            try:
+                watch = []
+                for entry in _as_list('watch'):
+                    key = repeater_watch.normalize_key(entry)
+                    if not key:
+                        raise ValueError(f'"{entry[:20]}" is not a repeater public key')
+                    if key not in watch:
+                        watch.append(key)
+                if len(watch) > repeater_watch.MAX_WATCHED:
+                    raise ValueError(f'At most {repeater_watch.MAX_WATCHED} repeaters can be watched')
+
+                scope_name = str(data.get('flood_scope') or '').strip()
+                if scope_name:
+                    try:
+                        scope_name = flood_scope.validate_scope_name(scope_name)
+                    except ValueError as exc:
+                        raise ValueError(f'Flood scope: {exc}')
+
+                discord = _as_list('discord_webhook_urls')
+                if data.get('discord_webhook_urls_keep') and not discord:
+                    discord = list(current.discord_webhook_urls)
+                from modules.bridge_outbound import is_valid_discord_webhook_url
+                for url in discord:
+                    if not is_valid_discord_webhook_url(url):
+                        raise ValueError('Discord webhook URLs must be https://discord.com/api/webhooks/… links')
+                token = str(data.get('telegram_bot_token') or '').strip()
+                if data.get('telegram_bot_token_keep') and not token:
+                    token = current.telegram_bot_token
+
+                settings = repeater_watch.RepeaterWatchSettings(
+                    enabled=_as_bool('enabled', False),
+                    watch=tuple(watch),
+                    watch_starred=_as_bool('watch_starred', False),
+                    offline_after_hours=_as_number(
+                        'offline_after_hours', 24, repeater_watch.OFFLINE_HOURS_RANGE, 'Offline after'
+                    ),
+                    check_interval_minutes=_as_number(
+                        'check_interval_minutes', 15, repeater_watch.CHECK_MINUTES_RANGE, 'Check every'
+                    ),
+                    notify_recovery=_as_bool('notify_recovery', True),
+                    channels=tuple(_as_list('channels')),
+                    dm_recipients=tuple(_as_list('dm_recipients')),
+                    flood_scope=scope_name,
+                    offline_message=_template(
+                        'offline_message', repeater_watch.DEFAULT_OFFLINE_MESSAGE, 'Offline message'
+                    ),
+                    recovered_message=_template(
+                        'recovered_message', repeater_watch.DEFAULT_RECOVERED_MESSAGE, 'Back-online message'
+                    ),
+                    discord_webhook_urls=tuple(discord),
+                    telegram_chat_ids=tuple(_as_list('telegram_chat_ids')),
+                    telegram_bot_token=token,
+                )
+            except ValueError as exc:
+                return jsonify({'success': False, 'error': str(exc)}), 400
+
+            section = repeater_watch.CONFIG_SECTION
+            target_path = (
+                self.local_config_path
+                if section in self._local_sections
+                else self.config_path
+            )
+            try:
+                store = get_settings_store(self.config, target_path, self.db_manager)
+                result = store.write_values(
+                    section, repeater_watch.settings_to_config_values(settings)
+                )
+            except IniValueError as exc:
+                return jsonify({'success': False, 'error': str(exc)}), 400
+            except Exception:
+                self.logger.exception("Error saving repeater watch settings")
+                return jsonify({'success': False, 'error': 'Internal error — see server logs'}), 500
+
+            backup_path = result.get('backup_path', '') if isinstance(result, dict) else ''
+            reload_queued = _queue_config_reload()
+            self.logger.info(
+                "Repeater watch settings saved (enabled=%s, watching=%d)",
+                settings.enabled, len(settings.watch),
+            )
+            return jsonify({
+                'success': True,
+                'backup_path': backup_path,
+                'reload_queued': reload_queued,
+            })
+
         # ── Region scopes ([Channels] flood_scopes) ──────────────────────────
 
         def _region_scope_target_path():
@@ -4147,12 +4460,30 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
                 return jsonify({'error': 'count must be an integer'}), 400
             if not 1 <= count <= 20:
                 return jsonify({'error': 'count must be between 1 and 20'}), 400
-            return jsonify(describe_schedule(
+            start = (data.get('start') or '').strip() or None
+            end = (data.get('end') or '').strip() or None
+            week = (data.get('week') or '').strip() or None
+            result = describe_schedule(
                 data.get('schedule', ''),
                 _schedule_tz(),
                 message=data.get('message', ''),
                 count=count,
-            ))
+                start=start,
+                end=end,
+                week=week,
+            )
+            # Once the form has a channel and message, run the checks saving runs too,
+            # so the preview does not call valid what saving would refuse.
+            channel = (data.get('channel') or '').strip()
+            message = (data.get('message') or '').strip()
+            if result.get('valid') and channel and message:
+                entry_error = validate_entry(
+                    channel, message, (data.get('scope') or '').strip() or None,
+                    start, end, week,
+                )
+                if entry_error:
+                    result['entry_error'] = entry_error
+            return jsonify(result)
 
         def _save_scheduled_message(data, *, replacing=None):
             """Shared create/update: validate, write config.ini, queue a reload."""
@@ -4164,12 +4495,18 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
             channel = (data.get('channel') or '').strip()
             message = (data.get('message') or '').strip()
             scope = (data.get('scope') or '').strip() or None
+            # Optional date bounds; they live on the value, not the schedule key.
+            start = (data.get('start') or '').strip() or None
+            end = (data.get('end') or '').strip() or None
+            week = (data.get('week') or '').strip() or None
 
-            field_error = validate_entry(channel, message, scope)
+            field_error = validate_entry(channel, message, scope, start, end, week)
             if field_error:
                 return jsonify({'success': False, 'error': field_error}), 400
 
-            described = describe_schedule(schedule, _schedule_tz(), message=message)
+            described = describe_schedule(
+                schedule, _schedule_tz(), message=message, start=start, end=end, week=week
+            )
             if not described.get('valid'):
                 return jsonify({'success': False, 'error': described.get('error')}), 400
 
@@ -4194,13 +4531,17 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
                     ),
                 }), 409
 
-            updates = {SCHEDULED_MESSAGES_SECTION: {schedule: compose_value(channel, message, scope)}}
+            updates = {
+                SCHEDULED_MESSAGES_SECTION: {
+                    schedule: compose_value(channel, message, scope, start, end, week)
+                }
+            }
             deletes = None
             if replacing and replacing != schedule:
                 deletes = {SCHEDULED_MESSAGES_SECTION: [replacing]}
 
             try:
-                summary = update_ini_values(self.config_path, updates, deletes)
+                summary = self._write_config_ini(updates, deletes)
             except IniValueError as exc:
                 return jsonify({'success': False, 'error': str(exc)}), 400
             except OSError as exc:
@@ -4232,7 +4573,8 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
                     'It will pick the change up on next restart.'
                 ),
                 'entry': {'schedule': schedule, 'channel': channel,
-                          'scope': scope, 'message': message, **described},
+                          'scope': scope, 'message': message,
+                          'start': start, 'end': end, 'week': week, **described},
             })
 
         @self.app.route('/api/scheduled-messages', methods=['POST'])
@@ -4275,9 +4617,11 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
                             'error': f"No scheduled message for '{schedule}'",
                         }), 404
                     try:
-                        update_ini_values(
-                            self.config_path, {}, {SCHEDULED_MESSAGES_SECTION: [schedule]}
+                        self._write_config_ini(
+                            {}, {SCHEDULED_MESSAGES_SECTION: [schedule]}
                         )
+                    except ManagedKeyError as exc:
+                        return _managed_key_response(exc)
                     except OSError as exc:
                         self.logger.error("Failed to delete scheduled message: %s", exc)
                         return jsonify({
@@ -4654,6 +4998,13 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
             action = data.get('action', '')
             if action not in ('connect', 'disconnect'):
                 return jsonify({'error': "action must be 'connect' or 'disconnect'"}), 400
+            if action == 'connect' and self.db_manager.get_metadata(
+                'bot.initializing'
+            ) == 'true':
+                return jsonify({
+                    'error': 'The bot is still connecting to the radio at startup. '
+                             'Wait for startup to finish.'
+                }), 409
             op_type = 'radio_connect' if action == 'connect' else 'radio_disconnect'
             op_id = self._queue_operation(op_type)
             return jsonify({'success': True, 'pending': True, 'operation_id': op_id})
@@ -4886,17 +5237,22 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
             mesh_graph=self._get_mesh_graph(),
         )
 
-    def run(self, host='127.0.0.1', port=8080, debug=False):
+    def run(self, host='127.0.0.1', port=8080, debug=False, *, use_reloader=None):
         """Run the modern web viewer"""
         self.logger.info(f"Starting modern web viewer on {host}:{port}")
         self._suppress_werkzeug_headers_error()
+        # Only override when the caller asks. Standalone --debug still reloads.
+        run_kwargs = {}
+        if use_reloader is not None:
+            run_kwargs["use_reloader"] = use_reloader
         try:
             self.socketio.run(
                 self.app,
                 host=host,
                 port=port,
                 debug=debug,
-                allow_unsafe_werkzeug=True
+                allow_unsafe_werkzeug=True,
+                **run_kwargs,
             )
         except Exception as e:
             self.logger.error(f"Error running web viewer: {e}")
@@ -4922,9 +5278,11 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
         for name in ("werkzeug", "werkzeug.serving"):
             logging.getLogger(name).addFilter(_HeadersAlreadySetFilter())
 
-def main():
+def main(argv: list[str] | None = None) -> None:
     """Entry point for the meshcore-viewer command"""
     import argparse
+
+    from modules.web_viewer.parent_watch import start_parent_watcher
 
     parser = argparse.ArgumentParser(description='MeshCore Bot Data Viewer')
     parser.add_argument('--host', default='127.0.0.1', help='Host to bind to')
@@ -4935,11 +5293,24 @@ def main():
         default="config.ini",
         help="Path to configuration file (default: config.ini)",
     )
+    parser.add_argument(
+        "--exit-with-parent",
+        type=int,
+        default=None,
+        metavar="PID",
+        help="Exit when this parent process is gone (set by the bot that launched the viewer)",
+    )
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     viewer = BotDataViewer(config_path=args.config)
-    viewer.run(host=args.host, port=args.port, debug=args.debug)
+    run_kwargs = {}
+    if args.exit_with_parent is not None:
+        start_parent_watcher(args.exit_with_parent, logger=viewer.logger)
+        # Werkzeug's reloader would make the server a grandchild of the bot,
+        # so getppid() would not be the bot and the port could outlive it.
+        run_kwargs["use_reloader"] = False
+    viewer.run(host=args.host, port=args.port, debug=args.debug, **run_kwargs)
 
 if __name__ == '__main__':
     main()

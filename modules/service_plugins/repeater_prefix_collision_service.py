@@ -113,6 +113,11 @@ class RepeaterPrefixCollisionService(BaseServicePlugin):
         self._notified: dict[_NotifyKey, float] = {}  # key -> last_sent_epoch_seconds
         self._prefix_cooldown: dict[tuple[int, str], float] = {}  # (bytes, prefix_hex_lower) -> last_sent_epoch_seconds
         self._discovery_notified: dict[str, float] = {}  # public_key -> last discovery external epoch
+        # A zero cooldown does not treat a timestamp as recent, so an in-flight
+        # claim is what stops a second task while the first post is awaiting.
+        self._discovery_inflight: set[str] = set()
+        self._alert_inflight: set[_NotifyKey] = set()
+        self._prefix_inflight: set[tuple[int, str]] = set()
         self._dedupe_prune_max_age_seconds = max(
             3600.0,
             float(self.cooldown_minutes_per_prefix) * 120.0,
@@ -340,15 +345,31 @@ class RepeaterPrefixCollisionService(BaseServicePlugin):
             for dk in stale_d:
                 del self._discovery_notified[dk]
 
+    def _claim_discovery(self, public_key: str) -> bool:
+        """True when this caller should send.
+
+        Records the key before returning so a second task sees it at its next
+        await. The record stays if the post fails: ``send_external_notifications``
+        does not say which target succeeded, and dropping it would post again
+        after a message that already landed.
+        """
+        if public_key in self._discovery_inflight or self._is_discovery_recently_notified(public_key):
+            return False
+        self._discovery_notified[public_key] = time.time()
+        self._discovery_inflight.add(public_key)
+        return True
+
     async def _maybe_send_discovery_external(self, public_key: str, name: str, location: str) -> None:
-        """Webhook/Telegram discovery line; deduped per public_key (same cooldown window)."""
+        """One Discord/Telegram discovery line per key. Claimed before the send."""
         if not self.has_external_notification_targets():
             return
-        if self._is_discovery_recently_notified(public_key):
+        if not self._claim_discovery(public_key):
             return
-        text = self._format_discovery_message(public_key, name, location)
-        await self.send_external_notifications(text, discord_username="New repeater")
-        self._discovery_notified[public_key] = time.time()
+        try:
+            text = self._format_discovery_message(public_key, name, location)
+            await self.send_external_notifications(text, discord_username="New repeater")
+        finally:
+            self._discovery_inflight.discard(public_key)
 
     def _format_discovery_message(self, public_key: str, name: str, location: str) -> str:
         pk_short = f"{public_key[:16]}…" if len(public_key) > 16 else public_key
@@ -360,6 +381,29 @@ class RepeaterPrefixCollisionService(BaseServicePlugin):
             return False
         cooldown_s = max(0, int(self.cooldown_minutes_per_prefix)) * 60
         return (time.time() - ts) < cooldown_s if cooldown_s else False
+
+    def _claim_prefix_alert(self, public_key: str, prefix_bytes: int, prefix: str) -> bool:
+        """True when this caller should send. Call only after the prefix is known to collide.
+
+        Stamps the per-node and per-prefix cooldowns before any send. The
+        in-flight sets cover a zero cooldown, which does not treat a timestamp
+        as recent. Stamps stay if a later send fails.
+        """
+        notify_key = _NotifyKey(public_key=public_key, prefix_bytes=prefix_bytes)
+        prefix_key = (prefix_bytes, prefix)
+        if (
+            notify_key in self._alert_inflight
+            or prefix_key in self._prefix_inflight
+            or self._is_recently_notified(notify_key)
+            or self._is_prefix_in_cooldown(prefix_bytes, prefix)
+        ):
+            return False
+        now = time.time()
+        self._notified[notify_key] = now
+        self._prefix_cooldown[prefix_key] = now
+        self._alert_inflight.add(notify_key)
+        self._prefix_inflight.add(prefix_key)
+        return True
 
     async def _maybe_notify_for_prefix_bytes(
         self,
@@ -373,15 +417,6 @@ class RepeaterPrefixCollisionService(BaseServicePlugin):
             return
 
         prefix = public_key[:prefix_hex_chars].lower()
-
-        # Per-node dedupe (public_key + bytes)
-        if self._is_recently_notified(_NotifyKey(public_key=public_key, prefix_bytes=prefix_bytes)):
-            return
-
-        # Per-prefix cooldown across many nodes
-        if self._is_prefix_in_cooldown(prefix_bytes, prefix):
-            return
-
         if not self._db_prefix_is_duplicate(public_key, prefix, prefix_hex_chars):
             return
 
@@ -393,26 +428,30 @@ class RepeaterPrefixCollisionService(BaseServicePlugin):
             prefixes_free=prefixes_free,
             prefix_bytes=prefix_bytes,
         )
+        if not self._claim_prefix_alert(public_key, prefix_bytes, prefix):
+            return
 
-        if not self.notify_external_on_all_new_repeaters:
-            await self.send_external_notifications(
-                text, discord_username="Repeater prefix collision"
+        notify_key = _NotifyKey(public_key=public_key, prefix_bytes=prefix_bytes)
+        prefix_key = (prefix_bytes, prefix)
+        try:
+            if not self.notify_external_on_all_new_repeaters:
+                await self.send_external_notifications(
+                    text, discord_username="Repeater prefix collision"
+                )
+            if not self.silence_mesh_output:
+                await self._send_to_channels(text)
+
+            pk_short = f"{public_key[:16]}…" if len(public_key) > 16 else public_key
+            self.logger.info(
+                "RepeaterPrefixCollision: posted alert for %s name=%r prefix=%s (%d byte(s))",
+                pk_short,
+                name,
+                prefix.upper(),
+                prefix_bytes,
             )
-        if not self.silence_mesh_output:
-            await self._send_to_channels(text)
-
-        pk_short = f"{public_key[:16]}…" if len(public_key) > 16 else public_key
-        self.logger.info(
-            "RepeaterPrefixCollision: posted alert for %s name=%r prefix=%s (%d byte(s))",
-            pk_short,
-            name,
-            prefix.upper(),
-            prefix_bytes,
-        )
-
-        now = time.time()
-        self._notified[_NotifyKey(public_key=public_key, prefix_bytes=prefix_bytes)] = now
-        self._prefix_cooldown[(prefix_bytes, prefix)] = now
+        finally:
+            self._alert_inflight.discard(notify_key)
+            self._prefix_inflight.discard(prefix_key)
 
     def _db_prefix_is_duplicate(self, public_key: str, prefix: str, prefix_hex_chars: int) -> bool:
         if not getattr(self.bot, "db_manager", None):

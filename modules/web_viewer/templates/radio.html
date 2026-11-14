@@ -371,7 +371,7 @@
                         are not read from or written to the radio — the radio's own
                         <a href="#node-settings-card">Default Region Scope</a> is above, and
                         only covers sends the bot does not scope itself. See the
-                        <a href="/region-warnings">Region Warnings</a> page for how much
+                        <a href="{{ url_for('region_warnings_page') }}">Region Warnings</a> page for how much
                         unscoped traffic this mesh actually carries.
                     </p>
 
@@ -721,7 +721,7 @@ class RadioManager {
                 const feedCell = document.createElement('td');
                 if (feedCount > 0) {
                     const link = document.createElement('a');
-                    link.href = `/feeds?channel=${encodeURIComponent(String(channelName))}`;
+                    link.href = window.appUrl(`/feeds?channel=${encodeURIComponent(String(channelName))}`);
                     link.textContent = String(feedCount);
                     feedCell.appendChild(link);
                 } else {
@@ -1111,7 +1111,7 @@ class RadioManager {
                 feedsData.feeds.forEach(feed => {
                     const item = document.createElement('li');
                     const link = document.createElement('a');
-                    link.href = `/feeds?id=${encodeURIComponent(String(feed.id ?? ''))}`;
+                    link.href = window.appUrl(`/feeds?id=${encodeURIComponent(String(feed.id ?? ''))}`);
                     link.textContent = String(feed.feed_name || feed.feed_url || 'Unnamed feed');
                     item.appendChild(link);
                     list.appendChild(item);

@@ -95,6 +95,11 @@ _EXTRA_PLACEHOLDERS: dict[str, tuple[str, Any]] = {
         "Distance between the first and last repeater; empty if either has no location",
         {"multibyte": "8.1km", "onebyte": "8.1km", "direct": ""},
     ),
+    "path_names": (
+        "Route as short repeater names (BlackHls▸KalamaSum▸KelsoG3); a hop without a "
+        "confident 2- or 3-byte match keeps its hex prefix",
+        {"multibyte": "BlackHls▸KalamaSum▸e5f6", "onebyte": "a1▸c3▸e5", "direct": "Direct"},
+    ),
     # Multitest. The preview overrides {paths} with the saved path layout.
     "path_count": ("Number of unique paths heard", "3"),
     "paths": ("The paths, laid out per Path layout", "a1,b7,e5\na1,c3,e5\na1,c3,f2"),

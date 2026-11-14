@@ -118,6 +118,39 @@ def _make_event(public_key: str, name: str = "NewRepeater"):
     return e
 
 
+_DISCORD_WEBHOOK = "https://discord.com/api/webhooks/123456789/abcdefghij"
+
+
+async def _overlap_same_contact(svc, payload: dict) -> tuple[list, int]:
+    """Run two handlers for one contact. The first blocks inside the external send.
+
+    Returns those send calls, and how many mesh posts had already happened
+    while that first send was still blocked.
+    """
+    started = asyncio.Event()
+    release = asyncio.Event()
+    calls: list[tuple] = []
+
+    async def slow_send(*args, **kwargs):
+        calls.append((args, kwargs))
+        if len(calls) == 1:
+            started.set()
+            await release.wait()
+
+    mesh_posts_while_blocked = 0
+    with patch.object(svc, "send_external_notifications", side_effect=slow_send):
+        first = asyncio.create_task(svc._handle_new_contact_payload(payload))
+        try:
+            await asyncio.wait_for(started.wait(), timeout=1)
+            second = asyncio.create_task(svc._handle_new_contact_payload(dict(payload)))
+            await asyncio.wait_for(second, timeout=1)
+            mesh_posts_while_blocked = svc.bot.command_manager.send_channel_message.await_count
+        finally:
+            release.set()
+            await asyncio.wait_for(first, timeout=1)
+    return calls, mesh_posts_while_blocked
+
+
 @pytest.mark.asyncio
 async def test_posts_message_on_duplicate_prefix_after_row_available():
     bot = _make_bot()
@@ -383,3 +416,88 @@ async def test_notify_all_true_collision_only_discovery_external_not_collision_c
     assert ext.await_count == 1
     assert "New repeater heard" in ext.await_args_list[0][0][0]
     assert "free prefixes remain" not in ext.await_args_list[0][0][0]
+
+
+@pytest.mark.asyncio
+async def test_overlapping_discovery_sends_once_and_cooldown_holds():
+    bot = _make_bot(
+        {
+            "notify_external_on_all_new_repeaters": "true",
+            "discord_webhook_urls": _DISCORD_WEBHOOK,
+        }
+    )
+    db: _FakeDB = bot.db_manager
+    db.contact_row = _base_contact_row()
+    db.duplicate_count = 0
+
+    svc = RepeaterPrefixCollisionService(bot)
+    await svc.start()
+    payload = {"public_key": "01020304", "name": "Lonely"}
+
+    calls, _mesh = await _overlap_same_contact(svc, payload)
+
+    assert len(calls) == 1
+    assert "New repeater heard" in calls[0][0][0]
+    assert svc._discovery_inflight == set()
+
+    with patch.object(svc, "send_external_notifications", new_callable=AsyncMock) as ext:
+        await svc._handle_new_contact_payload(payload)
+
+    assert ext.await_count == 0
+
+
+@pytest.mark.asyncio
+async def test_overlapping_discovery_sends_once_when_cooldown_is_zero():
+    bot = _make_bot(
+        {
+            "notify_external_on_all_new_repeaters": "true",
+            "discord_webhook_urls": _DISCORD_WEBHOOK,
+            "cooldown_minutes_per_prefix": "0",
+        }
+    )
+    db: _FakeDB = bot.db_manager
+    db.contact_row = _base_contact_row()
+    db.duplicate_count = 0
+
+    svc = RepeaterPrefixCollisionService(bot)
+    await svc.start()
+    payload = {"public_key": "01020304", "name": "Lonely"}
+
+    calls, _mesh = await _overlap_same_contact(svc, payload)
+
+    assert len(calls) == 1
+    assert "New repeater heard" in calls[0][0][0]
+
+    with patch.object(svc, "send_external_notifications", new_callable=AsyncMock) as ext:
+        await svc._handle_new_contact_payload(payload)
+
+    assert ext.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_overlapping_collision_posts_once_per_channel_and_once_externally():
+    bot = _make_bot(
+        {
+            "notify_external_on_all_new_repeaters": "false",
+            "silence_mesh_output": "false",
+            "discord_webhook_urls": _DISCORD_WEBHOOK,
+        }
+    )
+    db: _FakeDB = bot.db_manager
+    db.contact_row = _base_contact_row()
+    db.duplicate_count = 2
+
+    svc = RepeaterPrefixCollisionService(bot)
+    await svc.start()
+
+    calls, mesh_while_blocked = await _overlap_same_contact(
+        svc, {"public_key": "01020304", "name": "NewRepeater"}
+    )
+
+    assert len(calls) == 1
+    assert "Heard new repeater" in calls[0][0][0]
+    assert calls[0][1].get("discord_username") == "Repeater prefix collision"
+    assert mesh_while_blocked == 0
+    assert bot.command_manager.send_channel_message.await_count == 2
+    assert svc._alert_inflight == set()
+    assert svc._prefix_inflight == set()

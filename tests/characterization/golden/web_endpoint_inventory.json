@@ -1039,10 +1039,10 @@
  },
  "/api/multibyte-rollout": {
   "GET locked anon": {
-   "content_type": "application/json",
+   "content_type": "text/html",
    "csp_script_src": "script-src 'self' 'unsafe-inline'",
    "location": "",
-   "status": 401,
+   "status": 404,
    "x_content_type_options": "nosniff",
    "x_frame_options": "SAMEORIGIN"
   },
@@ -1325,6 +1325,42 @@
    "x_frame_options": "SAMEORIGIN"
   },
   "endpoint": "api_region_warnings_save",
+  "methods": [
+   "POST"
+  ]
+ },
+ "/api/repeater-watch": {
+  "GET locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_repeater_watch",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/api/repeater-watch/settings": {
+  "POST locked anon": {
+   "content_type": "application/json",
+   "csp_script_src": "script-src 'self' 'unsafe-inline'",
+   "location": "",
+   "status": 401,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "api_repeater_watch_save",
   "methods": [
    "POST"
   ]
@@ -1750,8 +1786,8 @@
   "GET locked anon": {
    "content_type": "text/html",
    "csp_script_src": "script-src 'self' 'nonce-X'",
-   "location": "/login?next=/multibyte-rollout",
-   "status": 302,
+   "location": "",
+   "status": 404,
    "x_content_type_options": "nosniff",
    "x_frame_options": "SAMEORIGIN"
   },
@@ -1852,6 +1888,28 @@
    "x_frame_options": "SAMEORIGIN"
   },
   "endpoint": "region_warnings_page",
+  "methods": [
+   "GET"
+  ]
+ },
+ "/repeater-watch": {
+  "GET locked anon": {
+   "content_type": "text/html",
+   "csp_script_src": "script-src 'self' 'nonce-X'",
+   "location": "/login?next=/repeater-watch",
+   "status": 302,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "GET open": {
+   "content_type": "text/html",
+   "csp_script_src": "script-src 'self' 'nonce-X'",
+   "location": "",
+   "status": 200,
+   "x_content_type_options": "nosniff",
+   "x_frame_options": "SAMEORIGIN"
+  },
+  "endpoint": "repeater_watch_page",
   "methods": [
    "GET"
   ]

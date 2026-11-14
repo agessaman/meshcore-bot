@@ -24,6 +24,7 @@ class SocketClientsMixin:
 
     _clients_lock: Any
     _config_base: Any
+    _auth_enforced: Any
     config: Any
     connected_clients: Any
     db_path: Any
@@ -44,10 +45,10 @@ class SocketClientsMixin:
                     self.logger.warning("Connect event received but client_id is None")
                     return False
 
-                # Reject unauthenticated SocketIO connections when auth is enabled.
+                # Reject unauthenticated SocketIO connections when auth is enforced.
                 # Live packet/message/log streams stay admin-only — they can carry
                 # decrypted channel traffic and operator logs (deviation from #240).
-                if self.web_viewer_password and not session.get('authenticated_admin'):
+                if self._auth_enforced() and not session.get('authenticated_admin'):
                     self.logger.warning(f"Rejected unauthenticated SocketIO connection from {client_id}")
                     with suppress(Exception):
                         disconnect()

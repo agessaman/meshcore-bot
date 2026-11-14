@@ -34,6 +34,7 @@ from .packet_decode import (  # noqa: F401  re-exported: callers import these fr
     encode_path_len_byte,
     parse_trace_payload_route_hashes,
 )
+from .path_names import format_path_names, template_uses_path_names
 
 try:
     from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -1588,6 +1589,12 @@ def format_keyword_response_with_placeholders(
             replacements['path_distance'] = path_distance
             replacements['firstlast_distance'] = firstlast_distance
 
+            # A database lookup per hop, so only when the template asks for it.
+            if template_uses_path_names(response_format):
+                replacements['path_names'] = format_path_names(bot, message)
+            else:
+                replacements['path_names'] = ""
+
             # Format timestamp
             try:
                 tz, _ = get_config_timezone(bot.config, getattr(bot, 'logger', None))
@@ -1619,6 +1626,7 @@ def format_keyword_response_with_placeholders(
             replacements['connection_info'] = "Unknown"
             replacements['path_distance'] = ""
             replacements['firstlast_distance'] = ""
+            replacements['path_names'] = ""
             replacements['timestamp'] = "Unknown"
             replacements['packet_hash'] = ""
             replacements['hops'] = "?"

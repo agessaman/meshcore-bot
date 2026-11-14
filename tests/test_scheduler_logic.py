@@ -8,7 +8,11 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from modules.scheduled_message_cron import parse_schedule_key
+from modules.scheduled_message_cron import (
+    parse_schedule_key,
+    parse_scheduled_message_value,
+    split_schedule_options,
+)
 from modules.scheduler import MessageScheduler
 
 
@@ -22,6 +26,13 @@ def scheduler(mock_logger):
     bot.config.set("Bot", "scheduled_message_max_stagger_seconds", "0")
     return MessageScheduler(bot)
 
+
+
+def split_schedule_bounds(raw):
+    """The start/end/rest view of split_schedule_options, for the bound-focused tests."""
+    start, end, week, rest = split_schedule_options(raw)
+    assert week is None
+    return start, end, rest
 
 class TestParseScheduleKey:
     """Tests for scheduled message cron / preset / legacy parsing."""
@@ -51,6 +62,209 @@ class TestParseScheduleKey:
         tz = ZoneInfo("UTC")
         r = parse_schedule_key("not-a-valid-cron", tz)
         assert r.trigger is None
+
+    @pytest.mark.parametrize("expr", [
+        # Forms plain crontab already accepts; guards against a parser that narrows them.
+        "0 8 * * *", "*/15 * * * *", "0 6,12,18 * * *", "0 8 * * mon-fri",
+        "0 0-20/2 * * *", "0-10,30 8 * * *", "0 0 1-15/3 * *", "0 19 last * *",
+        "0 8 15 jan *", "0 8 * may-oct,dec *",
+    ])
+    def test_standard_crontab_forms_still_parse(self, expr):
+        assert parse_schedule_key(expr, ZoneInfo("UTC")).trigger is not None
+
+
+class TestPositionalDayOfMonth:
+    """Escaped positional day-of-month expressions (last-fri, 4th-tue, 1st-mon,3rd-mon).
+
+    APScheduler understands these natively; the escape only works around the space that
+    would otherwise be read as a crontab field separator.
+    """
+
+    TZ = ZoneInfo("UTC")
+    NOW = datetime.datetime(2026, 8, 29, 12, 0, tzinfo=ZoneInfo("UTC"))
+
+    def _next_runs(self, expr, count=3):
+        trigger = parse_schedule_key(expr, self.TZ).trigger
+        assert trigger is not None, f"{expr!r} did not parse"
+        runs, prev, now = [], None, self.NOW
+        for _ in range(count):
+            fire = trigger.get_next_fire_time(prev, now)
+            runs.append(fire)
+            prev, now = fire, fire + datetime.timedelta(seconds=1)
+        return runs
+
+    def test_last_weekday_of_month(self):
+        assert self._next_runs("0 19 last-fri * *") == [
+            datetime.datetime(2026, 9, 25, 19, 0, tzinfo=self.TZ),
+            datetime.datetime(2026, 10, 30, 19, 0, tzinfo=self.TZ),
+            datetime.datetime(2026, 11, 27, 19, 0, tzinfo=self.TZ),
+        ]
+
+    def test_nth_weekday_of_month(self):
+        assert self._next_runs("0 19 4th-tue * *") == [
+            datetime.datetime(2026, 9, 22, 19, 0, tzinfo=self.TZ),
+            datetime.datetime(2026, 10, 27, 19, 0, tzinfo=self.TZ),
+            datetime.datetime(2026, 11, 24, 19, 0, tzinfo=self.TZ),
+        ]
+
+    def test_list_of_positions_gives_a_fortnightly_net(self):
+        # "1st and 3rd Tuesday" -- what recurring nets usually mean by "every other".
+        assert self._next_runs("0 19 1st-tue,3rd-tue * *") == [
+            datetime.datetime(2026, 9, 1, 19, 0, tzinfo=self.TZ),
+            datetime.datetime(2026, 9, 15, 19, 0, tzinfo=self.TZ),
+            datetime.datetime(2026, 10, 6, 19, 0, tzinfo=self.TZ),
+        ]
+
+    def test_underscore_is_accepted_as_the_separator(self):
+        assert self._next_runs("0 19 last_fri * *", 1) == self._next_runs("0 19 last-fri * *", 1)
+
+    def test_is_case_insensitive(self):
+        assert self._next_runs("0 19 LAST-FRI * *", 1) == self._next_runs("0 19 last-fri * *", 1)
+
+    def test_combines_with_a_month_restriction(self):
+        assert self._next_runs("0 19 last-fri jan-jun *", 1) == [
+            datetime.datetime(2027, 1, 29, 19, 0, tzinfo=self.TZ),
+        ]
+
+    @pytest.mark.parametrize("expr", [
+        "0 19 * * last-fri",     # positional expressions are day-of-month only
+        "0 19 last-fri *",       # too few fields
+        "0 19 last-fri * * *",   # too many fields
+        "last-fri",              # not a crontab expression
+        "0 19 6th-tue * *",      # there is no 6th weekday
+        # APScheduler drops anything after a positional expression, so these would
+        # save and then fire only on the first Tuesday.
+        "0 19 1st-tue-3rd-tue * *",
+        "0 19 1st-tue/2 * *",
+        "0 19 last-fri-1 * *",
+        # APScheduler reads "last" as a prefix, so these used to mean the last day.
+        "0 19 last--fri * *",
+        "0 19 lastfri * *",
+        "0 19 last- * *",
+        "0 19 2nd * *",
+        # A positional day already names its weekday; with a DOW it can never match.
+        "0 19 1st-tue * mon",
+        "0 19 last-fri * fri",
+    ])
+    def test_rejects_misplaced_or_malformed_expressions(self, expr):
+        assert parse_schedule_key(expr, self.TZ).trigger is None
+
+
+class TestScheduleBounds:
+    """start=/end= date bounds, which ride on the option value (crontab has no field)."""
+
+    TZ = ZoneInfo("UTC")
+
+    @pytest.mark.parametrize("raw, expected", [
+        ("Public:Hello", (None, None, "Public:Hello")),
+        ("start=2027-01-01 Public:Hi", ("2027-01-01", None, "Public:Hi")),
+        ("end=2027-03-31 Public:Hi", (None, "2027-03-31", "Public:Hi")),
+        ("start=2027-01-01 end=2027-03-31 Public:#sea:Hi",
+         ("2027-01-01", "2027-03-31", "Public:#sea:Hi")),
+        # order does not matter, and the keyword is case-insensitive
+        ("end=2027-03-31 start=2027-01-01 Public:Hi",
+         ("2027-01-01", "2027-03-31", "Public:Hi")),
+        ("START=2027-01-01 Public:Hi", ("2027-01-01", None, "Public:Hi")),
+    ])
+    def test_splits_bounds_off_the_front(self, raw, expected):
+        assert split_schedule_bounds(raw) == expected
+
+    def test_a_message_body_is_never_mistaken_for_a_bound(self):
+        # Bounds are anchored to the front, so free text stays untouched.
+        raw = "Public:Sign-ups start=2027 and end=soon"
+        assert split_schedule_bounds(raw) == (None, None, raw)
+
+    @pytest.mark.parametrize("bad", [
+        "start=2027-13-45 Public:Hi",              # not a real date
+        "start=tomorrow Public:Hi",                # not ISO
+        "start=2027-01-01 start=2027-02-01 P:Hi",  # repeated
+        "start=2027-03-01 end=2027-01-01 P:Hi",    # ends before it starts
+    ])
+    def test_rejects_malformed_bounds(self, bad):
+        with pytest.raises(ValueError):
+            split_schedule_bounds(bad)
+
+    @pytest.mark.parametrize("raw", [
+        "start=ops:Hello",          # a channel that merely begins with start=
+        "end=west:Hello there",
+        "start=ops:#sea:Hi",
+    ])
+    def test_a_channel_starting_with_a_bound_keyword_stays_a_channel(self, raw):
+        assert split_schedule_bounds(raw) == (None, None, raw)
+
+    @pytest.mark.parametrize("bad", [
+        "start= Public:Hi",              # keyword with no date
+        "start =2027-01-01 Public:Hi",   # space before "="
+        "end=  Public:#sea:Hi",
+        "start=20270101 Public:Hi",      # fromisoformat takes it; APScheduler doesn't
+        "start=2027-W01-1 Public:Hi",
+    ])
+    def test_a_bound_without_a_usable_date_is_an_error_not_a_channel(self, bad):
+        with pytest.raises(ValueError):
+            split_schedule_bounds(bad)
+
+    def test_legacy_hhmm_with_a_bad_bound_is_invalid_not_an_exception(self):
+        result = parse_schedule_key("0900", self.TZ, "not-a-date")
+        assert result.trigger is None
+
+    def test_end_date_holds_when_dst_skips_the_last_hour(self):
+        # America/Nuuk springs forward at 23:00 on 2027-03-27, so "23:59:59" that day
+        # does not exist; the window must still close before March 28 begins.
+        tz = ZoneInfo("America/Nuuk")
+        trigger = parse_schedule_key("30 23 * * *", tz, None, "2027-03-27").trigger
+        fire = trigger.get_next_fire_time(None, datetime.datetime(2027, 3, 27, 12, tzinfo=tz))
+        assert fire is None or fire.date() <= datetime.date(2027, 3, 27)
+        assert trigger.end_date < datetime.datetime(2027, 3, 28, tzinfo=tz)
+
+    def test_bounds_follow_the_bot_timezone_across_dst(self):
+        # US DST ended 2026-11-01: the window still starts and ends on local midnights.
+        tz = ZoneInfo("America/Los_Angeles")
+        trigger = parse_schedule_key("30 23 * * *", tz, "2026-10-31", "2026-11-02").trigger
+        runs, prev, now = [], None, datetime.datetime(2026, 10, 30, 12, tzinfo=tz)
+        while True:
+            fire = trigger.get_next_fire_time(prev, now)
+            if fire is None:
+                break
+            runs.append(fire.strftime("%m-%d %H:%M %Z"))
+            prev, now = fire, fire + datetime.timedelta(seconds=1)
+        assert runs == ["10-31 23:30 PDT", "11-01 23:30 PST", "11-02 23:30 PST"]
+
+    def test_value_parser_refuses_unstripped_bounds(self):
+        # A caller that forgets split_schedule_bounds() must fail loudly rather than
+        # silently treat "start=2027-01-01 Public" as a channel name.
+        with pytest.raises(ValueError):
+            parse_scheduled_message_value("start=2027-01-01 Public:Hi")
+
+    def _first_runs(self, key, start=None, end=None, count=3):
+        trigger = parse_schedule_key(key, self.TZ, start, end).trigger
+        assert trigger is not None
+        runs, prev, now = [], None, datetime.datetime(2026, 8, 29, 12, 0, tzinfo=self.TZ)
+        for _ in range(count):
+            fire = trigger.get_next_fire_time(prev, now)
+            if fire is None:
+                break
+            runs.append(fire)
+            prev, now = fire, fire + datetime.timedelta(seconds=1)
+        return runs
+
+    def test_start_date_defers_the_first_run(self):
+        assert self._first_runs("0 19 * * *", start="2027-03-01", count=1) == [
+            datetime.datetime(2027, 3, 1, 19, 0, tzinfo=self.TZ)
+        ]
+
+    def test_end_date_includes_the_whole_final_day(self):
+        # "end=2026-09-02" means through the 2nd, not up to its midnight.
+        assert self._first_runs("0 19 * * *", end="2026-09-02", count=9)[-1] == (
+            datetime.datetime(2026, 9, 2, 19, 0, tzinfo=self.TZ)
+        )
+
+    def test_bounds_apply_to_positional_preset_and_legacy_forms(self):
+        for key in ("0 19 last-fri * *", "@daily", "0900"):
+            runs = self._first_runs(key, start="2027-03-01", count=1)
+            assert runs and runs[0] >= datetime.datetime(2027, 3, 1, tzinfo=self.TZ), key
+
+    def test_an_exhausted_schedule_has_no_runs(self):
+        assert self._first_runs("0 19 * * *", end="2020-01-01") == []
 
 
 class TestIsValidTimeFormat:
@@ -1889,3 +2103,61 @@ class TestDeviceModeSchedulerJobs:
 
         scheduler.bot.repeater_manager.sync_device_mode_favourites_pass1.assert_awaited_once()
         scheduler.bot.repeater_manager.sync_device_mode_favourites_pass2.assert_awaited_once()
+
+
+class TestWeekFilter:
+    """week= on the value: APScheduler's ISO week-number field, for strict alternate weeks."""
+
+    TZ = ZoneInfo("UTC")
+
+    def _runs(self, key, week, count=4):
+        trigger = parse_schedule_key(key, self.TZ, week=week).trigger
+        assert trigger is not None
+        runs, prev, now = [], None, datetime.datetime(2027, 1, 1, tzinfo=self.TZ)
+        for _ in range(count):
+            fire = trigger.get_next_fire_time(prev, now)
+            runs.append(fire.date().isoformat())
+            prev, now = fire, fire + datetime.timedelta(seconds=1)
+        return runs
+
+    def test_every_other_week(self):
+        # ISO weeks 1, 3, 5, 7 of 2027 start on Jan 4, 18, Feb 1, 15.
+        assert self._runs("0 19 * * tue", "*/2") == [
+            "2027-01-05", "2027-01-19", "2027-02-02", "2027-02-16",
+        ]
+
+    def test_even_weeks(self):
+        assert self._runs("0 19 * * tue", "2-53/2") == [
+            "2027-01-12", "2027-01-26", "2027-02-09", "2027-02-23",
+        ]
+
+    @pytest.mark.parametrize("raw, expected", [
+        ("week=*/2 Public:Net", (None, None, "*/2", "Public:Net")),
+        ("start=2027-01-01 week=2-53/2 end=2027-06-30 Public:#sea:Net",
+         ("2027-01-01", "2027-06-30", "2-53/2", "Public:#sea:Net")),
+    ])
+    def test_split_reads_the_week_option(self, raw, expected):
+        assert split_schedule_options(raw) == expected
+
+    @pytest.mark.parametrize("bad", [
+        "week=tue Public:Net",       # not a week number
+        "week=54 Public:Net",        # ISO weeks stop at 53
+        "week= Public:Net",          # no value
+        "week=*/2 week=*/3 Public:Net",
+        "week=*/2",                  # an option and no channel:message
+        "start=2027-01-01",
+    ])
+    def test_rejects_bad_week_options(self, bad):
+        with pytest.raises(ValueError):
+            split_schedule_options(bad)
+
+
+class TestParseErrorReasons:
+    def test_invalid_key_carries_the_reason(self):
+        result = parse_schedule_key("0 25 * * *", ZoneInfo("UTC"))
+        assert result.trigger is None
+        assert result.error and "25" in result.error
+
+    def test_misplaced_positional_reason_names_the_item(self):
+        result = parse_schedule_key("0 19 1st-tue-3rd-tue * *", ZoneInfo("UTC"))
+        assert "1st-tue-3rd-tue" in result.error

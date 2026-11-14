@@ -140,7 +140,7 @@ Sends forecast to `weather_channel` at configured time:
 - Sunrise: `weather_alarm = sunrise`
 - Sunset: `weather_alarm = sunset`
 
-`weather_alarm` fires **once a day**. For more than one forecast a day, or a forecast for a location other than the bot's own position, schedule the `wx` command instead with a [`{cmd:...}` placeholder](configuration.md#broadcasting-a-commands-output-cmd):
+`weather_alarm` fires **once a day**. For more than one forecast a day, or a forecast for a location other than the bot's own position, schedule the `wx` command instead with a [`{cmd:...}` placeholder](scheduled-messages.md#broadcasting-a-commands-output-cmd):
 
 ```ini
 [Scheduled_Messages]
