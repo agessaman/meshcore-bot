@@ -139,21 +139,41 @@ def test_sighup_reloads_under_nohup(monkeypatch) -> None:
 # the terminal side is closed. Mocks cannot cover this; macOS keeps /dev/tty
 # openable after a hangup, which an open-only check gets wrong.
 _TERMINAL_PROBE = """
-import os, pty, signal, sys, time
-sys.path.insert(0, sys.argv[1])
+import os, pty, select, signal, sys, time
 pid, master = pty.fork()
 if pid == 0:
     signal.signal(signal.SIGHUP, lambda *a: None)
+    sys.path.insert(0, sys.argv[1])
     from meshcore_bot import _has_controlling_terminal
     before = _has_controlling_terminal()
-    os.read(0, 1)  # returns EOF once the terminal is closed
+    os.write(1, b"R")  # ready: the parent may close the terminal now
+    try:
+        os.read(0, 1)  # blocks until the terminal closes: EOF on macOS, EIO on Linux
+    except OSError:
+        pass
     after = _has_controlling_terminal()
     with open(sys.argv[2], "w") as out:
         out.write(f"{before} {after}")
     os._exit(0)
-time.sleep(1.0)
-os.close(master)
-os.waitpid(pid, 0)
+try:
+    # Closing before the child is ready would hang up a process with no
+    # SIGHUP handler yet, so wait for its ready byte instead of sleeping.
+    deadline = time.monotonic() + 20
+    seen = b""
+    while b"R" not in seen and time.monotonic() < deadline:
+        if select.select([master], [], [], 0.5)[0]:
+            seen += os.read(master, 64)
+    os.close(master)
+    for _ in range(100):
+        if os.waitpid(pid, os.WNOHANG)[0]:
+            break
+        time.sleep(0.1)
+    else:
+        os.kill(pid, signal.SIGKILL)
+        os.waitpid(pid, 0)
+except BaseException:
+    os.kill(pid, signal.SIGKILL)
+    raise
 """
 
 
