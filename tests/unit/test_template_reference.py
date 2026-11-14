@@ -98,6 +98,7 @@ class TestCatalogMatchesTheEngine:
         assert spec["filters"] is PIPED_FILTERS
         assert [p["name"] for p in spec["placeholders"]] == [
             *MESSAGE_PLACEHOLDERS, "path_count", "paths", "listening_duration",
+            "scope_observers", "scope_observations", "scope_max_hops", "scope_url",
         ]
 
     def test_multitest_blank_default_is_the_command_default(self):
@@ -332,3 +333,33 @@ class TestSchemaFixes:
         field = _field(RepeaterPrefixCollisionService, "notify_on_prefix_bytes")
         assert validate_field(field, "2, 3") == (True, ["2", "3"], None)
         assert validate_field(field, "4")[0] is False
+
+
+class TestMultitestScopePlaceholders:
+    """The scope_* names are catalogued, and previewing them stays offline."""
+
+    def test_the_scope_names_resolve_in_the_catalog(self):
+        from modules.template_reference import ALL_PLACEHOLDERS
+
+        for name in ("scope_observers", "scope_observations", "scope_max_hops", "scope_url"):
+            assert name in ALL_PLACEHOLDERS
+
+    def test_the_sample_url_carries_paths_all(self):
+        from modules.template_reference import ALL_PLACEHOLDERS
+
+        assert "&paths=all" in ALL_PLACEHOLDERS["scope_url"][1]
+
+    def test_previewing_them_makes_no_network_call(self):
+        """A preview renders per keystroke; it must never reach CoreScope."""
+        from unittest.mock import patch
+
+        spec = _field(MultitestCommand, "response_format")["template"]
+        with patch("modules.clients.corescope_client.CoreScopeClient.fetch") as fetch:
+            rows = _by_id(render_preview(
+                spec, "{scope_observers}/{scope_observations} {scope_max_hops} {scope_url}"
+            ))
+        fetch.assert_not_called()
+        # Sample values, from the catalog rather than from a lookup.
+        assert rows["direct"] == (
+            "25/46 12 https://analyzer.example.net/#/map?packet=7ba8bf1119ca1fe1&paths=all"
+        )

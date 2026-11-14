@@ -1045,3 +1045,89 @@ class TestCorescopeAckAndSettle:
         with patch.object(multitest_module.asyncio, "sleep", new=AsyncMock()):
             await cmd.execute(self._message())
         assert cmd.send_response.await_args[0][1] == "1 in 45s"
+
+
+class TestScopePlaceholders:
+    """The scope_* fields: populated from a lookup, empty when the bot listened."""
+
+    def _cmd(self, *, corescope=True, **multitest):
+        bot = _make_bot()
+        bot.config.add_section("External_Data")
+        if corescope:
+            bot.config.set("External_Data", "corescope_url", "https://analyzer.example.net")
+            bot.config.set("Multitest_Command", "corescope_enabled", "true")
+        for key, value in multitest.items():
+            bot.config.set("Multitest_Command", key, value)
+        return MultitestCommand(bot)
+
+    def _message(self):
+        return mock_message(
+            content="mt", sender_id="Alice", hops=2,
+            routing_info={"path_nodes": ["a1b2", "c3d4"], "bytes_per_hop": 2,
+                          "packet_hash": "3F2A9C1B7E4D0A65"},
+        )
+
+    def _scope(self):
+        return ScopePacket(
+            unique_paths=40, observations=46, observers=25, max_hops=12,
+            paths=("db82", "db82,e34c"),
+        )
+
+    async def _render(self, cmd, template, *, scope=None, packet_hash="3F2A9C1B7E4D0A65"):
+        return await cmd._render_reply(
+            self._message(), template,
+            paths_text="db82\ndb82,e34c", path_count=40, listening_duration=30,
+            packet_hash=packet_hash, scope=scope,
+        )
+
+    async def test_the_counts_come_from_the_lookup(self):
+        cmd = self._cmd()
+        out = await self._render(
+            cmd, "{path_count} paths, {scope_observers} observers, "
+                 "{scope_observations} rx, {scope_max_hops} hops",
+            scope=self._scope(),
+        )
+        assert out == "40 paths, 25 observers, 46 rx, 12 hops"
+
+    async def test_the_url_points_at_the_packets_map_with_every_path(self):
+        cmd = self._cmd()
+        out = await self._render(cmd, "{scope_url}", scope=self._scope())
+        assert out == (
+            "https://analyzer.example.net/#/map?packet=3f2a9c1b7e4d0a65&paths=all"
+        )
+
+    async def test_the_url_is_shortened_before_it_is_labelled(self):
+        """The documented filter order; the reverse hands the shortener a label."""
+        cmd = self._cmd()
+        with patch(
+            "modules.response_template.shorten_url_sync", return_value="https://v.gd/ab1"
+        ):
+            out = await self._render(
+                cmd, "{path_count}{scope_url|shorten|prefix_if_nonempty: | Map: }",
+                scope=self._scope(),
+            )
+        assert out == "40 | Map: https://v.gd/ab1"
+
+    async def test_all_empty_when_the_bot_listened_locally(self):
+        cmd = self._cmd(corescope=False)
+        out = await self._render(
+            cmd, "[{scope_observers}{scope_observations}{scope_max_hops}{scope_url}]"
+        )
+        assert out == "[]"
+
+    async def test_a_labelled_clause_disappears_in_local_mode(self):
+        cmd = self._cmd(corescope=False)
+        out = await self._render(
+            cmd, "Paths({path_count}){scope_url|prefix_if_nonempty: | Map: }"
+        )
+        assert out == "Paths(40)"
+
+    async def test_no_url_without_a_hash_to_link(self):
+        cmd = self._cmd()
+        out = await self._render(cmd, "[{scope_url}]", scope=self._scope(), packet_hash=None)
+        assert out == "[]"
+
+    async def test_the_default_format_ignores_them(self):
+        cmd = self._cmd()
+        out = await self._render(cmd, cmd.DEFAULT_FORMAT, scope=self._scope())
+        assert out == "Paths(40):\ndb82\ndb82,e34c"

@@ -512,10 +512,17 @@ class MultitestCommand(BaseCommand):
          "help": "Result template. Empty = default.",
          "template": template_spec(
              "piped",
-             MESSAGE_PLACEHOLDERS + ("path_count", "paths", "listening_duration"),
+             MESSAGE_PLACEHOLDERS + (
+                 "path_count", "paths", "listening_duration",
+                 "scope_observers", "scope_observations", "scope_max_hops", "scope_url",
+             ),
              notes=[
                  "The message placeholders describe the triggering message, the one "
                  "whose packet the bot listened for.",
+                 "The scope_ fields need CoreScope configured; they are empty when "
+                 "the bot collected the paths itself. With CoreScope on, "
+                 "{path_count} and {paths} are what the observer network heard, "
+                 "not just this radio.",
                  "\\n starts a new line.",
              ],
              blank_default=DEFAULT_FORMAT,
@@ -983,6 +990,8 @@ class MultitestCommand(BaseCommand):
         paths_text: str,
         path_count: int,
         listening_duration: int,
+        packet_hash: Optional[str] = None,
+        scope: Optional[ScopePacket] = None,
     ) -> str:
         """Render the result template, off the event loop.
 
@@ -1006,6 +1015,7 @@ class MultitestCommand(BaseCommand):
                 'paths': paths_text,
                 'listening_duration': listening_duration,
             })
+            fields.update(self._scope_fields(scope, packet_hash))
             return await format_piped_template_async(
                 template,
                 {k: str(v) for k, v in fields.items()},
@@ -1132,6 +1142,34 @@ class MultitestCommand(BaseCommand):
             self._active_sessions.pop(user_id, None)
             if not self._active_sessions and self.bot.message_handler.multitest_listener == self:
                 self.bot.message_handler.multitest_listener = None
+
+    def _scope_fields(
+        self, scope: Optional[ScopePacket], packet_hash: Optional[str]
+    ) -> dict[str, str]:
+        """The ``scope_*`` placeholders, empty unless CoreScope answered.
+
+        Always every key, so one template serves both modes: a clause written as
+        ``{scope_url|shorten|prefix_if_nonempty: | Map: }`` disappears label and
+        all when the bot listened locally, instead of depending on how an unknown
+        placeholder happens to render.
+
+        There is deliberately no ``scope_path_count``: ``{path_count}`` already
+        carries CoreScope's count in the mode where it exists, and a second name
+        for the same number only invites a template that prints both.
+        """
+        fields = {
+            'scope_observers': '',
+            'scope_observations': '',
+            'scope_max_hops': '',
+            'scope_url': '',
+        }
+        if scope is None or self._corescope is None:
+            return fields
+        fields['scope_observers'] = str(scope.observers)
+        fields['scope_observations'] = str(scope.observations)
+        fields['scope_max_hops'] = str(scope.max_hops)
+        fields['scope_url'] = self._corescope.map_url(packet_hash or '')
+        return fields
 
     def _lay_out_paths(self, paths: list[str]) -> str:
         """Render *paths* per the configured layout. One path is always one line."""
@@ -1300,6 +1338,8 @@ class MultitestCommand(BaseCommand):
                 paths_text=paths_text,
                 path_count=len(paths),
                 listening_duration=int(session.listening_duration),
+                packet_hash=tracking_hash,
+                scope=scope,
             )
         elif self.uses_corescope:
             response = self._corescope_miss_response(tracking_hash, session)

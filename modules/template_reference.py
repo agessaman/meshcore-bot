@@ -103,7 +103,17 @@ _EXTRA_PLACEHOLDERS: dict[str, tuple[str, Any]] = {
     # Multitest. The preview overrides {paths} with the saved path layout.
     "path_count": ("Number of unique paths heard", "3"),
     "paths": ("The paths, laid out per Path layout", "a1,b7,e5\na1,c3,e5\na1,c3,f2"),
-    "listening_duration": ("Seconds the bot listened", "6"),
+    "listening_duration": ("Seconds the bot listened, or waited for CoreScope", "6"),
+    # Multitest with CoreScope configured. Empty when the bot listened for the
+    # paths itself, so a clause built on one disappears rather than going blank.
+    "scope_observers": ("CoreScope: observers that heard the packet", "25"),
+    "scope_observations": ("CoreScope: times it was heard, all observers", "46"),
+    "scope_max_hops": ("CoreScope: hops on the longest path", "12"),
+    "scope_url": (
+        "CoreScope: map link showing every path. Shorten it before labelling it: "
+        "{scope_url|shorten|prefix_if_nonempty: | Map: }",
+        "https://analyzer.example.net/#/map?packet=7ba8bf1119ca1fe1&paths=all",
+    ),
 }
 
 ALL_PLACEHOLDERS = {**_MESSAGE_PLACEHOLDERS, **_EXTRA_PLACEHOLDERS}
