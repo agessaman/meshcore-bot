@@ -13,7 +13,7 @@ It needs no authentication and is case-insensitive on the hash.
 
 CoreScope does **not** return a path count. ``observation_count`` counts receptions,
 and the map's own path picker lists one entry per observation without deduplicating,
-so the count here is this client's definition: distinct hop sequences, uppercased,
+so the count here is this client's definition: distinct hop sequences, lowercased,
 empty paths dropped. See :meth:`CoreScopeClient.fetch`.
 """
 
@@ -47,9 +47,11 @@ DEFAULT_CACHE_SECONDS = 300
 class ScopePacket:
     """What CoreScope holds for one packet.
 
-    ``paths`` are comma-joined uppercase hop prefixes -- the same shape
-    ``MultitestCommand`` keeps in ``collected_paths`` -- so they can be handed
-    straight to ``_condense_path_lines`` for the reply layout.
+    ``paths`` are comma-joined lowercase hop prefixes -- the same shape
+    ``MultitestCommand`` keeps in ``collected_paths`` (``extract_path_from_rf_data``
+    lowercases every hop) -- so they can be handed straight to
+    ``_condense_path_lines`` and look the same in a reply whichever mode produced
+    them. CoreScope serves the hops uppercase; deduplication is case-insensitive.
     """
 
     unique_paths: int
@@ -173,7 +175,7 @@ class CoreScopeClient:
 
         Paths are deduplicated on the hop sequence: each observation's
         ``path_json`` (itself a JSON string, not an array) is parsed, hops are
-        uppercased and joined with commas, and empty paths -- an observer that
+        lowercased and joined with commas, and empty paths -- an observer that
         heard the packet direct -- are left out, matching how the bot counts its
         own paths. A route that is a prefix of another counts separately: two
         observers hearing the same packet two and three hops out saw two
@@ -294,7 +296,7 @@ class CoreScopeClient:
         )
 
     def _path_of(self, observation: dict[str, Any]) -> str:
-        """``path_json`` as comma-joined uppercase hops, or ``""``.
+        """``path_json`` as comma-joined lowercase hops, or ``""``.
 
         A malformed entry is skipped rather than failing the whole lookup -- one
         bad observation should not cost the other forty.
@@ -314,5 +316,5 @@ class CoreScopeClient:
         else:
             return ""
 
-        hops = [str(h).strip().upper() for h in hops_any if str(h).strip()]
+        hops = [str(h).strip().lower() for h in hops_any if str(h).strip()]
         return ",".join(hops)

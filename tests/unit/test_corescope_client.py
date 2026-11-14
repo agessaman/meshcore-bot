@@ -104,11 +104,11 @@ class TestFetchCounting:
             observers=4,
             max_hops=12,
             paths=(
-                "DB82",
-                "DB82,E34C",
-                "DB82,E34C,3D73",
-                "DB82,E34C,7E7F,5757,4216,2AD2,1EE8,349D,5790,90E2,42E7,A84B",
-                "DB82,E34C,A937",
+                "db82",
+                "db82,e34c",
+                "db82,e34c,3d73",
+                "db82,e34c,7e7f,5757,4216,2ad2,1ee8,349d,5790,90e2,42e7,a84b",
+                "db82,e34c,a937",
             ),
         )
 
@@ -116,19 +116,19 @@ class TestFetchCounting:
         """Two observers hearing the same packet 2 and 3 hops out saw two routes."""
         client, _ = _client()
         paths = client.fetch(HASH).paths
-        assert "DB82,E34C" in paths
-        assert "DB82,E34C,A937" in paths
+        assert "db82,e34c" in paths
+        assert "db82,e34c,a937" in paths
 
     def test_one_route_heard_by_two_observers_counts_once(self):
         client, _ = _client()
         packet = client.fetch(HASH)
         # Six observations, five routes: RUST-CORE and Forum Observer both heard
-        # DB82,E34C,3D73.
+        # db82,e34c,3d73.
         assert packet.observations == 6
         assert packet.unique_paths == 5
-        assert packet.paths.count("DB82,E34C,3D73") == 1
+        assert packet.paths.count("db82,e34c,3d73") == 1
 
-    def test_hops_are_uppercased(self):
+    def test_hops_are_lowercased_to_match_the_bots_own_paths(self):
         body = json.dumps({"packet": {"observations": [
             {"observer_id": "a", "path_json": '["db82","e34c"]'},
             {"observer_id": "b", "path_json": '["DB82","E34C"]'},
@@ -136,7 +136,7 @@ class TestFetchCounting:
         client, _ = _client(body=body)
         packet = client.fetch(HASH)
         assert packet.unique_paths == 1
-        assert packet.paths == ("DB82,E34C",)
+        assert packet.paths == ("db82,e34c",)
 
     def test_empty_paths_are_excluded_from_the_count(self):
         """A direct reception has no hops, as it does in the bot's own count."""
@@ -148,7 +148,7 @@ class TestFetchCounting:
         packet = client.fetch(HASH)
         assert packet.unique_paths == 1
         assert packet.observations == 2
-        assert packet.paths == ("DB82",)
+        assert packet.paths == ("db82",)
 
     def test_a_malformed_path_skips_only_that_observation(self):
         body = json.dumps({"packet": {"observations": [

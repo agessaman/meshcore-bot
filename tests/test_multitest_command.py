@@ -1,8 +1,13 @@
 """Tests for modules.commands.multitest_command — pure logic and reply rendering."""
 
 import configparser
-from unittest.mock import MagicMock, Mock
+import time
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
+import pytest
+
+import modules.commands.multitest_command as multitest_module
+from modules.clients.corescope_client import ScopePacket
 from modules.commands.multitest_command import (
     MultitestCommand,
     _condense_path_lines,
@@ -567,3 +572,268 @@ class TestRenderReply:
         """The old unicode_escape route raised here and left \\n literal."""
         cmd = self._cmd("🛰\\n{paths}")
         assert cmd.response_format == "🛰\n{paths}"
+
+
+class TestExecuteLocalMode:
+    """The listening-window path, pinned before CoreScope mode was added beside it.
+
+    These assert the behaviour an operator with no CoreScope configured still gets:
+    the bot registers itself as the listener, scans recent RF data, sleeps its
+    window and reports what it heard itself.
+    """
+
+    def _cmd(self, **multitest):
+        bot = _make_bot()
+        for key, value in multitest.items():
+            bot.config.set("Multitest_Command", key, value)
+        bot.message_handler.multitest_listener = None
+        bot.rate_limiter.can_send.return_value = True
+        cmd = MultitestCommand(bot)
+        cmd.get_rf_data_for_message = Mock(return_value={
+            "packet_hash": "3F2A9C1B7E4D0A65",
+            "timestamp": 1000.0,
+            "routing_info": {"path_nodes": ["a1b2", "c3d4"], "bytes_per_hop": 2},
+        })
+        cmd.send_response = AsyncMock(return_value=True)
+        cmd.send_response_chunked = AsyncMock(return_value=True)
+        cmd.get_max_message_length = Mock(return_value=200)
+        cmd._scan_recent_rf_data = Mock()
+        return cmd
+
+    def _message(self, content="mt"):
+        return mock_message(
+            content=content, sender_id="Alice", hops=2,
+            routing_info={"path_nodes": ["a1b2", "c3d4"], "bytes_per_hop": 2,
+                          "packet_hash": "3F2A9C1B7E4D0A65"},
+        )
+
+    async def test_sleeps_the_listening_window(self):
+        cmd = self._cmd()
+        with patch.object(multitest_module.asyncio, "sleep", new=AsyncMock()) as slept:
+            await cmd.execute(self._message())
+        assert 6.0 in [c.args[0] for c in slept.await_args_list]
+
+    async def test_long_and_xlong_lengthen_the_window(self):
+        for variant, expected in (("mt long", 10.0), ("mt xlong", 14.0)):
+            cmd = self._cmd()
+            with patch.object(multitest_module.asyncio, "sleep", new=AsyncMock()) as slept:
+                await cmd.execute(self._message(variant))
+            assert expected in [c.args[0] for c in slept.await_args_list]
+
+    async def test_registers_itself_as_the_listener_then_unregisters(self):
+        cmd = self._cmd()
+        seen = []
+        with patch.object(multitest_module.asyncio, "sleep", new=AsyncMock()) as slept:
+            slept.side_effect = lambda *_a, **_k: seen.append(
+                cmd.bot.message_handler.multitest_listener
+            )
+            await cmd.execute(self._message())
+        assert cmd in seen, "listener must be registered while the window is open"
+        assert cmd.bot.message_handler.multitest_listener is None
+
+    async def test_scans_recent_rf_data(self):
+        cmd = self._cmd()
+        with patch.object(multitest_module.asyncio, "sleep", new=AsyncMock()):
+            await cmd.execute(self._message())
+        assert cmd._scan_recent_rf_data.call_count >= 1
+
+    async def test_reports_what_the_bot_heard_itself(self):
+        cmd = self._cmd()
+        with patch.object(multitest_module.asyncio, "sleep", new=AsyncMock()):
+            await cmd.execute(self._message())
+        sent = cmd.send_response.await_args[0][1]
+        # The triggering message's own path is seeded into the session.
+        assert sent == "Paths(1):\na1b2,c3d4"
+
+    async def test_a_second_request_while_listening_is_ignored(self):
+        cmd = self._cmd()
+        with patch.object(multitest_module.asyncio, "sleep", new=AsyncMock()):
+            await cmd.execute(self._message())
+            cmd._active_sessions["Alice"] = multitest_module.MultitestSession(
+                user_id="Alice", target_packet_hash="3F2A9C1B7E4D0A65",
+                triggering_timestamp=time.time(), listening_start_time=time.time(),
+                listening_duration=6.0, collected_paths=set(),
+            )
+            cmd.send_response.reset_mock()
+            await cmd.execute(self._message())
+        cmd.send_response.assert_not_awaited()
+
+    async def test_missing_rf_data_replies_without_listening(self):
+        cmd = self._cmd()
+        cmd.get_rf_data_for_message = Mock(return_value=None)
+        with patch.object(multitest_module.asyncio, "sleep", new=AsyncMock()) as slept:
+            await cmd.execute(self._message())
+        slept.assert_not_awaited()
+        assert "Could not find packet data" in cmd.send_response.await_args[0][1]
+
+
+class TestCorescopeWiring:
+    """Mode selection from config."""
+
+    def _cmd(self, *, enabled=None, url=None, **extra):
+        bot = _make_bot()
+        bot.config.add_section("External_Data")
+        if enabled is not None:
+            bot.config.set("Multitest_Command", "corescope_enabled", enabled)
+        if url is not None:
+            bot.config.set("External_Data", "corescope_url", url)
+        for key, value in extra.items():
+            bot.config.set("Multitest_Command", key, value)
+        return MultitestCommand(bot)
+
+    def test_off_by_default(self):
+        cmd = self._cmd()
+        assert cmd.uses_corescope is False
+        assert cmd._corescope is None
+
+    def test_enabled_with_a_url_builds_the_client(self):
+        cmd = self._cmd(enabled="true", url="https://analyzer.example.net")
+        assert cmd.uses_corescope is True
+        assert cmd._corescope.base_url == "https://analyzer.example.net"
+
+    def test_enabled_without_a_url_falls_back_to_listening(self):
+        cmd = self._cmd(enabled="true")
+        assert cmd.uses_corescope is False
+        assert cmd.bot.logger.warning.called
+
+    def test_enabled_with_an_unusable_url_falls_back_to_listening(self):
+        cmd = self._cmd(enabled="true", url="ftp://nope.example")
+        assert cmd.uses_corescope is False
+
+    def test_a_url_without_the_toggle_keeps_listening(self):
+        cmd = self._cmd(url="https://analyzer.example.net")
+        assert cmd.uses_corescope is False
+
+    def test_timeout_and_cache_are_configurable(self):
+        cmd = self._cmd(
+            enabled="true", url="https://a.example",
+            corescope_timeout="2.5", corescope_cache_seconds="60",
+        )
+        assert cmd._corescope.timeout == 2.5
+        assert cmd._corescope.cache_seconds == 60
+
+
+class TestExecuteCorescopeMode:
+    """With CoreScope configured, the local listening work is deferred to it."""
+
+    def _cmd(self, *, scope=None, **multitest):
+        bot = _make_bot()
+        bot.config.add_section("External_Data")
+        bot.config.set("External_Data", "corescope_url", "https://analyzer.example.net")
+        bot.config.set("Multitest_Command", "corescope_enabled", "true")
+        for key, value in multitest.items():
+            bot.config.set("Multitest_Command", key, value)
+        bot.message_handler.multitest_listener = None
+        bot.rate_limiter.can_send.return_value = True
+        cmd = MultitestCommand(bot)
+        cmd._corescope = MagicMock()
+        cmd._corescope.fetch = Mock(return_value=scope)
+        cmd.get_rf_data_for_message = Mock(return_value={
+            "packet_hash": "3F2A9C1B7E4D0A65",
+            "timestamp": 1000.0,
+            "routing_info": {"path_nodes": ["a1b2", "c3d4"], "bytes_per_hop": 2},
+        })
+        cmd.send_response = AsyncMock(return_value=True)
+        cmd.send_response_chunked = AsyncMock(return_value=True)
+        cmd.get_max_message_length = Mock(return_value=200)
+        cmd._scan_recent_rf_data = Mock()
+        return cmd
+
+    def _message(self, content="mt"):
+        return mock_message(
+            content=content, sender_id="Alice", hops=2,
+            routing_info={"path_nodes": ["a1b2", "c3d4"], "bytes_per_hop": 2,
+                          "packet_hash": "3F2A9C1B7E4D0A65"},
+        )
+
+    def _scope(self, *paths, observers=3, observations=9):
+        return ScopePacket(
+            unique_paths=len(paths), observations=observations, observers=observers,
+            max_hops=max((p.count(",") + 1 for p in paths), default=0),
+            paths=tuple(paths),
+        )
+
+    async def test_never_registers_itself_as_the_listener(self):
+        cmd = self._cmd(scope=self._scope("a1b2,c3d4"))
+        seen = []
+        with patch.object(multitest_module.asyncio, "sleep", new=AsyncMock()) as slept:
+            slept.side_effect = lambda *_a, **_k: seen.append(
+                cmd.bot.message_handler.multitest_listener
+            )
+            await cmd.execute(self._message())
+        assert cmd not in seen
+        assert cmd.bot.message_handler.multitest_listener is None
+
+    async def test_never_scans_local_rf_data(self):
+        cmd = self._cmd(scope=self._scope("a1b2,c3d4"))
+        with patch.object(multitest_module.asyncio, "sleep", new=AsyncMock()):
+            await cmd.execute(self._message())
+        cmd._scan_recent_rf_data.assert_not_called()
+
+    async def test_never_sleeps_a_listening_window(self):
+        cmd = self._cmd(scope=self._scope("a1b2,c3d4"))
+        with patch.object(multitest_module.asyncio, "sleep", new=AsyncMock()) as slept:
+            await cmd.execute(self._message())
+        assert 6.0 not in [c.args[0] for c in slept.await_args_list]
+
+    async def test_looks_up_the_tracked_packet_hash(self):
+        cmd = self._cmd(scope=self._scope("a1b2,c3d4"))
+        with patch.object(multitest_module.asyncio, "sleep", new=AsyncMock()):
+            await cmd.execute(self._message())
+        cmd._corescope.fetch.assert_called_once_with("3F2A9C1B7E4D0A65")
+
+    async def test_the_count_and_paths_come_from_corescope(self):
+        cmd = self._cmd(
+            scope=self._scope("a1b2", "a1b2,c3d4", "a1b2,e5f6"),
+            condense_paths="false",
+        )
+        with patch.object(multitest_module.asyncio, "sleep", new=AsyncMock()):
+            await cmd.execute(self._message())
+        assert cmd.send_response.await_args[0][1] == (
+            "Paths(3):\na1b2\na1b2,c3d4\na1b2,e5f6"
+        )
+
+    async def test_corescope_paths_use_the_configured_layout(self):
+        cmd = self._cmd(scope=self._scope("a1b2,c3d4", "a1b2,e5f6"), condense_paths="true")
+        with patch.object(multitest_module.asyncio, "sleep", new=AsyncMock()):
+            await cmd.execute(self._message())
+        sent = cmd.send_response.await_args[0][1]
+        assert sent.startswith("Paths(2):")
+        assert _INTER in sent or _LAST in sent, "condensed layout should branch"
+
+    async def test_the_local_path_is_not_counted_in_corescope_mode(self):
+        """The trigger's own path seeds the session, but CoreScope is the source."""
+        cmd = self._cmd(scope=self._scope("9999,8888"), condense_paths="false")
+        with patch.object(multitest_module.asyncio, "sleep", new=AsyncMock()):
+            await cmd.execute(self._message())
+        assert cmd.send_response.await_args[0][1] == "Paths(1):\n9999,8888"
+
+    async def test_a_miss_names_the_packet_and_the_local_path(self):
+        cmd = self._cmd(scope=None)
+        with patch.object(multitest_module.asyncio, "sleep", new=AsyncMock()):
+            await cmd.execute(self._message())
+        sent = cmd.send_response.await_args[0][1]
+        assert "No CoreScope data for packet 3F2A9C1B7E4D0A65." in sent
+        assert "Heard locally: a1b2,c3d4" in sent
+
+    async def test_a_miss_with_no_local_path_says_so(self):
+        cmd = self._cmd(scope=None)
+        cmd.extract_path_from_message = Mock(return_value=None)
+        cmd.extract_path_from_rf_data = Mock(return_value=None)
+        with patch.object(multitest_module.asyncio, "sleep", new=AsyncMock()):
+            await cmd.execute(self._message())
+        assert "No observer has reported it." in cmd.send_response.await_args[0][1]
+
+    async def test_an_empty_path_set_is_a_miss(self):
+        cmd = self._cmd(scope=self._scope())
+        with patch.object(multitest_module.asyncio, "sleep", new=AsyncMock()):
+            await cmd.execute(self._message())
+        assert "No CoreScope data" in cmd.send_response.await_args[0][1]
+
+    async def test_the_session_is_released_even_when_the_lookup_raises(self):
+        cmd = self._cmd(scope=None)
+        cmd._corescope.fetch = Mock(side_effect=RuntimeError("boom"))
+        with patch.object(multitest_module.asyncio, "sleep", new=AsyncMock()):
+            with pytest.raises(RuntimeError):
+                await cmd.execute(self._message())
+        assert cmd._active_sessions == {}

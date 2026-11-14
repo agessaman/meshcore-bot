@@ -9,10 +9,18 @@ import re
 import time
 from collections import defaultdict
 from dataclasses import dataclass
+from functools import partial
 from typing import Any, Literal, Optional
 
 CondensePathsMode = Literal["off", "flat", "nested"]
 
+from ..clients.corescope_client import (
+    DEFAULT_CACHE_SECONDS,
+    DEFAULT_TIMEOUT,
+    CoreScopeClient,
+    ScopePacket,
+    normalize_base_url,
+)
 from ..models import MeshMessage
 from ..response_template import format_piped_template_async
 from ..template_reference import MESSAGE_PLACEHOLDERS, template_spec
@@ -546,6 +554,50 @@ class MultitestCommand(BaseCommand):
         )
         self.condense_paths_mode: CondensePathsMode = _parse_condense_paths_mode(raw_cp)
 
+        self._corescope = self._build_corescope_client()
+
+    def _build_corescope_client(self) -> Optional[CoreScopeClient]:
+        """The CoreScope client, or ``None`` to keep listening locally.
+
+        Rebuilt on every config load so a changed URL or toggle takes effect
+        without a restart. Enabled with no usable URL degrades to the local
+        listening window rather than breaking the command: there is no default
+        instance to guess at, since this sends a packet hash the bot heard to a
+        third-party service the operator has to name.
+        """
+        if not self.get_config_value(
+            'Multitest_Command', 'corescope_enabled', fallback=False, value_type='bool'
+        ):
+            return None
+
+        base_url = normalize_base_url(
+            self.get_config_value('External_Data', 'corescope_url', fallback='') or ''
+        )
+        if not base_url:
+            self.logger.warning(
+                "Multitest: corescope_enabled is on but [External_Data] corescope_url is "
+                "missing or unusable; listening locally instead"
+            )
+            return None
+
+        return CoreScopeClient(
+            base_url,
+            timeout=self.get_config_value(
+                'Multitest_Command', 'corescope_timeout',
+                fallback=DEFAULT_TIMEOUT, value_type='float',
+            ),
+            cache_seconds=self.get_config_value(
+                'Multitest_Command', 'corescope_cache_seconds',
+                fallback=DEFAULT_CACHE_SECONDS, value_type='int',
+            ),
+            logger=self.logger,
+        )
+
+    @property
+    def uses_corescope(self) -> bool:
+        """True when paths come from CoreScope rather than from listening."""
+        return self._corescope is not None
+
     @property
     def condense_paths(self) -> bool:
         """True when any condensed layout is enabled (flat or nested)."""
@@ -899,6 +951,72 @@ class MultitestCommand(BaseCommand):
             self.logger.debug(f"Error formatting multitest response: {e}, using default format")
             return default
 
+    async def _collect_locally(self, session: MultitestSession) -> None:
+        """Listen for the window, collecting paths the bot's own radio hears.
+
+        Scanning before and after covers packets the message handler had not
+        processed yet when the window opened, and those that arrive while it is
+        closing.
+        """
+        self._scan_recent_rf_data(session)
+        await asyncio.sleep(session.listening_duration)
+        self._scan_recent_rf_data(session)
+
+    async def _collect_from_corescope(
+        self, session: MultitestSession
+    ) -> Optional[ScopePacket]:
+        """Ask CoreScope for the packet's paths instead of listening for them.
+
+        No listening window, no RF scan, no listener registration: the observer
+        network already heard what this command would have waited for, and from
+        more radios than this one has. ``None`` when the lookup found nothing,
+        which the caller turns into :meth:`_corescope_miss_response`.
+
+        The client blocks on HTTP, so it runs in the executor. Inline it would
+        stall radio RX and every other handler for the whole timeout.
+
+        The lookup fires as soon as the trigger is decoded, while observers are
+        still reporting, so the count it returns is a floor rather than a total.
+        """
+        client = self._corescope
+        if client is None:
+            return None
+        self.logger.info(
+            f"Multitest: asking CoreScope for packet {session.target_packet_hash}"
+        )
+        return await asyncio.get_running_loop().run_in_executor(
+            None, partial(client.fetch, session.target_packet_hash)
+        )
+
+    async def _end_session(self, user_id: str) -> None:
+        """Drop the session and release the listener when nothing else needs it."""
+        async with self._get_execution_lock():
+            self._active_sessions.pop(user_id, None)
+            if not self._active_sessions and self.bot.message_handler.multitest_listener == self:
+                self.bot.message_handler.multitest_listener = None
+
+    def _lay_out_paths(self, paths: list[str]) -> str:
+        """Render *paths* per the configured layout. One path is always one line."""
+        if len(paths) > 1 and self.condense_paths_mode in ("flat", "nested"):
+            return _condense_path_lines(paths, self.condense_paths_mode)
+        return "\n".join(paths)
+
+    def _corescope_miss_response(
+        self, tracking_hash: Optional[str], session: MultitestSession
+    ) -> str:
+        """Reply for a CoreScope lookup that came back with nothing.
+
+        CoreScope mode does not listen, so there is no local path list to fall
+        back on -- except the triggering message's own path, which was extracted
+        at trigger time and costs nothing to report. Saying which packet missed
+        matters: the usual cause is that no observer covers the bot's area, and
+        the hash is what the operator needs to check that on the map.
+        """
+        miss = f"No CoreScope data for packet {tracking_hash}."
+        if session.initial_path:
+            return f"{miss} Heard locally: {session.initial_path}"
+        return f"{miss} No observer has reported it."
+
     async def execute(self, message: MeshMessage) -> bool:
         """Execute the multitest command"""
         user_id = message.sender_id or "unknown"
@@ -988,50 +1106,38 @@ class MultitestCommand(BaseCommand):
             # Register this session
             self._active_sessions[user_id] = session
 
-            # Register this command instance as the active listener (if not already registered)
-            # Store reference in message handler so it can call on_message_received
-            if self.bot.message_handler.multitest_listener is None:
+            # Only the local listening window needs the message handler to feed it
+            # matching packets; CoreScope mode never collects any itself.
+            if not self.uses_corescope and self.bot.message_handler.multitest_listener is None:
                 self.bot.message_handler.multitest_listener = self
 
             self.logger.info(f"Tracking packet hash for user {user_id}: {packet_hash[:16]}... (full: {packet_hash})")
             self.logger.debug(f"Triggering message timestamp for user {user_id}: {triggering_rf_timestamp}")
 
-        # Release lock before async sleep to allow other users to start their sessions
-        # Also scan recent RF data for matching hashes (in case messages haven't been processed yet)
-        # But only include packets that arrived at or after the triggering message
-        self._scan_recent_rf_data(session)
-
+        # Lock released, so other users can start their own sessions while this one
+        # waits.
+        scope: Optional[ScopePacket] = None
         try:
-            # Wait for the listening duration
-            await asyncio.sleep(session.listening_duration)
+            if self.uses_corescope:
+                scope = await self._collect_from_corescope(session)
+            else:
+                await self._collect_locally(session)
         finally:
-            # Re-acquire lock to clean up session
-            async with self._get_execution_lock():
-                # Remove this session
-                if user_id in self._active_sessions:
-                    del self._active_sessions[user_id]
-
-                # Unregister listener if no more active sessions
-                if not self._active_sessions and self.bot.message_handler.multitest_listener == self:
-                    self.bot.message_handler.multitest_listener = None
-
-        # Do a final scan of RF data in case any matching packets arrived
-        self._scan_recent_rf_data(session)
+            await self._end_session(user_id)
 
         # Store hash for error message before clearing it
         tracking_hash = session.target_packet_hash
 
+        # One source or the other, never both: CoreScope mode did not listen, so
+        # session.collected_paths holds nothing but the triggering message's own path.
+        if self.uses_corescope:
+            paths = list(scope.paths) if scope is not None else []
+        else:
+            paths = sorted(session.collected_paths)
+
         # Format the collected paths
-        if session.collected_paths:
-            # Sort paths for consistent output
-            sorted_paths = sorted(session.collected_paths)
-            if len(sorted_paths) > 1 and self.condense_paths_mode == "flat":
-                paths_text = _condense_path_lines(sorted_paths, "flat")
-            elif len(sorted_paths) > 1 and self.condense_paths_mode == "nested":
-                paths_text = _condense_path_lines(sorted_paths, "nested")
-            else:
-                paths_text = "\n".join(sorted_paths)
-            path_count = len(sorted_paths)
+        if paths:
+            paths_text = self._lay_out_paths(paths)
 
             # Configured template or the built-in default; both take the same
             # placeholders and filters, and both render the same way.
@@ -1039,9 +1145,11 @@ class MultitestCommand(BaseCommand):
                 message,
                 self.response_format or self.DEFAULT_FORMAT,
                 paths_text=paths_text,
-                path_count=path_count,
+                path_count=len(paths),
                 listening_duration=int(session.listening_duration),
             )
+        elif self.uses_corescope:
+            response = self._corescope_miss_response(tracking_hash, session)
         else:
             # Provide more helpful error message with diagnostic info
             matching_packets = 0
