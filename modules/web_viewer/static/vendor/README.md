@@ -8,7 +8,7 @@ The versions are pinned in `scripts/web-vendor/package.json` and its lockfile, a
 | Package | Version | License | Served from `static/` |
 |---|---|---|---|
 | `bootstrap` | 5.1.3 | MIT | `vendor/bootstrap/` |
-| `@fortawesome/fontawesome-free` | 6.0.0 | (CC-BY-4.0 AND OFL-1.1 AND MIT) | `vendor/fontawesome/` |
+| `@fortawesome/fontawesome-free` | 7.3.1 | (CC-BY-4.0 AND OFL-1.1 AND MIT) | `vendor/fontawesome/` |
 | `socket.io-client` | 4.7.2 | MIT | `vendor/socket.io/` |
 | `chart.js` | 4.4.0 | MIT | `vendor/chart.js/` |
 | `leaflet` | 1.9.4 | BSD-2-Clause | `vendor/leaflet/` |
