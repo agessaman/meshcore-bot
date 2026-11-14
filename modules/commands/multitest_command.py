@@ -27,6 +27,10 @@ from ..template_reference import MESSAGE_PLACEHOLDERS, template_spec
 from ..utils import calculate_packet_hash, decode_escape_sequences, parse_path_string
 from .base_command import BaseCommand
 
+# Seconds to wait for observers to report to CoreScope before asking it. Long
+# enough that the count is not a snapshot of whoever reported first.
+DEFAULT_SETTLE_SECONDS = 30.0
+
 _BRANCH_INTER = "\u251c"  # ├ (intermediate branch)
 _BRANCH_LAST = "\u2514"  # └ (last branch)
 _INDENT_NEST = "\u3000"  # 　 ideographic space before nested ├/└
@@ -487,6 +491,20 @@ class MultitestCommand(BaseCommand):
     # engine as a configured template, so the two cannot drift apart.
     DEFAULT_FORMAT = "Paths({path_count}):\n{paths}"
 
+    # Sent as soon as a CoreScope request is accepted, because the settle delay
+    # leaves the user waiting half a minute with nothing. Plain ASCII and short:
+    # it is a second transmission on a shared mesh and has to fit the budget on
+    # its own.
+    DEFAULT_ACK_MESSAGE = "Checking CoreScope for all paths, reply in ~{wait_seconds}s"
+
+    # Longest settle an operator can configure. A typo of 3000 would otherwise
+    # hold the command path for 50 minutes.
+    MAX_SETTLE_SECONDS = 300.0
+
+    # "long"/"xlong" lengthen the local listening window; in CoreScope mode there
+    # is no window, so they lengthen the wait for observers to report instead.
+    SETTLE_MULTIPLIERS = {"": 1, "long": 2, "xlong": 3}
+
     # Web-viewer settings schema (see modules/settings_schema.py)
     settings_schema = [
         {"key": "response_format", "label": "Response format", "type": "str",
@@ -555,6 +573,56 @@ class MultitestCommand(BaseCommand):
         self.condense_paths_mode: CondensePathsMode = _parse_condense_paths_mode(raw_cp)
 
         self._corescope = self._build_corescope_client()
+        self.corescope_settle_seconds = self._load_settle_seconds()
+
+        ack = self.get_config_value(
+            'Multitest_Command', 'corescope_ack_message', fallback=None
+        )
+        if ack is None:
+            self.corescope_ack_message: str = self.DEFAULT_ACK_MESSAGE
+        else:
+            # An explicitly blank value disables the acknowledgement; anything else
+            # is a template, decoded like every other configured response.
+            stripped = self._strip_quotes_from_config(ack).strip()
+            self.corescope_ack_message = decode_escape_sequences(stripped) if stripped else ""
+
+    def _load_settle_seconds(self) -> float:
+        """Seconds to wait before asking CoreScope, clamped to a sane range.
+
+        Observers publish to CoreScope over MQTT as they hear a packet, so asking
+        the moment the trigger is decoded returns a floor rather than a total.
+        Waiting is the whole point of the delay; an out-of-range value is rejected
+        rather than honoured, since the command path is occupied throughout.
+        """
+        # Read as text and parse here: get_config_value's 'float' coercion falls
+        # back silently, so a typo would quietly become the default with nothing
+        # in the log to explain why the bot is not waiting as long as configured.
+        raw = self.get_config_value(
+            'Multitest_Command', 'corescope_settle_seconds', fallback=None
+        )
+        if raw is None or not str(raw).strip():
+            return DEFAULT_SETTLE_SECONDS
+        try:
+            value = float(str(raw).strip())
+        except ValueError:
+            self.logger.warning(
+                f"Multitest: corescope_settle_seconds {raw!r} is not a number; "
+                f"using {DEFAULT_SETTLE_SECONDS:g}s"
+            )
+            return DEFAULT_SETTLE_SECONDS
+
+        clamped = max(0.0, min(value, self.MAX_SETTLE_SECONDS))
+        if clamped != value:
+            self.logger.warning(
+                f"Multitest: corescope_settle_seconds {value:g} is out of range "
+                f"(0-{self.MAX_SETTLE_SECONDS:g}); using {clamped:g}s"
+            )
+        return clamped
+
+    def _settle_for_variant(self, variant: str) -> float:
+        """The settle this run waits: the configured value, scaled by the variant."""
+        multiplier = self.SETTLE_MULTIPLIERS.get(variant, 1)
+        return min(self.corescope_settle_seconds * multiplier, self.MAX_SETTLE_SECONDS)
 
     def _build_corescope_client(self) -> Optional[CoreScopeClient]:
         """The CoreScope client, or ``None`` to keep listening locally.
@@ -962,8 +1030,66 @@ class MultitestCommand(BaseCommand):
         await asyncio.sleep(session.listening_duration)
         self._scan_recent_rf_data(session)
 
+    async def _send_corescope_ack(
+        self, message: MeshMessage, session: MultitestSession
+    ) -> None:
+        """Tell the user the request landed, before waiting out the settle.
+
+        Without this the bot is silent for the whole settle and reads as having
+        ignored the request. Sent with ``skip_user_rate_limit`` because the user's
+        budget should be charged for the result, not for the bot's progress note,
+        and truncated rather than chunked if an operator configures something
+        long: a progress note is not worth two transmissions.
+        """
+        template = self.corescope_ack_message
+        if not template:
+            return
+
+        wait_seconds = int(round(session.listening_duration))
+        text = await self._render_ack(message, template, wait_seconds=wait_seconds)
+        if not text.strip():
+            return
+
+        budget = self.get_max_message_length(message)
+        if len(text.encode("utf-8")) > budget:
+            chunks = self.bot.command_manager.split_text_into_utf8_chunks(text, budget)
+            self.logger.debug(
+                f"Multitest: acknowledgement is longer than {budget} bytes, truncating"
+            )
+            text = chunks[0] if chunks else text
+        await self.send_response(message, text, skip_user_rate_limit=True)
+
+    async def _render_ack(
+        self, message: MeshMessage, template: str, *, wait_seconds: int
+    ) -> str:
+        """Render the acknowledgement, off the event loop like the reply.
+
+        Takes ``{wait_seconds}`` -- the wait this run will actually do, variant
+        scaling included -- plus the standard message placeholders, so the text
+        cannot promise a delay the command is not about to take.
+        """
+        try:
+            fields: dict[str, Any] = self.get_standard_placeholder_fields(message)
+            fields.update({
+                'sender': message.sender_id or "Unknown",
+                'wait_seconds': wait_seconds,
+            })
+            return await format_piped_template_async(
+                template,
+                {k: str(v) for k, v in fields.items()},
+                message=message,
+                logger=self.logger,
+                config=self.bot.config,
+                prefix_hex_chars=getattr(self.bot, 'prefix_hex_chars', 2),
+            )
+        except (KeyError, ValueError) as e:
+            # Silence is the thing this message exists to prevent, so fall back to
+            # the built-in text rather than dropping it.
+            self.logger.debug(f"Error formatting multitest acknowledgement: {e}, using default")
+            return self.DEFAULT_ACK_MESSAGE.replace("{wait_seconds}", str(wait_seconds))
+
     async def _collect_from_corescope(
-        self, session: MultitestSession
+        self, message: MeshMessage, session: MultitestSession, *, started: float
     ) -> Optional[ScopePacket]:
         """Ask CoreScope for the packet's paths instead of listening for them.
 
@@ -972,17 +1098,29 @@ class MultitestCommand(BaseCommand):
         more radios than this one has. ``None`` when the lookup found nothing,
         which the caller turns into :meth:`_corescope_miss_response`.
 
+        Acknowledges first, then waits out the settle so observers have reported
+        before the lookup. The wait runs to a deadline measured from *started*,
+        the moment this command picked the trigger up, rather than sleeping a flat
+        interval after the acknowledgement: that send takes real time (the rate
+        limiter, and a DM waits for an ACK), which would otherwise push the total
+        past the configured wait.
+
         The client blocks on HTTP, so it runs in the executor. Inline it would
         stall radio RX and every other handler for the whole timeout.
-
-        The lookup fires as soon as the trigger is decoded, while observers are
-        still reporting, so the count it returns is a floor rather than a total.
         """
         client = self._corescope
         if client is None:
             return None
+
+        await self._send_corescope_ack(message, session)
+
+        remaining = session.listening_duration - (time.monotonic() - started)
+        if remaining > 0:
+            await asyncio.sleep(remaining)
+
         self.logger.info(
-            f"Multitest: asking CoreScope for packet {session.target_packet_hash}"
+            f"Multitest: asking CoreScope for packet {session.target_packet_hash} "
+            f"after {session.listening_duration:g}s"
         )
         return await asyncio.get_running_loop().run_in_executor(
             None, partial(client.fetch, session.target_packet_hash)
@@ -1020,7 +1158,12 @@ class MultitestCommand(BaseCommand):
     async def execute(self, message: MeshMessage) -> bool:
         """Execute the multitest command"""
         user_id = message.sender_id or "unknown"
+        # Marks when this command picked the trigger up, so a CoreScope settle can
+        # run to a deadline rather than a flat sleep after the acknowledgement.
+        started = time.monotonic()
         required_path_bytes_mode = self._get_required_path_bytes_setting('Multitest_Command')
+        # Before anything is sent: a request the path-byte requirement rejects gets
+        # the configured reject reply or silence, never an acknowledgement.
         if not await self.enforce_path_byte_requirement(message, 'Multitest_Command'):
             return True
 
@@ -1038,18 +1181,26 @@ class MultitestCommand(BaseCommand):
             # Record execution time BEFORE starting async work to prevent race conditions
             self.record_execution(user_id)
 
-            # Determine listening duration based on command variant
+            # Determine how long this run occupies: the listening window locally,
+            # the settle in CoreScope mode. Either way it is what the duplicate-session
+            # guard above measures against and what {listening_duration} reports.
             _trigger, args = self.split_trigger_and_args(message.content)
-            listening_duration = 6.0  # Default
             # Variants: "<trigger> long" / "<trigger> xlong" (trigger = multitest, mt, or alias)
             variant = args.split()[0].lower() if args else ""
-            if variant == 'long':
+            if self.uses_corescope:
+                listening_duration = self._settle_for_variant(variant)
+                self.logger.info(
+                    f"Multitest command ({variant or 'default'}) executed by {user_id} - "
+                    f"waiting {listening_duration:g}s for observers to report to CoreScope"
+                )
+            elif variant == 'long':
                 listening_duration = 10.0
                 self.logger.info(f"Multitest command (long) executed by {user_id} - starting 10 second listening window")
             elif variant == 'xlong':
                 listening_duration = 14.0
                 self.logger.info(f"Multitest command (xlong) executed by {user_id} - starting 14 second listening window")
             else:
+                listening_duration = 6.0
                 self.logger.info(f"Multitest command executed by {user_id} - starting 6 second listening window")
 
             # Get RF data for the triggering message (contains pre-calculated packet hash)
@@ -1119,7 +1270,9 @@ class MultitestCommand(BaseCommand):
         scope: Optional[ScopePacket] = None
         try:
             if self.uses_corescope:
-                scope = await self._collect_from_corescope(session)
+                scope = await self._collect_from_corescope(
+                    message, session, started=started
+                )
             else:
                 await self._collect_locally(session)
         finally:

@@ -837,3 +837,211 @@ class TestExecuteCorescopeMode:
             with pytest.raises(RuntimeError):
                 await cmd.execute(self._message())
         assert cmd._active_sessions == {}
+
+
+class TestSettleConfig:
+    """corescope_settle_seconds: default, clamping and variant scaling."""
+
+    def _cmd(self, **multitest):
+        bot = _make_bot()
+        bot.config.add_section("External_Data")
+        bot.config.set("External_Data", "corescope_url", "https://a.example")
+        bot.config.set("Multitest_Command", "corescope_enabled", "true")
+        for key, value in multitest.items():
+            bot.config.set("Multitest_Command", key, value)
+        return MultitestCommand(bot)
+
+    def test_defaults_to_thirty_seconds(self):
+        assert self._cmd().corescope_settle_seconds == 30.0
+
+    def test_an_explicit_value_is_used(self):
+        assert self._cmd(corescope_settle_seconds="12.5").corescope_settle_seconds == 12.5
+
+    def test_zero_is_allowed(self):
+        assert self._cmd(corescope_settle_seconds="0").corescope_settle_seconds == 0.0
+
+    def test_too_long_is_clamped_and_warned(self):
+        cmd = self._cmd(corescope_settle_seconds="3000")
+        assert cmd.corescope_settle_seconds == cmd.MAX_SETTLE_SECONDS
+        assert cmd.bot.logger.warning.called
+
+    def test_negative_is_clamped_to_zero(self):
+        assert self._cmd(corescope_settle_seconds="-5").corescope_settle_seconds == 0.0
+
+    def test_a_non_numeric_value_falls_back_to_the_default(self):
+        cmd = self._cmd(corescope_settle_seconds="soon")
+        assert cmd.corescope_settle_seconds == multitest_module.DEFAULT_SETTLE_SECONDS
+        assert cmd.bot.logger.warning.called
+
+    def test_variants_scale_the_wait(self):
+        cmd = self._cmd(corescope_settle_seconds="30")
+        assert cmd._settle_for_variant("") == 30.0
+        assert cmd._settle_for_variant("long") == 60.0
+        assert cmd._settle_for_variant("xlong") == 90.0
+
+    def test_an_unknown_variant_does_not_scale(self):
+        assert self._cmd(corescope_settle_seconds="30")._settle_for_variant("nonsense") == 30.0
+
+    def test_a_scaled_wait_is_still_capped(self):
+        cmd = self._cmd(corescope_settle_seconds="200")
+        assert cmd._settle_for_variant("xlong") == cmd.MAX_SETTLE_SECONDS
+
+
+class TestCorescopeAckAndSettle:
+    """The acknowledgement, and waiting for observers before asking."""
+
+    def _cmd(self, *, scope=None, **multitest):
+        bot = _make_bot()
+        bot.config.add_section("External_Data")
+        bot.config.set("External_Data", "corescope_url", "https://a.example")
+        bot.config.set("Multitest_Command", "corescope_enabled", "true")
+        for key, value in multitest.items():
+            bot.config.set("Multitest_Command", key, value)
+        bot.message_handler.multitest_listener = None
+        bot.rate_limiter.can_send.return_value = True
+        bot.command_manager.split_text_into_utf8_chunks = Mock(
+            side_effect=lambda text, budget: [text[:budget]]
+        )
+        cmd = MultitestCommand(bot)
+        cmd._corescope = MagicMock()
+        cmd._corescope.fetch = Mock(return_value=scope or ScopePacket(
+            unique_paths=1, observations=1, observers=1, max_hops=2, paths=("a1b2,c3d4",),
+        ))
+        cmd.get_rf_data_for_message = Mock(return_value={
+            "packet_hash": "3F2A9C1B7E4D0A65", "timestamp": 1000.0,
+            "routing_info": {"path_nodes": ["a1b2", "c3d4"], "bytes_per_hop": 2},
+        })
+        cmd.send_response = AsyncMock(return_value=True)
+        cmd.send_response_chunked = AsyncMock(return_value=True)
+        cmd.get_max_message_length = Mock(return_value=200)
+        return cmd
+
+    def _message(self, content="mt"):
+        return mock_message(
+            content=content, sender_id="Alice", hops=2,
+            routing_info={"path_nodes": ["a1b2", "c3d4"], "bytes_per_hop": 2,
+                          "packet_hash": "3F2A9C1B7E4D0A65"},
+        )
+
+    async def test_acknowledges_then_waits_then_replies(self):
+        cmd = self._cmd()
+        order = []
+        with patch.object(multitest_module.asyncio, "sleep", new=AsyncMock()) as slept:
+            slept.side_effect = lambda *_a, **_k: order.append(
+                ("slept", cmd.send_response.await_count)
+            )
+            await cmd.execute(self._message())
+        assert order == [("slept", 1)], "the ack must go out before the wait"
+        assert cmd.send_response.await_count == 2, "ack, then the result"
+
+    async def test_the_ack_names_the_wait(self):
+        cmd = self._cmd(corescope_settle_seconds="30")
+        with patch.object(multitest_module.asyncio, "sleep", new=AsyncMock()):
+            await cmd.execute(self._message())
+        assert cmd.send_response.await_args_list[0][0][1] == (
+            "Checking CoreScope for all paths, reply in ~30s"
+        )
+
+    async def test_the_ack_names_the_variant_scaled_wait(self):
+        cmd = self._cmd(corescope_settle_seconds="30")
+        with patch.object(multitest_module.asyncio, "sleep", new=AsyncMock()):
+            await cmd.execute(self._message("mt xlong"))
+        assert "~90s" in cmd.send_response.await_args_list[0][0][1]
+
+    async def test_the_ack_does_not_spend_the_users_rate_limit(self):
+        cmd = self._cmd()
+        with patch.object(multitest_module.asyncio, "sleep", new=AsyncMock()):
+            await cmd.execute(self._message())
+        assert cmd.send_response.await_args_list[0][1]["skip_user_rate_limit"] is True
+
+    async def test_a_blank_ack_is_not_sent(self):
+        cmd = self._cmd(corescope_ack_message="")
+        with patch.object(multitest_module.asyncio, "sleep", new=AsyncMock()):
+            await cmd.execute(self._message())
+        assert cmd.corescope_ack_message == ""
+        assert cmd.send_response.await_count == 1, "only the result"
+        cmd._corescope.fetch.assert_called_once()
+
+    async def test_a_configured_ack_takes_placeholders_and_filters(self):
+        cmd = self._cmd(corescope_ack_message="@[{sender}] {wait_seconds}s, pkt {packet_hash}")
+        with patch.object(multitest_module.asyncio, "sleep", new=AsyncMock()):
+            await cmd.execute(self._message())
+        assert cmd.send_response.await_args_list[0][0][1] == (
+            "@[Alice] 30s, pkt 3F2A9C1B7E4D0A65"
+        )
+
+    async def test_an_overlong_ack_is_truncated_not_chunked(self):
+        cmd = self._cmd(corescope_ack_message="x" * 400)
+        with patch.object(multitest_module.asyncio, "sleep", new=AsyncMock()):
+            await cmd.execute(self._message())
+        assert len(cmd.send_response.await_args_list[0][0][1]) == 200
+        cmd.send_response_chunked.assert_not_awaited()
+
+    async def test_the_wait_runs_to_a_deadline_from_the_trigger(self):
+        """A slow ack shortens the sleep instead of extending the total."""
+        cmd = self._cmd(corescope_settle_seconds="30")
+        clock = iter([100.0, 112.0])
+        with patch.object(multitest_module.time, "monotonic", side_effect=lambda: next(clock, 112.0)):
+            with patch.object(multitest_module.asyncio, "sleep", new=AsyncMock()) as slept:
+                await cmd.execute(self._message())
+        assert slept.await_args_list[0][0][0] == pytest.approx(18.0)
+
+    async def test_an_ack_slower_than_the_settle_skips_the_wait(self):
+        cmd = self._cmd(corescope_settle_seconds="30")
+        clock = iter([100.0, 140.0])
+        with patch.object(multitest_module.time, "monotonic", side_effect=lambda: next(clock, 140.0)):
+            with patch.object(multitest_module.asyncio, "sleep", new=AsyncMock()) as slept:
+                await cmd.execute(self._message())
+        slept.assert_not_awaited()
+        cmd._corescope.fetch.assert_called_once()
+
+    async def test_a_zero_settle_asks_immediately(self):
+        cmd = self._cmd(corescope_settle_seconds="0")
+        with patch.object(multitest_module.asyncio, "sleep", new=AsyncMock()) as slept:
+            await cmd.execute(self._message())
+        slept.assert_not_awaited()
+        cmd._corescope.fetch.assert_called_once()
+
+    async def test_a_rejected_request_is_never_acknowledged(self):
+        cmd = self._cmd()
+        cmd.enforce_path_byte_requirement = AsyncMock(return_value=False)
+        with patch.object(multitest_module.asyncio, "sleep", new=AsyncMock()):
+            await cmd.execute(self._message())
+        cmd.send_response.assert_not_awaited()
+        cmd._corescope.fetch.assert_not_called()
+
+    async def test_a_second_request_during_the_settle_is_ignored(self):
+        cmd = self._cmd(corescope_settle_seconds="30")
+        cmd._active_sessions["Alice"] = multitest_module.MultitestSession(
+            user_id="Alice", target_packet_hash="3F2A9C1B7E4D0A65",
+            triggering_timestamp=time.time(), listening_start_time=time.time(),
+            listening_duration=30.0, collected_paths=set(),
+        )
+        with patch.object(multitest_module.asyncio, "sleep", new=AsyncMock()):
+            await cmd.execute(self._message())
+        cmd.send_response.assert_not_awaited()
+
+    async def test_local_mode_sends_no_acknowledgement(self):
+        bot = _make_bot()
+        bot.message_handler.multitest_listener = None
+        bot.rate_limiter.can_send.return_value = True
+        cmd = MultitestCommand(bot)
+        cmd.get_rf_data_for_message = Mock(return_value={
+            "packet_hash": "3F2A9C1B7E4D0A65", "timestamp": 1000.0,
+            "routing_info": {"path_nodes": ["a1b2", "c3d4"], "bytes_per_hop": 2},
+        })
+        cmd.send_response = AsyncMock(return_value=True)
+        cmd.get_max_message_length = Mock(return_value=200)
+        cmd._scan_recent_rf_data = Mock()
+        with patch.object(multitest_module.asyncio, "sleep", new=AsyncMock()):
+            await cmd.execute(self._message())
+        assert cmd.send_response.await_count == 1, "only the result"
+
+    async def test_the_reply_reports_the_seconds_waited(self):
+        cmd = self._cmd(
+            corescope_settle_seconds="45",
+            response_format="{path_count} in {listening_duration}s",
+        )
+        with patch.object(multitest_module.asyncio, "sleep", new=AsyncMock()):
+            await cmd.execute(self._message())
+        assert cmd.send_response.await_args[0][1] == "1 in 45s"
