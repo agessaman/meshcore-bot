@@ -224,7 +224,9 @@ def _open_windows_parent(parent_pid: int) -> tuple[int | None, bool, bool]:
         parent_pid,
     )
     if not handle:
-        if ctypes.get_last_error() == _ERROR_ACCESS_DENIED:
+        # The platform check is for mypy: ctypes.get_last_error is Windows-only
+        # in the type stubs, and CI type-checks on Linux.
+        if sys.platform == "win32" and ctypes.get_last_error() == _ERROR_ACCESS_DENIED:
             return None, False, True
         return None, True, False
     return int(handle), False, False
