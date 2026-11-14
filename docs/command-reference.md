@@ -854,15 +854,50 @@ stats paths
 
 ### `multitest` or `mt`
 
-Listen for 6 seconds and collect all unique paths from incoming messages.
+Report every route one message took, not just the one that reached the bot.
 
 **Usage:**
 ```
 multitest
 mt
+multitest long     # listen 10s, or wait 2x as long for CoreScope
+multitest xlong    # listen 14s, or wait 3x as long for CoreScope
 ```
 
-**Response:** List of all unique routing paths discovered during the 6-second listening period.
+**Response:** The unique routing paths found for the triggering message, laid out
+per `[Multitest_Command] condense_paths`.
+
+Where those paths come from depends on configuration:
+
+| | Source | Reply time |
+|---|---|---|
+| **Listening** (default) | The bot's own radio, over a 6/10/14s window | right after the window |
+| **CoreScope** (`corescope_enabled`) | Every observer reporting to a CoreScope instance | `corescope_settle_seconds` later, 30s by default |
+
+**Listening mode** hears only the routes that reached *this* radio, which is
+usually a handful. It is the original behaviour and needs nothing but the bot.
+
+**CoreScope mode** asks a [CoreScope](https://analyzer.comchan.net) instance,
+which collects the same packet from many observers and so knows every route it
+took -- 40 unique paths across 46 receptions on a busy packet, where one radio
+hears a few. Three things to know before turning it on:
+
+- **It needs observer coverage.** The bot does not listen at all in this mode, so
+  if no observer near you reports to that instance, a request has nothing to
+  report and no local paths to fall back on. The reply then names the packet hash
+  so you can check it on the map, and includes the one path the bot itself saw.
+- **The reply is late on purpose.** Observers publish as they hear the packet, so
+  asking immediately counts only whoever reported first. The bot acknowledges the
+  request at once (`corescope_ack_message`), waits `corescope_settle_seconds`, then
+  answers. `long` and `xlong` wait 2x and 3x rather than lengthening a window.
+- **The count is of routes, not receptions.** Two observers hearing the same
+  packet by the same route is one path; one observer hearing it two hops out while
+  another hears it three hops out is two. The number will not match the row count
+  in CoreScope's own path picker, which lists every reception.
+
+A CoreScope reply can also use `{scope_observers}`, `{scope_observations}`,
+`{scope_max_hops}` and `{scope_url}` in `response_format` -- see
+`config.ini.example` for the filter order `{scope_url}` needs.
 
 ## Command Syntax
 
