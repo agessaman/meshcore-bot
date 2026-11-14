@@ -5237,17 +5237,22 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
             mesh_graph=self._get_mesh_graph(),
         )
 
-    def run(self, host='127.0.0.1', port=8080, debug=False):
+    def run(self, host='127.0.0.1', port=8080, debug=False, *, use_reloader=None):
         """Run the modern web viewer"""
         self.logger.info(f"Starting modern web viewer on {host}:{port}")
         self._suppress_werkzeug_headers_error()
+        # Only override when the caller asks. Standalone --debug still reloads.
+        run_kwargs = {}
+        if use_reloader is not None:
+            run_kwargs["use_reloader"] = use_reloader
         try:
             self.socketio.run(
                 self.app,
                 host=host,
                 port=port,
                 debug=debug,
-                allow_unsafe_werkzeug=True
+                allow_unsafe_werkzeug=True,
+                **run_kwargs,
             )
         except Exception as e:
             self.logger.error(f"Error running web viewer: {e}")
@@ -5273,9 +5278,11 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
         for name in ("werkzeug", "werkzeug.serving"):
             logging.getLogger(name).addFilter(_HeadersAlreadySetFilter())
 
-def main():
+def main(argv: list[str] | None = None) -> None:
     """Entry point for the meshcore-viewer command"""
     import argparse
+
+    from modules.web_viewer.parent_watch import start_parent_watcher
 
     parser = argparse.ArgumentParser(description='MeshCore Bot Data Viewer')
     parser.add_argument('--host', default='127.0.0.1', help='Host to bind to')
@@ -5286,11 +5293,24 @@ def main():
         default="config.ini",
         help="Path to configuration file (default: config.ini)",
     )
+    parser.add_argument(
+        "--exit-with-parent",
+        type=int,
+        default=None,
+        metavar="PID",
+        help="Exit when this parent process is gone (set by the bot that launched the viewer)",
+    )
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     viewer = BotDataViewer(config_path=args.config)
-    viewer.run(host=args.host, port=args.port, debug=args.debug)
+    run_kwargs = {}
+    if args.exit_with_parent is not None:
+        start_parent_watcher(args.exit_with_parent, logger=viewer.logger)
+        # Werkzeug's reloader would make the server a grandchild of the bot,
+        # so getppid() would not be the bot and the port could outlive it.
+        run_kwargs["use_reloader"] = False
+    viewer.run(host=args.host, port=args.port, debug=args.debug, **run_kwargs)
 
 if __name__ == '__main__':
     main()

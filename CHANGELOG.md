@@ -11,6 +11,7 @@ semantic versioning.
 - The bot refuses to start when another instance is already running against the same database, and names that instance's PID. Two instances on one radio evicted each other from single-client companion servers in an endless reconnect loop. The lock is a `<db_path>.lock` file beside the bot database and is released by the OS when the process exits, so a killed bot never leaves a stale lock behind.
 - SIGTERM and Ctrl-C now stop a bot whose terminal has gone away. The shutdown handler printed before setting its flags, and a print to a closed terminal raised `OSError`, which swallowed the signal and left a bot that only `kill -9` could stop.
 - A bot started from a terminal now shuts down when that terminal closes. SIGHUP was always treated as a config reload, so the bot kept running unattended. SIGHUP is still a reload under systemd, launchd, Docker, and `nohup`, and when sent by hand while the terminal is open.
+- The web viewer now exits when the bot that launched it is gone. A bot killed with `kill -9` on a manual run left the viewer holding its port, and the next start could not bind it. The bot passes its PID as `--exit-with-parent`; a viewer started on its own is unchanged. A bot-launched viewer no longer uses the Werkzeug reloader in debug mode.
 
 ## [1.2.0] - 2026-11-11
 

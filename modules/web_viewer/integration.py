@@ -1091,13 +1091,16 @@ class WebViewerIntegration:
             config_path = getattr(self.bot, 'config_file', 'config.ini')
             config_path = str(Path(config_path).resolve()) if config_path else 'config.ini'
 
-            # Build command
+            # restart_viewer() starts the viewer again through this command.
+            # Pass our pid so a hard kill of the bot reaps the viewer; a
+            # standalone `app.py` run never goes through here.
             cmd = [
                 sys.executable,
                 str(viewer_script),
                 "--config", config_path,
                 "--host", self.host,
-                "--port", str(self.port)
+                "--port", str(self.port),
+                "--exit-with-parent", str(os.getpid()),
             ]
 
             if self.debug:
