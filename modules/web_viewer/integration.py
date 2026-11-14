@@ -21,6 +21,7 @@ from ..db_retention import (
     retention_delete_settings,
 )
 from ..utils import resolve_path
+from .ha_ingress import ha_ingress_enabled
 
 
 def normalized_web_viewer_password(config) -> str:
@@ -546,6 +547,7 @@ class BotIntegration:
             repeat_count = 0
             repeater_prefixes = []
             repeater_counts = {}
+            reply_packet_hash = None
             if (hasattr(self.bot, 'transmission_tracker') and
                 self.bot.transmission_tracker and
                 command_id):
@@ -553,6 +555,7 @@ class BotIntegration:
                 repeat_count = repeat_info.get('repeat_count', 0)
                 repeater_prefixes = repeat_info.get('repeater_prefixes', [])
                 repeater_counts = repeat_info.get('repeater_counts', {})
+                reply_packet_hash = repeat_info.get('packet_hash')
 
             # Construct command data structure
             command_data = {
@@ -568,6 +571,13 @@ class BotIntegration:
                 'repeater_counts': repeater_counts,  # Count per repeater prefix
                 'command_id': command_id  # Store command_id for later updates
             }
+            # Packet hashes tie the command to the packets the radio heard: the
+            # message that triggered it and, once a repeater echoes it, the reply.
+            trigger_packet_hash = self._message_packet_hash(message)
+            if trigger_packet_hash:
+                command_data['trigger_packet_hash'] = trigger_packet_hash
+            if reply_packet_hash:
+                command_data['reply_packet_hash'] = reply_packet_hash
 
             # Convert non-serializable objects to strings
             serializable_data = self._make_json_serializable(command_data)
@@ -594,9 +604,23 @@ class BotIntegration:
                 'path': getattr(message, 'path', ''),
                 'is_dm': bool(getattr(message, 'is_dm', False)),
             }
+            packet_hash = self._message_packet_hash(message)
+            if packet_hash:
+                data['packet_hash'] = packet_hash
             self._insert_packet_stream_row(json.dumps(data), 'message', "channel message")
         except Exception as e:
             self.bot.logger.debug(f"Error storing channel message for web viewer: {e}")
+
+    @staticmethod
+    def _message_packet_hash(message) -> Optional[str]:
+        """Hash of the RF packet correlated with *message*, or None when there wasn't one."""
+        routing_info = getattr(message, 'routing_info', None) or {}
+        if not isinstance(routing_info, dict):
+            return None
+        packet_hash = routing_info.get('packet_hash')
+        if packet_hash and str(packet_hash).strip('0'):
+            return packet_hash
+        return None
 
     def capture_packet_routing(self, routing_data):
         """Capture packet routing data and store in database for web viewer"""
@@ -846,7 +870,11 @@ class WebViewerIntegration:
 
         # Insecure but allowed: binding to all interfaces without a password.
         # Only warn when the web viewer is configured to run at startup.
-        if self.enabled and self.host == "0.0.0.0":
+        # With Home Assistant ingress the viewer fails closed: requests that do
+        # not come through the Supervisor are refused with 403 until a password
+        # is set, so the open-bind warning does not apply.
+        ha_ingress = ha_ingress_enabled(self.bot.config)
+        if self.enabled and self.host == "0.0.0.0" and not ha_ingress:
             if not normalized_web_viewer_password(self.bot.config):
                 self.logger.error(
                     "Web viewer is configured with host = 0.0.0.0 and no "
@@ -928,7 +956,7 @@ class WebViewerIntegration:
     def start_viewer(self):
         """Start the web viewer in a separate thread"""
         if self.running:
-            self.logger.warning("Web viewer is already running")
+            self.logger.debug("Web viewer is already running")
             return
 
         if not self._preflight_database_path():
@@ -1063,13 +1091,16 @@ class WebViewerIntegration:
             config_path = getattr(self.bot, 'config_file', 'config.ini')
             config_path = str(Path(config_path).resolve()) if config_path else 'config.ini'
 
-            # Build command
+            # restart_viewer() starts the viewer again through this command.
+            # Pass our pid so a hard kill of the bot reaps the viewer; a
+            # standalone `app.py` run never goes through here.
             cmd = [
                 sys.executable,
                 str(viewer_script),
                 "--config", config_path,
                 "--host", self.host,
-                "--port", str(self.port)
+                "--port", str(self.port),
+                "--exit-with-parent", str(os.getpid()),
             ]
 
             if self.debug:

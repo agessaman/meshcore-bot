@@ -28,23 +28,21 @@ class RunTraceResult:
 
 def _get_timeout_seconds(bot: Any, path: Optional[list[str]]) -> float:
     """Compute total timeout from path length and config."""
-    per_hop = bot.config.getfloat("Trace_Command", "timeout_per_hop_seconds", fallback=0.5)
-    base = bot.config.getfloat("Trace_Command", "timeout_base_seconds", fallback=1.0)
+    per_hop = bot.config.getfloat("Trace_Command", "timeout_per_hop_seconds", fallback=1.5)
+    base = bot.config.getfloat("Trace_Command", "timeout_base_seconds", fallback=2.0)
     hops = len(path) if path else 0
-    # Typical: ~1s for 6 hops, ~2s for 10 hops; base + per-hop gives margin
+    # Each repeater waits a random TX delay before forwarding, often a second or more per hop
     total = base + max(1, hops) * per_hop
     return total
 
 
-async def _run_trace_attempt(
+async def _send_trace_attempt(
     bot: Any,
-    path: Optional[list[str]],
     path_string: Optional[str],
     flags: int,
-    timeout_seconds: float,
     tag: int,
-) -> RunTraceResult:
-    """Execute one trace attempt: send_trace then wait for TRACE_DATA. Caller handles retries."""
+) -> Optional[str]:
+    """Record and send one trace. Returns an error message, or None once the trace is sent."""
     try:
         if hasattr(bot, "transmission_tracker") and bot.transmission_tracker:
             bot.transmission_tracker.record_transmission(
@@ -52,6 +50,7 @@ async def _run_trace_attempt(
                 target="",
                 message_type="trace",
                 command_id=str(tag),
+                trace_tag=tag,
             )
     except Exception as e:
         bot.logger.debug(f"Trace runner: failed to record transmission: {e}")
@@ -64,44 +63,20 @@ async def _run_trace_attempt(
             path=path_string,
         )
     except Exception as e:
-        return RunTraceResult(success=False, tag=tag, error_message=str(e))
+        return str(e)
 
     if result.type == EventType.ERROR:
-        reason = result.payload.get("reason", "unknown error")
-        return RunTraceResult(success=False, tag=tag, error_message=reason)
+        return str(result.payload.get("reason", "unknown error"))
+    return None
 
-    path_str = ",".join(path) if path else "(flood)"
+
+async def _wait_for(arrived: asyncio.Event, timeout: float) -> bool:
+    """Wait up to timeout seconds for arrived; True if it was set."""
     try:
-        event = await bot.meshcore.wait_for_event(
-            EventType.TRACE_DATA,
-            attribute_filters={"tag": tag},
-            timeout=timeout_seconds,
-        )
-    except Exception as e:
-        return RunTraceResult(
-            success=False,
-            tag=tag,
-            error_message=f"Timeout or error waiting for trace (path: {path_str}): {e}",
-        )
-
-    if not event:
-        return RunTraceResult(
-            success=False,
-            tag=tag,
-            error_message=f"No trace response within timeout (path: {path_str})",
-        )
-
-    payload = event.payload or {}
-    path_nodes = payload.get("path") or []
-    path_len = payload.get("path_len", 0)
-    flags_val = payload.get("flags", 0)
-    return RunTraceResult(
-        success=True,
-        tag=tag,
-        path_nodes=path_nodes,
-        path_len=path_len,
-        flags=flags_val,
-    )
+        await asyncio.wait_for(arrived.wait(), timeout)
+    except asyncio.TimeoutError:
+        pass
+    return arrived.is_set()
 
 
 async def run_trace(
@@ -112,6 +87,9 @@ async def run_trace(
 ) -> RunTraceResult:
     """
     Send a trace and wait for TRACE_DATA. Retries on failure per config (default 2 attempts, 1s delay).
+
+    A reply to any attempt counts until the last attempt's timeout runs out, so a slow mesh that
+    answers the first trace while the retry is out still succeeds.
 
     Args:
         bot: MeshCoreBot instance (must have meshcore, config, transmission_tracker).
@@ -140,30 +118,75 @@ async def run_trace(
     retry_delay = max(0.0, bot.config.getfloat("Trace_Command", "trace_retry_delay_seconds", fallback=1.0))
 
     path_str_debug = path_string if path_string else "(flood)"
-    last_result: Optional[RunTraceResult] = None
+    path_str = ",".join(path) if path else "(flood)"
 
-    for attempt in range(max_attempts):
-        tag = random.randint(1, 0xFFFFFFFF)
-        if attempt > 0:
-            bot.logger.debug("Trace retry %s/%s after %.1fs delay", attempt + 1, max_attempts, retry_delay)
-            await asyncio.sleep(retry_delay)
-        bot.logger.debug(
-            "Trace: path=%s hops=%s timeout=%.1fs tag=%s attempt=%s/%s",
-            path_str_debug,
-            len(path) if path else 0,
-            timeout_seconds,
-            tag,
-            attempt + 1,
-            max_attempts,
-        )
-        last_result = await _run_trace_attempt(
-            bot, path, path_string, flags, timeout_seconds, tag
-        )
-        if last_result.success:
-            return last_result
+    sent_tags: list[int] = []
+    replies: list[tuple[int, Any]] = []
+    arrived = asyncio.Event()
 
-    return last_result or RunTraceResult(
+    def _on_trace_data(event: Any) -> None:
+        attributes = getattr(event, "attributes", None) or {}
+        payload = getattr(event, "payload", None) or {}
+        tag = attributes.get("tag", payload.get("tag"))
+        if tag in sent_tags and not replies:
+            replies.append((tag, event))
+            arrived.set()
+
+    # Subscribe before the first send so neither a fast reply nor a late one is missed
+    subscription = bot.meshcore.subscribe(EventType.TRACE_DATA, _on_trace_data)
+    last_error: Optional[str] = None
+    last_tag = 0
+    try:
+        for attempt in range(max_attempts):
+            tag = random.randint(1, 0xFFFFFFFF)
+            if attempt > 0:
+                bot.logger.debug("Trace retry %s/%s after %.1fs delay", attempt + 1, max_attempts, retry_delay)
+                if await _wait_for(arrived, retry_delay):
+                    break
+            bot.logger.debug(
+                "Trace: path=%s hops=%s timeout=%.1fs tag=%s attempt=%s/%s",
+                path_str_debug,
+                len(path) if path else 0,
+                timeout_seconds,
+                tag,
+                attempt + 1,
+                max_attempts,
+            )
+            sent_tags.append(tag)
+            last_tag = tag
+            error = await _send_trace_attempt(bot, path_string, flags, tag)
+            if error is not None:
+                last_error = error
+                # An earlier attempt's reply can still arrive
+                if arrived.is_set():
+                    break
+                continue
+            if await _wait_for(arrived, timeout_seconds):
+                break
+            last_error = f"No trace response within timeout (path: {path_str})"
+    finally:
+        try:
+            subscription.unsubscribe()
+        except Exception as e:
+            bot.logger.debug(f"Trace runner: failed to unsubscribe: {e}")
+
+    if replies:
+        reply_tag, event = replies[0]
+        payload = event.payload or {}
+        if reply_tag != last_tag:
+            bot.logger.debug(
+                "Trace: reply for attempt %s/%s (tag=%s)", sent_tags.index(reply_tag) + 1, max_attempts, reply_tag
+            )
+        return RunTraceResult(
+            success=True,
+            tag=reply_tag,
+            path_nodes=payload.get("path") or [],
+            path_len=payload.get("path_len", 0),
+            flags=payload.get("flags", 0),
+        )
+
+    return RunTraceResult(
         success=False,
-        tag=0,
-        error_message="Trace failed (no attempts run)",
+        tag=last_tag,
+        error_message=last_error or "Trace failed (no attempts run)",
     )

@@ -37,7 +37,7 @@ class AdvertCommand(BaseCommand):
         super().__init__(bot)
         self.advert_enabled = self.get_config_value('Advert_Command', 'enabled', fallback=True, value_type='bool')
 
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         """Get help text for the advert command.
 
         Returns:

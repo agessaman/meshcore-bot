@@ -205,14 +205,106 @@ class TestGetSpecificHelp:
         assert "commands.help.specific" in result or result != ""
 
     def test_known_command_help_text_no_message_param(self):
-        """Falls back to no-argument get_help_text when TypeError is raised."""
+        """A local command whose get_help_text takes no message still gets help."""
         bot = _make_bot()
-        mock_cmd = MagicMock()
-        mock_cmd.get_help_text = Mock(side_effect=[TypeError("no param"), "Simple help"])
-        bot.command_manager.commands = {"foo": mock_cmd}
+
+        class LocalCommand:
+            def get_help_text(self):
+                return "Simple help"
+
+        bot.command_manager.commands = {"foo": LocalCommand()}
         cmd = HelpCommand(bot)
         result = cmd.get_specific_help("foo")
         assert isinstance(result, str)
+
+    def test_error_inside_bundled_help_body_is_not_retried(self):
+        """A TypeError raised by a bundled command's help body propagates after one call."""
+        from modules.commands.ping_command import PingCommand
+
+        bot = _make_bot()
+        ping = object.__new__(PingCommand)
+        calls = []
+
+        def broken_translate(key, **kwargs):
+            calls.append(key)
+            raise TypeError("bug in help body")
+
+        ping.translate = broken_translate
+        bot.command_manager.commands = {"ping": ping}
+        cmd = HelpCommand(bot)
+        with pytest.raises(TypeError):
+            cmd.get_specific_help("ping", None)
+        assert len(calls) == 1
+
+    def test_wrapped_local_override_of_a_bundled_command_keeps_the_retry(self):
+        """functools.wraps copies the bundled __module__; the override is still local."""
+        import functools
+
+        from modules.commands.ping_command import PingCommand
+
+        class LocalPing(PingCommand):
+            @functools.wraps(PingCommand.get_help_text)
+            def get_help_text(self):
+                return "local help"
+
+        bot = _make_bot()
+        bot.command_manager.commands = {"ping": object.__new__(LocalPing)}
+        cmd = HelpCommand(bot)
+        cmd.get_specific_help("ping", Mock())  # must not raise
+
+    def test_operator_command_inside_modules_without_message_param_gets_help(self):
+        """An installed-only command file in modules/commands may use get_help_text(self)."""
+        from modules.commands.base_command import BaseCommand
+
+        class OperatorWeatherCommand(BaseCommand):
+            name = "operatorweather"
+
+            def get_help_text(self):
+                return "operator help"
+
+            async def execute(self, message):
+                return True
+
+        OperatorWeatherCommand.__module__ = "modules.commands.operatorweather"
+        bot = _make_bot()
+        bot.command_manager.commands = {"operatorweather": object.__new__(OperatorWeatherCommand)}
+        cmd = HelpCommand(bot)
+        cmd.get_specific_help("operatorweather", Mock())  # must not raise
+
+    def test_wrapped_operator_override_inside_modules_gets_help(self):
+        """functools.wraps must not lend an operator override the bundled signature."""
+        import functools
+
+        from modules.commands.ping_command import PingCommand
+
+        class OperatorPing(PingCommand):
+            @functools.wraps(PingCommand.get_help_text)
+            def get_help_text(self):
+                return "operator help"
+
+        OperatorPing.__module__ = "modules.commands.operator_ping"
+        bot = _make_bot()
+        bot.command_manager.commands = {"operatorping": object.__new__(OperatorPing)}
+        cmd = HelpCommand(bot)
+        cmd.get_specific_help("operatorping", Mock())  # must not raise
+
+    def test_local_plugin_help_keeps_the_typeerror_retry(self):
+        """A local get_help_text(message=None) that raises TypeError is retried without it."""
+        bot = _make_bot()
+        calls = []
+
+        class LocalCommand:
+            def get_help_text(self, message=None):
+                calls.append(message)
+                if message is not None:
+                    raise TypeError("message-specific help failed")
+                return "Generic help"
+
+        bot.command_manager.commands = {"foo": LocalCommand()}
+        cmd = HelpCommand(bot)
+        message = Mock()
+        cmd.get_specific_help("foo", message)
+        assert calls == [message, None]
 
     def test_unknown_command_returns_unknown_key(self):
         bot = _make_bot()

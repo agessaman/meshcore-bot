@@ -75,7 +75,8 @@ COPY --chown=meshcore:meshcore . /app/
 
 ENV PATH=/home/meshcore/.local/bin:$PATH \
     PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
+    PYTHONDONTWRITEBYTECODE=1 \
+    MESHCORE_BOT_CONFIG=/data/config/config.ini
 
 # OCI image labels for supply-chain transparency.
 LABEL org.opencontainers.image.title="meshcore-bot" \
@@ -84,8 +85,12 @@ LABEL org.opencontainers.image.title="meshcore-bot" \
 
 USER meshcore
 
-# Health check: verify PID 1 (the bot process) is still alive.
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD ["sh", "-c", "kill -0 1"]
+# Liveness is a heartbeat the event loop refreshes. kill -0 only proved
+# PID 1 existed, so a wedged loop stayed healthy. Radio loss is not a
+# failure here. Shell form, so MESHCORE_BOT_CONFIG is expanded when the check
+# runs and the add-on image can override it.
+# start-period covers slow construction on a Pi, before start() first touches.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
+    CMD python3 -m modules.healthcheck --config "${MESHCORE_BOT_CONFIG:-/data/config/config.ini}"
 
 CMD ["python3", "meshcore_bot.py", "--config", "/data/config/config.ini"]

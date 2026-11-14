@@ -17,12 +17,23 @@ class FeedCommand(BaseCommand):
 
     # Plugin metadata
     name = "feed"
+    honors_skip_channel_check = False
+    admin_only = True
+    enabled_attr = "feed_enabled"
     keywords = ['feed', 'feeds', 'rss', 'subscription', 'subscriptions']
     description = "Manage RSS and API feed subscriptions (usage: feed subscribe rss <url> <channel> [name])"
     category = "admin"
     requires_dm = True
     cooldown_seconds = 2
     requires_internet = True  # Requires internet access for RSS/API feed fetching
+
+    # Web-viewer settings schema (see modules/settings_schema.py).
+    settings_schema = [
+        {"key": "allow_private_urls", "label": "Allow private URLs", "type": "bool", "default": False,
+         "inherit_section": "Feed_Manager",
+         "help": "Accept feed URLs on private or internal addresses. Off guards against SSRF. "
+                 "Unset falls back to [Feed_Manager] allow_private_urls."},
+    ]
 
     def __init__(self, bot):
         super().__init__(bot)
@@ -45,18 +56,6 @@ class FeedCommand(BaseCommand):
             fallback=feed_manager_allow_private,
             value_type='bool',
         )
-
-    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
-        """Check if this command can be executed (enabled, admin only)"""
-        if not self.feed_enabled:
-            return False
-        if not self.requires_admin_access():
-            return False
-        return super().can_execute(message)
-
-    def requires_admin_access(self) -> bool:
-        """Feed command requires admin access"""
-        return True
 
     async def execute(self, message: MeshMessage) -> bool:
         """Execute the feed command"""
@@ -92,7 +91,7 @@ class FeedCommand(BaseCommand):
         else:
             return await self.send_response(message, self.get_help_text())
 
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         """Get help text for feed command"""
         return """Feed Command Usage:
 feed subscribe <rss|api> <url> <channel> [name]

@@ -42,3 +42,20 @@ updates:
         patterns: ["*"]
     commit-message:
       prefix: "build(npm)"
+
+  # Front-end libraries vendored into modules/web_viewer/static/ — runtime code
+  # every viewer page loads, so security fixes matter here. Those arrive through
+  # Dependabot alerts as soon as an advisory is published; this schedule only
+  # covers ordinary releases. Majors come one per PR, since they can change how
+  # pages look. vendor-refresh.yml adds the regenerated files to each PR.
+  - package-ecosystem: npm
+    directory: "/scripts/web-vendor"
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    groups:
+      web-vendor:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    commit-message:
+      prefix: "build(vendor)"

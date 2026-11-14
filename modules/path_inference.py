@@ -1030,6 +1030,68 @@ def _combine_selection(node_id, node_ids, cfg, graph_repeater, graph_confidence,
     return selected_repeater, confidence, method
 
 
+def candidate_repeaters(
+    node_id: str,
+    cfg: PathInferenceConfig,
+    *,
+    db_manager,
+    lookup_func: Optional[Callable[[str], list[dict[str, Any]]]] = None,
+) -> list[dict[str, Any]]:
+    """Repeaters and room servers whose public key starts with *node_id*, newest first.
+
+    Honors ``cfg.max_repeater_age_days``. *lookup_func* replaces the database
+    query (callers and tests that inject candidates). Rows come back in the
+    shape :func:`select_node_repeater` expects.
+    """
+    if lookup_func is not None:
+        results = lookup_func(node_id)
+    elif cfg.max_repeater_age_days > 0:
+        query = f'''
+            SELECT name, public_key, device_type, last_heard, last_heard as last_seen,
+                   last_advert_timestamp, latitude, longitude, city, state, country,
+                   advert_count, signal_strength, hop_count, role, is_starred
+            FROM complete_contact_tracking
+            WHERE public_key LIKE ? AND role IN ('repeater', 'roomserver')
+            AND (
+                (last_advert_timestamp IS NOT NULL AND last_advert_timestamp >= datetime('now', 'localtime', '-{cfg.max_repeater_age_days} days'))
+                OR (last_advert_timestamp IS NULL AND last_heard >= datetime('now', 'localtime', '-{cfg.max_repeater_age_days} days'))
+            )
+            ORDER BY COALESCE(last_advert_timestamp, last_heard) DESC
+        '''
+        results = db_manager.execute_query(query, (f"{node_id}%",))
+    else:
+        query = '''
+            SELECT name, public_key, device_type, last_heard, last_heard as last_seen,
+                   last_advert_timestamp, latitude, longitude, city, state, country,
+                   advert_count, signal_strength, hop_count, role, is_starred
+            FROM complete_contact_tracking
+            WHERE public_key LIKE ? AND role IN ('repeater', 'roomserver')
+            ORDER BY COALESCE(last_advert_timestamp, last_heard) DESC
+        '''
+        results = db_manager.execute_query(query, (f"{node_id}%",))
+
+    if not results:
+        return []
+    return [
+        {
+            'name': row['name'],
+            'public_key': row['public_key'],
+            'device_type': row['device_type'],
+            'last_seen': row['last_seen'],
+            'last_heard': row.get('last_heard', row['last_seen']),
+            'last_advert_timestamp': row.get('last_advert_timestamp'),
+            'is_active': True,
+            'latitude': row['latitude'],
+            'longitude': row['longitude'],
+            'city': row['city'],
+            'state': row['state'],
+            'country': row['country'],
+            'hop_count': row.get('hop_count'),
+            'is_starred': bool(row.get('is_starred', 0)),
+        } for row in results
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Public entrypoint (web viewer)
 # ---------------------------------------------------------------------------
@@ -1102,53 +1164,9 @@ def decode_path_nodes(
     decoded_path = []
     try:
         for node_index, node_id in enumerate(node_ids):
-            if lookup_func is not None:
-                results = lookup_func(node_id)
-            elif cfg.max_repeater_age_days > 0:
-                query = f'''
-                    SELECT name, public_key, device_type, last_heard, last_heard as last_seen,
-                           last_advert_timestamp, latitude, longitude, city, state, country,
-                           advert_count, signal_strength, hop_count, role, is_starred
-                    FROM complete_contact_tracking
-                    WHERE public_key LIKE ? AND role IN ('repeater', 'roomserver')
-                    AND (
-                        (last_advert_timestamp IS NOT NULL AND last_advert_timestamp >= datetime('now', 'localtime', '-{cfg.max_repeater_age_days} days'))
-                        OR (last_advert_timestamp IS NULL AND last_heard >= datetime('now', 'localtime', '-{cfg.max_repeater_age_days} days'))
-                    )
-                    ORDER BY COALESCE(last_advert_timestamp, last_heard) DESC
-                '''
-                results = db_manager.execute_query(query, (f"{node_id}%",))
-            else:
-                query = '''
-                    SELECT name, public_key, device_type, last_heard, last_heard as last_seen,
-                           last_advert_timestamp, latitude, longitude, city, state, country,
-                           advert_count, signal_strength, hop_count, role, is_starred
-                    FROM complete_contact_tracking
-                    WHERE public_key LIKE ? AND role IN ('repeater', 'roomserver')
-                    ORDER BY COALESCE(last_advert_timestamp, last_heard) DESC
-                '''
-                results = db_manager.execute_query(query, (f"{node_id}%",))
+            repeaters_data = candidate_repeaters(node_id, cfg, db_manager=db_manager, lookup_func=lookup_func)
 
-            if results:
-                repeaters_data = [
-                    {
-                        'name': row['name'],
-                        'public_key': row['public_key'],
-                        'device_type': row['device_type'],
-                        'last_seen': row['last_seen'],
-                        'last_heard': row.get('last_heard', row['last_seen']),
-                        'last_advert_timestamp': row.get('last_advert_timestamp'),
-                        'is_active': True,
-                        'latitude': row['latitude'],
-                        'longitude': row['longitude'],
-                        'city': row['city'],
-                        'state': row['state'],
-                        'country': row['country'],
-                        'hop_count': row.get('hop_count'),
-                        'is_starred': bool(row.get('is_starred', 0)),
-                    } for row in results
-                ]
-
+            if repeaters_data:
                 selection = select_node_repeater(
                     node_id, repeaters_data, node_ids, cfg,
                     mesh_graph=mesh_graph, db_manager=db_manager, logger=logger,

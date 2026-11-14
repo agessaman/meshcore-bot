@@ -363,7 +363,7 @@ class TestRateLimitedNominatimGeocode:
         async def wait_and_request():
             events.append("reserve")
 
-        def geocode(query, *, timeout):
+        def geocode(query, *, timeout, language):
             events.append("geocode")
             entered.set()
             if not release.wait(0.5):
@@ -424,7 +424,7 @@ class TestRateLimitedNominatimReverse:
         mock_loc = _make_location()
         mock_geocoder = Mock()
 
-        def reverse(coordinates, *, timeout):
+        def reverse(coordinates, *, timeout, language):
             entered.set()
             if not release.wait(0.5):
                 raise AssertionError("event loop did not run while geocoder was blocked")

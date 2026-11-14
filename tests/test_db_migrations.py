@@ -484,3 +484,89 @@ class TestObservedPathsZeroHopSignal:
             "SELECT COUNT(*) FROM schema_version WHERE version = 23"
         ).fetchone()[0]
         assert applied == 1
+
+
+class TestMigrationAtomicity:
+    """A failing migration must roll back every migration in the same run."""
+
+    def test_failure_after_script_migrations_leaves_nothing_applied(self):
+        import sqlite3
+        from unittest.mock import Mock, patch
+
+        from modules import db_migrations
+
+        def _boom(cursor):
+            raise RuntimeError("migration exploded")
+
+        conn = sqlite3.connect(":memory:")
+        failing = list(db_migrations.MIGRATIONS) + [(9999, "always fails", _boom)]
+        with patch.object(db_migrations, "MIGRATIONS", failing):
+            with pytest.raises(RuntimeError, match="migration exploded"):
+                db_migrations.MigrationRunner(conn, Mock()).run()
+
+        assert conn.execute("SELECT COUNT(*) FROM schema_version").fetchone()[0] == 0
+        tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        assert tables <= {"schema_version"}, tables
+
+    def test_execute_statements_respects_literals_and_comments(self):
+        import sqlite3
+
+        from modules.db_migrations import _execute_statements
+
+        conn = sqlite3.connect(":memory:")
+        cur = conn.cursor()
+        _execute_statements(
+            cur,
+            """
+            CREATE TABLE t (v TEXT);
+            -- a comment; with a semicolon and an apostrophe's
+            INSERT INTO t VALUES ('a;b');
+            INSERT INTO t VALUES ('c')
+            """,
+        )
+        assert [r[0] for r in conn.execute("SELECT v FROM t ORDER BY v")] == ["a;b", "c"]
+
+
+    def test_trailing_comment_after_last_statement(self):
+        import sqlite3
+
+        from modules.db_migrations import _execute_statements
+
+        conn = sqlite3.connect(":memory:")
+        _execute_statements(conn.cursor(), "CREATE TABLE t (v TEXT);\n-- trailing note; with semicolon\n")
+        _execute_statements(conn.cursor(), "CREATE TABLE u (v TEXT);\n-- trailing\n;")
+        assert {r[0] for r in conn.execute("SELECT name FROM sqlite_master")} == {"t", "u"}
+
+    @pytest.mark.parametrize("stmt", ["COMMIT", "BEGIN IMMEDIATE", "ROLLBACK", "VACUUM", "-- note\nEND"])
+    def test_transaction_control_is_refused(self, stmt):
+        import sqlite3
+
+        from modules.db_migrations import _execute_statements
+
+        conn = sqlite3.connect(":memory:")
+        with pytest.raises(ValueError, match="break the runner's transaction"):
+            _execute_statements(conn.cursor(), f"CREATE TABLE t (v TEXT);\n{stmt};")
+
+    def test_failure_rolls_back_column_added_to_an_existing_table(self):
+        """Legacy databases: ALTER TABLE on a pre-existing table is undone too."""
+        import sqlite3
+        from unittest.mock import Mock, patch
+
+        from modules import db_migrations
+
+        conn = sqlite3.connect(":memory:")
+        db_migrations.MigrationRunner(conn, Mock()).run()
+        before = {r[1] for r in conn.execute("PRAGMA table_info(packet_stream)")}
+        applied_before = conn.execute("SELECT COUNT(*) FROM schema_version").fetchone()[0]
+
+        def _add_then_boom(cursor):
+            db_migrations._add_column(cursor, "packet_stream", "zz_probe", "TEXT")
+            db_migrations._execute_statements(cursor, "CREATE INDEX IF NOT EXISTS zz_idx ON packet_stream(zz_probe);")
+            raise RuntimeError("late failure")
+
+        extra = list(db_migrations.MIGRATIONS) + [(9998, "adds then fails", _add_then_boom)]
+        with patch.object(db_migrations, "MIGRATIONS", extra):
+            with pytest.raises(RuntimeError, match="late failure"):
+                db_migrations.MigrationRunner(conn, Mock()).run()
+        assert {r[1] for r in conn.execute("PRAGMA table_info(packet_stream)")} == before
+        assert conn.execute("SELECT COUNT(*) FROM schema_version").fetchone()[0] == applied_before

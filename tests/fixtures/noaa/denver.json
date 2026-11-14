@@ -1,0 +1,539 @@
+{
+ "points_url": "https://api.weather.gov/points/39.7392,-104.9903",
+ "points": {
+  "id": "https://api.weather.gov/points/39.7392,-104.9903",
+  "type": "Feature",
+  "properties": {
+   "@id": "https://api.weather.gov/points/39.7392,-104.9903",
+   "@type": "wx:Point",
+   "cwa": "BOU",
+   "type": "land",
+   "forecastOffice": "https://api.weather.gov/offices/BOU",
+   "gridId": "BOU",
+   "gridX": 63,
+   "gridY": 62,
+   "forecast": "https://api.weather.gov/gridpoints/BOU/63,62/forecast",
+   "forecastHourly": "https://api.weather.gov/gridpoints/BOU/63,62/forecast/hourly",
+   "forecastGridData": "https://api.weather.gov/gridpoints/BOU/63,62",
+   "observationStations": "https://api.weather.gov/gridpoints/BOU/63,62/stations",
+   "timeZone": "America/Denver",
+   "radarStation": "KFTG",
+   "astronomicalData": {
+    "sunrise": "2026-10-01T06:56:28-06:00",
+    "sunset": "2026-10-01T18:42:34-06:00",
+    "transit": "2026-10-01T12:49:31-06:00",
+    "civilTwilightBegin": "2026-10-01T06:29:39-06:00",
+    "civilTwilightEnd": "2026-10-01T19:09:22-06:00",
+    "nauticalTwilightBegin": "2026-10-01T05:58:23-06:00",
+    "nauticalTwilightEnd": "2026-10-01T19:40:38-06:00",
+    "astronomicalTwilightBegin": "2026-10-01T05:26:51-06:00",
+    "astronomicalTwilightEnd": "2026-10-01T20:12:11-06:00"
+   },
+   "nwr": {
+    "transmitter": "KEC76",
+    "sameCode": "008031",
+    "areaBroadcast": "https://api.weather.gov/radio/KEC76/broadcast",
+    "pointBroadcast": "https://api.weather.gov/points/39.7392,-104.9903/radio"
+   }
+  }
+ },
+ "forecast_url": "https://api.weather.gov/gridpoints/BOU/63,62/forecast",
+ "forecast": {
+  "type": "Feature",
+  "properties": {
+   "units": "us",
+   "forecastGenerator": "BaselineForecastGenerator",
+   "generatedAt": "2026-10-01T20:00:34+00:00",
+   "updateTime": "2026-10-01T19:43:21+00:00",
+   "validTimes": "2026-10-01T13:00:00+00:00/P7DT12H",
+   "elevation": {
+    "unitCode": "wmoUnit:m",
+    "value": 1587.0936
+   },
+   "periods": [
+    {
+     "number": 1,
+     "name": "This Afternoon",
+     "startTime": "2026-10-01T14:00:00-06:00",
+     "endTime": "2026-10-01T18:00:00-06:00",
+     "isDaytime": true,
+     "temperature": 72,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 3
+     },
+     "windSpeed": "8 mph",
+     "windDirection": "E",
+     "icon": "https://api.weather.gov/icons/land/day/few?size=medium",
+     "shortForecast": "Sunny",
+     "detailedForecast": "Sunny. High near 72, with temperatures falling to around 70 in the afternoon. East wind around 8 mph."
+    },
+    {
+     "number": 2,
+     "name": "Tonight",
+     "startTime": "2026-10-01T18:00:00-06:00",
+     "endTime": "2026-10-02T06:00:00-06:00",
+     "isDaytime": false,
+     "temperature": 50,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 0
+     },
+     "windSpeed": "3 to 8 mph",
+     "windDirection": "S",
+     "icon": "https://api.weather.gov/icons/land/night/few?size=medium",
+     "shortForecast": "Mostly Clear",
+     "detailedForecast": "Mostly clear, with a low around 50. South wind 3 to 8 mph."
+    },
+    {
+     "number": 3,
+     "name": "Friday",
+     "startTime": "2026-10-02T06:00:00-06:00",
+     "endTime": "2026-10-02T18:00:00-06:00",
+     "isDaytime": true,
+     "temperature": 81,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 0
+     },
+     "windSpeed": "2 to 7 mph",
+     "windDirection": "S",
+     "icon": "https://api.weather.gov/icons/land/day/few?size=medium",
+     "shortForecast": "Sunny",
+     "detailedForecast": "Sunny, with a high near 81. South wind 2 to 7 mph."
+    },
+    {
+     "number": 4,
+     "name": "Friday Night",
+     "startTime": "2026-10-02T18:00:00-06:00",
+     "endTime": "2026-10-03T06:00:00-06:00",
+     "isDaytime": false,
+     "temperature": 53,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 0
+     },
+     "windSpeed": "5 to 8 mph",
+     "windDirection": "S",
+     "icon": "https://api.weather.gov/icons/land/night/few?size=medium",
+     "shortForecast": "Mostly Clear",
+     "detailedForecast": "Mostly clear, with a low around 53. South wind 5 to 8 mph, with gusts as high as 16 mph."
+    },
+    {
+     "number": 5,
+     "name": "Saturday",
+     "startTime": "2026-10-03T06:00:00-06:00",
+     "endTime": "2026-10-03T18:00:00-06:00",
+     "isDaytime": true,
+     "temperature": 85,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 0
+     },
+     "windSpeed": "2 to 9 mph",
+     "windDirection": "NNW",
+     "icon": "https://api.weather.gov/icons/land/day/few?size=medium",
+     "shortForecast": "Sunny",
+     "detailedForecast": "Sunny, with a high near 85. North northwest wind 2 to 9 mph, with gusts as high as 16 mph."
+    },
+    {
+     "number": 6,
+     "name": "Saturday Night",
+     "startTime": "2026-10-03T18:00:00-06:00",
+     "endTime": "2026-10-04T06:00:00-06:00",
+     "isDaytime": false,
+     "temperature": 54,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 0
+     },
+     "windSpeed": "3 to 9 mph",
+     "windDirection": "ENE",
+     "icon": "https://api.weather.gov/icons/land/night/few?size=medium",
+     "shortForecast": "Mostly Clear",
+     "detailedForecast": "Mostly clear, with a low around 54."
+    },
+    {
+     "number": 7,
+     "name": "Sunday",
+     "startTime": "2026-10-04T06:00:00-06:00",
+     "endTime": "2026-10-04T18:00:00-06:00",
+     "isDaytime": true,
+     "temperature": 82,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 1
+     },
+     "windSpeed": "6 mph",
+     "windDirection": "SE",
+     "icon": "https://api.weather.gov/icons/land/day/few?size=medium",
+     "shortForecast": "Sunny",
+     "detailedForecast": "Sunny, with a high near 82."
+    },
+    {
+     "number": 8,
+     "name": "Sunday Night",
+     "startTime": "2026-10-04T18:00:00-06:00",
+     "endTime": "2026-10-05T06:00:00-06:00",
+     "isDaytime": false,
+     "temperature": 55,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 1
+     },
+     "windSpeed": "6 mph",
+     "windDirection": "S",
+     "icon": "https://api.weather.gov/icons/land/night/skc?size=medium",
+     "shortForecast": "Clear",
+     "detailedForecast": "Clear, with a low around 55."
+    },
+    {
+     "number": 9,
+     "name": "Monday",
+     "startTime": "2026-10-05T06:00:00-06:00",
+     "endTime": "2026-10-05T18:00:00-06:00",
+     "isDaytime": true,
+     "temperature": 87,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 0
+     },
+     "windSpeed": "2 to 7 mph",
+     "windDirection": "SSE",
+     "icon": "https://api.weather.gov/icons/land/day/skc?size=medium",
+     "shortForecast": "Sunny",
+     "detailedForecast": "Sunny, with a high near 87."
+    },
+    {
+     "number": 10,
+     "name": "Monday Night",
+     "startTime": "2026-10-05T18:00:00-06:00",
+     "endTime": "2026-10-06T06:00:00-06:00",
+     "isDaytime": false,
+     "temperature": 59,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 1
+     },
+     "windSpeed": "7 mph",
+     "windDirection": "SSW",
+     "icon": "https://api.weather.gov/icons/land/night/sct?size=medium",
+     "shortForecast": "Partly Cloudy",
+     "detailedForecast": "Partly cloudy, with a low around 59."
+    },
+    {
+     "number": 11,
+     "name": "Tuesday",
+     "startTime": "2026-10-06T06:00:00-06:00",
+     "endTime": "2026-10-06T18:00:00-06:00",
+     "isDaytime": true,
+     "temperature": 84,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 6
+     },
+     "windSpeed": "5 to 8 mph",
+     "windDirection": "NNW",
+     "icon": "https://api.weather.gov/icons/land/day/sct?size=medium",
+     "shortForecast": "Mostly Sunny",
+     "detailedForecast": "Mostly sunny, with a high near 84."
+    },
+    {
+     "number": 12,
+     "name": "Tuesday Night",
+     "startTime": "2026-10-06T18:00:00-06:00",
+     "endTime": "2026-10-07T06:00:00-06:00",
+     "isDaytime": false,
+     "temperature": 57,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 7
+     },
+     "windSpeed": "3 to 8 mph",
+     "windDirection": "WSW",
+     "icon": "https://api.weather.gov/icons/land/night/sct?size=medium",
+     "shortForecast": "Partly Cloudy",
+     "detailedForecast": "Partly cloudy, with a low around 57."
+    },
+    {
+     "number": 13,
+     "name": "Wednesday",
+     "startTime": "2026-10-07T06:00:00-06:00",
+     "endTime": "2026-10-07T18:00:00-06:00",
+     "isDaytime": true,
+     "temperature": 82,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 0
+     },
+     "windSpeed": "3 to 7 mph",
+     "windDirection": "NE",
+     "icon": "https://api.weather.gov/icons/land/day/skc?size=medium",
+     "shortForecast": "Sunny",
+     "detailedForecast": "Sunny, with a high near 82."
+    },
+    {
+     "number": 14,
+     "name": "Wednesday Night",
+     "startTime": "2026-10-07T18:00:00-06:00",
+     "endTime": "2026-10-08T06:00:00-06:00",
+     "isDaytime": false,
+     "temperature": 56,
+     "temperatureUnit": "F",
+     "temperatureTrend": null,
+     "probabilityOfPrecipitation": {
+      "unitCode": "wmoUnit:percent",
+      "value": 0
+     },
+     "windSpeed": "7 mph",
+     "windDirection": "S",
+     "icon": "https://api.weather.gov/icons/land/night/few?size=medium",
+     "shortForecast": "Mostly Clear",
+     "detailedForecast": "Mostly clear, with a low around 56."
+    }
+   ]
+  }
+ },
+ "stations_url": "https://api.weather.gov/gridpoints/BOU/63,62/stations",
+ "stations": {
+  "type": "FeatureCollection",
+  "features": [
+   {
+    "id": "https://api.weather.gov/stations/KBJC",
+    "type": "Feature",
+    "properties": {
+     "@id": "https://api.weather.gov/stations/KBJC",
+     "@type": "wx:ObservationStation",
+     "elevation": {
+      "unitCode": "wmoUnit:m",
+      "value": 1691.9448
+     },
+     "stationIdentifier": "KBJC",
+     "name": "Broomfield / Jeffco",
+     "timeZone": "America/Denver",
+     "provider": "OTHER-MTR",
+     "subProvider": "",
+     "distance": {
+      "unitCode": "wmoUnit:m",
+      "value": 19333.36205419
+     },
+     "bearing": {
+      "unitCode": "wmoUnit:degree_(angle)",
+      "value": 330
+     },
+     "forecast": "https://api.weather.gov/zones/forecast/COZ039"
+    }
+   },
+   {
+    "id": "https://api.weather.gov/stations/KBKF",
+    "type": "Feature",
+    "properties": {
+     "@id": "https://api.weather.gov/stations/KBKF",
+     "@type": "wx:ObservationStation",
+     "elevation": {
+      "unitCode": "wmoUnit:m",
+      "value": 1699.8696
+     },
+     "stationIdentifier": "KBKF",
+     "name": "Buckley Space Force Base",
+     "timeZone": "America/Denver",
+     "provider": "OTHER-MTR",
+     "subProvider": "",
+     "distance": {
+      "unitCode": "wmoUnit:m",
+      "value": 20361.38362392
+     },
+     "bearing": {
+      "unitCode": "wmoUnit:degree_(angle)",
+      "value": 101
+     },
+     "forecast": "https://api.weather.gov/zones/forecast/COZ040"
+    }
+   }
+  ],
+  "observationStations": [
+   "https://api.weather.gov/stations/KBJC",
+   "https://api.weather.gov/stations/KBKF",
+   "https://api.weather.gov/stations/KAPA",
+   "https://api.weather.gov/stations/KEIK",
+   "https://api.weather.gov/stations/KDEN",
+   "https://api.weather.gov/stations/KBDU",
+   "https://api.weather.gov/stations/KCFO",
+   "https://api.weather.gov/stations/KLMO",
+   "https://api.weather.gov/stations/KMNH",
+   "https://api.weather.gov/stations/KFNL",
+   "https://api.weather.gov/stations/KGXY",
+   "https://api.weather.gov/stations/KGNB",
+   "https://api.weather.gov/stations/KAFF",
+   "https://api.weather.gov/stations/K4BM",
+   "https://api.weather.gov/stations/KCCU",
+   "https://api.weather.gov/stations/KCOS",
+   "https://api.weather.gov/stations/KFMM",
+   "https://api.weather.gov/stations/KFCS",
+   "https://api.weather.gov/stations/K20V",
+   "https://api.weather.gov/stations/KLIC",
+   "https://api.weather.gov/stations/KLXV",
+   "https://api.weather.gov/stations/KAEJ",
+   "https://api.weather.gov/stations/K33V",
+   "https://api.weather.gov/stations/KCYS",
+   "https://api.weather.gov/stations/KAKO",
+   "https://api.weather.gov/stations/KANK",
+   "https://api.weather.gov/stations/KEGE",
+   "https://api.weather.gov/stations/KPUB",
+   "https://api.weather.gov/stations/KASE",
+   "https://api.weather.gov/stations/KSTK",
+   "https://api.weather.gov/stations/KMYP",
+   "https://api.weather.gov/stations/KLAR",
+   "https://api.weather.gov/stations/KIBM",
+   "https://api.weather.gov/stations/KHDN",
+   "https://api.weather.gov/stations/K04V",
+   "https://api.weather.gov/stations/KGUC",
+   "https://api.weather.gov/stations/KSNY",
+   "https://api.weather.gov/stations/KLHX",
+   "https://api.weather.gov/stations/KCAG",
+   "https://api.weather.gov/stations/KITR",
+   "https://api.weather.gov/stations/KHEQ",
+   "https://api.weather.gov/stations/KLAA",
+   "https://api.weather.gov/stations/KGLD",
+   "https://api.weather.gov/stations/KIML",
+   "https://api.weather.gov/stations/KOGA"
+  ],
+  "pagination": {
+   "next": "https://api.weather.gov/stations?id%5B0%5D=K04V&id%5B1%5D=K20V&id%5B2%5D=K33V&id%5B3%5D=K4BM&id%5B4%5D=KABH&id%5B5%5D=KAEJ&id%5B6%5D=KAFF&id%5B7%5D=KAKO&id%5B8%5D=KANK&id%5B9%5D=KAPA&id%5B10%5D=KASE&id%5B11%5D=KBDU&id%5B12%5D=KBJC&id%5B13%5D=KBKF&id%5B14%5D=KCAG&id%5B15%5D=KCCU&id%5B16%5D=KCFO&id%5B17%5D=KCOS&id%5B18%5D=KCYS&id%5B19%5D=KDCP&id%5B20%5D=KDEN&id%5B21%5D=KEGE&id%5B22%5D=KEIK&id%5B23%5D=KFCS&id%5B24%5D=KFMM&id%5B25%5D=KFNL&id%5B26%5D=KFTG&id%5B27%5D=KGLD&id%5B28%5D=KGNB&id%5B29%5D=KGUC&id%5B30%5D=KGXY&id%5B31%5D=KHDN&id%5B32%5D=KHEQ&id%5B33%5D=KIBM&id%5B34%5D=KIML&id%5B35%5D=KITR&id%5B36%5D=KLAA&id%5B37%5D=KLAR&id%5B38%5D=KLHX&id%5B39%5D=KLIC&id%5B40%5D=KLMO&id%5B41%5D=KLXV&id%5B42%5D=KMNH&id%5B43%5D=KMYP&id%5B44%5D=KOGA&id%5B45%5D=KPUB&id%5B46%5D=KSNY&id%5B47%5D=KSTK&cursor=eyJzIjo1MDB9"
+  }
+ },
+ "observation_url": "https://api.weather.gov/stations/KBJC/observations/latest",
+ "observation": {
+  "id": "https://api.weather.gov/stations/KBJC/observations/2026-10-01T21:45:00+00:00",
+  "type": "Feature",
+  "properties": {
+   "@id": "https://api.weather.gov/stations/KBJC/observations/2026-10-01T21:45:00+00:00",
+   "@type": "wx:ObservationStation",
+   "elevation": {
+    "unitCode": "wmoUnit:m",
+    "value": 1724
+   },
+   "station": "https://api.weather.gov/stations/KBJC",
+   "stationId": "KBJC",
+   "stationName": "Broomfield / Jeffco",
+   "timestamp": "2026-10-01T21:45:00+00:00",
+   "rawMessage": "KBJC 012145Z 17007KT 10SM CLR 22/03 A3024",
+   "textDescription": "Clear",
+   "icon": "https://api.weather.gov/icons/land/day/skc?size=medium",
+   "presentWeather": [],
+   "temperature": {
+    "unitCode": "wmoUnit:degC",
+    "value": 22,
+    "qualityControl": "V"
+   },
+   "dewpoint": {
+    "unitCode": "wmoUnit:degC",
+    "value": 3,
+    "qualityControl": "V"
+   },
+   "windDirection": {
+    "unitCode": "wmoUnit:degree_(angle)",
+    "value": 170,
+    "qualityControl": "V"
+   },
+   "windSpeed": {
+    "unitCode": "wmoUnit:km_h-1",
+    "value": 12.96,
+    "qualityControl": "V"
+   },
+   "windGust": {
+    "unitCode": "wmoUnit:km_h-1",
+    "value": null,
+    "qualityControl": "Z"
+   },
+   "barometricPressure": {
+    "unitCode": "wmoUnit:Pa",
+    "value": 102410,
+    "qualityControl": "V"
+   },
+   "seaLevelPressure": {
+    "unitCode": "wmoUnit:Pa",
+    "value": null,
+    "qualityControl": "Z"
+   },
+   "visibility": {
+    "unitCode": "wmoUnit:m",
+    "value": 16090,
+    "qualityControl": "C"
+   },
+   "maxTemperatureLast24Hours": {
+    "unitCode": "wmoUnit:degC",
+    "value": null
+   },
+   "minTemperatureLast24Hours": {
+    "unitCode": "wmoUnit:degC",
+    "value": null
+   },
+   "precipitationLastHour": {
+    "unitCode": "wmoUnit:mm",
+    "value": null,
+    "qualityControl": "Z"
+   },
+   "precipitationLast3Hours": {
+    "unitCode": "wmoUnit:mm",
+    "value": null,
+    "qualityControl": "Z"
+   },
+   "precipitationLast6Hours": {
+    "unitCode": "wmoUnit:mm",
+    "value": null,
+    "qualityControl": "Z"
+   },
+   "relativeHumidity": {
+    "unitCode": "wmoUnit:percent",
+    "value": 28.705465714271,
+    "qualityControl": "V"
+   },
+   "windChill": {
+    "unitCode": "wmoUnit:degC",
+    "value": null,
+    "qualityControl": "V"
+   },
+   "heatIndex": {
+    "unitCode": "wmoUnit:degC",
+    "value": 21.00508716031722,
+    "qualityControl": "V"
+   },
+   "cloudLayers": [
+    {
+     "base": {
+      "unitCode": "wmoUnit:m",
+      "value": null
+     },
+     "amount": "CLR"
+    }
+   ]
+  }
+ }
+}

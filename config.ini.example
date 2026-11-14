@@ -33,7 +33,9 @@ tcp_port = 5000
 timeout = 30
 
 # Automatic reconnection settings
-# Reconnect when the connection is lost (applies to all connection types: serial, BLE, TCP)
+# Applies to all connection types (serial, BLE, TCP) and both when the connection
+# is lost and when the radio is not reachable yet at startup (for example just
+# after a reboot). The bot retries with backoff instead of exiting at once.
 
 # Maximum number of reconnect attempts before giving up and shutting down
 # 0 = unlimited (keep trying forever) — recommended for unattended deployments
@@ -104,7 +106,7 @@ auto_update_device_name = true
 # Time window for correlating RF data with messages (seconds)
 rf_data_timeout = 15.0
 
-# Time to wait for RF data correlation (seconds)
+# Oldest RF log row (seconds) a channel message can be matched to by its contents
 message_correlation_timeout = 10.0
 
 # Enable enhanced correlation strategies
@@ -183,6 +185,14 @@ dm_max_flood_attempts = 2
 
 # Number of attempts before switching to flood mode
 dm_flood_after = 2
+
+# Shortest time in seconds to wait for a DM's ACK on each attempt. The radio's
+# own estimate is built from airtime and hop count with little fixed allowance,
+# so on fast presets a zero-hop attempt can wait barely a second, shorter than
+# the ACK takes to come back, and a delivered DM is reported as failed. An ACK
+# still ends the wait at once; this only delays giving up on a DM that is never
+# acknowledged. 0 uses the radio's estimate alone; at most 60.
+dm_min_ack_timeout = 8
 
 # Timezone for bot operations
 # Use standard timezone names (e.g., America/New_York, Europe/London, UTC)
@@ -296,6 +306,11 @@ max_response_hops = 7
 # Responses will be sent with the same scope hash when correlation succeeds.
 # Example: flood_scopes = *,#west,#east
 # Use * to allow replies to unscoped FLOOD messages.
+# A blank flood_scopes still answers channel commands, but the reply is ordinary
+# global FLOOD. The bot does not mirror the sender's region. Mirroring needs the
+# region name listed (for example *,#home). The * entry keeps unscoped flood
+# allowed. The bot matches the inbound transport code by HMAC against those
+# names; it cannot recover a region name from the 16-bit code alone.
 # Leave blank or commented to use the default (all).
 # flood_scopes = #region, #otherregion
 
@@ -353,9 +368,15 @@ dry_run = true
 # How the warning reaches the sender:
 #   dm      — a direct message to the sender (default; costs the least airtime).
 #             Only sent to a name the radio already has a contact for.
-#   channel — a reply on the channel they posted to, always at global scope,
-#             because a scoped reply would not reach someone outside your region
+#   channel — a reply on the channel they posted to, at the bot's usual
+#             channel scope (see flood_scope below)
 delivery = dm
+
+# Flood scope for channel delivery. Unset follows [Channels]
+# flood_scope.<channel>, then outgoing_flood_scope_override, then global flood.
+# A sender with no region still hears a scoped warning wherever the region's
+# repeaters reach. Use * to send warnings at global scope regardless.
+# flood_scope = #west
 
 # Only warn about messages on these channels (comma-separated, # optional).
 # Leave empty to consider every channel the bot hears.
@@ -385,6 +406,59 @@ mesh_cooldown_minutes = 30
 # unlimited (not recommended).
 max_warnings_per_day = 6
 
+[Repeater_Watch]
+# Report when a repeater you look after goes quiet (see docs/repeater-watch.md).
+#
+# The bot already hears two signs that a repeater works: its adverts, and the
+# packets it relays (as hops in the paths the bot sees). A watched repeater
+# counts as offline once neither has been heard for offline_after_hours. One
+# notice goes out when it goes offline and, with notify_recovery, one when it
+# is heard again; nothing repeats while it stays down.
+#
+# The bot only judges silence it was listening for: the clock starts when the
+# bot starts or its radio reconnects, and checks pause while the bot hears no
+# node at all, so a fault on the bot's own radio is not reported as every
+# repeater going down. The Repeater watch page in the web viewer picks
+# repeaters and shows their status. Off by default.
+enabled = false
+
+# Public keys of the repeaters to watch, comma-separated. A key prefix of at
+# least 8 hex characters also works and matches the most recently heard
+# repeater with it.
+watch =
+
+# Also watch every repeater starred in the web viewer's Contacts page.
+watch_starred = false
+
+# Hours with no advert and no relayed traffic before a repeater is offline
+# (1 to 720). Repeaters advertise every few hours, so leave room for that.
+offline_after_hours = 24
+
+# How often to check, in minutes (5 to 1440).
+check_interval_minutes = 15
+
+# Also send a notice when an offline repeater is heard again.
+notify_recovery = true
+
+# Where notices go. Any mix of channels, DMs and the external targets below;
+# with none set, transitions are only logged and shown on the page.
+channels =
+# Contact names (or public keys) to DM.
+dm_recipients =
+# Optional regional TC_FLOOD scope for channel notices (e.g. #west).
+flood_scope =
+
+# Notice wording. Placeholders: {name}, {prefix}, {silent_for}, {down_for},
+# {last_heard}. Several transitions in one check share a message where they fit.
+offline_message = Repeater offline: {name} ({prefix}), not heard for {silent_for}
+recovered_message = Repeater back: {name} ({prefix}), was offline {down_for}
+
+# Optional Discord/Telegram copies of each notice.
+discord_webhook_urls =
+telegram_chat_ids =
+# Blank uses TELEGRAM_BOT_TOKEN, then [TelegramBridge] api_token.
+telegram_bot_token =
+
 [Banned_Users]
 # List of banned sender names (comma-separated). Matching is prefix (starts-with):
 # "Awful Username" also matches "Awful Username 🍆". No bot responses in channels or DMs.
@@ -399,6 +473,14 @@ banned_users =
 # If locale-specific file not found, falls back to base language (e.g., es.json)
 # If translation file is missing or key not found, falls back to English
 language = en
+
+# Language for place names from geocoding (wx, gwx and other location replies)
+#   (empty) - follow language above, falling back to English where OpenStreetMap
+#             has no name in it ("Chiyoda, JP")
+#   local   - each place's own name ("千代田区, JP"), as before this setting existed
+#   en, de, ... - that language, whatever language replies are in
+# Default: empty
+place_name_language =
 
 # Path to translation files directory (relative to bot root)
 # Default: translations/
@@ -497,6 +579,7 @@ companion_min_inactive_days = 30
 # {hops_label} - Same as hops with word "hop"/"hops" and pluralization (e.g., "1 hop", "2 hops", or "?" when unknown)
 # {path_distance} - Total distance between all hops in path with locations (e.g., "123.4km (3 segs, 1 no-loc)")
 # {firstlast_distance} - Distance between first and last repeater in path (e.g., "45.6km" or empty if locations missing)
+# {path_names} - Route as short repeater names (e.g., "BlackHls▸KalamaSum▸KelsoG3"); hops without a confident 2- or 3-byte match keep their hex prefix (see [Path_Command] path_names_*)
 # {elapsed} - Elapsed time (e.g. 1234ms) or "Sync Device Clock" when device clock is invalid (use {elapsed} only; do not append ms)
 # {packet_hash} - 16-char MeshCore packet identity hash (uppercase hex); renders empty when RF correlation did not attach routing info
 #
@@ -607,11 +690,37 @@ category.funfact = fun
 #   0 18 * * * = Public:Hello! ...
 #   0 18 * * * = Public:#sea:Hello! ...   (same channel text, sent with #sea flood scope)
 #
+# Optional date bounds limit a schedule to a range. They lead the value, ahead of the
+# channel, and use "=" so they cannot be confused with the channel:message separator or
+# with a message body that happens to mention "start=".
+#   <schedule> = start=YYYY-MM-DD end=YYYY-MM-DD channel:message
+# Either may be omitted, and they may appear in either order. The end date is inclusive:
+# "end=2027-03-31" runs through the whole of the 31st. A schedule with no runs left is
+# skipped at startup with a log line saying so.
+# Examples:
+#   0 19 last-fri * * = start=2027-01-01 end=2027-03-31 Public:Winter net starts now
+#   0 8 * * *         = end=2026-12-25 Public:#sea:Countdown to the holidays
+#
+# Optional week= limits a schedule to ISO week numbers, for a strict fortnight:
+# week=*/2 is odd weeks, week=2-53/2 even ones. It sits with start=/end=.
+#   0 20 * * tue = week=*/2 Public:#sea:Fortnightly net
+# A 53-week year (2026, 2032) runs the odd setting two weeks running at New Year.
+# See docs/scheduled-messages.md.
+#
 # <schedule> is one of:
 #   - 5-field crontab (minute hour day-of-month month day-of-week), e.g.
 #       0 8 * * *     = every day at 08:00 (in [Bot] timezone)
 #       30 12 * * mon = every Monday at 12:30
 #       30 12 * * 0   = same (Monday) — see APScheduler note below
+#   - Positional day-of-month, in the day-of-month field only. Write the space as
+#     "-" (or "_") so it does not read as a field separator:
+#       0 19 last-fri * *        = 19:00 on the last Friday of every month
+#       0 19 4th-tue * *         = 19:00 on the fourth Tuesday
+#       0 19 1st-tue,3rd-tue * * = 19:00 on the first and third Tuesday
+#       0 19 last * *            = 19:00 on the last day of the month (no weekday)
+#     Prefixes are 1st 2nd 3rd 4th 5th last, followed by mon–sun. Note that a month
+#     may have no 5th Tuesday, and that "1st and 3rd" is a 14/14/21-day cadence, not
+#     a strict fortnight. For one, add week= to the value (below).
 #   - Preset aliases (@yearly @annually @monthly @weekly @daily @midnight @hourly).
 #     These expand to the 5-field forms above; @weekly is Monday 00:00 (not Sunday).
 #   - Deprecated (still accepted, logs a warning): HHMM = daily at that 24h clock time
@@ -882,25 +991,42 @@ weather_provider = noaa
 
 # Default state for city name disambiguation
 # When users type "wx seattle", it will search for "seattle, WA, USA"
+# Replies for a city in this state leave out the place name; other states name it.
 # Use 2-letter state abbreviation (e.g., WA, CA, NY, TX)
 default_state = WA
 
 # Default country for city name disambiguation (for international weather plugin)
+# gwx replies for a city in another country name it ("Paris, FR: ...").
 # Use 2-letter country code (e.g., US, CA, GB, AU)
 default_country = US
 
 # When true, a bare "wx" or "gwx" (no location) uses bot_latitude/bot_longitude from [Bot]
-# if there is no default WXSIM source and no companion location in the database.
+# if there is no default custom source, no companion location in the database and no default_city.
 # Default: false (show usage instead)
 use_bot_location_when_no_location = false
 
-# Temperature unit for weather display
+# Only with weather_provider = noaa: when a place is outside NWS (weather.gov) coverage,
+# answer wx from Open-Meteo (as gwx would) instead of replying with an error.
+# NWS timeouts and server errors still reply with an error. Ignored with
+# weather_provider = openmeteo, where wx already uses Open-Meteo for everything.
+# Default: false
+openmeteo_fallback = false
+
+# When true, wx and gwx name the place in every reply a place is found for ("Lake Stevens, WA: ...").
+# When false, they name it only when it adds information: a city outside default_state or
+# default_country, or a position (the sender's, the bot's or typed coordinates).
+# The name takes message length from the forecast, and a ZIP code costs one extra reverse lookup.
+# Default: false
+always_show_location = false
+
+# Temperature unit for weather display (wx, gwx, the weather service)
 # Options: fahrenheit, celsius
+# Celsius also switches distances (visibility) to kilometers.
 # Default: fahrenheit
 temperature_unit = fahrenheit
 
-# Wind speed unit for weather display
-# Options: mph, kmh, ms (meters per second)
+# Wind speed unit for weather display (wx, gwx, the weather service)
+# Options: mph, kmh, ms (meters per second), kn (knots)
 # Default: mph
 wind_speed_unit = mph
 
@@ -972,6 +1098,18 @@ enabled = true
 # Precipitation amount (mm per 15-min bucket) at/above which it counts as raining.
 # Lower = more sensitive to light drizzle; raise to ignore trace amounts. (default: 0.1)
 # precip_threshold_mm = 0.1
+# Append an estimated precipitation amount, e.g. "(est 0.2 in)" (default: true)
+# show_amount = true
+# Unit for that amount: in or mm (default: in)
+# amount_unit = in
+# Show the precipitation probability, e.g. "(…, 70%)" (default: true)
+# show_probability = true
+# Show the temperature when it is near freezing (about 30-38°F), where rain,
+# snow or ice is in doubt (default: true)
+# show_temp = true
+# Seconds to reuse a fetched forecast, shared with the weather service's rain
+# nowcast; 0 disables (default: 300)
+# cache_seconds = 300
 # Look up US ZIP -> "City, ST" via Zippopotam.us (free, no key). OpenStreetMap
 # often lacks the city for a ZIP centroid, so this gives nicer labels. Set false
 # to skip the external lookup and reverse-geocode instead. (default: true)
@@ -1160,6 +1298,26 @@ enable_p_shortcut = true
 # Filter arguments may be double-quoted to end them explicitly and allow further
 # filters afterwards: {path_distance|prefix_if_nonempty:"\U0001F4CF "|hops_min:1}
 reply_prefix =
+
+# {path_names} placeholder, for [Test_Command] response_format and [Keywords] replies:
+# the route as short repeater names, e.g. "BlackHls▸KalamaSum▸KelsoG3" in place of
+# "a1b2,c3d4,e5f6 (3 hops)". A hop is named only on a 2- or 3-byte path, and only when
+# its prefix has a single recent repeater or a collision resolves with at least
+# path_names_min_confidence. Every other hop keeps its hex prefix, so a 1-byte path
+# renders as hex ("a1▸c3▸e5"). A direct message renders "Direct", like {path}.
+# Names are packed to fit: emoji and punctuation dropped, filler words (Repeater, RP, The)
+# removed, a callsign dropped when the name has other words, words run together in CamelCase, and place words abbreviated (Hills -> Hls,
+# Summit -> Sum, Mountain -> Mtn). A name still too long loses compass words, then
+# vowels, then trailing letters. If the whole route is over path_names_max_bytes, names
+# shrink together; past that, hops after the first are replaced by "…".
+# Longest single name, in characters.
+path_names_max_name_length = 10
+# Byte budget for the whole value (0 = no limit). The default separator is 3 bytes.
+path_names_max_bytes = 60
+# Text between hops. Quote it to keep surrounding spaces: path_names_separator = " > "
+path_names_separator = ▸
+# Confidence (0-1) a colliding prefix needs before its name is shown.
+path_names_min_confidence = 0.9
 
 # Bytes per hop required before resolving repeater names from the database.
 # 0 or 1: always resolve names (default). 2: require 2-byte (or wider) hops. 3: require 3-byte hops.
@@ -1470,6 +1628,7 @@ mesh_info_format = \n\nMesh Info: {total_contacts} contacts, {repeaters} repeate
 # to greet new users. This prevents greeting everyone on an established mesh.
 # Set to 0 to disable rollout (will greet all new users immediately)
 # Note: Use auto_backfill to mark historical users and shorten/eliminate rollout period
+# The period runs once. A later restart does not start another one.
 rollout_days = 7
 
 # Auto-backfill from historical message_stats data
@@ -1576,11 +1735,11 @@ url_timeout = 10
 [Wx_Command]
 enabled = true
 
-# Temperature unit for weather reports: fahrenheit (default) or celsius
-temperature_unit = fahrenheit
-
-# Wind speed unit for weather reports: mph (default) or kmh
-wind_speed_unit = mph
+# Units come from [Weather] temperature_unit / wind_speed_unit. Set these
+# only to give wx (NOAA and WXSIM) different units from the other weather
+# commands; when set, they win for wx.
+# temperature_unit = fahrenheit
+# wind_speed_unit = mph
 # channels =
 # aliases = comma-separated additional trigger words, e.g.: aliases = weather, w
 
@@ -1685,7 +1844,9 @@ distance_unit = auto
 
 # Optional: full ack template for test/t. When set, overrides [Keywords] test for this command only.
 # Same placeholders as Keywords (sender, phrase, phrase_part, connection_info, path, hops, hops_label,
-# timestamp, elapsed, snr, rssi, packet_hash, path_distance, firstlast_distance).
+# timestamp, elapsed, snr, rssi, packet_hash, path_distance, firstlast_distance, path_names).
+# {path_names} is the route as short repeater names; see [Path_Command] path_names_* for how it is built:
+# response_format = ack @[{sender}]{phrase_part} | {path_names} | {elapsed}
 # {firstlast_distance} requires at least two path nodes with stored repeater/roomserver coordinates.
 # Pipe filters (feed-style), e.g. only show cumulative path distance when hops are multibyte (2+ bytes per hop):
 # response_format = ack @[{sender}]{phrase_part} | {connection_info}{path_distance|pathbytes_min:2|prefix_if_nonempty: | Path Dist: }| F/L Dist: {firstlast_distance} | {elapsed} | Rec: {timestamp}
@@ -1705,9 +1866,11 @@ enabled = true
 maximum_hops = 5
 # Trace mode: one_byte (default) or two_byte (when firmware supports it)
 trace_mode = one_byte
-# Timeout: total = timeout_base_seconds + (path hops * timeout_per_hop_seconds); typical 6 hops ~1s, 10 ~2s
-timeout_base_seconds = 1.0
-timeout_per_hop_seconds = 0.5
+# Timeout per attempt: timeout_base_seconds + (path hops * timeout_per_hop_seconds). Each repeater waits a
+# random TX delay before forwarding, so allow a second or more per hop; a reply to an earlier attempt still
+# counts until the last attempt times out
+timeout_base_seconds = 2.0
+timeout_per_hop_seconds = 1.5
 # Retries: max attempts (default 2 = try once, then once more after delay)
 trace_retry_count = 2
 # Seconds to wait before retrying a failed trace
@@ -1821,6 +1984,15 @@ debug = false
 # true: Start web viewer automatically when bot starts
 # false: Start web viewer manually (recommended)
 auto_start = false
+
+# Serve the viewer through Home Assistant ingress (the sidebar panel).
+# true: trust requests from the Supervisor (172.30.32.2) that send
+# X-Ingress-Path, skip the password login for those requests, and prefix
+# links with that path. When no web_viewer_password is set, any request that
+# does not come through the Supervisor is refused with 403 instead of falling
+# back to open mode; this is why the open-bind warning is skipped.
+# false: ignore ingress headers (default). Direct access is unchanged.
+ha_ingress = false
 
 # Enable multibyte monitor page (/multibyte-rollout)
 # false: hide page/nav/API endpoint
@@ -2242,8 +2414,18 @@ weather_channel = #weather
 # Weather alerts will be sent to this channel
 alerts_channel = #weather
 
+# Poll NOAA for weather alerts and post them to alerts_channel (true/false).
+# Set false to stop alert monitoring on its own — daily forecasts, rain nowcasts,
+# storm detection and the weather commands all keep working. Useful outside the
+# US, where NOAA has no coverage (the service already stops polling after the
+# API reports that, but this skips it entirely), or where another source already
+# feeds alerts to the mesh.
+# Default: true
+weather_alerts_enabled = true
+
 # Weather alert polling interval (milliseconds)
 # How often to check for new weather alerts
+# Ignored when weather_alerts_enabled = false
 # Default: 600000 (10 minutes)
 poll_weather_alerts_interval = 600000
 
@@ -2459,6 +2641,13 @@ port = 8765
 # secret_token = changeme
 
 # Maximum message length in characters (excess is silently truncated). Default: 200
+#
+# This is a cap on the total text accepted per request, NOT a single-message limit.
+# A MeshCore channel body only has about 130 bytes (the firmware's 160-byte text
+# limit less the "<botname>: " prefix), so anything longer is split and sent as
+# several mesh messages, each tagged " (1/2)", " (2/2)" and so on. Raising this
+# value therefore buys more airtime per request rather than longer single
+# messages.
 # max_message_length = 200
 
 # Comma-separated channel whitelist. If set, only these channels may be posted to.
@@ -2484,7 +2673,8 @@ port = 8765
 # Direct message:
 #   {"dm_to": "SomeUser", "message": "Private message"}
 #
-# Response: {"ok": true}  or  {"error": "..."}
+# Response: {"ok": true, "parts": 1}  or  {"error": "..."}
+#   parts = how many mesh messages the text was split into.
 # ---------------------------------------------------------------------------
 [RepeaterPrefixCollision_Service]
 # Enable repeater prefix collision notifications (true/false)
@@ -2580,6 +2770,7 @@ avatar_style = color
 
 # Channel mappings: bridge.<meshcore_channel> = <discord_webhook_url>[, <discord_webhook_url>...]
 # Only channels explicitly listed here will be bridged to Discord
+# Channel names are case-insensitive and may include or omit the leading # (bridge.test matches #test)
 # Get webhook URLs from Discord: Channel Settings → Integrations → Webhooks → Create Webhook
 #
 # SECURITY WARNING: Webhook URLs contain authentication tokens

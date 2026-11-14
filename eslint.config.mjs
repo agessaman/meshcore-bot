@@ -16,6 +16,8 @@ export default [
         L: "readonly",
         escapeHtml: "writable",
         socket: "writable",
+        // Declared in base.html; page scripts that extend it read it.
+        IS_ADMIN: "readonly",
       },
     },
     settings: {

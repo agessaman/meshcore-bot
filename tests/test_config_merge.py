@@ -127,6 +127,32 @@ class TestReloadConfigMerge:
         assert bot.config is old_config
         assert bot.config.get("LocalExtra", "value") == "original"
 
+    def test_literal_percent_in_a_raw_read_value_does_not_block_reload(self, tmp_path):
+        db_path = tmp_path / "bot.db"
+        main_config = tmp_path / "config.ini"
+        template = "{humidity_percent}% RH | {pressure_hpa:.0f} hPa"
+        main_config.write_text(
+            _minimal_main_config(tmp_path, db_path)
+            + f"\n[MqttWeather]\njson_template = {template}\n",
+            encoding="utf-8",
+        )
+        bot = MeshCoreBot(config_file=str(main_config))
+
+        main_config.write_text(
+            _minimal_main_config(tmp_path, db_path)
+            + f"\n[MqttWeather]\njson_template = {template}\n"
+            + "\n[LocalExtra]\nvalue = after_reload\n",
+            encoding="utf-8",
+        )
+        with patch.object(bot.logger, "warning") as warning:
+            success, message = bot.reload_config()
+
+        assert success, message
+        assert bot.config.get("LocalExtra", "value") == "after_reload"
+        assert bot.config.get("MqttWeather", "json_template", raw=True) == template
+        logged = [call.args[0] % call.args[1:] for call in warning.call_args_list]
+        assert any("[MqttWeather] json_template" in line for line in logged)
+
     def test_invalid_typed_value_in_overlay_leaves_snapshot_untouched(self, tmp_path):
         db_path = tmp_path / "bot.db"
         main_config = tmp_path / "config.ini"

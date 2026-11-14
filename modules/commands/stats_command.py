@@ -51,6 +51,9 @@ class StatsCommand(BaseCommand):
         {"key": "anonymize_users", "label": "Anonymize users", "type": "bool",
          "default": False,
          "help": "Replace user IDs with anonymous identifiers in stats."},
+        {"key": "collect_stats", "label": "Collect stats", "type": "bool",
+         "default": True,
+         "help": "Write message, command and path stats for the web viewer, even when the stats command is off."},
     ]
 
     def __init__(self, bot: Any):
@@ -342,7 +345,7 @@ class StatsCommand(BaseCommand):
         # If it's already a single node ID or short path, return as-is
         return path
 
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         """Get help text for the stats command.
 
         Returns:

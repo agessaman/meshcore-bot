@@ -21,6 +21,8 @@ class CatfactCommand(BaseCommand):
     # Read-only informational output; safe for scheduled {cmd:...} rendering.
     render_safe = True
     name = "catfact"
+    honors_skip_channel_check = False
+    enabled_attr = "catfact_enabled"
     keywords = ['catfact', 'cat', 'meow', 'purr', 'kitten']
     description = "Get a random cat fact (hidden command)"
     category = "hidden"  # Hidden category so it won't appear in help
@@ -113,12 +115,9 @@ class CatfactCommand(BaseCommand):
         Returns:
             List[str]: A list of cat fact strings.
         """
-        facts = self.translate_get_value('commands.catfact.facts')
-        if facts and isinstance(facts, list) and len(facts) > 0:
-            return facts
-        return self.cat_facts_fallback
+        return self.translated_or('commands.catfact.facts', self.cat_facts_fallback)
 
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         """Get help text for the catfact command.
 
         Returns:
@@ -126,19 +125,6 @@ class CatfactCommand(BaseCommand):
         """
         # Return empty string so it doesn't appear in help
         return ""
-
-    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
-        """Check if this command can be executed with the given message.
-
-        Args:
-            message: The message triggering the command.
-
-        Returns:
-            bool: True if command is enabled and checks pass, False otherwise.
-        """
-        if not self.catfact_enabled:
-            return False
-        return super().can_execute(message)
 
     async def execute(self, message: MeshMessage) -> bool:
         """Execute the cat fact command.

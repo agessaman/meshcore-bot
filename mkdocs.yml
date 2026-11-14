@@ -53,15 +53,19 @@ nav:
   - Installation:
     - Overview: installation.md
     - Docker: docker.md
+    - Home Assistant: home-assistant.md
     - Service: service-installation.md
   - Configuration:
     - Overview: configuration.md
+    - Scheduled messages: scheduled-messages.md
     - Data retention: data-retention.md
     - Local plugins and services: local-plugins.md
     - Check-in API: checkin-api.md
     - Path Command: path-command-config.md
     - Config validation: config-validation.md
+    - Region scopes: region-scopes.md
     - Region warnings: region-warnings.md
+    - Repeater watch: repeater-watch.md
   - Web Viewer: web-viewer.md
   - Command Reference:
     - Overview: command-reference.md

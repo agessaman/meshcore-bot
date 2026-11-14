@@ -249,3 +249,60 @@ class TestRunDbBackupIntegration:
         dst = sqlite3.connect(str(backups[0]))
         assert dst.execute("SELECT i FROM x").fetchone()[0] == 1
         dst.close()
+
+
+class TestSmtpHelpers:
+    """read_smtp_settings / send_smtp_message are shared by the digest and the radio alerts."""
+
+    @staticmethod
+    def _getter(values):
+        return lambda key: values.get(key, '')
+
+    def test_port_defaults_follow_security(self):
+        from modules.maintenance import read_smtp_settings
+
+        assert read_smtp_settings(self._getter({'smtp_security': 'ssl'})).port == 465
+        assert read_smtp_settings(self._getter({})).port == 587
+        assert read_smtp_settings(self._getter({})).security == 'starttls'
+        assert read_smtp_settings(self._getter({'smtp_port': 'abc', 'smtp_security': 'ssl'})).port == 587
+        assert read_smtp_settings(self._getter({'smtp_port': '2525'})).port == 2525
+
+    def test_from_header_and_allow_local(self):
+        from modules.maintenance import read_smtp_settings
+
+        s = read_smtp_settings(self._getter({'from_email': 'bot@example.com', 'allow_local_smtp': 'TRUE'}))
+        assert s.from_header == 'MeshCore Bot <bot@example.com>'
+        assert s.allow_local is True
+
+    def test_ssl_transport(self):
+        from modules.maintenance import read_smtp_settings, send_smtp_message
+
+        s = read_smtp_settings(self._getter({
+            'smtp_host': 'mail', 'smtp_security': 'ssl', 'smtp_user': 'u', 'smtp_password': 'p',
+        }))
+        with patch('smtplib.SMTP_SSL') as ssl_cls, patch('smtplib.SMTP') as plain_cls:
+            send_smtp_message(s, 'MSG')
+        plain_cls.assert_not_called()
+        assert ssl_cls.call_args.args == ('mail', 465)
+        assert ssl_cls.call_args.kwargs['timeout'] == 30
+        server = ssl_cls.return_value.__enter__.return_value
+        server.login.assert_called_once_with('u', 'p')
+        server.send_message.assert_called_once_with('MSG')
+
+    def test_starttls_transport_order(self):
+        from modules.maintenance import read_smtp_settings, send_smtp_message
+
+        s = read_smtp_settings(self._getter({'smtp_host': 'mail', 'smtp_user': 'u', 'smtp_password': 'p'}))
+        with patch('smtplib.SMTP') as plain_cls:
+            send_smtp_message(s, 'MSG')
+        server = plain_cls.return_value.__enter__.return_value
+        assert [c[0] for c in server.method_calls] == ['ehlo', 'starttls', 'ehlo', 'login', 'send_message']
+
+    def test_plain_transport_without_credentials(self):
+        from modules.maintenance import read_smtp_settings, send_smtp_message
+
+        s = read_smtp_settings(self._getter({'smtp_host': 'mail', 'smtp_security': 'none'}))
+        with patch('smtplib.SMTP') as plain_cls:
+            send_smtp_message(s, 'MSG')
+        server = plain_cls.return_value.__enter__.return_value
+        assert [c[0] for c in server.method_calls] == ['send_message']

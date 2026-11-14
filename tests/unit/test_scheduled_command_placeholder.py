@@ -9,11 +9,11 @@ raw placeholder text into a broadcast.
 """
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from modules.models import MeshMessage
+from modules.models import MeshMessage, channel_body_limit
 
 
 class _Recorder:
@@ -500,7 +500,8 @@ class TestScheduledSendFitsTheRfBudget:
 
     def test_budget_accounts_for_the_username_prefix(self):
         sched = self._sched(bot_name="LongBotName")
-        assert sched._channel_body_budget(None) == 160 - len("LongBotName") - 2
+        # Scheduled sends share the command layer's budget rather than recomputing it.
+        assert sched._channel_body_budget(None) == channel_body_limit("LongBotName")
 
     def test_scoped_sends_get_a_smaller_budget(self):
         sched = self._sched()
@@ -530,3 +531,70 @@ class TestScheduledSendFitsTheRfBudget:
         chunks = sched._split_to_budget(text, 20)
         assert all(len(c.encode("utf-8")) <= 20 for c in chunks)
         assert "".join(chunks) == text  # nothing lost or corrupted
+
+
+@pytest.mark.unit
+class TestRenderGwx:
+    """gwx is render_safe: its replies, including the two-part warning, render without transmitting."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("reply", [
+        "Paris, FR: Today: ☀️Clear 21°C",
+        ("multi_message", "Paris, FR: Today: ⛈️Thunderstorm 31°C", "⚠️ Thunderstorms"),
+    ])
+    async def test_gwx_renders_without_transmitting(self, command_mock_bot, reply):
+        from modules.command_manager import CommandManager
+        from modules.commands.alternatives.wx_international import GlobalWxCommand
+
+        gwx = GlobalWxCommand(command_mock_bot)
+        gwx._get_custom_mqtt_weather_topic = MagicMock(return_value=None)
+        gwx._get_custom_wxsim_source = MagicMock(return_value=None)
+        gwx.get_weather_for_location = AsyncMock(return_value=reply)
+
+        mgr = object.__new__(CommandManager)
+        mgr.bot = command_mock_bot
+        mgr.logger = MagicMock()
+        mgr.commands = {"gwx": gwx}
+        mgr._last_response = None
+        mgr.send_dm = AsyncMock()
+        mgr.send_channel_message = AsyncMock()
+        command_mock_bot.command_manager.send_response = (
+            lambda message, content, **kw: CommandManager.send_response(mgr, message, content, **kw)
+        )
+
+        with patch("asyncio.sleep", AsyncMock()):
+            rendered = await mgr.render_command_output("gwx Paris", channel="#general")
+
+        parts = [reply] if isinstance(reply, str) else list(reply[1:])
+        assert rendered and all(part in rendered for part in parts)  # the warning part too
+        mgr.send_dm.assert_not_called()
+        mgr.send_channel_message.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_two_part_reply_renders_without_waiting_for_the_tx_limiter(self, command_mock_bot):
+        # A 30 s TX limit used to pace the parts by 31 s, past the render timeout.
+        from modules.command_manager import CommandManager
+        from modules.commands.alternatives.wx_international import GlobalWxCommand
+
+        command_mock_bot.config.set("Bot", "bot_tx_rate_limit_seconds", "30")
+        gwx = GlobalWxCommand(command_mock_bot)
+        gwx._get_custom_mqtt_weather_topic = MagicMock(return_value=None)
+        gwx._get_custom_wxsim_source = MagicMock(return_value=None)
+        gwx.get_weather_for_location = AsyncMock(
+            return_value=("multi_message", "Paris, FR: Today: ⛈️Thunderstorm 31°C", "⚠️ Thunderstorms")
+        )
+
+        mgr = object.__new__(CommandManager)
+        mgr.bot = command_mock_bot
+        mgr.logger = MagicMock()
+        mgr.commands = {"gwx": gwx}
+        mgr._last_response = None
+        mgr.send_dm = AsyncMock()
+        mgr.send_channel_message = AsyncMock()
+        command_mock_bot.command_manager.send_response = (
+            lambda message, content, **kw: CommandManager.send_response(mgr, message, content, **kw)
+        )
+
+        rendered = await mgr.render_command_output("gwx Paris", channel="#general", timeout=1.0)
+
+        assert rendered and rendered.endswith("⚠️ Thunderstorms")

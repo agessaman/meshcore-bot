@@ -14,6 +14,7 @@ from typing import Literal, Optional
 CondensePathsMode = Literal["off", "flat", "nested"]
 
 from ..models import MeshMessage
+from ..template_reference import template_spec
 from ..utils import calculate_packet_hash, parse_path_string
 from .base_command import BaseCommand
 
@@ -76,59 +77,8 @@ def _tree_branch_lines_flat(suffixes: list[str]) -> list[str]:
     return out
 
 
-def _grouped_suffix_line_specs(non_empty: list[list[str]]) -> list[tuple[str, str]]:
-    """Build (line_kind, text) rows: group by first hop, then longest in-group prefix on the head line.
-
-    So paths 96,e0 / 96,e0,01 / … share head '96,e0' and nest 01, … instead of head '96' with
-    misleading 'e0' as if it were the only endpoint under that branch.
-
-    kind "end": path that ends exactly at inner_lcp (shorter alternate route) — top-level branch
-    with the same text as head, listed so every collected suffix appears as an endpoint.
-    """
-    by_first: dict[str, list[list[str]]] = defaultdict(list)
-    for suf in non_empty:
-        by_first[suf[0]].append(suf[1:])
-
-    specs: list[tuple[str, str]] = []
-    for ft in sorted(by_first.keys()):
-        rests = by_first[ft]
-        full_sufs = [[ft, *r] for r in rests]
-        if len(full_sufs) == 1:
-            specs.append(("head", ",".join(full_sufs[0])))
-            continue
-        inner_lcp = _longest_common_prefix(full_sufs)
-        head_text = ",".join(inner_lcp)
-        remainders = [s[len(inner_lcp) :] for s in full_sufs]
-        has_exact = any(len(r) == 0 for r in remainders)
-        nested = sorted((r for r in remainders if r), key=lambda x: ",".join(x))
-        if not nested:
-            specs.append(("head", head_text))
-            continue
-        specs.append(("head", head_text))
-        for rem in nested:
-            specs.append(("nest", ",".join(rem)))
-        if has_exact:
-            specs.append(("end", head_text))
-    return specs
-
-
-def _apply_tee_prefixes(specs: list[tuple[str, str]]) -> list[str]:
-    """Assign ├/└ from flattened order; nested rows use 　 before ├/└. Only the final row uses └."""
-    n = len(specs)
-    out: list[str] = []
-    for i, (kind, text) in enumerate(specs):
-        last = i == n - 1
-        if kind in ("head", "end"):
-            p = _BRANCH_LAST if last else _BRANCH_INTER
-            out.append(f"{p} {text}")
-        else:
-            p = _BRANCH_LAST if last else _BRANCH_INTER
-            out.append(f"{_INDENT_NEST}{p} {text}")
-    return out
-
-
 def _apply_tee_prefixes_flat(specs: list[tuple[str, str]]) -> list[str]:
-    """Like `_apply_tee_prefixes` but nested rows use └ when the next row is a new top branch (head/end)."""
+    """Prefix tree rows with ├/└; nested rows use └ when the next row starts a new top branch (head/end)."""
     n = len(specs)
     out: list[str] = []
     for i, (kind, text) in enumerate(specs):
@@ -142,19 +92,6 @@ def _apply_tee_prefixes_flat(specs: list[tuple[str, str]]) -> list[str]:
             p = _BRANCH_INTER if nest_continues else _BRANCH_LAST
             out.append(f"{_INDENT_NEST}{p} {text}")
     return out
-
-
-def _format_suffix_branch_lines(suffix_tokens: list[list[str]]) -> list[str]:
-    """Format suffixes after display LCP: group by first hop, in-group LCP on head, nest tails indented with U+3000."""
-    non_empty = [s for s in suffix_tokens if s]
-    if not non_empty:
-        return []
-
-    if len(non_empty) == 1:
-        return _tree_branch_lines_flat([",".join(non_empty[0])])
-
-    specs = _grouped_suffix_line_specs(non_empty)
-    return _apply_tee_prefixes(specs)
 
 
 def _flat_suffix_specs(acc: list[str], tails: list[list[str]]) -> list[tuple[str, str]]:
@@ -284,54 +221,8 @@ def _cluster_head(common: str, suffix_tokens: list[list[str]]) -> str:
     return f"{common} {_BRANCH_CORNER}"
 
 
-def _format_path_cluster(token_lists: list[list[str]], use_brackets: bool) -> list[str]:
-    """Format a cluster into condensed lines (common prefix + ┐ + ├/└, nested tails indented with 　).
-
-    The shared path line ends with ┐ (U+2510) when branch lines follow. Suffixes are grouped by
-    their first hop after the display LCP; within a group, the longest common prefix of all
-    suffixes in that group is one ├ line, then 　├/　└ for each distinct tail. The last line of the
-    block uses └ at top level or 　└ when nested.
-
-    If one path stops exactly where another continues, the displayed LCP is shortened so the shared
-    segment is not mistaken for a single endpoint (e.g. only └ tail after a full shorter path).
-
-    Every path in token_lists is represented (no prefix paths dropped as ``...``).
-    """
-    token_lists = [t for t in token_lists if t]
-    if not token_lists:
-        return []
-    if len(token_lists) == 1:
-        s = ",".join(token_lists[0])
-        return [f"[{s}]"] if use_brackets else [s]
-
-    raw_lcp = _longest_common_prefix(token_lists)
-    lcp = _shrink_display_lcp(token_lists, raw_lcp)
-
-    if len(lcp) > 0:
-        suffix_tokens = [t[len(lcp) :] for t in token_lists]
-        common = ",".join(lcp)
-        branch_lines = _format_suffix_branch_lines(suffix_tokens)
-        if branch_lines:
-            lines = [_cluster_head(common, suffix_tokens)]
-            lines.extend(branch_lines)
-        else:
-            lines = [common]
-        return lines
-
-    groups: dict[str, list[list[str]]] = {}
-    for t in token_lists:
-        groups.setdefault(t[0], []).append(t)
-
-    lines: list[str] = []
-    multi = len(groups) > 1
-    for ft in sorted(groups.keys()):
-        sub_lines = _format_path_cluster(groups[ft], use_brackets=multi)
-        lines.extend(sub_lines)
-    return lines
-
-
 def _format_path_cluster_flat(token_lists: list[list[str]], use_brackets: bool) -> list[str]:
-    """Like `_format_path_cluster` but suffix rows use the flat layout (full paths per branch when possible)."""
+    """Format paths sharing a first hop as one cluster, suffix rows in the flat layout (full paths per branch when possible)."""
     token_lists = [t for t in token_lists if t]
     if not token_lists:
         return []
@@ -572,6 +463,8 @@ class MultitestCommand(BaseCommand):
 
     # Plugin metadata
     name = "multitest"
+    honors_skip_channel_check = False
+    enabled_attr = "multitest_enabled"
     keywords = ['multitest', 'mt']
     description = "Listens for 6 seconds and collects all unique paths from incoming messages"
     category = "meshcore_info"
@@ -585,7 +478,13 @@ class MultitestCommand(BaseCommand):
     settings_schema = [
         {"key": "response_format", "label": "Response format", "type": "str",
          "default": "",
-         "help": "Result template. Fields: {sender}, {path_count}, {paths}, {listening_duration}. Empty = default."},
+         "help": "Result template. Empty = default.",
+         "template": template_spec("format", {
+             "sender": "Sender's name",
+             "path_count": "Number of unique paths heard",
+             "paths": "The paths, laid out per Path layout",
+             "listening_duration": "Seconds the bot listened",
+         }, notes=["\\n starts a new line."], preview="multitest")},
         {"key": "condense_paths", "label": "Path layout", "type": "enum",
          "options": [
              {"value": "true", "label": "Condensed tree (default)"},
@@ -594,6 +493,12 @@ class MultitestCommand(BaseCommand):
          ],
          "default": "true",
          "help": "How collected paths are displayed."},
+        {"key": "require_path_bytes_greater_or_equal_to", "label": "Require path bytes ≥", "type": "int",
+         "min": 0, "max": 3, "default": 0,
+         "help": "Only respond when the path's total size is at least 2 bytes (2) or exactly 3 bytes (3), counting every hop. 0/1 = allow all."},
+        {"key": "require_path_bytes_failure_response", "label": "Path-byte reject reply", "type": "str",
+         "default": "",
+         "help": "Reply when rejected by the path-byte requirement. Empty = silent reject."},
     ]
 
     def __init__(self, bot):
@@ -611,19 +516,6 @@ class MultitestCommand(BaseCommand):
         if self._execution_lock is None:
             self._execution_lock = asyncio.Lock()
         return self._execution_lock
-
-    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
-        """Check if this command can be executed with the given message.
-
-        Args:
-            message: The message triggering the command.
-
-        Returns:
-            bool: True if command is enabled and checks pass, False otherwise.
-        """
-        if not self.multitest_enabled:
-            return False
-        return super().can_execute(message)
 
     def _load_config(self):
         """Load configuration for multitest command"""
@@ -651,7 +543,7 @@ class MultitestCommand(BaseCommand):
         """True when any condensed layout is enabled (flat or nested)."""
         return self.condense_paths_mode != "off"
 
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         return self.translate('commands.multitest.help', fallback="Listens for 6 seconds and collects all unique paths from incoming messages")
 
     def extract_path_from_rf_data(self, rf_data: dict) -> Optional[str]:
@@ -1123,10 +1015,6 @@ class MultitestCommand(BaseCommand):
             else:
                 response = (f"No matching packets found during {session.listening_duration}s window. "
                            f"Tracking hash: {tracking_hash}. ")
-
-        # Wait for bot TX rate limiter cooldown to expire before sending
-        # This ensures we respond even if another command put the bot on cooldown
-        await self.bot.bot_tx_rate_limiter.wait_for_tx()
 
         # Also wait for user rate limiter if needed
         if not self.bot.rate_limiter.can_send():

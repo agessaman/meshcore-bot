@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "meshcore-bot"
-version = "1.1.0"
+version = "1.2.0"
 description = "MeshCore Bot with commands for mesh testing, utilities, and service integration."
 readme = "README.md"
 # Table form rather than the SPDX string form: the string form needs
@@ -55,7 +55,7 @@ dependencies = [
 profanity = ["better-profanity>=0.7.0", "unidecode>=1.3.0"]
 geo = ["pycountry>=23.12.0", "us>=2.0.0"]
 lang = ["langdetect>=1.0.9"]
-test = ["pytest>=7.0", "pytest-asyncio>=0.21", "pytest-mock>=3.10", "pytest-cov>=4.0", "pytest-timeout>=2.1.0", "types-requests>=2.31"]
+test = ["pytest>=7.0", "pytest-asyncio>=0.21", "pytest-mock>=3.10", "pytest-cov>=4.0", "pytest-timeout>=2.1.0", "types-requests>=2.31", "pyyaml>=6.0"]
 docs = ["mkdocs-material>=9.0.0", "mkdocs-exclude>=1.0.0"]
 
 [project.scripts]
@@ -79,6 +79,8 @@ modules = [
     "web_viewer/static/*",
     "web_viewer/static/*/*",
     "web_viewer/static/*/*/*",
+    "web_viewer/static/*/*/*/*",
+    "templates/*.ini",
 ]
 translations = ["*.json"]
 "data.randomlines" = ["*.txt"]
@@ -199,6 +201,44 @@ module = [
     "modules.web_viewer.integration",
 ]
 ignore_errors = true
+
+# Modules split out of the large files by the maintainability refactor: their
+# untyped helper bodies are type-checked too, so a mixin's code is not silently
+# skipped where the original method was.
+[[tool.mypy.overrides]]
+module = [
+    "modules.admin_server",
+    "modules.channel_message",
+    "modules.config_reload",
+    "modules.contact_events",
+    "modules.contacts_repo",
+    "modules.device_setup",
+    "modules.feed_parse",
+    "modules.joke_text",
+    "modules.logging_setup",
+    "modules.mesh_graph_recorder",
+    "modules.mesh_paths",
+    "modules.packet_decode",
+    "modules.radio_link",
+    "modules.radio_offline",
+    "modules.rf_correlation",
+    "modules.rf_log",
+    "modules.rf_match",
+    "modules.scope_gate",
+    "modules.service_plugins.channel_bridge_utils",
+    "modules.service_supervisor",
+    "modules.web_viewer.channels",
+    "modules.web_viewer.cleanup",
+    "modules.web_viewer.dashboard",
+    "modules.web_viewer.database_admin",
+    "modules.web_viewer.feeds",
+    "modules.web_viewer.live_stream",
+    "modules.web_viewer.mesh_evidence",
+    "modules.web_viewer.multibyte_rollout",
+    "modules.web_viewer.socket_clients",
+    "modules.web_viewer.tracking",
+]
+check_untyped_defs = true
 
 # Pytest is configured in pytest.ini, not here. pytest.ini takes precedence over
 # pyproject.toml, so a [tool.pytest.ini_options] block in this file would be dead

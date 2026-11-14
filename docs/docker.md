@@ -80,7 +80,8 @@ If your MeshCore device supports TCP/IP (via gateway or bridge), configure it in
 ```ini
 [Connection]
 connection_type = tcp
-hostname = 192.168.1.60  # Your device's IP or hostname
+# Your device's IP or hostname
+hostname = 192.168.1.60
 tcp_port = 5000
 ```
 Then comment out or remove the `devices` section in `docker-compose.yml`.
@@ -121,7 +122,8 @@ Make sure your `config.ini` has:
 ```ini
 [Web_Viewer]
 enabled = true
-host = 0.0.0.0  # Required for Docker port mapping
+# Required for Docker port mapping
+host = 0.0.0.0
 port = 8080
 ```
 
@@ -418,7 +420,7 @@ For production deployments:
 
 1. **Use specific image tags** instead of `latest`:
    ```yaml
-   image: ghcr.io/your-username/meshcore-bot:v1.1.0
+   image: ghcr.io/your-username/meshcore-bot:v1.2.0
    ```
 
 2. **Set resource limits** in `docker-compose.yml`:
@@ -448,7 +450,7 @@ For production deployments:
    ```
 
 5. **Set up health checks** (already included in Dockerfile):
-   The container includes a basic health check. Monitor with:
+   The bot's event loop touches a heartbeat file next to its database every 30 seconds, and the container stays healthy while that file is at most two minutes old. An offline radio stays healthy: the bot reconnects on its own, and restarting the container would not help. A stuck event loop stops updating the file, which marks the container unhealthy. Monitor with:
    ```bash
    docker-compose ps
    ```

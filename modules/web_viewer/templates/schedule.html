@@ -2,11 +2,23 @@
 
 {% block title %}Scheduled Messages - MeshCore Bot{% endblock %}
 
+{% block extra_css %}
+<style>
+    /* Keep the parse-error text readable when the table scrolls sideways on a phone. */
+    .schedule-message-cell { min-width: 16rem; }
+    .limit-toggle .fa-chevron-right { transition: transform 0.15s ease-out; }
+    .limit-toggle[aria-expanded="true"] .fa-chevron-right { transform: rotate(90deg); }
+    @media (prefers-reduced-motion: reduce) {
+        .limit-toggle .fa-chevron-right { transition: none; }
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container-fluid">
     <div class="row">
         <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center mb-4">
+            <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-4">
                 <h1 class="mb-0">
                     <i class="fas fa-clock"></i> Scheduled Messages
                 </h1>
@@ -48,7 +60,7 @@
 </div>
 
 <!-- Add / edit modal -->
-<div class="modal fade" id="scheduleModal" tabindex="-1" aria-hidden="true">
+<div class="modal fade" id="scheduleModal" tabindex="-1" aria-hidden="true" aria-labelledby="scheduleModalTitle">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
@@ -62,6 +74,7 @@
                         <option value="daily">Every day at a time</option>
                         <option value="times">Several times a day</option>
                         <option value="weekly">Certain days of the week</option>
+                        <option value="monthly">One day a month</option>
                         <option value="interval_hours">Every N hours</option>
                         <option value="interval_minutes">Every N minutes</option>
                         <option value="advanced">Advanced (cron)</option>
@@ -89,6 +102,30 @@
                         <input type="number" class="form-control" id="scheduleEveryMinutes"
                                min="1" max="59" value="30">
                     </div>
+                    <div class="col-md-6 d-none" id="fieldMonthly">
+                        <label class="form-label" for="scheduleOrdinal">Which day</label>
+                        <div class="input-group">
+                            <select class="form-select" id="scheduleOrdinal" aria-label="Which one">
+                                <option value="1st">1st</option>
+                                <option value="2nd">2nd</option>
+                                <option value="3rd">3rd</option>
+                                <option value="4th">4th</option>
+                                <option value="5th">5th</option>
+                                <option value="last">Last</option>
+                            </select>
+                            <select class="form-select" id="scheduleWeekday" aria-label="Day">
+                                <option value="mon">Monday</option>
+                                <option value="tue">Tuesday</option>
+                                <option value="wed">Wednesday</option>
+                                <option value="thu">Thursday</option>
+                                <option value="fri">Friday</option>
+                                <option value="sat">Saturday</option>
+                                <option value="sun">Sunday</option>
+                                <option value="day">day of the month</option>
+                            </select>
+                        </div>
+                        <div class="form-text d-none" id="monthlyFifthHint"></div>
+                    </div>
                     <div class="col-12 d-none" id="fieldDays">
                         <label class="form-label">Days</label>
                         <div id="dayToggles" class="d-flex flex-wrap gap-2"></div>
@@ -99,8 +136,52 @@
                                placeholder="0 6,12,18 * * *">
                         <div class="form-text">
                             Five fields: minute hour day-of-month month day-of-week.
-                            Day-of-week is 0=Monday here, not Sunday. Presets like
+                            Day-of-week is 0=Monday here, not Sunday, so prefer names:
+                            three-letter months and weekdays (<code>jan</code>, <code>mon</code>)
+                            work in any field that takes them. Presets like
                             <code>@daily</code> and <code>@hourly</code> also work.
+                            Day-of-month also takes <code>last-fri</code>,
+                            <code>4th-tue</code> or <code>1st-tue,3rd-tue</code>.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <button type="button" class="btn btn-link p-0 text-decoration-none limit-toggle"
+                            id="limitToggle" aria-expanded="false" aria-controls="limitFields"
+                            aria-describedby="limitSummary">
+                        <i class="fas fa-chevron-right fa-fw small" aria-hidden="true"></i>
+                        Date range and weeks
+                    </button>
+                    <span class="small text-muted ms-1" id="limitSummary">Not limited</span>
+                    <div class="d-none border-start ps-3 mt-2" id="limitFields">
+                        <div class="row g-2 mb-1">
+                            <div class="col-sm-6">
+                                <label class="form-label" for="scheduleStart">Start date <span class="text-muted">(optional)</span></label>
+                                <input type="date" class="form-control" id="scheduleStart">
+                            </div>
+                            <div class="col-sm-6">
+                                <label class="form-label" for="scheduleEnd">End date <span class="text-muted">(optional)</span></label>
+                                <input type="date" class="form-control" id="scheduleEnd">
+                            </div>
+                        </div>
+                        <div class="form-text mb-3">
+                            The end date is included in full. Leave both blank to run indefinitely.
+                        </div>
+
+                        <label class="form-label" for="scheduleWeek">Weeks</label>
+                        <select class="form-select" id="scheduleWeek" aria-describedby="scheduleWeekHelp">
+                            <option value="">Every week</option>
+                            <option value="*/2">Every other week (odd ISO weeks)</option>
+                            <option value="2-53/2">Every other week (even ISO weeks)</option>
+                        </select>
+                        <div class="form-text text-warning d-none" id="weekMonthlyNote">
+                            With one day a month, Weeks keeps that day only in matching ISO weeks,
+                            so most months are skipped. It is not "every other month".
+                        </div>
+                        <div class="form-text" id="scheduleWeekHelp">
+                            For a fortnightly net. Weeks are ISO week numbers, so in a 53-week year
+                            the odd setting runs two weeks in a row at New Year.
                         </div>
                     </div>
                 </div>
@@ -162,6 +243,7 @@
     let modal = null;
     let editingSchedule = null;
     let previewTimer = null;
+    let lastMode = null;
 
     const $ = (id) => document.getElementById(id);
 
@@ -169,7 +251,7 @@
         const area = $('statusArea');
         area.innerHTML = '<div class="alert alert-' + kind + ' alert-dismissible fade show">'
             + escapeHtml(message)
-            + '<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>';
+            + '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button></div>';
     }
 
     function escapeHtml(value) {
@@ -233,13 +315,72 @@
             const days = selectedDays();
             return days.length ? minute + ' ' + hour + ' * * ' + days.join(',') : '';
         }
+        if (mode === 'monthly') {
+            const ordinal = $('scheduleOrdinal').value;
+            const weekday = $('scheduleWeekday').value;
+            let day;
+            if (weekday === 'day') {
+                day = ordinal === 'last' ? 'last' : String(parseInt(ordinal, 10));
+            } else {
+                day = ordinal + '-' + weekday;
+            }
+            return minute + ' ' + hour + ' ' + day + ' * *';
+        }
         return minute + ' ' + hour + ' * * *';
+    }
+
+    const WEEKDAY_NAMES = {
+        mon: 'Monday', tue: 'Tuesday', wed: 'Wednesday', thu: 'Thursday',
+        fri: 'Friday', sat: 'Saturday', sun: 'Sunday'
+    };
+
+    function weekLabel(week) {
+        return { '*/2': 'every other week (odd)', '2-53/2': 'every other week (even)' }[week]
+            || 'ISO weeks ' + week;
+    }
+
+    /** Date bounds as HTML, each date kept whole so it never breaks at a hyphen. */
+    function boundsHtml(start, end) {
+        const date = (d) => '<span class="text-nowrap">' + escapeHtml(d) + '</span>';
+        if (start && end) return date(start) + ' → ' + date(end);
+        if (start) return 'from ' + date(start);
+        return 'until ' + date(end);
+    }
+
+    function setLimitsOpen(open) {
+        $('limitToggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+        $('limitFields').classList.toggle('d-none', !open);
+    }
+
+    function syncLimitSummary() {
+        const start = $('scheduleStart').value;
+        const end = $('scheduleEnd').value;
+        const week = $('scheduleWeek').value;
+        const parts = [];
+        if (start || end) parts.push(boundsHtml(start, end));
+        if (week) parts.push(escapeHtml(weekLabel(week)));
+        $('limitSummary').innerHTML = parts.length ? parts.join(', ') : 'Not limited';
     }
 
     function syncModeFields() {
         const mode = $('scheduleMode').value;
         const show = (id, on) => $(id).classList.toggle('d-none', !on);
-        show('fieldTime', mode === 'daily' || mode === 'weekly');
+        show('fieldTime', mode === 'daily' || mode === 'weekly' || mode === 'monthly');
+        show('fieldMonthly', mode === 'monthly');
+        const weekday = $('scheduleWeekday').value;
+        const fifthWeekday = mode === 'monthly' && $('scheduleOrdinal').value === '5th' && weekday !== 'day';
+        $('monthlyFifthHint').textContent = fifthWeekday
+            ? 'Months with no 5th ' + WEEKDAY_NAMES[weekday] + ' are skipped.' : '';
+        show('monthlyFifthHint', fifthWeekday);
+        const weekMonthly = mode === 'monthly' && $('scheduleWeek').value !== '';
+        show('weekMonthlyNote', weekMonthly);
+        $('scheduleWeek').setAttribute('aria-describedby',
+            weekMonthly ? 'weekMonthlyNote scheduleWeekHelp' : 'scheduleWeekHelp');
+        // Weeks set earlier, then a switch to one day a month: open the section once so the
+        // warning is seen, without reopening it every time after the user collapses it.
+        if (weekMonthly && lastMode !== 'monthly') setLimitsOpen(true);
+        lastMode = mode;
+        syncLimitSummary();
         show('fieldTimes', mode === 'times');
         show('fieldEveryHours', mode === 'interval_hours');
         show('fieldEveryMinutes', mode === 'interval_minutes');
@@ -265,7 +406,16 @@
         try {
             const data = await api('/api/scheduled-messages/preview', {
                 method: 'POST',
-                body: JSON.stringify({ schedule: cron, message: $('scheduleMessage').value, count: 5 })
+                body: JSON.stringify({
+                    schedule: cron,
+                    message: $('scheduleMessage').value,
+                    start: $('scheduleStart').value,
+                    end: $('scheduleEnd').value,
+                    week: $('scheduleWeek').value,
+                    channel: $('scheduleChannel').value,
+                    scope: $('scheduleScope').value,
+                    count: 5
+                })
             });
             if (data.valid) {
                 $('previewRuns').innerHTML = (data.next_runs || [])
@@ -274,6 +424,7 @@
                 $('previewRuns').textContent = '—';
                 $('previewError').textContent = data.error || 'Invalid schedule';
             }
+            if (data.entry_error) $('previewError').textContent = data.entry_error;
             if (data.warning) $('previewWarning').textContent = data.warning;
         } catch (err) {
             $('previewRuns').textContent = '—';
@@ -287,12 +438,93 @@
         $('scheduleChannel').value = entry ? entry.channel : '';
         $('scheduleScope').value = entry && entry.scope ? entry.scope : '';
         $('scheduleMessage').value = entry ? entry.message : '';
-        // Existing entries open in Advanced so the stored cron is never silently
-        // rewritten into something the friendly controls happen to produce.
-        $('scheduleMode').value = entry ? 'advanced' : 'daily';
+        $('scheduleStart').value = entry && entry.start ? entry.start : '';
+        $('scheduleEnd').value = entry && entry.end ? entry.end : '';
+        resetBuilder();
+        setWeek(entry && entry.week ? entry.week : '');
         $('scheduleCron').value = entry ? entry.schedule : '';
+        // An existing entry opens in the friendly mode that reproduces it exactly, or in
+        // Advanced, so the stored cron is never silently rewritten.
+        $('scheduleMode').value = entry ? detectMode(entry.schedule) : 'daily';
+        setLimitsOpen(Boolean(entry && (entry.start || entry.end || entry.week)));
+        lastMode = null;
         syncModeFields();
         modal.show();
+    }
+
+    function setWeek(week) {
+        const select = $('scheduleWeek');
+        select.querySelectorAll('option[data-custom]').forEach((o) => o.remove());
+        if (week && !Array.from(select.options).some((o) => o.value === week)) {
+            // Keep a hand-written week= expression rather than dropping it on save.
+            const opt = document.createElement('option');
+            opt.value = week;
+            opt.textContent = 'Weeks ' + week + ' (from config)';
+            opt.dataset.custom = '1';
+            select.appendChild(opt);
+        }
+        select.value = week || '';
+    }
+
+    /** Put every builder control back to its default, so nothing carries over between opens. */
+    function resetBuilder() {
+        document.querySelectorAll('.day-toggle').forEach((el) => { el.checked = false; });
+        $('scheduleOrdinal').value = '1st';
+        $('scheduleWeekday').value = 'mon';
+        $('scheduleTime').value = '08:00';
+        $('scheduleTimes').value = '6,12,18';
+        $('scheduleEveryHours').value = '2';
+        $('scheduleEveryMinutes').value = '30';
+    }
+
+    /** Pick the builder mode whose controls reproduce `schedule` exactly, else Advanced. */
+    function detectMode(schedule) {
+        const raw = schedule || '';
+        let fixed;
+        if ((fixed = /^\*\/(\d{1,2}) \* \* \* \*$/.exec(raw))) {
+            $('scheduleEveryMinutes').value = fixed[1];
+            $('scheduleMode').value = 'interval_minutes';
+            return composeCron() === raw ? 'interval_minutes' : 'advanced';
+        }
+        if ((fixed = /^0 \*\/(\d{1,2}) \* \* \*$/.exec(raw))) {
+            $('scheduleEveryHours').value = fixed[1];
+            $('scheduleMode').value = 'interval_hours';
+            return composeCron() === raw ? 'interval_hours' : 'advanced';
+        }
+        if ((fixed = /^0 (\d{1,2}(?:,\d{1,2})+) \* \* \*$/.exec(raw))) {
+            $('scheduleTimes').value = fixed[1];
+            $('scheduleMode').value = 'times';
+            return composeCron() === raw ? 'times' : 'advanced';
+        }
+        const m = /^(\d{1,2}) (\d{1,2}) (\S+) \* (\S+)$/.exec(schedule || '');
+        if (!m) return 'advanced';
+        const [, minute, hour, dom, dow] = m;
+        $('scheduleTime').value = hour.padStart(2, '0') + ':' + minute.padStart(2, '0');
+        let mode = null;
+        if (dom === '*' && dow === '*') {
+            mode = 'daily';
+        } else if (dom === '*') {
+            const days = dow.split(',');
+            document.querySelectorAll('.day-toggle').forEach((el) => {
+                el.checked = days.includes(el.value);
+            });
+            mode = 'weekly';
+        } else if (dow === '*') {
+            const pos = /^(1st|2nd|3rd|4th|5th|last)-(mon|tue|wed|thu|fri|sat|sun)$/.exec(dom);
+            const nth = { '1': '1st', '2': '2nd', '3': '3rd', '4': '4th', '5': '5th' }[dom];
+            if (pos) {
+                $('scheduleOrdinal').value = pos[1];
+                $('scheduleWeekday').value = pos[2];
+                mode = 'monthly';
+            } else if (dom === 'last' || nth) {
+                $('scheduleOrdinal').value = dom === 'last' ? 'last' : nth;
+                $('scheduleWeekday').value = 'day';
+                mode = 'monthly';
+            }
+        }
+        if (!mode) return 'advanced';
+        $('scheduleMode').value = mode;
+        return composeCron() === schedule ? mode : 'advanced';
     }
 
     async function save() {
@@ -301,7 +533,10 @@
             schedule: cron,
             channel: $('scheduleChannel').value,
             scope: $('scheduleScope').value,
-            message: $('scheduleMessage').value
+            message: $('scheduleMessage').value,
+            start: $('scheduleStart').value,
+            end: $('scheduleEnd').value,
+            week: $('scheduleWeek').value
         };
         const editing = editingSchedule !== null;
         if (editing) payload.original_schedule = editingSchedule;
@@ -352,11 +587,22 @@
             ? new Date(entry.next_runs[0]).toLocaleString()
             : '—';
 
-        let scheduleCell = '<span class="font-monospace">' + escapeHtml(entry.schedule) + '</span>';
+        // Wrap between cron fields only, never inside one at a hyphen (2nd-wed, 1st-tue,3rd-tue).
+        let scheduleCell = '<span class="font-monospace">' + String(entry.schedule).split(' ')
+            .map((field) => '<span class="text-nowrap">' + escapeHtml(field) + '</span>').join(' ')
+            + '</span>';
         if (entry.error) {
             scheduleCell += '<br><span class="badge bg-danger">Not scheduled</span>';
+        } else if (entry.finished) {
+            scheduleCell += '<br><span class="badge bg-secondary">Finished</span>';
         } else if (entry.deprecated) {
             scheduleCell += '<br><span class="badge bg-warning text-dark">Deprecated format</span>';
+        }
+        if (entry.start || entry.end) {
+            scheduleCell += '<br><span class="small text-muted">' + boundsHtml(entry.start, entry.end) + '</span>';
+        }
+        if (entry.week) {
+            scheduleCell += '<br><span class="small text-muted">' + escapeHtml(weekLabel(entry.week)) + '</span>';
         }
 
         const scopeBadge = entry.scope
@@ -366,7 +612,7 @@
             '<td>' + scheduleCell + '</td>'
             + '<td>' + escapeHtml(nextRun) + '</td>'
             + '<td>' + escapeHtml(entry.channel) + scopeBadge + '</td>'
-            + '<td class="text-break">' + escapeHtml(entry.message)
+            + '<td class="text-break schedule-message-cell">' + escapeHtml(entry.message)
             + (entry.error ? '<br><span class="small text-danger">' + escapeHtml(entry.error) + '</span>' : '')
             + '</td>'
             + '<td class="text-end text-nowrap">'
@@ -402,8 +648,14 @@
         $('addScheduleBtn').addEventListener('click', () => openModal(null));
         $('saveScheduleBtn').addEventListener('click', save);
         $('scheduleMode').addEventListener('change', syncModeFields);
+        ['scheduleWeek', 'scheduleOrdinal', 'scheduleWeekday', 'scheduleStart', 'scheduleEnd'].forEach((id) =>
+            $(id).addEventListener('change', syncModeFields));
+        $('limitToggle').addEventListener('click', () =>
+            setLimitsOpen($('limitToggle').getAttribute('aria-expanded') !== 'true'));
         ['scheduleTime', 'scheduleTimes', 'scheduleEveryHours', 'scheduleEveryMinutes',
-         'scheduleCron', 'scheduleMessage'].forEach((id) =>
+         'scheduleCron', 'scheduleMessage', 'scheduleStart', 'scheduleEnd',
+         'scheduleOrdinal', 'scheduleWeekday', 'scheduleWeek', 'scheduleChannel',
+         'scheduleScope'].forEach((id) =>
             $(id).addEventListener('input', schedulePreview));
         syncModeFields();
         load();

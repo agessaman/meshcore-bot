@@ -194,6 +194,8 @@ SECTIONS: dict[str, SectionMeta] = {
         "web_viewer_password": KeyMeta(),
         "auto_start": KeyMeta(type="bool"),
         "debug": KeyMeta(type="bool"),
+        # Home Assistant sidebar. Off unless the add-on sets it.
+        "ha_ingress": KeyMeta(type="bool", default="false"),
         # Advanced; read by the viewer but not shown in config.ini.example.
         "cors_allowed_origins": KeyMeta(),
         "packet_stream_write_queue_max": KeyMeta(type="int", default="1000"),
@@ -239,6 +241,19 @@ SECTIONS: dict[str, SectionMeta] = {
     }),
     "Weather_Service": SectionMeta(keys={
         "enabled": KeyMeta(type="bool"),
+        "weather_alerts_enabled": KeyMeta(type="bool", default="true"),
+        # Typed so the startup lint catches a malformed value -- an inline
+        # "# comment" on the value line most of all, since configparser keeps it
+        # in the string and the getint() in WeatherService.__init__ then raises,
+        # taking the entire service down with one terse log line.
+        "weather_alarm": KeyMeta(default="6:00"),
+        "poll_weather_alerts_interval": KeyMeta(type="int", default="600000"),
+        "poll_rain_nowcast_interval": KeyMeta(type="int", default="900000"),
+        "rain_nowcast_lead_minutes": KeyMeta(type="int", default="60"),
+        "rain_nowcast_renotify_minutes": KeyMeta(type="int", default="30"),
+        "rain_nowcast_threshold_mm": KeyMeta(type="float", default="0.1"),
+        "rain_nowcast_announce_ending": KeyMeta(type="bool", default="true"),
+        "blitz_collection_interval": KeyMeta(type="int", default="600000"),
         "rain_nowcast_cache_seconds": KeyMeta(type="int", default="300"),
         # Siblings of the documented rain_nowcast_* keys, read but not shown.
         "rain_nowcast_show_amount": KeyMeta(type="bool", default="true"),
@@ -277,6 +292,23 @@ SECTIONS: dict[str, SectionMeta] = {
         "mesh_cooldown_minutes": KeyMeta(type="float", default="30"),
         "max_warnings_per_day": KeyMeta(type="int", default="6"),
         "track_traffic": KeyMeta(type="bool", default="true"),
+        "flood_scope": KeyMeta(),
+    }),
+    "Repeater_Watch": SectionMeta(keys={
+        "enabled": KeyMeta(type="bool", default="false"),
+        "watch": KeyMeta(),
+        "watch_starred": KeyMeta(type="bool", default="false"),
+        "offline_after_hours": KeyMeta(type="float", default="24"),
+        "check_interval_minutes": KeyMeta(type="float", default="15"),
+        "notify_recovery": KeyMeta(type="bool", default="true"),
+        "channels": KeyMeta(),
+        "dm_recipients": KeyMeta(),
+        "flood_scope": KeyMeta(),
+        "offline_message": KeyMeta(),
+        "recovered_message": KeyMeta(),
+        "discord_webhook_urls": KeyMeta(),
+        "telegram_chat_ids": KeyMeta(),
+        "telegram_bot_token": KeyMeta(),
     }),
     "Announcements_Command": SectionMeta(dynamic_keys=True),
     "Alert_Command": SectionMeta(dynamic_keys=True),

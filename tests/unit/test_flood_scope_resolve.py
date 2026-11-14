@@ -4,6 +4,7 @@ import configparser
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
+from meshcore import EventType
 
 from modules.command_manager import CommandManager
 from modules.models import MeshMessage
@@ -252,8 +253,10 @@ def _ok_result():
 
 
 def _scope_error_result():
+    # The real reply type. A bare "ERROR" string is what the send path used to
+    # compare against, which no actual reply ever equals.
     r = MagicMock()
-    r.type = "ERROR"
+    r.type = EventType.ERROR
     r.payload = {}
     return r
 

@@ -260,6 +260,28 @@ class PacketCaptureService(BaseServicePlugin):
         {"key": "neighbors_self_scopes", "label": "Own scopes override", "type": "str",
          "group": "Neighbors", "default": "", "width": "lg",
          "help": "Override for this node's own \"self.scopes\" value. Empty asks the device."},
+        {"key": "observer_name", "label": "Observer name", "type": "str", "default": "",
+         "help": "Name published for this observer. Blank = the radio's name."},
+        {"key": "decode_payloads", "label": "Decode payloads", "type": "bool", "default": False,
+         "help": "Decode text and structured payloads into a nested 'decoded' object."},
+        {"key": "include_decoded", "label": "Publish decoded (all brokers)", "type": "bool", "default": False,
+         "help": "Default for each broker's include_decoded toggle."},
+        {"key": "decode_include_public", "label": "Decode Public channel", "type": "bool", "default": True,
+         "help": "Include the Public channel key when decoding."},
+        {"key": "decode_hashtag_channels", "label": "Decode hashtag channels", "type": "list", "default": "",
+         "help": "Hashtag channel names to decode (keys are derived from the names)."},
+        {"key": "decode_channel_keys", "label": "Decode channel keys", "type": "password", "default": "",
+         "help": "Custom channels as name=key pairs, comma-separated (key: 32-char hex or base64)."},
+        {"key": "log_rotation", "label": "Log rotation", "type": "enum",
+         "options": [{"value": "off", "label": "Off (default)"}, {"value": "size", "label": "By size"},
+                     {"value": "time", "label": "By time"}],
+         "default": "off", "help": "How the packet log file is rotated."},
+        {"key": "log_max_bytes", "label": "Log max size", "type": "str", "default": "0",
+         "help": "Size rotation threshold, e.g. 10MB."},
+        {"key": "log_rotation_when", "label": "Rotate when", "type": "str", "default": "midnight",
+         "help": "Time rotation interval (midnight, h, d, w0-w6)."},
+        {"key": "log_backup_count", "label": "Log backups", "type": "int", "min": 0, "default": 5,
+         "help": "Rotated log files to keep."},
     ]
 
     # Repeating structured blocks (see modules/settings_schema.py). Each MQTT
@@ -284,6 +306,10 @@ class PacketCaptureService(BaseServicePlugin):
                 {"key": "tls_insecure", "label": "Skip TLS verification", "type": "bool", "default": False,
                  "help": "INSECURE — accept any broker certificate. Only for self-signed brokers on a "
                          "trusted network; leave off so certificate and hostname are verified."},
+                {"key": "username", "label": "Username", "type": "str", "default": "",
+                 "help": "Broker username, when not using a JWT."},
+                {"key": "password", "label": "Password", "type": "password", "default": "",
+                 "help": "Broker password, when not using a JWT."},
                 {"key": "use_auth_token", "label": "Use JWT auth token", "type": "bool", "default": False,
                  "help": "Authenticate with a signed JWT instead of username/password."},
                 {"key": "token_audience", "label": "Token audience", "type": "str", "default": "",
@@ -293,6 +319,13 @@ class PacketCaptureService(BaseServicePlugin):
                  "help": "Reconnect right after renewing the token, so the fresh one is in "
                          "force. Brokers that enforce the JWT's expiry drop the session "
                          "otherwise. Turn off only if your broker ignores expiry."},
+                {"key": "jwt_renewal_interval", "label": "JWT renewal interval", "type": "int", "min": 0,
+                 "default": "", "unit": "s",
+                 "help": "Blank = the service-wide JWT renewal interval."},
+                {"key": "jwt_ttl_seconds", "label": "JWT TTL", "type": "int", "min": 1, "default": "", "unit": "s",
+                 "help": "Blank = the service-wide JWT TTL."},
+                {"key": "topic_prefix", "label": "Topic prefix", "type": "str", "default": "",
+                 "help": "Base for the status/packets topics when those aren't set."},
                 {"key": "topic_status", "label": "Status topic", "type": "str", "default": ""},
                 {"key": "topic_packets", "label": "Packets topic", "type": "str", "default": ""},
                 {"key": "neighbors", "label": "Publish neighbours", "type": "bool", "default": True,
@@ -313,6 +346,11 @@ class PacketCaptureService(BaseServicePlugin):
                          "that drops idle connections."},
                 {"key": "upload_packet_types", "label": "Upload packet types", "type": "str", "default": "",
                  "help": "Comma-separated type numbers (e.g. 2,4). Empty = upload all."},
+                {"key": "include_decoded", "label": "Publish decoded", "type": "enum",
+                 "options": [{"value": "", "label": "Same as all brokers"},
+                             {"value": "true", "label": "On"}, {"value": "false", "label": "Off"}],
+                 "default": "",
+                 "help": "Publish the decoded object to this broker. Needs Decode payloads on."},
             ],
         }
     ]
@@ -944,6 +982,9 @@ class PacketCaptureService(BaseServicePlugin):
             self.logger.info("Packet capture service is disabled")
             return
 
+        # stop() sets this; clear it so a restart's background loops actually run.
+        self.should_exit = False
+
         # Wait for bot to be connected (with timeout)
         max_wait = 30  # seconds
         wait_time: float = 0
@@ -1045,10 +1086,10 @@ class PacketCaptureService(BaseServicePlugin):
     def cleanup_event_subscriptions(self) -> None:
         """Clean up event subscriptions.
 
-        Clears local subscription tracking list.
+        Unsubscribes the handlers (a restart would otherwise publish every
+        packet twice) and clears the local tracking list.
         """
-        # Note: meshcore library handles subscription cleanup automatically
-        # This is mainly for tracking/logging
+        self._unsubscribe_all()
         self.event_subscriptions = []
 
     async def setup_event_handlers(self) -> None:
@@ -1068,8 +1109,8 @@ class PacketCaptureService(BaseServicePlugin):
             await self.handle_raw_data(event, metadata)
 
         # Subscribe to events (meshcore supports multiple subscribers)
-        self.meshcore.subscribe(EventType.RX_LOG_DATA, on_rx_log_data)
-        self.meshcore.subscribe(EventType.RAW_DATA, on_raw_data)
+        self._subscribe(self.meshcore, EventType.RX_LOG_DATA, on_rx_log_data)
+        self._subscribe(self.meshcore, EventType.RAW_DATA, on_raw_data)
 
         self.event_subscriptions = [(EventType.RX_LOG_DATA, on_rx_log_data), (EventType.RAW_DATA, on_raw_data)]
 
@@ -1943,7 +1984,7 @@ class PacketCaptureService(BaseServicePlugin):
                         )
                         # For WebSockets, connect without path parameter (path set via ws_set_options)
                         # Run connect in executor to avoid blocking the event loop
-                        loop = asyncio.get_event_loop()
+                        loop = asyncio.get_running_loop()
                         try:
                             await loop.run_in_executor(None, client.connect, host, port, keepalive)
                         except Exception as connect_error:
@@ -1954,7 +1995,7 @@ class PacketCaptureService(BaseServicePlugin):
                             f"Connecting to MQTT broker {host}:{port} via TCP (TLS: {broker_config.get('use_tls', False)})"
                         )
                         # Run connect in executor to avoid blocking the event loop
-                        loop = asyncio.get_event_loop()
+                        loop = asyncio.get_running_loop()
                         try:
                             await loop.run_in_executor(None, client.connect, host, port, keepalive)
                         except Exception as connect_error:
@@ -2857,6 +2898,18 @@ class PacketCaptureService(BaseServicePlugin):
             except Exception as exc:
                 self.logger.debug(f"Error fetching radio stats: {exc}")
 
+            try:
+                packets_result = await self.meshcore.commands.get_stats_packets()
+                if packets_result and packets_result.type == EventType.STATS_PACKETS and packets_result.payload:
+                    stats_payload.update(packets_result.payload)
+                    # Aliases meshcore-packet-capture publishes
+                    stats_payload["packets_sent"] = packets_result.payload["sent"]
+                    stats_payload["packets_received"] = packets_result.payload["recv"]
+                elif packets_result and packets_result.type == EventType.ERROR:
+                    self.logger.debug(f"Packet stats unavailable: {packets_result.payload}")
+            except Exception as exc:
+                self.logger.debug(f"Error fetching packet stats: {exc}")
+
             if stats_payload:
                 self.latest_stats = stats_payload
                 self.last_stats_fetch = time.time()
@@ -3130,7 +3183,7 @@ class PacketCaptureService(BaseServicePlugin):
         """
         client = mqtt_client_info["client"]
         broker_host = mqtt_client_info["config"].get("host", "unknown")
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         async with mqtt_client_info["cycle_lock"]:
             self.logger.info(f"Cycling MQTT connection to {broker_host} ({reason})")

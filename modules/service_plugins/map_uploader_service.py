@@ -127,15 +127,8 @@ class MapUploaderService(BaseServicePlugin):
         self.logger.addHandler(console_handler)
 
         # Also add file handler to write to the same log file as the bot (skip if no [Logging] section)
-        log_file = (bot.config.get('Logging', 'log_file', fallback='meshcore_bot.log')
-                    if bot.config.has_section('Logging') else '')
-        if log_file:
-            # Resolve log file path (relative paths resolved from bot root, absolute paths used as-is)
-            log_file = resolve_path(log_file, bot.bot_root)
-
-            file_handler = logging.FileHandler(log_file)
-            file_handler.setFormatter(bot_formatter)
-            self.logger.addHandler(file_handler)
+        self._log_formatter = bot_formatter
+        self._add_file_handler()
 
         # Prevent propagation to root logger
         self.logger.propagate = False
@@ -221,6 +214,12 @@ class MapUploaderService(BaseServicePlugin):
             self.logger.info("Map uploader service is disabled")
             return
 
+        # stop() sets this and removes the file log handler; undo both so a
+        # restart's background work runs and still logs to the bot's file.
+        self.should_exit = False
+        if not any(isinstance(h, logging.FileHandler) for h in self.logger.handlers):
+            self._add_file_handler()
+
         # Check dependencies
         if not AIOHTTP_AVAILABLE:
             self.logger.error("aiohttp is required for map uploader service. Install with: pip install aiohttp")
@@ -303,6 +302,19 @@ class MapUploaderService(BaseServicePlugin):
                 self.logger.removeHandler(handler)
 
         self.logger.info("Map uploader service stopped")
+
+    def _add_file_handler(self) -> None:
+        """Log to the bot's log file as well (nothing without a [Logging] section)."""
+        config = self.bot.config
+        log_file = (config.get('Logging', 'log_file', fallback='meshcore_bot.log')
+                    if config.has_section('Logging') else '')
+        if log_file:
+            # Resolve log file path (relative paths resolved from bot root, absolute paths used as-is)
+            log_file = resolve_path(log_file, self.bot.bot_root)
+
+            file_handler = logging.FileHandler(log_file)
+            file_handler.setFormatter(self._log_formatter)
+            self.logger.addHandler(file_handler)
 
     async def _fetch_private_key(self) -> None:
         """Fetch private key from device if not already loaded.
@@ -418,7 +430,7 @@ class MapUploaderService(BaseServicePlugin):
             await self._handle_rx_log_data(event, metadata)
 
         # Subscribe to events
-        self.meshcore.subscribe(EventType.RX_LOG_DATA, on_rx_log_data)
+        self._subscribe(self.meshcore, EventType.RX_LOG_DATA, on_rx_log_data)
 
         self.event_subscriptions = [
             (EventType.RX_LOG_DATA, on_rx_log_data)
@@ -429,11 +441,10 @@ class MapUploaderService(BaseServicePlugin):
     def _cleanup_event_subscriptions(self) -> None:
         """Clean up event subscriptions.
 
-        Clears the list of tracked subscriptions. The actual unsubscription
-        is handled by the meshcore library when the client disconnects,
-        but this clears our local tracking.
+        Unsubscribes the handlers (a restart would otherwise deliver every
+        event twice) and clears the local tracking list.
         """
-        # Note: meshcore library handles subscription cleanup automatically
+        self._unsubscribe_all()
         self.event_subscriptions = []
 
     async def _cleanup_old_seen_adverts(self, current_timestamp: int) -> None:

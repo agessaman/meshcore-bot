@@ -37,7 +37,7 @@ Do not use `host` or `port` under `[Connection]` — those names are for `[Web_V
 
 ### Connection: transport reconnect
 
-`[Connection]` options `reconnect_max_retries` (0 = unlimited), `reconnect_delay_seconds`, and `reconnect_max_delay_seconds` apply to **serial, BLE, and TCP**. When the meshcore transport drops, the bot schedules reconnect with exponential backoff.
+`[Connection]` options `reconnect_max_retries` (0 = unlimited), `reconnect_delay_seconds`, and `reconnect_max_delay_seconds` apply to **serial, BLE, and TCP**. When the meshcore transport drops, or the radio is not reachable yet at startup, the bot reconnects with exponential backoff.
 
 - **TCP** — meshcore emits `DISCONNECTED` on socket loss; the bot reconnects immediately (the main loop also polls every 5s as a backup). If `radio_probe_fail_threshold` consecutive `get_time` probes fail or time out, the bot reconnects the TCP session instead of declaring a zombie radio (serial/BLE probes still use zombie detection for unresponsive firmware).
 - **Serial** — USB unplug triggers the same reconnect path; zombie detection remains for “port open but firmware dead” cases.
@@ -79,9 +79,11 @@ translation catalog is absent.
 - **`channel_keywords`** – Optional. When set (comma-separated command/keyword names), only those triggers are answered **in channels**; DMs always get all triggers. Use this to reduce channel traffic by making heavy triggers (e.g. `wx`, `satpass`, `joke`) DM-only. Leave empty or omit to allow all triggers in monitored channels. Per-command **`channels = `** (empty) in a command’s section also forces that command to be DM-only; see `config.ini.example` for examples (e.g. `[Joke_Command]`).
 - **`max_response_hops`** - Default: 64 (code fallback); 7 in the shipped config templates. The bot will ignore messages that have traveled more than this number of hops. A value at or below 10 is recommended — in most meshes, anything higher is almost never an intentional message meant to trigger this bot, so lowering it keeps the bot from amplifying long flood traffic (#161).
 - **`outgoing_flood_scope_override`** – Optional. Fixed regional scope for outbound channel sends when no per-message scope is passed to `send_channel_message`. When **not set** (default), replies use **`reply_scope`** from inbound TC_FLOOD correlation (auto-mirror). When **set** (e.g. `#west`), that scope is used for proactive sends (webhooks, scheduled messages, feeds) and whenever `reply_scope` is unset. It does **not** override an explicit `reply_scope` on a reply. Unscoped FLOOD uses global flood unless this override or `reply_scope` applies.
-- **`flood_scopes`** – Optional. Comma-separated list of named scopes the bot will **accept and reply to**. When set, this acts as an allowlist: only TC_FLOOD messages matching one of these scopes receive a reply, and the reply is sent using the same scope as the incoming message (auto-mirror via `reply_scope`). Regular (unscoped) FLOOD messages are blocked unless `*` is included in the list. Leave empty or omit to accept all messages regardless of scope. **Auto-mirror requires correct RF correlation** (TC_FLOOD / GRP_TXT in the RF cache); if correlation fails, the bot will not use a stale ADVERT or other packet for scope and may ignore the message when `*` is not listed.
+- **`flood_scopes`** – Optional. Comma-separated list of named scopes the bot will **accept and reply to**. When set, this acts as an allowlist: only TC_FLOOD messages matching one of these scopes receive a reply, and the reply is sent using the same scope as the incoming message (auto-mirror via `reply_scope`). Regular (unscoped) FLOOD messages are blocked unless `*` is included in the list. Leave empty or omit to accept all messages regardless of scope; replies then go out as ordinary global FLOOD and do not mirror the sender's region. Mirroring needs the region name listed (for example `*,#home`). The `*` entry keeps unscoped flood allowed. The bot matches the inbound transport code by HMAC against those names and cannot recover a region name from the 16-bit code alone. **Auto-mirror requires correct RF correlation** (TC_FLOOD / GRP_TXT in the RF cache); if correlation fails, the bot will not use a stale ADVERT or other packet for scope and may ignore the message when `*` is not listed.
 
 ### outgoing_flood_scope_override vs flood_scopes
+
+[Region scopes](region-scopes.md) explains how regions work on the air and why the bot has to be told region names before it can answer inside one.
 
 These two options are independent and serve different purposes:
 
@@ -157,7 +159,7 @@ Many commands and features have their own section. Options there control whether
 Examples of sections that configure specific commands or features:
 
 - **`[Path_Command]`** – Path decoding and repeater selection. See [Path Command](path-command-config.md) for all options.
-- **`[Test_Command]`** – `test` / `t` behavior. Optional **`response_format`** overrides the legacy **`[Keywords] test`** string. Templates support the same placeholders as Keywords, plus **feed-style pipe filters** on placeholders (e.g. `{path_distance|pathbytes_min:2}`, `{firstlast_distance|hops_min:1}`) implemented in `modules/response_template.py`—see comments under `[Test_Command]` in `config.ini.example`.
+- **`[Test_Command]`** – `test` / `t` behavior. Optional **`response_format`** overrides the legacy **`[Keywords] test`** string. Templates support the same placeholders as Keywords, plus **feed-style pipe filters** on placeholders (e.g. `{path_distance|pathbytes_min:2}`, `{firstlast_distance|hops_min:1}`) implemented in `modules/response_template.py`—see comments under `[Test_Command]` in `config.ini.example`. `{path_names}` renders the route as short repeater names (`BlackHls▸KalamaSum▸KelsoG3`) instead of hex prefixes. Only a hop on a 2- or 3-byte path with a confident match gets a name; the rest keep their prefix. The `path_names_*` settings under `[Path_Command]` set the name length, byte budget, separator and confidence threshold.
 - **`[Prefix_Command]`** – Prefix lookup, prefix best, range limits.
 - **`[Cmd_Command]`** – `cmd` behavior. Set `cmd_reference_url` to return `Full command reference: <url>` instead of the generated compact command list.
 - **`[Weather]`** – Used by the `wx` / `gwx` commands and the Weather Service plugin (see [Weather Service](weather-service.md)).
@@ -220,61 +222,5 @@ Admins can DM **`channelpause`** or **`channelresume`** (see `[Admin_ACL]` in `c
 
 ## Scheduled messages (`[Scheduled_Messages]`)
 
-Each entry is `<schedule_key> = <value>` where the value is normally **`channel:message`** (first colon separates channel from body). For **regional flood scope** on that send only, use **`channel:#scope:message`**: the middle segment must start with `#` (same convention as `flood_scopes` / `outgoing_flood_scope_override`). The message body may contain more colons. Omit the middle field for classic global flood. See `config.ini.example` under `[Scheduled_Messages]` for examples. The **`schedule`** command lists each job with `(#scope)` when set.
+Recurring channel posts, including Nth-weekday and every-other-week schedules, date ranges and command output, have their own page: [Scheduled messages](scheduled-messages.md).
 
-### Managing schedules from the web viewer
-
-The **Schedule** page in the web viewer edits this section for you. It writes `config.ini` and queues a config reload, so new and changed schedules take effect **without restarting the bot**.
-
-It is an editor for the same `[Scheduled_Messages]` section, not a separate store, so entries added by hand and entries added in the UI are the same thing and the `schedule` command lists both.
-
-The editor builds the cron key from plain-language options (every day at a time, several times a day, certain days of the week, every N hours or minutes) and shows the resolved expression plus the next five run times before you save. "Advanced (cron)" accepts a raw expression. Existing entries always open in Advanced so a stored expression is never silently rewritten.
-
-Schedules that the bot cannot run are listed rather than hidden, marked **Not scheduled** with the reason, so a typo that stops a message from airing is visible instead of silent. The 15-minute floor for `{cmd:...}` messages is enforced in the editor too, so it is refused when you save rather than dropped later at startup.
-
-### Broadcasting a command's output (`{cmd:...}`)
-
-A scheduled message can embed the reply of any bot command with **`{cmd:<command> [args]}`**. The command runs for its text only — it transmits nothing itself — and the scheduled message carries the result. This is how you put a recurring forecast (or any other command) on the air without that command needing its own scheduling settings:
-
-```ini
-[Scheduled_Messages]
-0 6,12,18 * * * = Public:{cmd:wx Seattle}
-*/30 * * * *    = Public:Conditions now: {cmd:wx 98101}
-@hourly         = Public:{cmd:aqi Tacoma}
-```
-
-The trigger is matched against command **names and their keywords**, so `{cmd:weather Seattle}` and `{cmd:wx Seattle}` are the same command. Arguments are passed through exactly as a user would type them.
-
-A placeholder expands to **nothing** (and logs a warning) when the command is unknown, disabled in config, admin-only, times out, or returns no output — the literal `{cmd:...}` is never transmitted. If a message is empty after expansion, nothing is sent at all. Command output is not re-scanned, so a reply that happens to contain `{cmd:...}` cannot recurse.
-
-#### Airtime guards
-
-Every firing is a transmission on a shared medium, and a command placeholder makes it easy to write a cron that airs several times an hour. Two guards apply, and neither is configurable:
-
-- **A 15-minute floor.** A schedule containing `{cmd:...}` may not fire more often than every 15 minutes. An entry that does is **rejected at startup** with an error and is not scheduled at all — it does not silently run at a slower rate. The check measures the *tightest* gap between firings, so `0,1 * * * *` is treated as a 60-second schedule rather than an hourly one. Schedules with no command placeholder are unaffected.
-- **The command's own cooldown still applies.** `[<Name>_Command] cooldown_seconds` is not bypassed by scheduling. If the command is on cooldown when the schedule fires, the placeholder expands to nothing for that round and logs a warning.
-
-Other limits worth knowing:
-
-- **Only commands marked `render_safe` can be rendered.** Capture intercepts `send_response` and `send_response_chunked`, so a command that transmits by other means (`advert`), posts its own messages (`announcements`), or is DM-only (`schedule`, which would broadcast configuration) is refused. This is opt-in rather than a denylist, so a new command is never renderable by accident. The read-only informational commands (`wx`, `aqi`, `sun`, `moon`, `solar`, `hfcond`, `satpass`, `rain`, `stats`, and similar) are marked safe.
-- `[Bot] scheduled_command_timeout_seconds` (default `30`) bounds each render. Network-backed commands like `wx` need the headroom.
-
-A rendered reply longer than one message is split to the RF body budget and sent as several messages rather than failing at the device.
-
-Even within the floor, mind the cost: a `*/15 * * * *` forecast is 96 transmissions a day.
-
-### Schedule keys (APScheduler cron, not Vixie)
-
-Schedule keys are parsed by **APScheduler** `CronTrigger.from_crontab` (plus `@` presets and deprecated `HHMM`). Field order is the usual five: `minute hour day-of-month month day-of-week`.
-
-**Day-of-week numbering differs from classic Vixie / crontab(5):**
-
-| | APScheduler (this bot) | Vixie cron |
-| --- | --- | --- |
-| `0` | Monday | Sunday |
-| `1` … `6` | Tuesday … Sunday | Monday … Saturday |
-| `7` | Invalid | Often accepted as Sunday |
-
-Prefer **`mon`–`sun`** names in the DOW field so expressions stay unambiguous. Example: Monday 12:30 is `30 12 * * mon` or `30 12 * * 0` — **not** Vixie’s `30 12 * * 1` (that is Tuesday here).
-
-Preset aliases expand to those same APScheduler forms. In particular **`@weekly`** is Monday 00:00 (`0 0 * * 0`), not Sunday midnight as on many Unix crons.

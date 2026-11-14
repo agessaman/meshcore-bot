@@ -21,6 +21,8 @@ class ChannelsCommand(BaseCommand):
 
     # Plugin metadata
     name = "channels"
+    honors_skip_channel_check = False
+    enabled_attr = "channels_enabled"
     keywords = ['channels', 'channel']
     description = "Lists hashtag channels with sub-categories. Use 'channels' for general, 'channels list' for all categories, 'channels <category>' for specific categories, 'channels #channel' for specific channel info."
     category = "basic"
@@ -61,20 +63,7 @@ class ChannelsCommand(BaseCommand):
         super().__init__(bot)
         self.channels_enabled = self.get_config_value('Channels_Command', 'enabled', fallback=True, value_type='bool')
 
-    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
-        """Check if this command can be executed with the given message.
-
-        Args:
-            message: The message triggering the command.
-
-        Returns:
-            bool: True if command is enabled and checks pass, False otherwise.
-        """
-        if not self.channels_enabled:
-            return False
-        return super().can_execute(message)
-
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         return self.translate('commands.channels.help')
 
     def matches_keyword(self, message: MeshMessage) -> bool:

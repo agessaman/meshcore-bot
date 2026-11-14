@@ -18,6 +18,7 @@ class ContactCommand(BaseCommand):
 
     # Plugin metadata
     name = "contact"
+    enabled_attr = "enabled"
     keywords = ['contact']
     description = "Display the bot's contact information"
     category = "basic"
@@ -38,21 +39,7 @@ class ContactCommand(BaseCommand):
         super().__init__(bot)
         self.enabled = self.get_config_value('Contact_Command', 'enabled', fallback=True, value_type='bool')
 
-    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
-        """Check if this command can be executed with the given message.
-
-        Args:
-            message: The message triggering the command.
-            skip_channel_check: If True, skip the channel check.
-
-        Returns:
-            bool: True if command is enabled and checks pass, False otherwise.
-        """
-        if not self.enabled:
-            return False
-        return super().can_execute(message, skip_channel_check=skip_channel_check)
-
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         """Get help text for the contact command.
 
         Returns:

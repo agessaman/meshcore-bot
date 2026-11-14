@@ -3,7 +3,7 @@
 import asyncio
 import configparser
 import time
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
@@ -19,6 +19,7 @@ from modules.message_handler import (
     rf_data_is_correlated,
 )
 from modules.models import MeshMessage
+from modules.transmission_tracker import TransmissionTracker
 from tests.conftest import mock_message as make_message
 
 
@@ -1390,107 +1391,6 @@ class TestParseAdvert:
 
 
 # ---------------------------------------------------------------------------
-# store_message_for_correlation and cleanup_old_messages
-# ---------------------------------------------------------------------------
-
-class TestMessageCorrelation:
-    """Tests for store_message_for_correlation(), cleanup_old_messages(), and
-    correlate_message_with_rf_data()."""
-
-    def test_store_message_adds_to_pending(self, handler):
-        handler.store_message_for_correlation("msg-001", {"pubkey_prefix": "aa"})
-        assert "msg-001" in handler.pending_messages
-        entry = handler.pending_messages["msg-001"]
-        assert entry["data"] == {"pubkey_prefix": "aa"}
-        assert entry["processed"] is False
-        assert isinstance(entry["timestamp"], float)
-
-    def test_store_message_overwrites_existing(self, handler):
-        handler.store_message_for_correlation("dup", {"v": 1})
-        handler.store_message_for_correlation("dup", {"v": 2})
-        assert handler.pending_messages["dup"]["data"]["v"] == 2
-
-    def test_cleanup_removes_expired_entries(self, handler):
-        handler.message_timeout = 5.0
-        # Store a message then backdate its timestamp well past the timeout
-        handler.store_message_for_correlation("old-msg", {"x": 1})
-        handler.pending_messages["old-msg"]["timestamp"] = time.time() - 100
-        handler.cleanup_old_messages()
-        assert "old-msg" not in handler.pending_messages
-
-    def test_cleanup_keeps_fresh_entries(self, handler):
-        handler.message_timeout = 60.0
-        handler.store_message_for_correlation("fresh", {"x": 2})
-        handler.cleanup_old_messages()
-        assert "fresh" in handler.pending_messages
-
-    def test_cleanup_empty_pending_is_safe(self, handler):
-        handler.pending_messages = {}
-        handler.cleanup_old_messages()  # Should not raise
-
-    def test_correlate_unknown_message_id_returns_none(self, handler):
-        result = handler.correlate_message_with_rf_data("nonexistent-id")
-        assert result is None
-
-    def test_correlate_message_with_matching_rf_data(self, handler):
-        handler.store_message_for_correlation("m1", {"pubkey_prefix": "aabb"})
-        rf = {
-            "timestamp": time.time(),
-            "snr": 5,
-            "rssi": -80,
-            "packet_prefix": "aabb",
-            "pubkey_prefix": "aabb",
-        }
-        handler.recent_rf_data = [rf]
-        handler.rf_data_timeout = 60
-        result = handler.correlate_message_with_rf_data("m1")
-        assert result is not None
-        assert handler.pending_messages["m1"]["processed"] is True
-
-    def test_correlate_no_matching_rf_returns_none(self, handler):
-        handler.store_message_for_correlation("m2", {"pubkey_prefix": "ffff"})
-        handler.recent_rf_data = []
-        result = handler.correlate_message_with_rf_data("m2")
-        assert result is None
-
-
-# ---------------------------------------------------------------------------
-# try_correlate_pending_messages
-# ---------------------------------------------------------------------------
-
-class TestTryCorrelatePendingMessages:
-    """Tests for MessageHandler.try_correlate_pending_messages()."""
-
-    def test_marks_matching_message_processed(self, handler):
-        handler.store_message_for_correlation("pm1", {"pubkey_prefix": "ccdd"})
-        rf_data = {"pubkey_prefix": "ccdd", "packet_prefix": "ccdd", "timestamp": time.time()}
-        handler.try_correlate_pending_messages(rf_data)
-        assert handler.pending_messages["pm1"]["processed"] is True
-
-    def test_skips_already_processed_messages(self, handler):
-        handler.store_message_for_correlation("pm2", {"pubkey_prefix": "eeff"})
-        handler.pending_messages["pm2"]["processed"] = True
-        rf_data = {"pubkey_prefix": "eeff", "packet_prefix": "eeff", "timestamp": time.time()}
-        # Should not raise; processed flag remains True
-        handler.try_correlate_pending_messages(rf_data)
-        assert handler.pending_messages["pm2"]["processed"] is True
-
-    def test_no_match_does_not_mark_processed(self, handler):
-        handler.store_message_for_correlation("pm3", {"pubkey_prefix": "1111"})
-        rf_data = {"pubkey_prefix": "9999", "packet_prefix": "9999", "timestamp": time.time()}
-        handler.try_correlate_pending_messages(rf_data)
-        assert handler.pending_messages["pm3"]["processed"] is False
-
-    def test_partial_prefix_match_16chars(self, handler):
-        # If both pubkey_prefixes share first 16 chars, they correlate
-        long_key = "aabbccddeeff0011aabbccddeeff0011"
-        handler.store_message_for_correlation("pm4", {"pubkey_prefix": long_key})
-        rf_data = {"pubkey_prefix": long_key, "packet_prefix": long_key, "timestamp": time.time()}
-        handler.try_correlate_pending_messages(rf_data)
-        assert handler.pending_messages["pm4"]["processed"] is True
-
-
-# ---------------------------------------------------------------------------
 # handle_rf_log_data
 # ---------------------------------------------------------------------------
 
@@ -1921,6 +1821,24 @@ class TestAuthenticatedChannelCorrelation:
 
         assert handler._decode_authenticated_channel_identity(packet_info) is None
 
+    def test_transmission_evidence_carries_the_decrypted_text(self, handler):
+        self._setup(
+            handler,
+            {1: {"channel_idx": 1, "channel_secret": self.SECRET_1}},
+        )
+        packet_hex, _group_payload = _make_group_text_packet(
+            self.SECRET_1, self.SENDER_TIMESTAMP, self.TEXT
+        )
+        packet_info = handler.decode_meshcore_packet(packet_hex)
+        evidence = handler._transmission_evidence(packet_info)
+        assert evidence["payload_type"] == 5
+        assert evidence["channel_idx"] == 1
+        assert evidence["channel_text"] == self.TEXT.split(": ", 1)[1]
+        record = TransmissionTracker(handler.bot).record_transmission(
+            self.TEXT.split(": ", 1)[1], "general", "channel", channel_idx=1
+        )
+        assert record.content == evidence["channel_text"]
+
     @pytest.mark.asyncio
     async def test_channel_index_disambiguates_same_timestamp_and_text(self, handler):
         self._setup(
@@ -2302,6 +2220,26 @@ def _companion_contact_payload() -> dict:
     }
 
 
+def _advert_rf_entry(public_key: str, *, path_hex: str = "0102", path_length: int = 2,
+                     packet_hash: str | None = None, age: float = 0.0) -> dict:
+    """An advert from ``public_key`` as handle_new_contact's advert cache holds it."""
+    import time as _time
+    return {
+        "timestamp": _time.time() - age,
+        "public_key": public_key,
+        "advert_timestamp": 1,
+        "routing_info": {
+            "path_hex": path_hex,
+            "path_length": path_length,
+            "bytes_per_hop": 1,
+            "path_byte_length": len(path_hex) // 2,
+            "packet_hash": packet_hash,
+        },
+        "snr": 9.0,
+        "rssi": -90,
+    }
+
+
 @pytest.fixture
 def new_contact_env(mock_logger):
     """Bot + MessageHandler with mocked repeater_manager and meshcore for NEW_CONTACT tests."""
@@ -2388,36 +2326,60 @@ class TestHandleNewContactAutoManage:
         rm.add_companion_from_contact_data.assert_awaited_once()
         mesh.commands.add_contact.assert_not_called()
 
-    async def test_bot_mode_skips_add_when_duplicate_packet_hash(self, new_contact_env):
+    async def test_bot_mode_adds_although_the_advert_packet_was_already_tracked(self, new_contact_env):
+        """The advert packet is tracked before NEW_CONTACT arrives, so tracking reports a duplicate."""
         from modules.repeater_manager import TrackAdvertResult
 
         bot, handler, rm, mesh = new_contact_env
         bot.config.set("Bot", "auto_manage_contacts", "bot")
+        handler._advert_rf = [_advert_rf_entry("ab" * 32, packet_hash="1122334455667788")]
         rm.track_contact_advertisement = AsyncMock(
             return_value=TrackAdvertResult(ok=True, duplicate_packet=True)
         )
         ev = _NewContactEvent(_companion_contact_payload())
         await handler.handle_new_contact(ev, None)
         rm.track_contact_advertisement.assert_awaited_once()
-        rm.add_companion_from_contact_data.assert_not_called()
-        rm.get_contact_list_status.assert_not_awaited()
+        assert rm.track_contact_advertisement.await_args.kwargs["packet_hash"] == "1122334455667788"
+        rm.add_companion_from_contact_data.assert_awaited_once()
 
-    async def test_bot_mode_two_events_first_unique_then_duplicate_adds_once(self, new_contact_env):
-        from modules.repeater_manager import TrackAdvertResult
+    async def test_bot_mode_two_events_for_one_advert_add_once(self, new_contact_env):
+        bot, handler, rm, mesh = new_contact_env
+        bot.config.set("Bot", "auto_manage_contacts", "bot")
+        handler._advert_rf = [_advert_rf_entry("ab" * 32, packet_hash="1122334455667788")]
+        ev = _NewContactEvent(_companion_contact_payload())
+        await handler.handle_new_contact(ev, None)
+        await handler.handle_new_contact(_NewContactEvent(_companion_contact_payload()), None)
+        assert rm.track_contact_advertisement.await_count == 2
+        rm.add_companion_from_contact_data.assert_awaited_once()
+
+    async def test_bot_mode_failed_add_lets_the_next_event_retry(self, new_contact_env):
+        bot, handler, rm, mesh = new_contact_env
+        bot.config.set("Bot", "auto_manage_contacts", "bot")
+        rm.add_companion_from_contact_data = AsyncMock(side_effect=[False, True])
+        handler._advert_rf = [_advert_rf_entry("ab" * 32, packet_hash="1122334455667788")]
+        await handler.handle_new_contact(_NewContactEvent(_companion_contact_payload()), None)
+        await handler.handle_new_contact(_NewContactEvent(_companion_contact_payload()), None)
+        await handler.handle_new_contact(_NewContactEvent(_companion_contact_payload()), None)
+        assert rm.add_companion_from_contact_data.await_count == 2
+
+    async def test_bot_mode_cancelled_add_lets_the_next_event_retry(self, new_contact_env):
+        import asyncio
 
         bot, handler, rm, mesh = new_contact_env
         bot.config.set("Bot", "auto_manage_contacts", "bot")
-        rm.track_contact_advertisement = AsyncMock(
-            side_effect=[
-                TrackAdvertResult(ok=True, duplicate_packet=False),
-                TrackAdvertResult(ok=True, duplicate_packet=True),
-            ]
-        )
-        ev = _NewContactEvent(_companion_contact_payload())
-        await handler.handle_new_contact(ev, None)
-        await handler.handle_new_contact(ev, None)
-        assert rm.track_contact_advertisement.await_count == 2
-        rm.add_companion_from_contact_data.assert_awaited_once()
+        rm.add_companion_from_contact_data = AsyncMock(side_effect=[asyncio.CancelledError(), True])
+        handler._advert_rf = [_advert_rf_entry("ab" * 32, packet_hash="1122334455667788")]
+        with pytest.raises(asyncio.CancelledError):
+            await handler.handle_new_contact(_NewContactEvent(_companion_contact_payload()), None)
+        await handler.handle_new_contact(_NewContactEvent(_companion_contact_payload()), None)
+        assert rm.add_companion_from_contact_data.await_count == 2
+
+    async def test_bot_mode_without_an_advert_packet_adds_every_time(self, new_contact_env):
+        bot, handler, rm, mesh = new_contact_env
+        bot.config.set("Bot", "auto_manage_contacts", "bot")
+        await handler.handle_new_contact(_NewContactEvent(_companion_contact_payload()), None)
+        await handler.handle_new_contact(_NewContactEvent(_companion_contact_payload()), None)
+        assert rm.add_companion_from_contact_data.await_count == 2
 
     async def test_new_companion_logs_new_and_records_audit(self, new_contact_env):
         bot, handler, rm, mesh = new_contact_env
@@ -2501,7 +2463,7 @@ class TestZeroHopObservedPathWriter:
         )
         pk = "ab" * 32
         with patch(
-            "modules.message_handler.upsert_zero_hop_observed_path_via_manager"
+            "modules.contact_events.upsert_zero_hop_observed_path_via_manager"
         ) as upsert:
             await handler._process_advertisement_packet(
                 {
@@ -2881,3 +2843,99 @@ class TestChannelPayloadCorrelation:
 
         assert result[RF_MATCH_KEY] == RF_MATCH_FALLBACK
         assert result["packet_prefix"] == "cc" * 16
+
+
+@pytest.mark.asyncio
+class TestNewContactCapacityLogs:
+    """The contact-capacity check after a companion advert, in device and bot mode."""
+
+    @pytest.mark.parametrize(
+        "mode, near_limit, level, message",
+        [
+            ("device", True, "warning", "Contact list near limit (%.1f%%) — managing capacity"),
+            ("device", False, "info", "Companion %s — contact list has adequate space"),
+            ("bot", True, "warning", "Contact list near limit (%.1f%%) — managing capacity after add"),
+            ("bot", False, "info", "Companion %s — contact list has adequate space after add attempt"),
+        ],
+    )
+    async def test_capacity_log_and_cleanup(self, new_contact_env, mode, near_limit, level, message):
+        bot, handler, rm, mesh = new_contact_env
+        bot.config.set("Bot", "auto_manage_contacts", mode)
+        rm.get_contact_list_status = AsyncMock(
+            return_value={"is_near_limit": near_limit, "usage_percentage": 92.5}
+        )
+        await handler.handle_new_contact(_NewContactEvent(_companion_contact_payload()), None)
+        expected_arg = 92.5 if near_limit else "Alice"
+        calls = getattr(bot.logger, level).call_args_list
+        assert any(c.args == (message, expected_arg) for c in calls), calls
+        if near_limit:
+            rm.manage_contact_list.assert_awaited_once_with(auto_cleanup=True)
+        else:
+            rm.manage_contact_list.assert_not_called()
+
+
+class TestMeshGraphCapturing:
+    """_mesh_graph_capturing truth-tests the graph and capture_enabled once each."""
+
+    def test_falsy_graph_is_tested_once(self, handler, bot):
+        graph = MagicMock()
+        graph.__bool__ = Mock(side_effect=[False, RuntimeError("tested twice")])
+        bot.mesh_graph = graph
+        assert handler._mesh_graph_capturing() is False
+        assert graph.__bool__.call_count == 1
+
+    def test_capture_enabled_is_tested_once(self, handler, bot):
+        flag = MagicMock()
+        flag.__bool__ = Mock(side_effect=[True, RuntimeError("tested twice")])
+        bot.mesh_graph = Mock(capture_enabled=flag)
+        assert handler._mesh_graph_capturing() is True
+        assert flag.__bool__.call_count == 1
+
+    def test_no_graph_attribute(self, handler, bot):
+        del bot.mesh_graph
+        assert handler._mesh_graph_capturing() is False
+
+# ---------------------------------------------------------------------------
+# _correlate_channel_message_rf_data: the short wait for a trailing RF log row
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+class TestChannelCorrelationWait:
+    @staticmethod
+    def _late_row() -> dict:
+        import time as _time
+
+        return {"timestamp": _time.time(), "packet_prefix": "ab" * 16, "raw_hex": "ab" * 16}
+
+    async def test_row_logged_during_the_wait_is_found(self, handler):
+        handler.enhanced_correlation = True
+        late = self._late_row()
+
+        async def fake_sleep(seconds):
+            assert seconds == 0.1
+            handler.recent_rf_data.append(late)
+
+        with patch("modules.message_handler.asyncio.sleep", side_effect=fake_sleep) as sleep:
+            result = await handler._correlate_channel_message_rf_data(
+                None, "", {"channel_idx": 0, "text": "hi"}, scope_eligible_only=False, extended_timeout=30.0
+            )
+        sleep.assert_awaited_once()
+        assert result is not None and result["packet_prefix"] == late["packet_prefix"]
+
+    async def test_no_wait_without_enhanced_correlation(self, handler):
+        handler.enhanced_correlation = False
+        with patch("modules.message_handler.asyncio.sleep") as sleep:
+            result = await handler._correlate_channel_message_rf_data(
+                None, "", {"channel_idx": 0, "text": "hi"}, scope_eligible_only=False, extended_timeout=30.0
+            )
+        sleep.assert_not_called()
+        assert result is None
+
+    async def test_no_wait_for_scope_lookups(self, handler):
+        handler.enhanced_correlation = True
+        with patch("modules.message_handler.asyncio.sleep") as sleep:
+            await handler._correlate_channel_message_rf_data(
+                None, "", {"channel_idx": 0, "text": "hi"}, scope_eligible_only=True, extended_timeout=30.0
+            )
+        sleep.assert_not_called()

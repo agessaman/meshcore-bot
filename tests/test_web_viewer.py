@@ -9,6 +9,7 @@ side-effect free.
 import configparser
 import json
 import logging
+import re
 import sqlite3
 from contextlib import closing, contextmanager
 from pathlib import Path
@@ -215,31 +216,63 @@ class TestPageRoutes:
         resp = client.get("/realtime")
         assert resp.status_code == 200
 
-    def test_realtime_scroll_controls(self, client):
-        """Realtime page has scroll buttons, type filters, and channel labels in messages."""
-        resp = client.get("/realtime")
-        assert resp.status_code == 200
-        html = resp.data.decode()
-        # Scroll buttons present for all three streams
-        assert 'id="cmd-scroll-top"' in html
-        assert 'id="cmd-scroll-bottom"' in html
-        assert 'id="pkt-scroll-top"' in html
-        assert 'id="pkt-scroll-bottom"' in html
-        assert 'id="msg-scroll-top"' in html
-        assert 'id="msg-scroll-bottom"' in html
-        # scrollStream JS function present
-        assert 'scrollStream' in html
-        # Type filter checkboxes for each stream panel
-        assert 'rt-filter-cb' in html
-        assert 'id="rt-filter-command"' in html
-        assert 'id="rt-filter-packet"' in html
-        assert 'id="rt-filter-message"' in html
-        assert 'id="command-card"' in html
-        assert 'id="packet-card"' in html
-        assert 'id="message-card"' in html
-        # Live message helpers: strip duplicate bracket tags, per-channel accent
-        assert 'stripLeadingChannelBracketTag' in html
-        assert 'channelAccentStyles' in html
+    def test_realtime_is_one_tape(self, client):
+        """Realtime is one receiver tape: strip, filters, keep tray, no three-panel grid."""
+        html = client.get("/realtime").data.decode()
+        for marker in ('id="rt-tape"', 'id="rt-lamp"', 'id="rt-last"', 'id="rt-rate"',
+                       'id="rt-pause"', 'id="rt-pending"', 'id="rt-search"', 'id="rt-kept-list"',
+                       'name="rt-kind"', 'id="packetDetailModal"'):
+            assert marker in html, marker
+        for retired in ('id="command-card"', 'id="packet-card"', 'id="message-card"', 'rt-filter-cb'):
+            assert retired not in html, retired
+        # Rows join packet, message and command by hash; replies fold their echoes in
+        for helper in ('replyOwner', 'trigger_packet_hash', 'reply_packet_hash',
+                       'stripLeadingChannelBracketTag', 'function pathByteLength('):
+            assert helper in html, helper
+
+    def test_realtime_loads_no_cdn_script_of_its_own(self, client):
+        html = client.get("/realtime").data.decode()
+        assert "vendor/js-sha256/sha256.min.js" in html
+        assert "cdnjs.cloudflare.com/ajax/libs/js-sha256" not in html
+
+    def test_templates_load_no_scripts_styles_or_fonts_from_other_hosts(self):
+        """The viewer has to work on a LAN with no internet; libraries are vendored."""
+        templates = Path(__file__).resolve().parents[1] / "modules" / "web_viewer" / "templates"
+        external = re.compile(r'<(?:script|link)\b[^>]*\b(?:src|href)="(?:https?:)?//', re.I)
+        offenders = [
+            str(path.relative_to(templates))
+            for path in templates.rglob("*.html")
+            if external.search(path.read_text(encoding="utf-8"))
+        ]
+        assert offenders == []
+
+    def test_every_vendored_asset_a_template_names_exists(self):
+        root = Path(__file__).resolve().parents[1] / "modules" / "web_viewer"
+        named = set()
+        for path in (root / "templates").rglob("*.html"):
+            named.update(re.findall(r"filename='((?:vendor|fonts)/[^']+)'", path.read_text(encoding="utf-8")))
+        assert named
+        missing = sorted(name for name in named if not (root / "static" / name).is_file())
+        assert missing == []
+
+    def test_banner_actions_leave_the_banners_intact(self, client):
+        """Clearing a flag used to overwrite its banner, so a later drop re-showed a stale success message."""
+        html = client.get("/").data.decode()
+        assert 'id="recovery-banner"' in html
+        assert "Offline flag cleared." not in html
+        assert "b.innerHTML" not in html
+        assert "b.className = 'alert alert-success" not in html
+
+    def test_dashboard_has_a_first_run_panel(self, client):
+        """A fresh install shows one panel instead of a grid of empty boxes."""
+        html = client.get("/").data.decode()
+        assert 'id="first-run"' in html
+        assert 'id="dashboard-body"' in html
+
+    def test_csp_allows_no_cdn_hosts(self, client):
+        csp = client.get("/").headers["Content-Security-Policy"]
+        for host in ("cdn.jsdelivr.net", "cdnjs.cloudflare.com", "unpkg.com", "fonts.googleapis.com"):
+            assert host not in csp, host
 
     def test_logs(self, client):
         resp = client.get("/logs")
@@ -372,6 +405,39 @@ class TestRadioRoutes:
             content_type="application/json",
         )
         assert resp.status_code == 400
+
+    def test_radio_connect_refused_while_bot_initializing(self, client, viewer):
+        viewer.db_manager.set_metadata("bot.initializing", "true")
+        try:
+            before = viewer.db_manager.execute_query(
+                "SELECT COALESCE(MAX(id), 0) AS id FROM channel_operations"
+            )[0]["id"]
+            resp = client.post(
+                "/api/radio/connect",
+                json={"action": "connect"},
+                content_type="application/json",
+            )
+            assert resp.status_code == 409
+            assert "still connecting to the radio at startup" in resp.get_json()["error"]
+            after = viewer.db_manager.execute_query(
+                "SELECT COALESCE(MAX(id), 0) AS id FROM channel_operations"
+            )[0]["id"]
+            assert after == before
+        finally:
+            viewer.db_manager.set_metadata("bot.initializing", "false")
+
+    def test_radio_connect_allowed_after_initializing(self, client, viewer):
+        viewer.db_manager.set_metadata("bot.initializing", "false")
+        resp = client.post(
+            "/api/radio/connect",
+            json={"action": "connect"},
+            content_type="application/json",
+        )
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["success"] is True
+        assert data["pending"] is True
+        assert data["operation_id"] is not None
 
 
 # ===========================================================================
@@ -1178,13 +1244,15 @@ class TestAuthRoutes:
         resp = auth_client.get("/login")
         assert resp.status_code == 200
 
-    def test_unauthenticated_index_redirects_to_login(self, auth_client):
-        resp = auth_client.get("/")
+    def test_unauthenticated_admin_page_redirects_to_login(self, auth_client):
+        """Admin pages should redirect to login when not authenticated."""
+        resp = auth_client.get("/logs")
         assert resp.status_code == 302
         assert "login" in resp.headers["Location"]
 
-    def test_unauthenticated_api_returns_401(self, auth_client):
-        resp = auth_client.get("/api/health")
+    def test_unauthenticated_admin_api_returns_401(self, auth_client):
+        """Admin API endpoints should return 401 when not authenticated."""
+        resp = auth_client.get("/api/config/notifications")
         assert resp.status_code == 401
 
     def test_login_wrong_password(self, auth_client):
@@ -1213,8 +1281,8 @@ class TestAuthRoutes:
         auth_client.post("/login", data={"password": "secret123"})
         resp = auth_client.get("/logout", follow_redirects=False)
         assert resp.status_code == 302
-        # After logout, index should redirect to login again
-        resp2 = auth_client.get("/")
+        # After logout, admin pages should redirect to login again
+        resp2 = auth_client.get("/logs")
         assert resp2.status_code == 302
 
     def test_login_no_password_configured_redirects_to_index(self, client):
@@ -1222,6 +1290,199 @@ class TestAuthRoutes:
         resp = client.get("/login", follow_redirects=False)
         assert resp.status_code == 302
         assert resp.headers["Location"].endswith("/")
+
+
+# ===========================================================================
+# Role-based access control (public vs admin pages)
+# ===========================================================================
+
+class TestRoleBasedAccess:
+    """Public allowlist vs fail-closed admin when web_viewer_password is set."""
+
+    def test_public_pages_accessible_without_auth(self, auth_client):
+        public_pages = ["/", "/mesh", "/contacts"]
+        for page in public_pages:
+            resp = auth_client.get(page)
+            assert resp.status_code == 200, f"{page} should be accessible without auth"
+
+    def test_realtime_is_admin_only(self, auth_client):
+        """The live socket is admin-only, so the page is too; the nav hides it."""
+        resp = auth_client.get("/realtime", follow_redirects=False)
+        assert resp.status_code == 302
+        assert "login" in resp.headers["Location"]
+        assert 'href="/realtime"' not in auth_client.get("/").get_data(as_text=True)
+        auth_client.post("/login", data={"password": "secret123"})
+        assert auth_client.get("/realtime").status_code == 200
+        assert 'href="/realtime"' in auth_client.get("/").get_data(as_text=True)
+
+    def test_multibyte_page_and_data_are_public(self, auth_viewer, auth_client):
+        """Multibyte rollout is mesh-visible data, so anonymous visitors get the page, its data and the nav link."""
+        auth_viewer.multibyte_monitor_enabled = True
+        assert auth_client.get("/multibyte-rollout").status_code == 200
+        resp = auth_client.get("/api/multibyte-rollout")
+        assert resp.status_code == 200
+        blob = str(resp.get_json()).lower()
+        for needle in ("smtp_password", "channel_key", "key_hex", "private_key", "web_viewer_password"):
+            assert needle not in blob
+        assert 'href="/multibyte-rollout"' in auth_client.get("/").get_data(as_text=True)
+
+    def test_admin_pages_require_auth(self, auth_client):
+        admin_pages = ["/logs", "/config", "/plugins", "/radio", "/greeter", "/feeds", "/schedule"]
+        for page in admin_pages:
+            resp = auth_client.get(page, follow_redirects=False)
+            assert resp.status_code == 302, f"{page} should redirect to login"
+            assert "login" in resp.headers["Location"], f"{page} should redirect to login"
+
+    def test_trailing_slash_admin_path_not_bypass(self, auth_client):
+        resp = auth_client.get("/config/", follow_redirects=False)
+        assert resp.status_code in (301, 302, 308, 401)
+        if resp.status_code in (301, 302, 308):
+            assert "login" in resp.headers.get("Location", "") or resp.headers["Location"].rstrip("/").endswith("/config")
+
+    def test_admin_pages_accessible_after_login(self, auth_client):
+        auth_client.post("/login", data={"password": "secret123"})
+        admin_pages = ["/logs", "/config", "/plugins", "/radio", "/schedule"]
+        for page in admin_pages:
+            resp = auth_client.get(page)
+            assert resp.status_code == 200, f"{page} should be accessible after login"
+
+    def test_admin_api_endpoints_require_auth(self, auth_client):
+        admin_apis = [
+            "/api/config/notifications",
+            "/api/config/logging",
+            "/api/maintenance/status",
+            "/api/radio/status",
+            "/api/channels",
+            "/api/recent_commands",
+            "/api/logs",
+        ]
+        for api in admin_apis:
+            resp = auth_client.get(api)
+            # /api/logs may 404 as a route — still must not be 200 without auth
+            assert resp.status_code in (401, 404), f"{api} should not be open without auth"
+
+    def test_contact_mutations_require_auth(self, auth_client):
+        for path in (
+            "/api/delete-contact",
+            "/api/toggle-star-contact",
+            "/api/geocode-contact",
+            "/api/contacts/purge",
+            "/api/radio/reboot",
+            "/api/dashboard/refresh",
+        ):
+            resp = auth_client.post(
+                path,
+                json={},
+                content_type="application/json",
+                headers={"X-Requested-With": "XMLHttpRequest"},
+            )
+            assert resp.status_code == 401, f"{path} must reject anonymous mutations"
+
+    def test_admin_api_endpoints_accessible_after_login(self, auth_client):
+        auth_client.post("/login", data={"password": "secret123"})
+        resp = auth_client.get("/api/config/notifications")
+        assert resp.status_code == 200, "Config API should be accessible after login"
+
+    def test_logout_redirects_to_index_not_login(self, auth_client):
+        auth_client.post("/login", data={"password": "secret123"})
+        resp = auth_client.get("/logout", follow_redirects=False)
+        assert resp.status_code == 302
+        assert resp.headers["Location"].endswith("/")
+
+    def test_public_pages_remain_accessible_no_password(self, client):
+        """When no password is configured, keep legacy open mode."""
+        all_pages = ["/", "/realtime", "/mesh", "/contacts", "/logs", "/config"]
+        for page in all_pages:
+            resp = client.get(page)
+            assert resp.status_code == 200, f"{page} should be accessible when auth is disabled"
+
+    def test_public_api_payloads_have_no_secrets(self, auth_client):
+        """Opened public GETs must not leak channel keys or config secrets."""
+        for api in ("/api/health", "/api/contacts", "/api/mesh/stats", "/api/dashboard/summary"):
+            resp = auth_client.get(api)
+            assert resp.status_code in (200, 503), f"{api} should be public-readable"
+            body = resp.get_json()
+            assert body is not None
+            blob = str(body).lower()
+            for needle in ("smtp_password", "channel_key", "key_hex", "private_key", "web_viewer_password"):
+                assert needle not in blob, f"{api} leaked {needle}"
+
+    def test_channels_api_stays_admin_only(self, auth_client):
+        """Channel list includes key_hex — must never be anonymous."""
+        resp = auth_client.get("/api/channels")
+        assert resp.status_code == 401
+
+    def test_session_cookie_flags(self, auth_viewer):
+        assert auth_viewer.app.config["SESSION_COOKIE_HTTPONLY"] is True
+        assert auth_viewer.app.config["SESSION_COOKIE_SAMESITE"] == "Lax"
+
+    def test_is_admin_declared_once_per_page(self, auth_client, client):
+        """base.html declares IS_ADMIN; a second top-level const is a SyntaxError."""
+        for c in (auth_client, client):
+            for page in ("/", "/mesh", "/contacts"):
+                html = c.get(page).get_data(as_text=True)
+                assert html.count("const IS_ADMIN") == 1, f"{page} redeclares IS_ADMIN"
+
+    def test_banner_admin_buttons_hidden_from_anonymous(self, auth_client):
+        html = auth_client.get("/").get_data(as_text=True)
+        assert 'id="zombie-recover-btn"' not in html
+        assert 'id="offline-clear-btn"' not in html
+
+    def test_banner_admin_buttons_shown_to_admin(self, auth_client):
+        auth_client.post("/login", data={"password": "secret123"})
+        html = auth_client.get("/").get_data(as_text=True)
+        assert 'id="zombie-recover-btn"' in html
+        assert 'id="offline-clear-btn"' in html
+
+    def test_head_on_public_paths_matches_get(self, auth_client):
+        for path in ("/", "/contacts", "/api/health", "/api/contacts"):
+            resp = auth_client.head(path)
+            assert resp.status_code in (200, 503), f"HEAD {path} should be public"
+
+    def test_head_on_admin_paths_still_requires_auth(self, auth_client):
+        assert auth_client.head("/api/channels").status_code == 401
+        assert auth_client.head("/logs").status_code == 302
+
+    @pytest.mark.parametrize("target", [
+        "//attacker.example",
+        "///attacker.example",
+        "/\\attacker.example",
+        "/\t/attacker.example",
+        "https://attacker.example/",
+    ])
+    def test_login_next_rejects_offsite_targets(self, auth_client, target):
+        resp = auth_client.post(
+            "/login", query_string={"next": target}, data={"password": "secret123"}
+        )
+        assert resp.status_code == 302
+        assert resp.headers["Location"] == "/"
+
+    def test_login_next_keeps_local_path(self, auth_client):
+        resp = auth_client.post(
+            "/login", query_string={"next": "/logs?lines=50"}, data={"password": "secret123"}
+        )
+        assert resp.headers["Location"] == "/logs?lines=50"
+
+    def test_logout_disconnects_live_sockets(self, auth_viewer, auth_client):
+        auth_client.post("/login", data={"password": "secret123"})
+        sock = auth_viewer.socketio.test_client(auth_viewer.app, flask_test_client=auth_client)
+        assert sock.is_connected()
+        # A second admin login in another browser must stay connected. (No
+        # `with` here: a preserved request context clashes with the socket client.)
+        other = auth_viewer.app.test_client()
+        other.post("/login", data={"password": "secret123"})
+        other_sock = auth_viewer.socketio.test_client(auth_viewer.app, flask_test_client=other)
+        assert other_sock.is_connected()
+
+        auth_client.get("/logout")
+
+        assert not sock.is_connected()
+        assert other_sock.is_connected()
+        other_sock.disconnect()
+
+    def test_anonymous_socket_rejected(self, auth_viewer, auth_client):
+        sock = auth_viewer.socketio.test_client(auth_viewer.app, flask_test_client=auth_client)
+        assert not sock.is_connected()
 
 
 # ===========================================================================
@@ -1998,6 +2259,65 @@ class TestStreamAndCommandRoutes:
         assert resp.status_code in (200, 400, 500)
 
 
+class TestPacketsByHashRoute:
+    """Real-time fetches the packet behind a message row the replay didn't reach."""
+
+    HASH = "921F4CAF866686AD"
+    NEAR = 1_792_882_591.0
+
+    @pytest.fixture
+    def stored(self, viewer):
+        def packet(ts, packet_hash, snr):
+            return (ts, json.dumps({"packet_hash": packet_hash, "snr": snr, "payload_type_name": "GRP_TXT"}), "packet")
+
+        _insert_packet_stream_rows(viewer.db_path, [
+            packet(self.NEAR - 1, self.HASH, 9.5),
+            packet(self.NEAR - 0.5, self.HASH, -3.25),
+            packet(self.NEAR - 1, "AAAAAAAAAAAAAAAA", 1.0),
+            packet(self.NEAR - 3600, self.HASH, 2.0),
+            (self.NEAR, json.dumps({"packet_hash": self.HASH, "content": "hi"}), "message"),
+            (self.NEAR - 2, "{not json", "packet"),
+        ])
+        yield
+        with closing(sqlite3.connect(viewer.db_path)) as conn:
+            conn.execute("DELETE FROM packet_stream")
+            conn.commit()
+
+    def test_returns_receptions_near_the_time_oldest_first(self, client, stored):
+        resp = client.get(f"/api/packets/by-hash/{self.HASH.lower()}?near={self.NEAR}")
+        assert resp.status_code == 200
+        packets = resp.get_json()["packets"]
+        assert [p["snr"] for p in packets] == [9.5, -3.25]
+        assert all(p["replayed"] is True for p in packets)
+        assert [p["stream_ts"] for p in packets] == [self.NEAR - 1, self.NEAR - 0.5]
+
+    def test_nothing_outside_the_window(self, client, stored):
+        resp = client.get(f"/api/packets/by-hash/{self.HASH}?near={self.NEAR + 7200}")
+        assert resp.status_code == 200
+        assert resp.get_json() == {"packets": []}
+
+    @pytest.mark.parametrize("path", [
+        "/api/packets/by-hash/xyz?near=1",
+        "/api/packets/by-hash/1234?near=1",
+        "/api/packets/by-hash/921F4CAF866686AD",
+        "/api/packets/by-hash/921F4CAF866686AD?near=soon",
+        "/api/packets/by-hash/921F4CAF866686AD?near=nan",
+        "/api/packets/by-hash/921F4CAF866686AD?near=inf",
+    ])
+    def test_rejects_bad_input(self, client, path):
+        assert client.get(path).status_code == 400
+
+    def test_requires_admin_when_a_password_is_set(self, auth_client):
+        resp = auth_client.get(f"/api/packets/by-hash/{self.HASH}?near={self.NEAR}")
+        assert resp.status_code == 401
+
+    def test_realtime_looks_up_a_missing_packet_on_open(self, client):
+        html = client.get("/realtime").get_data(as_text=True)
+        assert "/api/packets/by-hash/" in html
+        assert "if (tx.open) lookUpPacket(tx);" in html
+        assert "packet not on the tape" not in html
+
+
 # ===========================================================================
 # Rate limiter stats API
 # ===========================================================================
@@ -2336,6 +2656,21 @@ class TestSubscribeCommandsHistoryReplay:
         assert len(command_events) == 5
         seq_values = [e["args"][0]["seq"] for e in command_events]
         assert seq_values == list(range(5))  # replayed in chronological order
+
+    def test_replayed_rows_are_marked_as_history(self, socketio_viewer):
+        """Replayed rows carry their stream time and a replayed flag, so the page can file them as history."""
+        import json as _json
+        import time as _time
+
+        from flask_socketio import SocketIOTestClient
+
+        ts = _time.time() - 30
+        _insert_packet_stream_rows(socketio_viewer.db_path, [(ts, _json.dumps({"cmd": "ping"}), "command")])
+        sio_client = SocketIOTestClient(socketio_viewer.app, socketio_viewer.socketio)
+        sio_client.emit("subscribe_commands")
+        event = next(e for e in sio_client.get_received() if e["name"] == "command_data")
+        assert event["args"][0]["replayed"] is True
+        assert event["args"][0]["stream_ts"] == pytest.approx(ts)
 
     def test_subscribe_commands_sets_subscription_flag(self, socketio_viewer):
         """subscribed_commands flag is set to True after subscribe event."""
@@ -4168,11 +4503,11 @@ class TestFeedPreviewResponseLimits:
         with (
             patch("modules.web_viewer.app.SafeUrlPolicy.validate", return_value=True),
             patch(
-                "modules.web_viewer.app.create_safe_requests_session",
+                "modules.web_viewer.feeds.create_safe_requests_session",
                 return_value=session_context,
             ),
             patch(
-                "modules.web_viewer.app.safe_requests_request",
+                "modules.web_viewer.feeds.safe_requests_request",
                 return_value=response,
             ) as request_mock,
             pytest.raises(ValueError, match="exceeds .* byte limit"),
@@ -4198,11 +4533,11 @@ class TestFeedPreviewResponseLimits:
         with (
             patch("modules.web_viewer.app.SafeUrlPolicy.validate", return_value=True),
             patch(
-                "modules.web_viewer.app.create_safe_requests_session",
+                "modules.web_viewer.feeds.create_safe_requests_session",
                 return_value=session_context,
             ),
             patch(
-                "modules.web_viewer.app.safe_requests_request",
+                "modules.web_viewer.feeds.safe_requests_request",
                 return_value=response,
             ),
             pytest.raises(ValueError, match="exceeds .* byte limit"),

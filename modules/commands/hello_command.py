@@ -20,6 +20,8 @@ class HelloCommand(BaseCommand):
 
     # Plugin metadata
     name = "hello"
+    honors_skip_channel_check = False
+    enabled_attr = "hello_enabled"
     keywords = ['hello', 'hi', 'hey', 'howdy', 'greetings', 'salutations', 'good morning', 'good afternoon', 'good evening', 'good night', 'yo', 'sup', 'whats up', 'what\'s up', 'morning', 'afternoon', 'evening', 'night', 'gday', 'g\'day', 'hola', 'bonjour', 'ciao', 'namaste', 'aloha', 'shalom', 'konnichiwa', 'guten tag', 'buenos dias', 'buenas tardes', 'buenas noches']
     description = "Responds to greetings with robot-themed responses"
     category = "basic"
@@ -241,10 +243,7 @@ class HelloCommand(BaseCommand):
         Returns:
             List[str]: A list of greeting opening strings.
         """
-        openings = self.translate_get_value('commands.hello.greeting_openings')
-        if openings and isinstance(openings, list) and len(openings) > 0:
-            return openings
-        return self.greeting_openings_fallback
+        return self.translated_or('commands.hello.greeting_openings', self.greeting_openings_fallback)
 
     def get_morning_greetings(self) -> list[str]:
         """Get morning greetings from translations or fallback.
@@ -252,10 +251,7 @@ class HelloCommand(BaseCommand):
         Returns:
             List[str]: A list of morning greeting strings.
         """
-        greetings = self.translate_get_value('commands.hello.morning_greetings')
-        if greetings and isinstance(greetings, list) and len(greetings) > 0:
-            return greetings
-        return self.morning_greetings_fallback
+        return self.translated_or('commands.hello.morning_greetings', self.morning_greetings_fallback)
 
     def get_afternoon_greetings(self) -> list[str]:
         """Get afternoon greetings from translations or fallback.
@@ -263,10 +259,7 @@ class HelloCommand(BaseCommand):
         Returns:
             List[str]: A list of afternoon greeting strings.
         """
-        greetings = self.translate_get_value('commands.hello.afternoon_greetings')
-        if greetings and isinstance(greetings, list) and len(greetings) > 0:
-            return greetings
-        return self.afternoon_greetings_fallback
+        return self.translated_or('commands.hello.afternoon_greetings', self.afternoon_greetings_fallback)
 
     def get_evening_greetings(self) -> list[str]:
         """Get evening greetings from translations or fallback.
@@ -274,10 +267,7 @@ class HelloCommand(BaseCommand):
         Returns:
             List[str]: A list of evening greeting strings.
         """
-        greetings = self.translate_get_value('commands.hello.evening_greetings')
-        if greetings and isinstance(greetings, list) and len(greetings) > 0:
-            return greetings
-        return self.evening_greetings_fallback
+        return self.translated_or('commands.hello.evening_greetings', self.evening_greetings_fallback)
 
     def get_human_descriptors(self) -> list[str]:
         """Get human descriptors from translations or fallback.
@@ -285,10 +275,7 @@ class HelloCommand(BaseCommand):
         Returns:
             List[str]: A list of human descriptor strings.
         """
-        descriptors = self.translate_get_value('commands.hello.human_descriptors')
-        if descriptors and isinstance(descriptors, list) and len(descriptors) > 0:
-            return descriptors
-        return self.human_descriptors_fallback
+        return self.translated_or('commands.hello.human_descriptors', self.human_descriptors_fallback)
 
     def get_emoji_responses(self) -> dict[str, list[str]]:
         """Get emoji responses from translations or fallback.
@@ -296,12 +283,9 @@ class HelloCommand(BaseCommand):
         Returns:
             Dict[str, List[str]]: A dictionary mapping emojis to lists of response strings.
         """
-        responses = self.translate_get_value('commands.hello.emoji_responses')
-        if responses and isinstance(responses, dict) and len(responses) > 0:
-            return responses
-        return self.emoji_responses_fallback
+        return self.translated_or('commands.hello.emoji_responses', self.emoji_responses_fallback, dict)
 
-    def get_help_text(self) -> str:
+    def get_help_text(self, message: MeshMessage | None = None) -> str:
         """Get help text for the hello command.
 
         Returns:
@@ -440,22 +424,6 @@ class HelloCommand(BaseCommand):
         defined_emoji_pattern = r'[🖖👋😊😄🤗👋🏻👋🏼👋🏽👋🏾👋🏿✌️🙏🙋🙋‍♂️🙋‍♀️👽👾🛸\s]+$'
 
         return bool(re.match(defined_emoji_pattern, cleaned_text))
-
-    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
-        """Check if this command can be executed with the given message.
-
-        Args:
-            message: The message triggering the command.
-
-        Returns:
-            bool: True if command is enabled and checks pass, False otherwise.
-        """
-        # Check if hello command is enabled
-        if not self.hello_enabled:
-            return False
-
-        # Call parent can_execute() which includes channel checking, cooldown, etc.
-        return super().can_execute(message)
 
     def get_emoji_response(self, text: str, bot_name: str, mention: str = "") -> str:
         """Get appropriate response for emoji-only message.

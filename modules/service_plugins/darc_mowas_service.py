@@ -108,14 +108,20 @@ class DARC_MoWaS_Service(BaseServicePlugin):
         self._setup_routes()
 
     async def start(self) -> None:
-        self._running = True
         await self._ensure_channels()
         self.logger.info(
             "MoWaSAlert service starting on %s:%s",
             self.host,
             self.port,
         )
-        self._server = make_server(self.host, self.port, self.app)
+        try:
+            self._server = make_server(self.host, self.port, self.app)
+        except SystemExit as e:
+            # werkzeug exits the process when the port is taken; that must not
+            # take the whole bot down with it.
+            raise OSError(f"MoWaSAlert could not listen on {self.host}:{self.port}") from e
+        # Only after the bind succeeds, so a port in use is not reported healthy.
+        self._running = True
         self._loop = asyncio.get_running_loop()
         self._server_future = self._loop.run_in_executor(
             None, self._server.serve_forever

@@ -8,12 +8,14 @@ modules/settings_store.py (INI backend), and the /api/plugins endpoints.
 from __future__ import annotations
 
 import configparser
+import json
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
 from modules.ini_writer import backup_config, update_ini_values
+from modules.managed_keys import MANAGED_KEYS_ENV
 from modules.settings_schema import (
     _assemble_entry,
     build_plugin_settings_view,
@@ -53,6 +55,11 @@ class TestUpdateIniValues:
         assert "# Top comment stays" in text
         assert "; bot name comment" in text
         assert ("Bot", "rate_limit_seconds") in result["changed"]
+
+    def test_filling_empty_spaced_value_keeps_a_space(self, tmp_path):
+        p = self._write(tmp_path, "[Connection]\nhostname =\n")
+        update_ini_values(str(p), {"Connection": {"hostname": "radio.local"}})
+        assert p.read_text(encoding="utf-8") == "[Connection]\nhostname = radio.local\n"
 
     def test_unchanged_value_not_reported_changed(self, tmp_path):
         p = self._write(tmp_path)
@@ -431,6 +438,7 @@ class TestBuildViewPasswordRedaction:
             description="",
             category="general",
             enabled_default=True,
+            managed=frozenset(),
         )
         return next(f for f in entry["fields"] if f["key"] == "api_password")
 
@@ -564,6 +572,72 @@ class TestPluginsApi:
         )
         assert rows and rows[0]["status"] == "pending"
 
+    def test_same_key_in_two_sections_saves_to_each(self, viewer, tmp_path):
+        """wx has temperature_unit in [Weather] and as a [Wx_Command] override."""
+        client = viewer.app.test_client()
+        resp = client.post("/api/plugins/command/wx", json={"enabled": True, "values": {
+            "temperature_unit@Weather": "celsius",
+            "temperature_unit": "fahrenheit",
+        }})
+        assert resp.status_code == 200, resp.get_json()
+        cfg = configparser.ConfigParser()
+        cfg.read(tmp_path / "config.ini", encoding="utf-8")
+        assert cfg.get("Weather", "temperature_unit") == "celsius"
+        assert cfg.get("Wx_Command", "temperature_unit") == "fahrenheit"
+
+    def test_bare_key_of_a_unique_shared_field_still_resolves(self, viewer, tmp_path):
+        client = viewer.app.test_client()
+        resp = client.post("/api/plugins/command/wx", json={"enabled": True, "values": {"default_city": "Tacoma"}})
+        assert resp.status_code == 200, resp.get_json()
+        cfg = configparser.ConfigParser()
+        cfg.read(tmp_path / "config.ini", encoding="utf-8")
+        assert cfg.get("Weather", "default_city") == "Tacoma"
+        assert not cfg.has_option("Wx_Command", "default_city")
+
+    def test_inherit_option_removes_the_override(self, viewer, tmp_path):
+        client = viewer.app.test_client()
+        client.post("/api/plugins/command/wx", json={"enabled": True, "values": {"temperature_unit": "celsius"}})
+        resp = client.post("/api/plugins/command/wx", json={"enabled": True, "values": {"temperature_unit": ""}})
+        assert resp.status_code == 200, resp.get_json()
+        cfg = configparser.ConfigParser()
+        cfg.read(tmp_path / "config.ini", encoding="utf-8")
+        assert not cfg.has_option("Wx_Command", "temperature_unit")
+
+    def test_blank_inheriting_broker_fields_are_not_written(self, viewer, tmp_path):
+        """getint/getboolean read these when present, so a blank must not be saved."""
+        client = viewer.app.test_client()
+        resp = client.post("/api/plugins/service/packetcapture", json={
+            "enabled": False,
+            "values": {},
+            "repeating_blocks": {"mqtt": [{"enabled": True, "values": {
+                "server": "mqtt.example.org", "jwt_renewal_interval": "", "include_decoded": "",
+            }}]},
+        })
+        assert resp.status_code == 200, resp.get_json()
+        cfg = configparser.ConfigParser()
+        cfg.read(tmp_path / "config.ini", encoding="utf-8")
+        assert cfg.get("PacketCapture", "mqtt1_server") == "mqtt.example.org"
+        assert not cfg.has_option("PacketCapture", "mqtt1_jwt_renewal_interval")
+        assert not cfg.has_option("PacketCapture", "mqtt1_include_decoded")
+
+    def test_cleared_number_field_removes_key(self, viewer, tmp_path):
+        """A blank number must unset the key: `key =` makes getfloat raise."""
+        client = viewer.app.test_client()
+        resp = client.post(
+            "/api/plugins/command/rain",
+            json={"enabled": True, "values": {"default_lat": "47.6"}},
+        )
+        assert resp.status_code == 200, resp.get_json()
+        resp = client.post(
+            "/api/plugins/command/rain",
+            json={"enabled": True, "values": {"default_lat": ""}},
+        )
+        assert resp.status_code == 200, resp.get_json()
+        cfg = configparser.ConfigParser()
+        cfg.read(tmp_path / "config.ini", encoding="utf-8")
+        assert not cfg.has_option("Rain_Command", "default_lat")
+        assert viewer.config.getfloat("Rain_Command", "default_lat", fallback=None) is None
+
     def test_new_local_command_saves_to_local_overlay(self, viewer, tmp_path):
         commands_dir = tmp_path / "local" / "commands"
         commands_dir.mkdir(parents=True)
@@ -638,8 +712,284 @@ class TestPluginsApi:
         )
         assert resp.status_code == 400
 
+    def test_dynamic_key_with_leading_hash_under_prefix_saved(self, viewer, tmp_path):
+        """A hashtag channel is a valid bridge key: the full option is bridge.#test."""
+        url = "https://discord.com/api/webhooks/1/abc"
+        client = viewer.app.test_client()
+        resp = client.post(
+            "/api/plugins/service/discordbridge",
+            json={
+                "enabled": False,
+                "values": {},
+                "dynamic_sections": {"DiscordBridge": [{"key": "#test", "value": url}]},
+            },
+        )
+        assert resp.status_code == 200, resp.get_json()
+        cfg = configparser.ConfigParser()
+        cfg.read(tmp_path / "config.ini", encoding="utf-8")
+        assert cfg.get("DiscordBridge", "bridge.#test") == url
+
+    def test_dynamic_key_typed_with_prefix_not_doubled(self, viewer, tmp_path):
+        """Typing the prefix by hand must not write bridge.bridge.#test."""
+        url = "https://discord.com/api/webhooks/1/abc"
+        client = viewer.app.test_client()
+        resp = client.post(
+            "/api/plugins/service/discordbridge",
+            json={
+                "enabled": False,
+                "values": {},
+                "dynamic_sections": {"DiscordBridge": [{"key": "Bridge.#test", "value": url}]},
+            },
+        )
+        assert resp.status_code == 200, resp.get_json()
+        cfg = configparser.ConfigParser()
+        cfg.read(tmp_path / "config.ini", encoding="utf-8")
+        assert cfg.get("DiscordBridge", "bridge.#test") == url
+        assert not cfg.has_option("DiscordBridge", "bridge.bridge.#test")
+
+    def test_dynamic_key_with_leading_hash_without_prefix_rejected(self, viewer):
+        """Without a prefix a leading # would turn the option into a comment."""
+        client = viewer.app.test_client()
+        resp = client.post(
+            "/api/plugins/command/channels",
+            json={
+                "enabled": True,
+                "values": {},
+                "dynamic_sections": {"Channels_List": [{"key": "#test", "value": "x"}]},
+            },
+        )
+        assert resp.status_code == 400
+
     def test_reload_status_endpoint(self, viewer):
         client = viewer.app.test_client()
         resp = client.get("/api/plugins/reload-status")
         assert resp.status_code == 200
         assert resp.get_json()["status"] is None
+
+
+class TestTemplatePreviewApi:
+    def test_previews_a_piped_field(self, viewer):
+        client = viewer.app.test_client()
+        resp = client.post(
+            "/api/plugins/command/test/template-preview",
+            json={"key": "response_format", "template": "{hops_label}"},
+        )
+        assert resp.status_code == 200, resp.get_json()
+        outputs = [s["output"] for s in resp.get_json()["scenarios"]]
+        assert outputs == ["3 hops", "3 hops", "0 hops"]
+
+    def test_previews_a_format_field(self, viewer):
+        client = viewer.app.test_client()
+        resp = client.post(
+            "/api/plugins/command/greeter/template-preview",
+            json={"key": "greeting_message", "template": "Hi {sender}|{nope}"},
+        )
+        assert resp.status_code == 200, resp.get_json()
+        (row,) = resp.get_json()["scenarios"]
+        assert "Unknown placeholder {nope}" in row["error"]
+
+    def test_unknown_field_has_no_preview(self, viewer):
+        client = viewer.app.test_client()
+        resp = client.post(
+            "/api/plugins/command/test/template-preview",
+            json={"key": "nope", "template": "x"},
+        )
+        assert resp.status_code == 404
+
+    def test_rejects_an_oversized_template(self, viewer):
+        client = viewer.app.test_client()
+        resp = client.post(
+            "/api/plugins/command/test/template-preview",
+            json={"key": "response_format", "template": "x" * 2001},
+        )
+        assert resp.status_code == 400
+
+
+def _manage(monkeypatch, tmp_path, pairs):
+    path = tmp_path / "ha_managed_keys.json"
+    path.write_text(json.dumps(pairs), encoding="utf-8")
+    monkeypatch.setenv(MANAGED_KEYS_ENV, str(path))
+
+
+def _plugin(payload, kind, name):
+    return next(item for item in payload["plugins"] if item["kind"] == kind and item["name"] == name)
+
+
+class TestHomeAssistantManagedKeys:
+    def test_schema_marks_managed_fields(self, viewer, monkeypatch, tmp_path):
+        _manage(monkeypatch, tmp_path, [["Test_Command", "Distance_Unit"]])
+        client = viewer.app.test_client()
+        resp = client.get("/api/plugins")
+        assert resp.status_code == 200
+        plugin = _plugin(resp.get_json(), "command", "test")
+        fields = {field["key"]: field for field in plugin["fields"]}
+        assert fields["distance_unit"]["managed"] is True
+        assert "managed" not in fields["response_format"]
+        assert "enabled_managed" not in plugin
+
+    def test_schema_unmarked_without_env(self, viewer, monkeypatch):
+        monkeypatch.delenv(MANAGED_KEYS_ENV, raising=False)
+        client = viewer.app.test_client()
+        resp = client.get("/api/plugins")
+        plugin = _plugin(resp.get_json(), "command", "test")
+        fields = {field["key"]: field for field in plugin["fields"]}
+        assert "managed" not in fields["distance_unit"]
+        assert "managed_keys" not in plugin
+        assert "enabled_managed" not in plugin
+
+    def test_refuses_managed_update_and_keeps_unmanaged_write(self, viewer, monkeypatch, tmp_path):
+        _manage(monkeypatch, tmp_path, [["Test_Command", "distance_unit"]])
+        client = viewer.app.test_client()
+        refused = client.post(
+            "/api/plugins/command/test",
+            json={"enabled": True, "values": {"distance_unit": "km", "response_format": "hello"}},
+        )
+        assert refused.status_code == 400
+        body = refused.get_json()
+        assert body["success"] is False
+        assert "Managed by Home Assistant" in body["error"]
+        assert "distance_unit" in body["error"]
+        text = Path(viewer.config_path).read_text(encoding="utf-8")
+        assert "hello" not in text
+        assert "km" not in text
+
+        accepted = client.post(
+            "/api/plugins/command/test",
+            json={"enabled": True, "values": {"response_format": "hello"}},
+        )
+        assert accepted.status_code == 200, accepted.get_json()
+        cfg = configparser.ConfigParser()
+        cfg.read(viewer.config_path, encoding="utf-8")
+        assert cfg.get("Test_Command", "response_format") == "hello"
+        assert not cfg.has_option("Test_Command", "distance_unit")
+
+    def test_unchanged_managed_key_does_not_block_other_edits(self, viewer, monkeypatch, tmp_path):
+        path = Path(viewer.config_path)
+        path.write_text(
+            path.read_text(encoding="utf-8") + "\n[Test_Command]\nenabled = true\ndistance_unit = auto\n",
+            encoding="utf-8",
+        )
+        _manage(monkeypatch, tmp_path, [["Test_Command", "distance_unit"]])
+        client = viewer.app.test_client()
+        resp = client.post(
+            "/api/plugins/command/test",
+            json={"enabled": True, "values": {"distance_unit": "auto", "response_format": "hello"}},
+        )
+        assert resp.status_code == 200, resp.get_json()
+        cfg = configparser.ConfigParser()
+        cfg.read(viewer.config_path, encoding="utf-8")
+        assert cfg.get("Test_Command", "distance_unit") == "auto"
+        assert cfg.get("Test_Command", "response_format") == "hello"
+
+    def test_refuses_managed_delete(self, viewer, monkeypatch, tmp_path):
+        _manage(monkeypatch, tmp_path, [["Channels_List", "Tacoma"]])
+        client = viewer.app.test_client()
+        resp = client.get("/api/plugins")
+        channels = _plugin(resp.get_json(), "command", "channels")
+        listed = next(item for item in channels["dynamic_sections"] if item["section"] == "Channels_List")
+        rows = {row["key"]: row for row in listed["items"]}
+        assert rows["tacoma"]["managed"] is True
+        assert "managed" not in rows["seattle"]
+
+        refused = client.post(
+            "/api/plugins/command/channels",
+            json={
+                "enabled": True,
+                "values": {},
+                "dynamic_sections": {
+                    "Channels_List": [
+                        {"key": "seattle", "value": "Seattle chat"},
+                        {"key": "olympia", "value": "Olympia chat"},
+                    ]
+                },
+            },
+        )
+        assert refused.status_code == 400
+        assert "tacoma" in refused.get_json()["error"]
+        cfg = configparser.ConfigParser()
+        cfg.read(viewer.config_path, encoding="utf-8")
+        assert cfg.get("Channels_List", "tacoma") == "Tacoma chat"
+        assert not cfg.has_option("Channels_List", "olympia")
+
+        accepted = client.post(
+            "/api/plugins/command/channels",
+            json={
+                "enabled": True,
+                "values": {},
+                "dynamic_sections": {
+                    "Channels_List": [
+                        {"key": "seattle", "value": "Seattle chat"},
+                        {"key": "tacoma", "value": "Tacoma chat"},
+                        {"key": "olympia", "value": "Olympia chat"},
+                    ]
+                },
+            },
+        )
+        assert accepted.status_code == 200, accepted.get_json()
+        cfg.read(viewer.config_path, encoding="utf-8")
+        assert cfg.get("Channels_List", "tacoma") == "Tacoma chat"
+        assert cfg.get("Channels_List", "olympia") == "Olympia chat"
+
+    def test_update_still_accepted_without_env(self, viewer, monkeypatch, tmp_path):
+        monkeypatch.delenv(MANAGED_KEYS_ENV, raising=False)
+        client = viewer.app.test_client()
+        resp = client.post(
+            "/api/plugins/command/test",
+            json={"enabled": True, "values": {"distance_unit": "km"}},
+        )
+        assert resp.status_code == 200, resp.get_json()
+        cfg = configparser.ConfigParser()
+        cfg.read(viewer.config_path, encoding="utf-8")
+        assert cfg.get("Test_Command", "distance_unit") == "km"
+
+    def test_other_config_writers_refuse_managed_keys(self, viewer, monkeypatch, tmp_path):
+        _manage(
+            monkeypatch,
+            tmp_path,
+            [
+                ["Connection", "radio_debug"],
+                ["Connection", "radio_probe_interval_seconds"],
+                ["Connection", "radio_zombie_alert_email"],
+                ["Connection", "radio_offline_threshold"],
+                ["Scheduled_Messages", "@daily"],
+            ],
+        )
+        path = Path(viewer.config_path)
+        path.write_text(
+            path.read_text(encoding="utf-8") + "\n[Scheduled_Messages]\n@daily = general:hello\n",
+            encoding="utf-8",
+        )
+        before = path.read_text(encoding="utf-8")
+        client = viewer.app.test_client()
+
+        cases = [
+            ("/api/config/radio-debug", {"enabled": "true", "write_to_config": "true"}),
+            (
+                "/api/config/radio-probe",
+                {"probe_interval_seconds": 360, "probe_fail_threshold": 3, "save_to_config": True},
+            ),
+            (
+                "/api/config/zombie-alert",
+                {"alert_enabled": "true", "alert_email": "ops@example.com", "write_to_config": "true"},
+            ),
+            (
+                "/api/config/radio-offline-alert",
+                {
+                    "offline_threshold": 4,
+                    "alert_enabled": False,
+                    "alert_email": "",
+                    "save_to_config": True,
+                },
+            ),
+        ]
+        for url, payload in cases:
+            resp = client.post(url, json=payload)
+            assert resp.status_code == 400, (url, resp.status_code, resp.get_json())
+            assert resp.get_json()["success"] is False
+            assert "Managed by Home Assistant" in resp.get_json()["error"]
+            assert path.read_text(encoding="utf-8") == before
+
+        deleted = client.delete("/api/scheduled-messages", json={"schedule": "@daily"})
+        assert deleted.status_code == 400, deleted.get_json()
+        assert "Managed by Home Assistant" in deleted.get_json()["error"]
+        assert "@daily = general:hello" in path.read_text(encoding="utf-8")

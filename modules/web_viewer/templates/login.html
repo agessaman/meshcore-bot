@@ -15,11 +15,9 @@
         })();
     </script>
 
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/fonts.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='vendor/fontawesome/css/all.min.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='vendor/bootstrap/bootstrap.min.css') }}" rel="stylesheet">
     <style>
         :root {
             --bg-color: #ffffff;
@@ -31,8 +29,8 @@
             --card-bg: #ffffff;
             --card-header-bg: #f8f9fa;
             --shadow-color: rgba(0, 0, 0, 0.1);
-            --brand: #007bff;
-            --brand-soft: rgba(0, 123, 255, 0.14);
+            --brand: #0d6efd;
+            --brand-soft: rgba(13, 110, 253, 0.14);
         }
 
         [data-theme="dark"] {
@@ -45,7 +43,7 @@
             --card-bg: #252525;
             --card-header-bg: #3d3d3d;
             --shadow-color: rgba(0, 0, 0, 0.45);
-            --brand-soft: rgba(0, 123, 255, 0.18);
+            --brand-soft: rgba(13, 110, 253, 0.18);
         }
 
         html, body {
@@ -72,8 +70,8 @@
             z-index: -1;
             background:
                 radial-gradient(ellipse 90% 55% at 50% -15%, var(--brand-soft), transparent 55%),
-                radial-gradient(ellipse 70% 45% at 100% 100%, rgba(0, 123, 255, 0.06), transparent 50%),
-                radial-gradient(ellipse 50% 35% at 0% 85%, rgba(0, 123, 255, 0.05), transparent 45%);
+                radial-gradient(ellipse 70% 45% at 100% 100%, rgba(13, 110, 253, 0.06), transparent 50%),
+                radial-gradient(ellipse 50% 35% at 0% 85%, rgba(13, 110, 253, 0.05), transparent 45%);
             pointer-events: none;
         }
 
@@ -158,7 +156,7 @@
 
         [data-theme="dark"] .form-control:focus {
             background-color: var(--bg-tertiary);
-            border-color: #007bff;
+            border-color: #0d6efd;
             color: var(--text-color);
         }
 
@@ -180,7 +178,7 @@
     </style>
 </head>
 <body>
-    <div class="login-card">
+    <main class="login-card">
         <div class="card">
             <div class="card-body">
                 <div class="text-center">
@@ -204,6 +202,6 @@
                 </form>
             </div>
         </div>
-    </div>
+    </main>
 </body>
 </html>

@@ -23,10 +23,14 @@ enabled = true
 
 ```ini
 [MapUploader]
-enabled = true                        # Enable map uploader
-api_url = https://map.meshcore.dev/api/v1/uploader/node  # API endpoint
-min_reupload_interval = 3600          # Minimum seconds between re-uploads (1 hour)
-verbose = false                       # Detailed debug logging
+# Enable map uploader
+enabled = true
+# API endpoint
+api_url = https://map.meshcore.dev/api/v1/uploader/node
+# Minimum seconds between re-uploads (1 hour)
+min_reupload_interval = 3600
+# Detailed debug logging
+verbose = false
 ```
 
 ### Private Key (Optional)

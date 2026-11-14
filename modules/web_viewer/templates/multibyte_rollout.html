@@ -2,6 +2,10 @@
 
 {% block title %}Multibyte Hash Rollout - MeshCore Bot Data Viewer{% endblock %}
 
+{% block page_libs %}
+<script src="{{ url_for('static', filename='vendor/chart.js/chart.umd.js') }}"></script>
+{% endblock %}
+
 {% block content %}
 <style>
     /* Dark-mode table hover: keep text readable */
@@ -32,7 +36,7 @@
                     <button class="btn btn-outline-primary" data-node-type="roomserver">Room Servers</button>
                 </div>
                 <!-- Timespan -->
-                <select id="timespan-select" class="form-select form-select-sm" style="width: auto;">
+                <select id="timespan-select" aria-label="Time range" class="form-select form-select-sm" style="width: auto;">
                     <option value="24h">Last 24 hours</option>
                     <option value="7d">Last 7 days</option>
                     <option value="30d" selected>Last 30 days</option>
@@ -196,7 +200,7 @@
                                 <button class="btn btn-outline-warning" data-filter="single_byte">No MB</button>
                                 <button class="btn btn-outline-secondary" data-filter="unknown">Unknown</button>
                             </div>
-                            <input type="text" id="repeater-search" class="form-control form-control-sm"
+                            <input type="text" id="repeater-search" aria-label="Search repeaters" class="form-control form-control-sm"
                                    placeholder="Search name or location&hellip;" style="max-width:240px;">
                         </div>
                         <div class="table-responsive">

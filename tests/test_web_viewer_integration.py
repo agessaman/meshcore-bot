@@ -300,6 +300,33 @@ class TestCaptureCommand:
         assert parsed["user_input"] == "@[AlphaBot👾] hi"
         assert parsed["command"] == "hello"
 
+    def test_carries_trigger_and_reply_packet_hashes(self):
+        """The realtime tape joins a command to the packet that triggered it and to its heard-back reply."""
+        bi = _make_bot_integration()
+        bi.bot.transmission_tracker = Mock()
+        bi.bot.transmission_tracker.get_repeat_info.return_value = {
+            "repeat_count": 2, "repeater_prefixes": ["7e"], "repeater_counts": {"7e": 2},
+            "packet_hash": "FEEDFACE00112233",
+        }
+        msg = MeshMessage(
+            content="wx", sender_id="Kim", channel="#bot",
+            routing_info={"packet_hash": "ABCDEF0123456789"},
+        )
+        bi.capture_command(msg, "wx", "54F", True, command_id="cmd-1")
+        parsed = json.loads(bi._write_queue.get_nowait()[1])
+        assert parsed["trigger_packet_hash"] == "ABCDEF0123456789"
+        assert parsed["reply_packet_hash"] == "FEEDFACE00112233"
+
+    def test_omits_packet_hashes_it_does_not_have(self):
+        bi = _make_bot_integration()
+        bi.bot.transmission_tracker = None
+        msg = MeshMessage(content="wx", sender_id="Kim", channel="#bot",
+                          routing_info={"packet_hash": "0000000000000000"})
+        bi.capture_command(msg, "wx", "54F", True)
+        parsed = json.loads(bi._write_queue.get_nowait()[1])
+        assert "trigger_packet_hash" not in parsed
+        assert "reply_packet_hash" not in parsed
+
     def test_no_transmission_tracker(self):
         bi = _make_bot_integration()
         bi.bot.transmission_tracker = None
@@ -364,10 +391,46 @@ class TestCaptureChannelMessage:
         msg.hops = 0
         msg.path = ""
         msg.is_dm = True
+        msg.routing_info = None
         bi.capture_channel_message(msg)
         ts, data, _, *_dims = bi._write_queue.get_nowait()
         parsed = json.loads(data)
         assert parsed["is_dm"] is True
+        assert "packet_hash" not in parsed
+
+    def test_stores_packet_hash_from_routing_info(self):
+        """#270: message rows carry packet_hash so routes can link back to the packet."""
+        bi = _make_bot_integration()
+        msg = MeshMessage(
+            content="hello",
+            sender_id="aa",
+            channel="general",
+            hops=1,
+            is_dm=False,
+            routing_info={"packet_hash": "ABCDEF0123456789", "path_length": 1},
+        )
+        bi.capture_channel_message(msg)
+        _, data, row_type, *_dims = bi._write_queue.get_nowait()
+        assert row_type == "message"
+        parsed = json.loads(data)
+        assert parsed["packet_hash"] == "ABCDEF0123456789"
+
+    def test_omits_missing_or_all_zero_packet_hash(self):
+        """#270: do not invent a hash when routing_info lacks a real one."""
+        bi = _make_bot_integration()
+        for routing_info in (None, {}, {"packet_hash": ""}, {"packet_hash": "0000000000000000"}):
+            msg = MeshMessage(
+                content="hello",
+                sender_id="aa",
+                channel="general",
+                hops=0,
+                is_dm=False,
+                routing_info=routing_info,
+            )
+            bi.capture_channel_message(msg)
+            _, data, _, *_dims = bi._write_queue.get_nowait()
+            parsed = json.loads(data)
+            assert "packet_hash" not in parsed, routing_info
 
 
 # ---------------------------------------------------------------------------
@@ -465,6 +528,20 @@ class TestWebViewerIntegrationValidation:
         assert "0.0.0.0" in msg
         assert "web_viewer_password" in msg
 
+    def test_zero_host_without_password_does_not_log_when_ha_ingress(self):
+        from modules.web_viewer.integration import WebViewerIntegration
+        bot = _make_bot()
+        bot.config.set("Web_Viewer", "enabled", "true")
+        bot.config.set("Web_Viewer", "host", "0.0.0.0")
+        bot.config.set("Web_Viewer", "web_viewer_password", "")
+        bot.config.set("Web_Viewer", "ha_ingress", "true")
+        with patch.object(WebViewerIntegration, "start_viewer"):
+            with patch("modules.web_viewer.integration.BotIntegration._init_http_session"), \
+                 patch("modules.web_viewer.integration.BotIntegration._init_packet_stream_table"), \
+                 patch("modules.web_viewer.integration.BotIntegration._start_drain_thread"):
+                WebViewerIntegration(bot)
+        bot.logger.error.assert_not_called()
+
     def test_zero_host_without_password_does_not_log_when_disabled(self):
         from modules.web_viewer.integration import WebViewerIntegration
         bot = _make_bot()
@@ -548,6 +625,30 @@ class TestWebViewerIntegrationValidation:
 
         thread.start.assert_called_once()
         assert wvi.running is True
+
+    def test_start_viewer_twice_is_idempotent_and_quiet(self, tmp_path):
+        from modules.web_viewer.integration import WebViewerIntegration
+
+        bot = _make_bot()
+        bot.config_file = str(tmp_path / "config.ini")
+        Path(bot.config_file).write_text("[Bot]\n", encoding="utf-8")
+        bot.config.set("Web_Viewer", "db_path", "viewer.db")
+        bot.db_manager.db_path = str(tmp_path / "bot.db")
+
+        with patch("modules.web_viewer.integration.BotIntegration._init_http_session"), \
+             patch("modules.web_viewer.integration.BotIntegration._init_packet_stream_table"), \
+             patch("modules.web_viewer.integration.BotIntegration._start_drain_thread"):
+            wvi = WebViewerIntegration(bot)
+
+        with patch("modules.web_viewer.integration.threading.Thread") as thread_cls:
+            wvi.start_viewer()
+            wvi.start_viewer()
+
+        thread_cls.return_value.start.assert_called_once()
+        warnings = [str(call.args[0]) for call in bot.logger.warning.call_args_list]
+        assert not any("already running" in message for message in warnings)
+        debug = [str(call.args[0]) for call in bot.logger.debug.call_args_list]
+        assert any("already running" in message for message in debug)
 
 
 class TestNormalizedWebViewerPassword:

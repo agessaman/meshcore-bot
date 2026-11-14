@@ -21,6 +21,9 @@
         requests
         pycryptodome
       ];
+      # meshcore-cli before 1.4 pins bleak<2.0, which nixpkgs has outgrown; the
+      # bot only uses next_cmd from it, and later releases drop the cap.
+      pythonRelaxDeps = ["bleak"];
     });
 
     # Custom Python packages not in nixpkgs - fetch from PyPI

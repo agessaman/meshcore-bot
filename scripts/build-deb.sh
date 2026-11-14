@@ -22,7 +22,7 @@ fi
 if [[ -z "${VERSION}" ]]; then
     echo "ERROR: Could not read the version from pyproject.toml" >&2
     echo "       Install tomli (Python 3.10) or pass the version explicitly:" >&2
-    echo "       ./scripts/build-deb.sh 1.1.0" >&2
+    echo "       ./scripts/build-deb.sh 1.2.0" >&2
     exit 1
 fi
 
@@ -120,7 +120,7 @@ Type=simple
 User=meshcore
 Group=meshcore
 WorkingDirectory=/opt/meshcore-bot
-ExecStart=/opt/meshcore-bot/venv/bin/python /opt/meshcore-bot/meshcore_bot.py --config /etc/meshcore-bot/config.ini
+ExecStart=/opt/meshcore-bot/venv/bin/python /opt/meshcore-bot/meshcore_bot.py --config /etc/meshcore-bot/config.ini --wait-for-lock
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=always
 RestartSec=10
