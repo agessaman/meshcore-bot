@@ -1,0 +1,2325 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Documentation for the MeshCore bot and its services">
+      
+      
+      
+        <link rel="canonical" href="https://agessaman.github.io/meshcore-bot/scheduled-messages/">
+      
+      
+        <link rel="prev" href="../configuration/">
+      
+      
+        <link rel="next" href="../data-retention/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.1">
+    
+    
+      
+        <title>Scheduled messages - Meshcore Bot Documentation</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="cyan">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#scheduled-messages-scheduled_messages" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Meshcore Bot Documentation" class="md-header__button md-logo" aria-label="Meshcore Bot Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Meshcore Bot Documentation
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Scheduled messages
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="cyan"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="cyan"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/agessaman/meshcore-bot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    meshcore-bot
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../getting-started/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Quick Start
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../installation/" class="md-tabs__link">
+          
+  
+  
+  Installation
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../configuration/" class="md-tabs__link">
+          
+  
+  
+  Configuration
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../web-viewer/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Web Viewer
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../command-reference/" class="md-tabs__link">
+          
+  
+  
+  Command Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../service-plugins/" class="md-tabs__link">
+          
+  
+  
+  Service Plugins
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../faq/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  FAQ
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../upgrade/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Upgrade
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../solar-conditions-provenance/" class="md-tabs__link">
+          
+  
+  
+  Project
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+  
+
+<nav class="md-nav md-nav--primary md-nav--lifted md-nav--integrated" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Meshcore Bot Documentation" class="md-nav__button md-logo" aria-label="Meshcore Bot Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Meshcore Bot Documentation
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/agessaman/meshcore-bot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    meshcore-bot
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Installation
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../home-assistant/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home Assistant
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../service-installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Service
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Configuration
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scheduled messages
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scheduled messages
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#format-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Format reference
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Format reference">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#schedule-key" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Schedule key
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#value" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Value
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#message-text" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Message text
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-is-rejected" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What is rejected
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#managing-schedules-from-the-web-viewer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Managing schedules from the web viewer
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#broadcasting-a-commands-output-cmd" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Broadcasting a command's output ({cmd:...})
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Broadcasting a command&#39;s output ({cmd:...})">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#airtime-guards" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Airtime guards
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#schedule-keys-apscheduler-cron-not-vixie" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Schedule keys (APScheduler cron, not Vixie)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Schedule keys (APScheduler cron, not Vixie)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#limiting-a-schedule-to-a-date-range" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Limiting a schedule to a date range
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#nth-and-last-weekday-of-the-month" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Nth and last weekday of the month
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#every-other-week" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Every other week
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data-retention/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data retention
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../local-plugins/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Local plugins and services
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../checkin-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Check-in API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../path-command-config/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Path Command
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../config-validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Config validation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../region-scopes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Region scopes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../region-warnings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Region warnings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../repeater-watch/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Repeater watch
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../web-viewer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Web Viewer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Command Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Command Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../command-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../repeater-commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Repeater Commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../command-reference-website/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Custom Command Website
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../develop-command-scripts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Developing Commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Service Plugins
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Service Plugins
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../service-plugins/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../discord-bridge/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Discord Bridge
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../telegram-bridge/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Telegram Bridge
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../packet-capture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Packet Capture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../map-uploader/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Map Uploader
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../weather-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Weather Service
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../earthquake-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Earthquake Service
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../repeater-prefix-collision-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Repeater Prefix Collision
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../worldcup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    World Cup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../FEEDS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Feed Management
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../faq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FAQ
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../upgrade/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Upgrade
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
+        
+          
+          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Project
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_10">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Project
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../solar-conditions-provenance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Solar conditions provenance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="scheduled-messages-scheduled_messages">Scheduled messages (<code>[Scheduled_Messages]</code>)</h1>
+<p>Each line of <code>[Scheduled_Messages]</code> posts one message to a channel on a schedule. The format is summarized in the reference below; the sections after it explain each part with examples. The <strong><code>schedule</code></strong> command lists every job, with <code>(#scope)</code> when one is set.</p>
+<h2 id="format-reference">Format reference</h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="na">&lt;schedule key&gt;</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">[start=YYYY-MM-DD] [end=YYYY-MM-DD] [week=&lt;weeks&gt;] &lt;channel&gt;:[</span><span class="c1">#&lt;scope&gt;:]&lt;message&gt;</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="k">[Scheduled_Messages]</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="na">0 8 * * *</span><span class="w">         </span><span class="o">=</span><span class="w"> </span><span class="s">Public:Good morning</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="na">30 12 * * mon-fri</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">Public:</span><span class="c1">#sea:Lunch net in 30 minutes</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="na">0 19 last-fri * *</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">start=2027-01-01 end=2027-03-31 Public:Winter net starts now</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="na">0 20 * * tue</span><span class="w">      </span><span class="o">=</span><span class="w"> </span><span class="s">week=*/2 Public:</span><span class="c1">#sea:Fortnightly net</span>
+</code></pre></div>
+<p>Times are in <code>[Bot] timezone</code>. Each schedule key can appear only once in the section.</p>
+<h3 id="schedule-key">Schedule key</h3>
+<p>A key is one of:</p>
+<table>
+<thead>
+<tr>
+<th>Form</th>
+<th>Example</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Five crontab fields</td>
+<td><code>30 12 * * mon</code></td>
+<td><code>minute hour day-of-month month day-of-week</code></td>
+</tr>
+<tr>
+<td>Preset</td>
+<td><code>@daily</code></td>
+<td><code>@yearly</code>/<code>@annually</code> <code>0 0 1 1 *</code>, <code>@monthly</code> <code>0 0 1 * *</code>, <code>@weekly</code> <code>0 0 * * 0</code> (Monday), <code>@daily</code>/<code>@midnight</code> <code>0 0 * * *</code>, <code>@hourly</code> <code>0 * * * *</code></td>
+</tr>
+<tr>
+<td><code>HHMM</code> (deprecated)</td>
+<td><code>0800</code></td>
+<td>Every day at 08:00. Still works, logs a warning; write <code>0 8 * * *</code> instead.</td>
+</tr>
+</tbody>
+</table>
+<p>The five fields:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Values</th>
+<th>Names</th>
+<th>Also</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>minute</td>
+<td><code>0</code>–<code>59</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>hour</td>
+<td><code>0</code>–<code>23</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>day-of-month</td>
+<td><code>1</code>–<code>31</code></td>
+<td></td>
+<td><code>last</code> (last day of the month); <code>1st</code>…<code>5th</code> or <code>last</code>, a <code>-</code> or <code>_</code>, and a weekday: <code>last-fri</code>, <code>2nd-wed</code></td>
+</tr>
+<tr>
+<td>month</td>
+<td><code>1</code>–<code>12</code></td>
+<td><code>jan</code>–<code>dec</code></td>
+<td></td>
+</tr>
+<tr>
+<td>day-of-week</td>
+<td><code>0</code>–<code>6</code>, <strong><code>0</code> is Monday</strong></td>
+<td><code>mon</code>–<code>sun</code></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p>Every field takes <code>*</code> (any), a value (<code>5</code>), a range (<code>1-5</code>, <code>mon-fri</code>), a step (<code>*/15</code>, <code>0-30/10</code>) and a comma list of any of these (<code>0,30</code>, <code>1st-tue,3rd-tue</code>). Names and positional days are case-insensitive.</p>
+<p>A positional day (<code>last-fri</code>, <code>4th-tue</code>) already names its weekday, so day-of-week must be <code>*</code> when you use one. It must stand alone between commas, and it is only valid in the day-of-month field. A month without a fifth Tuesday skips <code>5th-tue</code>.</p>
+<h3 id="value">Value</h3>
+<table>
+<thead>
+<tr>
+<th>Part</th>
+<th>Required</th>
+<th>Format</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>start=</code></td>
+<td>no</td>
+<td><code>YYYY-MM-DD</code></td>
+<td>First day the schedule may run</td>
+</tr>
+<tr>
+<td><code>end=</code></td>
+<td>no</td>
+<td><code>YYYY-MM-DD</code></td>
+<td>Last day it may run, through the end of that day</td>
+</tr>
+<tr>
+<td><code>week=</code></td>
+<td>no</td>
+<td>ISO week numbers <code>1</code>–<code>53</code>, with the field syntax above</td>
+<td><code>*/2</code> odd weeks, <code>2-53/2</code> even weeks, <code>1-26</code> first half of the year</td>
+</tr>
+<tr>
+<td>channel</td>
+<td>yes</td>
+<td>channel name, no <code>:</code></td>
+<td>Where the message goes</td>
+</tr>
+<tr>
+<td><code>#scope</code></td>
+<td>no</td>
+<td><code>#name</code>, no <code>:</code></td>
+<td>Regional flood scope for this send only; leave it out for the channel's usual scope</td>
+</tr>
+<tr>
+<td>message</td>
+<td>yes</td>
+<td>text, may contain <code>:</code></td>
+<td>What is sent</td>
+</tr>
+</tbody>
+</table>
+<p>The three options come first, in any order, each followed by a space, and each at most once. The option names are case-insensitive. The first <code>:</code> ends the channel. When the next segment starts with <code>#</code> and is followed by another <code>:</code>, it is the scope; everything after is the message.</p>
+<h3 id="message-text">Message text</h3>
+<ul>
+<li><code>\n</code> is a line break, <code>\t</code> a tab, <code>\r</code> a carriage return, and <code>\\</code> a literal backslash (<code>\\n</code> sends a backslash and an <code>n</code>).</li>
+<li><code>{cmd:&lt;command&gt; [args]}</code> inserts a command's reply. See <a href="#broadcasting-a-commands-output-cmd">Broadcasting a command's output</a> for its limits, including the 15-minute minimum between runs.</li>
+<li>Mesh counts can be inserted by name:<ul>
+<li>Ever heard: <code>{total_contacts}</code>, <code>{total_repeaters}</code>, <code>{total_companions}</code>, <code>{total_roomservers}</code>, <code>{total_sensors}</code></li>
+<li>Heard in the last 30 days: <code>{total_contacts_30d}</code>, <code>{total_repeaters_30d}</code>, <code>{total_companions_30d}</code>, <code>{total_roomservers_30d}</code>, <code>{total_sensors_30d}</code></li>
+<li>First heard in the last 7 days: <code>{new_companions_7d}</code>, <code>{new_repeaters_7d}</code>, <code>{new_roomservers_7d}</code>, <code>{new_sensors_7d}</code></li>
+<li>Unique users active in the last 24 hours: <code>{recent_activity_24h}</code></li>
+<li>Old names: <code>{repeaters}</code> and <code>{companions}</code>, the same as <code>{total_repeaters}</code> and <code>{total_companions}</code></li>
+</ul>
+</li>
+<li>A message longer than one channel message is split into parts and sent as several messages.</li>
+</ul>
+<h3 id="what-is-rejected">What is rejected</h3>
+<p>The bot logs a warning at startup and does not schedule an entry it can't run as written. The web viewer refuses the same entries when you save, with the reason.</p>
+<table>
+<thead>
+<tr>
+<th>Written</th>
+<th>Problem</th>
+<th>Write instead</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0 12 * * 7</code></td>
+<td>Day-of-week stops at <code>6</code> (Sunday)</td>
+<td><code>0 12 * * sun</code></td>
+</tr>
+<tr>
+<td><code>0 8 * *</code></td>
+<td>Four fields</td>
+<td>Five fields: <code>0 8 * * *</code></td>
+</tr>
+<tr>
+<td><code>0 19 lastfri * *</code>, <code>0 19 last--fri * *</code></td>
+<td>Not a day-of-month</td>
+<td><code>0 19 last-fri * *</code></td>
+</tr>
+<tr>
+<td><code>0 19 1st-tue-3rd-tue * *</code></td>
+<td>Two positional days joined</td>
+<td><code>0 19 1st-tue,3rd-tue * *</code></td>
+</tr>
+<tr>
+<td><code>0 19 last-fri/2 * *</code></td>
+<td>Positional days take no step</td>
+<td><code>week=*/2</code> on the value</td>
+</tr>
+<tr>
+<td><code>0 19 1st-tue * mon</code></td>
+<td>Positional day with a day-of-week (would never fire)</td>
+<td><code>0 19 1st-tue * *</code></td>
+</tr>
+<tr>
+<td><code>0 19 * * last-fri</code></td>
+<td>Positional day in the day-of-week field</td>
+<td><code>0 19 last-fri * *</code></td>
+</tr>
+<tr>
+<td><code>start=20270101</code></td>
+<td>Date not written <code>YYYY-MM-DD</code></td>
+<td><code>start=2027-01-01</code></td>
+</tr>
+<tr>
+<td><code>start=2027-02-01 end=2027-01-01</code></td>
+<td>End before start</td>
+<td>Swap the dates</td>
+</tr>
+<tr>
+<td><code>start=…</code> given twice</td>
+<td>Option repeated</td>
+<td>Give it once</td>
+</tr>
+<tr>
+<td><code>start=2027-01-01</code> alone</td>
+<td>No channel or message after the options</td>
+<td><code>start=2027-01-01 Public:Hello</code></td>
+</tr>
+<tr>
+<td><code>week=60</code></td>
+<td>ISO weeks stop at <code>53</code></td>
+<td><code>week=1-53/2</code> or similar</td>
+</tr>
+<tr>
+<td>A schedule whose runs are all past</td>
+<td>Nothing left to run</td>
+<td>Move or remove <code>end=</code></td>
+</tr>
+<tr>
+<td><code>{cmd:...}</code> in a schedule that runs more often than every 15 minutes</td>
+<td>Airtime guard</td>
+<td>Run it every 15 minutes or less often</td>
+</tr>
+</tbody>
+</table>
+<p>Two entries only the web viewer can catch, since by hand they are valid but mean something else:</p>
+<ul>
+<li>A message with no scope that starts with <code>#name:</code>, such as <code>Public:#net: tonight at 7</code>, is read as the scope <code>#net</code> with the message <code>tonight at 7</code>. Set a scope, or reword the start.</li>
+<li>A channel whose name starts with <code>start=</code>, <code>end=</code> or <code>week=</code> followed by a space is read as an option.</li>
+</ul>
+<h2 id="managing-schedules-from-the-web-viewer">Managing schedules from the web viewer</h2>
+<p>The <strong>Schedule</strong> page in the web viewer edits this section for you. It writes <code>config.ini</code> and queues a config reload, so new and changed schedules take effect <strong>without restarting the bot</strong>.</p>
+<p>It is an editor for the same <code>[Scheduled_Messages]</code> section, not a separate store, so entries added by hand and entries added in the UI are the same thing and the <code>schedule</code> command lists both.</p>
+<p>The editor builds the cron key from plain-language options (every day at a time, several times a day, certain days of the week, one day a month such as the 2nd Wednesday or the last day, every N hours or minutes) and shows the resolved expression plus the next five run times before you save. "Advanced (cron)" accepts a raw expression. An existing entry opens in the plain-language option that reproduces it exactly, or in Advanced when none does, so a stored expression is never silently rewritten. Start and end dates and the every-other-week setting sit below the schedule.</p>
+<p>Schedules that the bot cannot run are listed rather than hidden, marked <strong>Not scheduled</strong> with the reason, so a typo that stops a message from airing is visible instead of silent. The 15-minute floor for <code>{cmd:...}</code> messages is enforced in the editor too, so it is refused when you save rather than dropped later at startup.</p>
+<h2 id="broadcasting-a-commands-output-cmd">Broadcasting a command's output (<code>{cmd:...}</code>)</h2>
+<p>A scheduled message can embed the reply of any bot command with <strong><code>{cmd:&lt;command&gt; [args]}</code></strong>. The command runs for its text only — it transmits nothing itself — and the scheduled message carries the result. This is how you put a recurring forecast (or any other command) on the air without that command needing its own scheduling settings:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="k">[Scheduled_Messages]</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="na">0 6,12,18 * * *</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">Public:{cmd:wx Seattle}</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="na">*/30 * * * *</span><span class="w">    </span><span class="o">=</span><span class="w"> </span><span class="s">Public:Conditions now: {cmd:wx 98101}</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="na">@hourly</span><span class="w">         </span><span class="o">=</span><span class="w"> </span><span class="s">Public:{cmd:aqi Tacoma}</span>
+</code></pre></div>
+<p>The trigger is matched against command <strong>names and their keywords</strong>, so <code>{cmd:weather Seattle}</code> and <code>{cmd:wx Seattle}</code> are the same command. Arguments are passed through exactly as a user would type them.</p>
+<p>A placeholder expands to <strong>nothing</strong> (and logs a warning) when the command is unknown, disabled in config, admin-only, times out, or returns no output — the literal <code>{cmd:...}</code> is never transmitted. If a message is empty after expansion, nothing is sent at all. Command output is not re-scanned, so a reply that happens to contain <code>{cmd:...}</code> cannot recurse.</p>
+<h3 id="airtime-guards">Airtime guards</h3>
+<p>Every firing is a transmission on a shared medium, and a command placeholder makes it easy to write a cron that airs several times an hour. Two guards apply, and neither is configurable:</p>
+<ul>
+<li><strong>A 15-minute floor.</strong> A schedule containing <code>{cmd:...}</code> may not fire more often than every 15 minutes. An entry that does is <strong>rejected at startup</strong> with an error and is not scheduled at all — it does not silently run at a slower rate. The check measures the <em>tightest</em> gap between firings, so <code>0,1 * * * *</code> is treated as a 60-second schedule rather than an hourly one. Schedules with no command placeholder are unaffected.</li>
+<li><strong>The command's own cooldown still applies.</strong> <code>[&lt;Name&gt;_Command] cooldown_seconds</code> is not bypassed by scheduling. If the command is on cooldown when the schedule fires, the placeholder expands to nothing for that round and logs a warning.</li>
+</ul>
+<p>Other limits worth knowing:</p>
+<ul>
+<li><strong>Only commands marked <code>render_safe</code> can be rendered.</strong> Capture intercepts <code>send_response</code> and <code>send_response_chunked</code>, so a command that transmits by other means (<code>advert</code>), posts its own messages (<code>announcements</code>), or is DM-only (<code>schedule</code>, which would broadcast configuration) is refused. This is opt-in rather than a denylist, so a new command is never renderable by accident. The read-only informational commands (<code>wx</code>, <code>gwx</code>, <code>aqi</code>, <code>sun</code>, <code>moon</code>, <code>solar</code>, <code>hfcond</code>, <code>satpass</code>, <code>rain</code>, <code>stats</code>, and similar) are marked safe.</li>
+<li><code>[Bot] scheduled_command_timeout_seconds</code> (default <code>30</code>) bounds each render. Network-backed commands like <code>wx</code> need the headroom.</li>
+</ul>
+<p>A rendered reply longer than one message is split to the RF body budget and sent as several messages rather than failing at the device.</p>
+<p>Even within the floor, mind the cost: a <code>*/15 * * * *</code> forecast is 96 transmissions a day.</p>
+<h2 id="schedule-keys-apscheduler-cron-not-vixie">Schedule keys (APScheduler cron, not Vixie)</h2>
+<p>Schedule keys become <strong>APScheduler</strong> cron triggers, built the way <code>CronTrigger.from_crontab</code> builds them, with positional days of the month, <code>@</code> presets and the deprecated <code>HHMM</code> form added on top. Field order is the usual five: <code>minute hour day-of-month month day-of-week</code>.</p>
+<p><strong>Day-of-week numbering differs from classic Vixie / crontab(5):</strong></p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>APScheduler (this bot)</th>
+<th>Vixie cron</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0</code></td>
+<td>Monday</td>
+<td>Sunday</td>
+</tr>
+<tr>
+<td><code>1</code> … <code>6</code></td>
+<td>Tuesday … Sunday</td>
+<td>Monday … Saturday</td>
+</tr>
+<tr>
+<td><code>7</code></td>
+<td>Invalid</td>
+<td>Often accepted as Sunday</td>
+</tr>
+</tbody>
+</table>
+<p>Prefer <strong><code>mon</code>–<code>sun</code></strong> names in the DOW field so expressions stay unambiguous. Example: Monday 12:30 is <code>30 12 * * mon</code> or <code>30 12 * * 0</code> — <strong>not</strong> Vixie’s <code>30 12 * * 1</code> (that is Tuesday here).</p>
+<p>Months take three-letter names too (<code>0 9 1 jan,jul *</code>, <code>0 19 last-fri may-sep *</code>), and <code>last</code> alone in the day-of-month field is the last day of the month.</p>
+<p>Preset aliases expand to those same APScheduler forms. In particular <strong><code>@weekly</code></strong> is Monday 00:00 (<code>0 0 * * 0</code>), not Sunday midnight as on many Unix crons.</p>
+<h3 id="limiting-a-schedule-to-a-date-range">Limiting a schedule to a date range</h3>
+<p>Crontab has no field for a date range, so <code>start=</code> / <code>end=</code> bounds live on the <strong>value</strong>, ahead of the channel:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">[Scheduled_Messages]</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="na">0 19 last-fri * *</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">start=2027-01-01 end=2027-03-31 Public:Winter net starts now</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="na">0 8 * * *</span><span class="w">         </span><span class="o">=</span><span class="w"> </span><span class="s">end=2026-12-25 Public:</span><span class="c1">#sea:Countdown to the holidays</span>
+</code></pre></div>
+<p>Either bound may be omitted and they may appear in either order. <code>=</code> keeps them clear of the <code>:</code> that separates channel from message, and because they are anchored to the front of the value a message body mentioning <code>start=</code> is never mistaken for one.</p>
+<p>The end date is <strong>inclusive</strong> — <code>end=2027-03-31</code> runs through the whole of the 31st, not up to its midnight. Once a bounded schedule has no runs left the bot skips it at startup with a log line saying so, and the web viewer shows it as <strong>Finished</strong> rather than hiding it.</p>
+<h3 id="nth-and-last-weekday-of-the-month">Nth and last weekday of the month</h3>
+<p>APScheduler's day-of-month field understands positional expressions like <code>last fri</code> and <code>4th tue</code>, which plain crontab cannot express. They contain a space, so write it as <code>-</code> (or <code>_</code>) to keep the five fields intact:</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Fires</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0 19 last-fri * *</code></td>
+<td>19:00 on the last Friday of every month</td>
+</tr>
+<tr>
+<td><code>0 19 4th-tue * *</code></td>
+<td>19:00 on the fourth Tuesday</td>
+</tr>
+<tr>
+<td><code>0 19 1st-tue,3rd-tue * *</code></td>
+<td>19:00 on the first and third Tuesday</td>
+</tr>
+<tr>
+<td><code>0 19 last * *</code></td>
+<td>19:00 on the last day of the month (no weekday needed)</td>
+</tr>
+</tbody>
+</table>
+<p>Prefixes are <code>1st</code> <code>2nd</code> <code>3rd</code> <code>4th</code> <code>5th</code> <code>last</code>, followed by <code>mon</code>–<code>sun</code>. They are valid <strong>only in the day-of-month field</strong> — <code>0 19 * * last-fri</code> is rejected.</p>
+<p>Two things to keep in mind. A month may have no fifth Tuesday, so <code>5th tue</code> simply skips those months. And <code>1st-tue,3rd-tue</code> is a 14/14/21-day cadence across a month boundary, not a strict fortnight: crontab matches calendar patterns and has no way to say "every 14 days". For a strict fortnight, use <code>week=</code> (next section).</p>
+<h3 id="every-other-week">Every other week</h3>
+<p>Plain crontab cannot say "every other Tuesday", and <code>1st-tue,3rd-tue</code> drifts to a three-week gap whenever a month has five Tuesdays. For a strict fortnight, add <code>week=</code> to the value with an ISO week-number expression:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">[Scheduled_Messages]</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="na">0 20 * * tue</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">week=*/2 Public:</span><span class="c1">#sea:Fortnightly net</span>
+</code></pre></div>
+<p><code>week=*/2</code> runs in odd ISO weeks (1, 3, 5 …) and <code>week=2-53/2</code> in even ones (a schedule key can appear only once in the section, so the two alternations need different keys); any APScheduler week expression works, such as <code>week=1-26</code> for the first half of the year. It goes with <code>start=</code> and <code>end=</code> ahead of the channel, in any order. The web viewer's <strong>Weeks</strong> setting offers both alternations.</p>
+<p>ISO years have 52 or 53 weeks, so in a 53-week year (2026, 2032) the odd setting runs in week 53 and again in week 1, two weeks running at New Year. The even setting skips from week 52 to week 2, a three-week gap.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.tracking", "navigation.tabs", "navigation.sections", "toc.integrate", "content.code.copy"], "search": "../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.a5f9d56c.min.js"></script>
+      
+    
+  </body>
+</html>
