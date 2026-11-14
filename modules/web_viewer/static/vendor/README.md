@@ -14,7 +14,7 @@ The versions are pinned in `scripts/web-vendor/package.json` and its lockfile, a
 | `leaflet` | 1.9.4 | BSD-2-Clause | `vendor/leaflet/` |
 | `maplibre-gl` | 5.6.0 | BSD-3-Clause | `vendor/maplibre-gl/` |
 | `@maplibre/maplibre-gl-leaflet` | 0.1.4 | ISC | `vendor/maplibre-gl-leaflet/` |
-| `vis-network` | 9.1.9 | (Apache-2.0 OR MIT) | `vendor/vis-network/` |
+| `vis-network` | 10.1.5 | (Apache-2.0 OR MIT) | `vendor/vis-network/` |
 | `js-sha256` | 0.11.0 | MIT | `vendor/js-sha256/` |
 | `@fontsource-variable/dm-sans` | 5.3.0 | OFL-1.1 | `fonts/` |
 | `@fontsource-variable/outfit` | 5.3.0 | OFL-1.1 | `fonts/` |
