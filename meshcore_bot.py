@@ -324,6 +324,29 @@ def main():
         recovery_note = f"; recovery backup: {recovery}" if recovery else ""
         print(f"Applied pending database restore: {restore_result.database_path}{recovery_note}")
 
+    # The instance lock is held and nothing has the database open yet, so a
+    # database left corrupt by a previous run can be moved aside and replaced
+    # from a validated backup before migrations touch it.
+    from modules.database_health import recover_corrupt_databases_from_config
+
+    try:
+        recovery_results = recover_corrupt_databases_from_config(args.config)
+    except DatabaseRestoreError as exc:
+        print(f"Error: database recovery failed: {exc}", file=sys.stderr)
+        sys.exit(1)
+    for recovery_result in recovery_results:
+        outcome = (
+            f"restored from {recovery_result.restored_from}"
+            if recovery_result.restored_from is not None
+            else "starting with a new empty database"
+        )
+        print(
+            f"Corrupt database {recovery_result.database_path} "
+            f"({recovery_result.detail}); moved to "
+            f"{recovery_result.quarantined_path}; {outcome}",
+            file=sys.stderr,
+        )
+
     from modules.core import MeshCoreBot
 
     try:
@@ -368,6 +391,9 @@ def main():
         if sys.platform != 'win32':
             shutdown_event = asyncio.Event()
             bot_task = None
+            # DBManager can run on a worker thread and ask for the same
+            # shutdown a signal would trigger; it needs the loop's event.
+            bot._asyncio_shutdown_event = shutdown_event
 
             try:
                 # Register signal handlers
@@ -435,6 +461,9 @@ def main():
         print(f"Error: {e}")
         sys.exit(1)
     else:
+        fatal_exit_code = getattr(bot, "fatal_exit_code", None)
+        if fatal_exit_code is not None:
+            sys.exit(int(fatal_exit_code))
         if not started:
             # A startup connection failure must exit non-zero: launchd
             # (KeepAlive SuccessfulExit=false) and the Supervisor watchdog only

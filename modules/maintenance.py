@@ -52,6 +52,24 @@ def _row_n(cur: sqlite3.Cursor) -> int:
         return int(row['n'])
 
 
+def _quick_check_backup(path: Path) -> str | None:
+    """Return the quick_check detail for a new backup, or None when it is intact."""
+
+    try:
+        conn = sqlite3.connect(str(path), timeout=30.0)
+        try:
+            row = conn.execute('PRAGMA quick_check(1)').fetchone()
+        finally:
+            conn.close()
+    except sqlite3.Error as exc:
+        return str(exc) or exc.__class__.__name__
+
+    if not row:
+        return 'quick_check returned no result'
+    detail = str(row[0]).strip()
+    return None if detail.lower() == 'ok' else detail
+
+
 def _count_log_errors_last_24h(log_path: Path) -> tuple[int | str, int | str]:
     """Count ERROR / CRITICAL log lines from the last 24 hours.
 
@@ -678,6 +696,31 @@ class MaintenanceRunner:
             finally:
                 dst.close()
                 src.close()
+
+            check_detail = _quick_check_backup(backup_path)
+            if check_detail is not None:
+                error = f'backup failed integrity check: {check_detail}'
+                self.logger.error(f"DB backup failed integrity check: {backup_path}: {check_detail}")
+                try:
+                    backup_path.unlink()
+                except OSError:
+                    pass
+                wk = _iso_week_key_from_ran_at(ran_at)
+                self._last_db_backup_stats = {
+                    'ran_at': ran_at,
+                    'error': error,
+                    **({'week_key': wk} if wk else {}),
+                }
+                try:
+                    self.bot.db_manager.set_metadata('maint.status.db_backup_ran_at', ran_at)
+                    self.bot.db_manager.set_metadata(
+                        'maint.status.db_backup_outcome', f'error: {error}'
+                    )
+                except Exception:
+                    pass
+                # Do not prune: the known-good older backups are the only
+                # recovery point left after this one failed.
+                return
 
             size_mb = backup_path.stat().st_size / 1_048_576
             self.logger.info(f"DB backup created: {backup_path} ({size_mb:.1f} MB)")

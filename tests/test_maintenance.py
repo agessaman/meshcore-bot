@@ -250,6 +250,54 @@ class TestRunDbBackupIntegration:
         assert dst.execute("SELECT i FROM x").fetchone()[0] == 1
         dst.close()
 
+    def test_bad_backup_is_deleted_and_older_backups_are_not_pruned(
+        self, tmp_path: Path
+    ):
+        db_file = tmp_path / "live.db"
+        src = sqlite3.connect(str(db_file))
+        src.execute("CREATE TABLE x (i INTEGER)")
+        src.execute("INSERT INTO x VALUES (1)")
+        src.commit()
+        src.close()
+
+        backup_dir = tmp_path / "bk"
+        backup_dir.mkdir()
+        older = backup_dir / "live_20260101T000000.db"
+        older.write_bytes(b"older known-good backup")
+
+        bot = MagicMock()
+        bot.logger = Mock()
+        bot.db_manager.db_path = db_file
+        bot.db_manager.get_metadata = Mock(return_value=None)
+        bot.db_manager.set_metadata = Mock()
+
+        def get_maint(key: str) -> str:
+            return {
+                "db_backup_dir": str(backup_dir),
+                "db_backup_retention_count": "1",
+            }.get(key, "")
+
+        runner = MaintenanceRunner(bot, get_current_time=lambda: datetime.datetime.now())
+        runner.get_maint = Mock(side_effect=get_maint)
+
+        with patch(
+            "modules.maintenance._quick_check_backup",
+            return_value="database disk image is malformed",
+        ):
+            runner.run_db_backup()
+
+        backups = list(backup_dir.glob("live_*.db"))
+        assert backups == [older]
+        assert older.read_bytes() == b"older known-good backup"
+        outcomes = [
+            call.args[1]
+            for call in bot.db_manager.set_metadata.call_args_list
+            if call.args[0] == "maint.status.db_backup_outcome"
+        ]
+        assert outcomes
+        assert "integrity check" in outcomes[-1]
+        assert "error" in runner._last_db_backup_stats
+
 
 class TestSmtpHelpers:
     """read_smtp_settings / send_smtp_message are shared by the digest and the radio alerts."""

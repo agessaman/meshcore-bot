@@ -244,6 +244,18 @@ auto_manage_contacts = device
 # Default: meshcore_bot.db
 db_path = meshcore_bot.db
 
+# Keep databases on a local disk. If the database must live on a network share
+# (NFS, SMB, or a NAS mount), set sqlite_journal_mode = DELETE: WAL needs shared
+# memory and locking that network filesystems do not provide reliably.
+#
+# Automatically quarantine a corrupt database at startup and restore the newest
+# backup that passes validation, or create a fresh database when none does.
+# The damaged file is kept as <db>.corrupt-<timestamp>. Default: true
+#db_auto_recover = true
+#
+# SQLite journal mode. Default: WAL (use DELETE on a network share; see above)
+#sqlite_journal_mode = WAL
+
 # Local plugins directory (optional)
 # Directory containing commands/, service_plugins/, and optional config.ini.
 # Relative paths are resolved from the bot root; absolute paths used as-is.

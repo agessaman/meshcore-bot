@@ -6,6 +6,17 @@ semantic versioning.
 
 ## [Unreleased]
 
+### Added
+
+- Automatic SQLite corruption recovery ([#368](https://github.com/agessaman/meshcore-bot/issues/368)): at startup, before migrations run, each configured database is checked with `PRAGMA quick_check(1)`. A corrupt file and its `-wal`/`-shm` sidecars are moved to `<name>.corrupt-<UTC timestamp>` beside the database, the newest backup that passes restore validation is restored, and when no valid backup exists the bot starts with a new empty database. Nothing is deleted, and `[Bot] db_auto_recover = false` disables the automatic path and stops startup with the file name and manual steps instead.
+- Runtime corruption detection ([#368](https://github.com/agessaman/meshcore-bot/issues/368)): a `database disk image is malformed` error during a query is logged at CRITICAL, written to `<db>.corrupt-detected`, and turns into exit status 75 so Docker, systemd, and launchd restart the bot into the startup check. Locks, I/O errors, and permission failures are not treated as corruption.
+- `[Bot] sqlite_journal_mode`, `sqlite_busy_timeout_ms`, `sqlite_foreign_keys`, and `db_auto_recover` are now known config keys and documented in `config.ini.example`, with network-share guidance to keep databases on a local disk or use `sqlite_journal_mode = DELETE` on NFS, SMB, and NAS mounts ([#368](https://github.com/agessaman/meshcore-bot/issues/368)).
+
+### Fixed
+
+- Database backups are now validated with `PRAGMA quick_check(1)` before pruning ([#368](https://github.com/agessaman/meshcore-bot/issues/368)): a newly written backup that fails the check is removed and recorded as an error, and older backups are kept instead of being rotated out behind a bad copy.
+- Docker troubleshooting no longer tells users to delete `-wal`/`-shm` files or to tar a live database, both of which could lose committed transactions ([#368](https://github.com/agessaman/meshcore-bot/issues/368)); the docs now stop the container before copying database files and explain automatic corruption recovery.
+
 ## [1.2.0] - 2026-11-14
 
 ### Added
