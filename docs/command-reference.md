@@ -864,15 +864,13 @@ multitest long     # listen 10s, or wait 2x as long for CoreScope
 multitest xlong    # listen 14s, or wait 3x as long for CoreScope
 ```
 
-**Response:** The unique routing paths found for the triggering message, laid out
-per `[Multitest_Command] condense_paths`.
+**Response:** How many unique routing paths the triggering message took. Where
+they come from, and whether the reply lists them, depends on configuration:
 
-Where those paths come from depends on configuration:
-
-| | Source | Reply time |
-|---|---|---|
-| **Listening** (default) | The bot's own radio, over a 6/10/14s window | right after the window |
-| **CoreScope** (`corescope_enabled`) | Every observer reporting to a CoreScope instance | `corescope_settle_seconds` later, 30s by default |
+| | Source | Reply | Reply time |
+|---|---|---|---|
+| **Listening** (default) | The bot's own radio, over a 6/10/14s window | the paths themselves, laid out per `condense_paths` | right after the window |
+| **CoreScope** (`corescope_enabled`) | Every observer reporting to a CoreScope instance | the count and a shortened map link | `corescope_settle_seconds` later, 30s by default |
 
 **Listening mode** hears only the routes that reached *this* radio, which is
 usually a handful. It is the original behaviour and needs nothing but the bot.
@@ -890,6 +888,20 @@ hears a few. Three things to know before turning it on:
   asking immediately counts only whoever reported first. The bot acknowledges the
   request at once (`corescope_ack_message`), waits `corescope_settle_seconds`, then
   answers. `long` and `xlong` wait 2x and 3x rather than lengthening a window.
+- **The reply links instead of listing.** An observer network routinely reports
+  dozens of routes; 40 of them measured 1285 bytes, around eight transmissions for
+  one command on a shared channel. So the default reply sends the count, what the
+  network saw, and a shortened `&paths=all` map link that draws every route:
+
+  ```
+  Paths(40) via 25 obs (46 rx, 12 hops)
+  https://v.gd/Ab3xYz
+  ```
+
+  Setting `response_format` overrides that, so a template carrying `{paths}` does
+  send the whole list -- including the one shipped in `config.ini.example`, which
+  is written for listening mode. Blank the field, or drop `{paths}` from it, when
+  turning CoreScope on.
 - **The count is of routes, not receptions.** Two observers hearing the same
   packet by the same route is one path; one observer hearing it two hops out while
   another hears it three hops out is two. The number will not match the row count

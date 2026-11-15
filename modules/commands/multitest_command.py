@@ -491,6 +491,15 @@ class MultitestCommand(BaseCommand):
     # engine as a configured template, so the two cannot drift apart.
     DEFAULT_FORMAT = "Paths({path_count}):\n{paths}"
 
+    # CoreScope mode reports the count and links to the map instead of listing
+    # the routes. An observer network routinely reports dozens -- a 40-path reply
+    # measured 1285 bytes, eight transmissions, for one command on a shared
+    # channel -- and the map shows them better than a wrapped list of hex hops.
+    DEFAULT_CORESCOPE_FORMAT = (
+        "Paths({path_count}) via {scope_observers} obs "
+        "({scope_observations} rx, {scope_max_hops} hops)\n{scope_url|shorten}"
+    )
+
     # Sent as soon as a CoreScope request is accepted, because the settle delay
     # leaves the user waiting half a minute with nothing. Plain ASCII and short:
     # it is a second transmission on a shared mesh and has to fit the budget on
@@ -523,6 +532,10 @@ class MultitestCommand(BaseCommand):
                  "the bot collected the paths itself. With CoreScope on, "
                  "{path_count} and {paths} are what the observer network heard, "
                  "not just this radio.",
+                 "Left blank in CoreScope mode, the reply sends the count and a "
+                 "shortened map link rather than the routes: the network often "
+                 "reports dozens, which is several transmissions. Add {paths} to "
+                 "list them anyway.",
                  "\\n starts a new line.",
              ],
              blank_default=DEFAULT_FORMAT,
@@ -712,6 +725,20 @@ class MultitestCommand(BaseCommand):
     def uses_corescope(self) -> bool:
         """True when paths come from CoreScope rather than from listening."""
         return self._corescope is not None
+
+    @property
+    def default_format(self) -> str:
+        """The reply template used when ``response_format`` is blank.
+
+        Mode-dependent, because the two modes have different amounts to say and
+        different ways to say it. Listening collects a handful of paths from one
+        radio and no link exists to send instead, so it lists them. CoreScope
+        reports what a whole observer network heard and owns a map page for it,
+        so it sends the count and the link.
+        """
+        if self.uses_corescope:
+            return self.DEFAULT_CORESCOPE_FORMAT
+        return self.DEFAULT_FORMAT
 
     @property
     def condense_paths(self) -> bool:
@@ -1042,11 +1069,22 @@ class MultitestCommand(BaseCommand):
         ``{listening_duration}``. An unknown placeholder renders as nothing, the
         way it does in the other piped templates.
 
+        ``{paths}`` is offered in both modes, but no built-in template uses it in
+        CoreScope mode: see :attr:`DEFAULT_CORESCOPE_FORMAT` for why. An operator
+        who writes it into their own template gets the full list.
+
         Async because a ``shorten`` filter makes a blocking HTTP call, which
         rendered inline would stall radio RX and every other handler for its
         whole timeout.
         """
-        default = f"Paths({path_count}):\n{paths_text}"
+        if self.uses_corescope:
+            # No path list here either: the fallback exists for a broken
+            # template, not as a licence to send eight messages. The URL goes out
+            # unshortened, since the shortener lives in the engine that failed.
+            scope_url = self._scope_fields(scope, packet_hash)['scope_url']
+            default = f"Paths({path_count}): {scope_url}".rstrip()
+        else:
+            default = f"Paths({path_count}):\n{paths_text}"
         try:
             fields: dict[str, Any] = self.get_standard_placeholder_fields(message)
             fields.update({
@@ -1374,7 +1412,7 @@ class MultitestCommand(BaseCommand):
             # placeholders and filters, and both render the same way.
             response = await self._render_reply(
                 message,
-                self.response_format or self.DEFAULT_FORMAT,
+                self.response_format or self.default_format,
                 paths_text=paths_text,
                 path_count=len(paths),
                 listening_duration=int(session.listening_duration),

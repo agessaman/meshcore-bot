@@ -368,17 +368,42 @@ def _preview_piped(
 _MULTITEST_PATHS = ["a1,c3,e5", "a1,b7,e5", "a1,c3,f2"]
 
 
+def _previews_corescope(config: Optional[configparser.ConfigParser]) -> bool:
+    """True when the saved config has multitest deferring to CoreScope.
+
+    Both halves, as :meth:`MultitestCommand._build_corescope_client` requires
+    them: the switch on and a usable URL.
+    """
+    from .clients.corescope_client import normalize_base_url
+
+    enabled = (_config_get(config, "Multitest_Command", "corescope_enabled") or "").strip().lower()
+    if enabled not in ("true", "yes", "1", "on"):
+        return False
+    return bool(normalize_base_url(_config_get(config, "External_Data", "corescope_url") or ""))
+
+
 def _preview_multitest(spec: dict[str, Any], template: str, config: Optional[configparser.ConfigParser]) -> Preview:
     """As MultitestCommand's reply: the saved path layout, then the piped template.
 
     Only ``{paths}`` and ``{path_count}`` need supplying here; every other field
     is a message placeholder the scenarios already describe.
+
+    What a blank field falls back to depends on the saved mode, so the preview
+    reads it: CoreScope mode's default links to the map instead of listing the
+    routes, and showing the listening default there would preview a reply the
+    operator will never receive.
     """
-    from .commands.multitest_command import _condense_path_lines, _parse_condense_paths_mode
+    from .commands.multitest_command import (
+        MultitestCommand,
+        _condense_path_lines,
+        _parse_condense_paths_mode,
+    )
 
     mode = _parse_condense_paths_mode(_config_get(config, "Multitest_Command", "condense_paths") or "true")
     paths = sorted(_MULTITEST_PATHS)
     paths_text = _condense_path_lines(paths, mode) if mode != "off" else "\n".join(paths)
+    if _previews_corescope(config):
+        spec = {**spec, "blank_default": MultitestCommand.DEFAULT_CORESCOPE_FORMAT}
     return _preview_piped(spec, template, config, {"paths": paths_text, "path_count": len(paths)})
 
 
@@ -548,7 +573,9 @@ PREVIEW_RENDERERS: dict[str, tuple[Renderer, str]] = {
     "channel_greetings": (_preview_channel_greetings, "Greeting a user named Alice on each listed channel."),
     "mesh_info": (_preview_mesh_info, "Sample counts: 412 contacts, 57 repeaters, 331 companions, 38 active."),
     "multitest": (_preview_multitest, "Alice heard over 3 paths in 6 seconds, laid out per the saved Path layout; "
-                                      "the other values come from her triggering message."),
+                                      "the other values come from her triggering message. A blank field "
+                                      "previews the default for the saved mode -- the path list when the bot "
+                                      "listens, the count and map link when CoreScope answers."),
     "mqtt_json": (_preview_mqtt_json, "Two sample station payloads; the second has no humidity. "
                                       "Uses the saved passthrough length limit."),
     "temp_pair": (_temperature_preview("temperature_high_low_format", 68, 51, "High 68, low 51"),

@@ -1572,7 +1572,9 @@ enabled = false
 # {hops_label}, {timestamp}, {snr}, {rssi}, {packet_hash}. See the [Test_Command]
 # response_format comments for the filter list (pathbytes_min, hops_min,
 # prefix_if_nonempty, if_nonempty/if_notempty, shorten/shorten_url) and the quoting rules.
-# Leave empty to use default format: Paths({path_count}):\n{paths}
+# Leave empty to use the default, which depends on the mode below: listening sends
+# Paths({path_count}):\n{paths}, while CoreScope sends the count and a shortened map
+# link instead of the routes (see the CoreScope section at the end of this block).
 # Example: "Found {path_count} unique path(s) for @[{sender}]:\n{paths}"
 # Example with a packet link that disappears when RF correlation failed:
 # response_format = @[{sender}] {path_count} path(s):\n{paths}{packet_hash|if_notempty:"\nhttps://scope.example.net/#/packets/{packet_hash}"|shorten}
@@ -1619,13 +1621,22 @@ corescope_timeout = 4
 # How long one packet's answer is reused, so repeated requests for the same packet
 # do not ask again. Default: 300.
 corescope_cache_seconds = 300
+# THE REPLY DOES NOT LIST THE ROUTES in CoreScope mode. The network commonly
+# reports dozens -- 40 paths measured 1285 bytes, around eight transmissions for one
+# command on a shared channel -- so a blank response_format sends the count and a
+# shortened map link instead:
+#   Paths(40) via 25 obs (46 rx, 12 hops)
+#   https://v.gd/Ab3xYz
+# The response_format set above lists {paths} explicitly, which overrides that. With
+# CoreScope on, either blank the field or drop {paths} from it; keeping {paths} means
+# the bot does send all of them.
 # With CoreScope on, the reply can also use what only the observer network knows:
 # {scope_observers}, {scope_observations}, {scope_max_hops} and {scope_url}, a map
 # link drawing every path. They are empty when the bot listened locally, so a clause
 # built on one disappears instead of going blank. SHORTEN BEFORE LABELLING --
 # {scope_url|shorten|prefix_if_nonempty: | Map: } works, while
 # {scope_url|if_notempty:"Map: {scope_url}"|shorten} hands the shortener the label too.
-# Example: response_format = Paths({path_count}) seen by {scope_observers} observers:\n{paths}{scope_url|shorten|prefix_if_nonempty:\n}
+# Example: response_format = Paths({path_count}) seen by {scope_observers} observers{scope_url|shorten|prefix_if_nonempty:\n}
 
 [Greeter_Command]
 # Enable greeter to greet users on first channel message (true/false)

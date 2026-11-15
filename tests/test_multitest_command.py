@@ -1,6 +1,7 @@
 """Tests for modules.commands.multitest_command — pure logic and reply rendering."""
 
 import configparser
+import re
 import time
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
@@ -8,13 +9,13 @@ import pytest
 
 import modules.commands.multitest_command as multitest_module
 from modules.clients.corescope_client import ScopePacket
-from modules.template_reference import MESSAGE_PLACEHOLDERS
 from modules.commands.multitest_command import (
     MultitestCommand,
     _condense_path_lines,
     _parse_condense_paths_mode,
     _path_to_tokens,
 )
+from modules.template_reference import MESSAGE_PLACEHOLDERS
 from tests.conftest import mock_message
 
 _INTER = "\u251c"
@@ -717,6 +718,21 @@ class TestCorescopeWiring:
 class TestExecuteCorescopeMode:
     """With CoreScope configured, the local listening work is deferred to it."""
 
+    @pytest.fixture(autouse=True)
+    def _offline_shortener(self):
+        """The CoreScope default runs the map link through ``shorten``.
+
+        That is a real HTTP call to the configured service (v.gd by default), so
+        every test here stubs it: the reply shape is what is under test, not the
+        shortener, which has its own suite.
+        """
+        with patch(
+            "modules.response_template.shorten_url_sync",
+            side_effect=lambda url, **_kw: "https://sh.rt/abc123",
+        ) as shortener:
+            self.shortener = shortener
+            yield shortener
+
     def _cmd(self, *, scope=None, **multitest):
         bot = _make_bot()
         bot.config.add_section("External_Data")
@@ -729,6 +745,9 @@ class TestExecuteCorescopeMode:
         cmd = MultitestCommand(bot)
         cmd._corescope = MagicMock()
         cmd._corescope.fetch = Mock(return_value=scope)
+        cmd._corescope.map_url = Mock(
+            side_effect=lambda h: f"https://analyzer.example.net/#/map?packet={h.lower()}&paths=all"
+        )
         cmd.get_rf_data_for_message = Mock(return_value={
             "packet_hash": "3F2A9C1B7E4D0A65",
             "timestamp": 1000.0,
@@ -783,31 +802,74 @@ class TestExecuteCorescopeMode:
             await cmd.execute(self._message())
         cmd._corescope.fetch.assert_called_once_with("3F2A9C1B7E4D0A65")
 
-    async def test_the_count_and_paths_come_from_corescope(self):
+    async def test_the_reply_summarizes_the_count_and_links_to_the_map(self):
+        cmd = self._cmd(scope=self._scope("a1b2", "a1b2,c3d4", "a1b2,e5f6"))
+        with patch.object(multitest_module.asyncio, "sleep", new=AsyncMock()):
+            await cmd.execute(self._message())
+        assert cmd.send_response.await_args[0][1] == (
+            "Paths(3) via 3 obs (9 rx, 2 hops)\nhttps://sh.rt/abc123"
+        )
+        assert self.shortener.call_args[0][0] == (
+            "https://analyzer.example.net/#/map?packet=3f2a9c1b7e4d0a65&paths=all"
+        )
+
+    @pytest.mark.parametrize("layout", ["true", "false", "nested"])
+    async def test_the_routes_are_never_listed_whatever_the_layout(self, layout):
+        """Dozens of routes is several transmissions; the map link replaces them."""
         cmd = self._cmd(
-            scope=self._scope("a1b2", "a1b2,c3d4", "a1b2,e5f6"),
+            scope=self._scope("a1b2,c3d4", "a1b2,e5f6"), condense_paths=layout,
+        )
+        with patch.object(multitest_module.asyncio, "sleep", new=AsyncMock()):
+            await cmd.execute(self._message())
+        sent = cmd.send_response.await_args[0][1]
+        assert "c3d4" not in sent
+        assert "e5f6" not in sent
+        assert _INTER not in sent and _LAST not in sent
+
+    async def test_the_reply_is_one_message_however_many_paths_there_are(self):
+        """Forty paths is what the live network returned for a busy packet."""
+        cmd = self._cmd(scope=self._scope(*(f"a1b2,{i:04x}" for i in range(40))))
+        with patch.object(multitest_module.asyncio, "sleep", new=AsyncMock()):
+            await cmd.execute(self._message())
+        sent = cmd.send_response.await_args[0][1]
+        assert "Paths(40)" in sent
+        assert len(sent.encode("utf-8")) <= cmd.get_max_message_length()
+
+    async def test_a_configured_template_can_still_list_the_paths(self):
+        cmd = self._cmd(
+            scope=self._scope("a1b2,c3d4", "a1b2,e5f6"),
+            response_format="{path_count}:\n{paths}",
             condense_paths="false",
         )
         with patch.object(multitest_module.asyncio, "sleep", new=AsyncMock()):
             await cmd.execute(self._message())
-        assert cmd.send_response.await_args[0][1] == (
-            "Paths(3):\na1b2\na1b2,c3d4\na1b2,e5f6"
+        assert cmd.send_response.await_args[0][1] == "2:\na1b2,c3d4\na1b2,e5f6"
+
+    async def test_a_broken_template_falls_back_to_the_link_not_the_list(self):
+        cmd = self._cmd(scope=self._scope("a1b2,c3d4", "a1b2,e5f6"))
+        with patch.object(multitest_module.asyncio, "sleep", new=AsyncMock()):
+            with patch.object(
+                multitest_module, "format_piped_template_async",
+                new=AsyncMock(side_effect=ValueError("bad template")),
+            ):
+                await cmd.execute(self._message())
+        sent = cmd.send_response.await_args[0][1]
+        assert sent == (
+            "Paths(2): https://analyzer.example.net/#/map?packet=3f2a9c1b7e4d0a65&paths=all"
         )
 
-    async def test_corescope_paths_use_the_configured_layout(self):
-        cmd = self._cmd(scope=self._scope("a1b2,c3d4", "a1b2,e5f6"), condense_paths="true")
+    async def test_the_local_path_is_not_counted_in_corescope_mode(self):
+        """The trigger's own path seeds the session, but CoreScope is the source.
+
+        A count of 1 is the proof: the session already holds the trigger's own
+        ``a1b2,c3d4``, so a merge of the two sources would report 2.
+        """
+        cmd = self._cmd(scope=self._scope("9999,8888"))
         with patch.object(multitest_module.asyncio, "sleep", new=AsyncMock()):
             await cmd.execute(self._message())
         sent = cmd.send_response.await_args[0][1]
-        assert sent.startswith("Paths(2):")
-        assert _INTER in sent or _LAST in sent, "condensed layout should branch"
-
-    async def test_the_local_path_is_not_counted_in_corescope_mode(self):
-        """The trigger's own path seeds the session, but CoreScope is the source."""
-        cmd = self._cmd(scope=self._scope("9999,8888"), condense_paths="false")
-        with patch.object(multitest_module.asyncio, "sleep", new=AsyncMock()):
-            await cmd.execute(self._message())
-        assert cmd.send_response.await_args[0][1] == "Paths(1):\n9999,8888"
+        assert sent.startswith("Paths(1) via")
+        assert "a1b2,c3d4" not in sent
 
     async def test_a_miss_names_the_packet_and_the_local_path(self):
         cmd = self._cmd(scope=None)
@@ -1195,3 +1257,52 @@ class TestCorescopeSettingsSchema:
         spec = self._fields()["corescope_ack_message"]["template"]
         assert "blank_default" not in spec
         assert any("empty" in note.lower() for note in spec["notes"])
+
+    def test_the_response_format_offers_every_name_both_defaults_use(self):
+        """Neither built-in template may reach for a placeholder the page hides."""
+        spec = self._fields()["response_format"]["template"]
+        offered = {p["name"] for p in spec["placeholders"]}
+        for template in (
+            MultitestCommand.DEFAULT_FORMAT,
+            MultitestCommand.DEFAULT_CORESCOPE_FORMAT,
+        ):
+            used = {m.split("|")[0] for m in re.findall(r"\{([^}]+)\}", template)}
+            assert used <= offered, f"{used - offered} missing from the field"
+
+    def test_the_notes_say_what_blank_sends_in_corescope_mode(self):
+        spec = self._fields()["response_format"]["template"]
+        joined = " ".join(spec["notes"]).lower()
+        assert "map link" in joined
+        assert "{paths}" in joined
+
+
+class TestDefaultFormatByMode:
+    """Blank response_format means a different reply in each mode."""
+
+    def _cmd(self, *, corescope=False):
+        bot = _make_bot()
+        if corescope:
+            bot.config.add_section("External_Data")
+            bot.config.set("External_Data", "corescope_url", "https://analyzer.example.net")
+            bot.config.set("Multitest_Command", "corescope_enabled", "true")
+        return MultitestCommand(bot)
+
+    def test_listening_lists_the_paths(self):
+        cmd = self._cmd()
+        assert cmd.default_format == MultitestCommand.DEFAULT_FORMAT
+        assert "{paths}" in cmd.default_format
+
+    def test_corescope_links_to_the_map_instead(self):
+        cmd = self._cmd(corescope=True)
+        assert cmd.default_format == MultitestCommand.DEFAULT_CORESCOPE_FORMAT
+        assert "{paths}" not in cmd.default_format
+        assert "{scope_url|shorten}" in cmd.default_format
+        assert "{path_count}" in cmd.default_format
+
+    def test_the_corescope_default_leaves_room_for_a_short_link(self):
+        """It has to fit one mesh message with the longest counts it can print."""
+        rendered = MultitestCommand.DEFAULT_CORESCOPE_FORMAT.format(
+            path_count=999, scope_observers=999, scope_observations=9999,
+            scope_max_hops=64, **{"scope_url|shorten": "https://example.com/abcdefgh"},
+        )
+        assert len(rendered.encode("utf-8")) < 120

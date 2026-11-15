@@ -378,3 +378,52 @@ class TestMultitestScopePlaceholders:
         from modules.template_reference import ALL_PLACEHOLDERS
 
         assert "wait_seconds" in ALL_PLACEHOLDERS
+
+
+@pytest.mark.unit
+class TestMultitestBlankPreviewFollowsTheMode:
+    """A blank response_format means a different reply per mode, so preview says which."""
+
+    def _config(self, *, enabled=None, url=None):
+        config = configparser.ConfigParser()
+        config.add_section("Multitest_Command")
+        config.add_section("External_Data")
+        if enabled is not None:
+            config.set("Multitest_Command", "corescope_enabled", enabled)
+        if url is not None:
+            config.set("External_Data", "corescope_url", url)
+        return config
+
+    def _blank(self, config):
+        spec = _field(MultitestCommand, "response_format")["template"]
+        return _by_id(render_preview(spec, "", config))["direct"]
+
+    def test_listening_previews_the_path_list(self):
+        rendered = self._blank(self._config())
+        assert rendered.startswith("Paths(3):")
+        assert "https://" not in rendered
+
+    def test_corescope_previews_the_count_and_the_map_link(self):
+        rendered = self._blank(
+            self._config(enabled="true", url="https://analyzer.example.net")
+        )
+        assert rendered.startswith("Paths(3) via 25 obs (46 rx, 12 hops)")
+        assert rendered.endswith(
+            "https://analyzer.example.net/#/map?packet=7ba8bf1119ca1fe1&paths=all"
+        )
+
+    @pytest.mark.parametrize(
+        "enabled,url",
+        [("false", "https://analyzer.example.net"), ("true", None), ("true", "ftp://nope")],
+    )
+    def test_a_half_configured_mode_previews_listening(self, enabled, url):
+        """Same two conditions _build_corescope_client requires to defer at all."""
+        assert self._blank(self._config(enabled=enabled, url=url)).startswith("Paths(3):")
+
+    def test_the_preview_stays_offline(self):
+        config = self._config(enabled="true", url="https://analyzer.example.net")
+        with patch("modules.clients.corescope_client.CoreScopeClient.fetch") as fetch:
+            with patch("modules.response_template.shorten_url_sync") as shortener:
+                self._blank(config)
+        fetch.assert_not_called()
+        shortener.assert_not_called()
