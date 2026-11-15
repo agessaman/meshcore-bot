@@ -8,7 +8,7 @@ semantic versioning.
 
 ### Added
 
-- Matrix bridge ([#376](https://github.com/agessaman/meshcore-bot/issues/376)): the new `[MatrixBridge]` service relays messages from mapped MeshCore channels to Matrix rooms through the Client-Server API, with comma-separated room IDs or `#alias:server` targets per channel, an access-token check at startup that only stops the bridge when the token is rejected, alias resolution that retries if the homeserver is unreachable, HTML-escaped sender-prefixed `m.text` events capped at 4000 characters, stable transaction IDs across retries, per-room and overall rate limiting with a pause across all rooms on HTTP 429, and the same DM exclusion and profanity filter as the Discord and Telegram bridges.
+- Matrix bridge ([#376](https://github.com/agessaman/meshcore-bot/issues/376)): the new `[MatrixBridge]` service relays messages from mapped MeshCore channels to Matrix rooms through the Client-Server API, with comma-separated room IDs or `#alias:server` targets per channel, a background access-token check at startup that, like a 401 while sending, stops the bridge only when the token is rejected, alias resolution that retries if the homeserver is unreachable, HTML-escaped sender-prefixed `m.text` events capped at 4000 characters, stable transaction IDs across retries, per-room and overall rate limiting with a pause across all rooms on HTTP 429, and the same DM exclusion and profanity filter as the Discord and Telegram bridges.
 
 ## [1.2.0] - 2026-11-14
 

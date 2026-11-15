@@ -34,6 +34,8 @@ class FakeRequest:
         self._response = response
 
     async def __aenter__(self):
+        # Yield like a real request so concurrent callers can interleave.
+        await asyncio.sleep(0)
         return self._response
 
     async def __aexit__(self, *exc_info):
@@ -401,7 +403,7 @@ async def test_forbidden_is_logged_once_and_dropped_without_retry(matrix_bot):
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "status,errcode",
-    [(401, "M_UNKNOWN_TOKEN"), (404, "M_NOT_FOUND")],
+    [(404, "M_NOT_FOUND")],
 )
 async def test_permanent_errors_are_dropped(matrix_bot, status, errcode):
     session = FakeSession(put_responder=lambda url, payload: FakeResponse(status, {"errcode": errcode}))
@@ -426,6 +428,7 @@ async def test_whoami_success_starts_and_logs_user_id(matrix_bot):
     service.http_session = session
 
     await service.start()
+    await service._startup_task
 
     assert service.is_running() is True
     assert service.matrix_user_id == "@bot:matrix.example"
@@ -447,9 +450,10 @@ async def test_whoami_failure_prevents_delivery(matrix_bot):
     service.http_session = session
 
     await service.start()
+    await service._startup_task
 
     assert service.is_running() is False
-    matrix_bot.meshcore.subscribe.assert_not_called()
+    assert service.enabled is False
     assert session.closed is True
     errors = " ".join(str(c) for c in matrix_bot.logger.error.call_args_list)
     assert "access token rejected" in errors
@@ -472,6 +476,7 @@ async def test_unreachable_homeserver_at_startup_still_starts(matrix_bot, respon
     service.http_session = session
 
     await service.start()
+    await service._startup_task
 
     assert service.is_running() is True
     matrix_bot.meshcore.subscribe.assert_called_once()
@@ -498,6 +503,77 @@ async def test_failed_alias_is_retried_after_the_interval(matrix_bot):
 
     assert service._resolved_target("#late:matrix.example") == "!late:matrix.example"
     assert len(service.message_queues["!late:matrix.example"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_start_does_not_wait_for_the_homeserver(matrix_bot):
+    matrix_bot.config.set("MatrixBridge", "bridge.Public", "!room:matrix.example")
+    release = asyncio.Event()
+
+    class SlowSession(FakeSession):
+        def get(self, url, **kwargs):
+            outer = self
+
+            class Slow:
+                async def __aenter__(self):
+                    await release.wait()
+                    return FakeResponse(200, {"user_id": "@bot:matrix.example"})
+
+                async def __aexit__(self, *exc_info):
+                    return False
+
+            outer.requests.append(("GET", url, None))
+            return Slow()
+
+    service = _service(matrix_bot)
+    service.http_session = SlowSession()
+
+    await asyncio.wait_for(service.start(), timeout=1)
+
+    assert service.is_running() is True
+    matrix_bot.meshcore.subscribe.assert_called_once()
+    release.set()
+    await service._startup_task
+    await service.stop()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status,errcode", [(401, "M_UNKNOWN_TOKEN"), (401, None)])
+async def test_token_rejected_while_sending_stops_the_bridge(matrix_bot, status, errcode):
+    matrix_bot.config.set("MatrixBridge", "bridge.Public", "!room:matrix.example")
+    body = {"errcode": errcode} if errcode else {}
+    session = FakeSession(put_responder=lambda url, payload: FakeResponse(status, body))
+    service = _service(matrix_bot)
+    service.http_session = session
+    await service.start()
+    await service._startup_task
+    queued = QueuedMessage(
+        room_id="!room:matrix.example", payload={"body": "x"}, channel_name="Public", txn_id="t1"
+    )
+
+    assert await service._send_queued(queued) is True
+    await service._shutdown_task
+
+    assert service.is_running() is False
+    assert service.is_healthy() is False
+    assert service.enabled is False
+    errors = " ".join(str(c) for c in matrix_bot.logger.error.call_args_list)
+    assert "rejected while sending" in errors
+
+
+@pytest.mark.asyncio
+async def test_concurrent_deliveries_resolve_an_alias_once(matrix_bot):
+    matrix_bot.config.set("MatrixBridge", "bridge.Public", "#slow:matrix.example")
+    service = _service(matrix_bot)
+    service.http_session = FakeSession(get_responder=lambda url: FakeResponse(503, {}))
+
+    await asyncio.gather(
+        service._deliver(["#slow:matrix.example"], "Alice", "one", "Public"),
+        service._deliver(["#slow:matrix.example"], "Bob", "two", "Public"),
+    )
+
+    lookups = [r for r in service.http_session.requests if "directory/room" in r[1]]
+    assert len(lookups) == 1
 
 
 @pytest.mark.asyncio
@@ -563,6 +639,7 @@ async def test_access_token_never_appears_in_log_output(matrix_bot):
     service.http_session = session
 
     await service.start()
+    await service._startup_task
     queued = QueuedMessage(
         room_id="!room:matrix.example", payload={"body": "x"}, channel_name="Public", txn_id="t1"
     )
@@ -570,15 +647,6 @@ async def test_access_token_never_appears_in_log_output(matrix_bot):
     await service.stop()
 
     assert TOKEN not in str(matrix_bot.logger.mock_calls)
-
-
-def test_mask_token_hides_most_of_the_value(matrix_bot):
-    service = _service(matrix_bot)
-
-    masked = service._mask_token(TOKEN)
-
-    assert masked == "syt_...7890"
-    assert TOKEN not in masked
 
 
 def test_config_snapshot_redacts_matrix_token_and_mappings():

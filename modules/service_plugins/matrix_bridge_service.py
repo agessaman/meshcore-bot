@@ -6,7 +6,6 @@ Posts MeshCore channel messages to Matrix rooms via the Client-Server API
 """
 
 import asyncio
-import contextlib
 import html
 import os
 import re
@@ -129,6 +128,8 @@ class MatrixBridgeService(ChannelBridgeBase):
         self.send_times: dict[str, deque] = {}
         self.http_session: Optional[Any] = None
         self._queue_processor_task: Optional[asyncio.Task] = None
+        self._startup_task: Optional[asyncio.Task] = None
+        self._shutdown_task: Optional[asyncio.Task] = None
         self._last_send_at = 0.0
         self.matrix_user_id: Optional[str] = None
 
@@ -209,20 +210,26 @@ class MatrixBridgeService(ChannelBridgeBase):
         return self.channel_rooms
 
     async def start(self) -> None:
-        """Validate the token and resolve aliases before subscribing to events."""
-        if not self.enabled:
-            self.logger.info("Matrix bridge service is disabled")
-            return
-        if not self._bridge_mappings:
-            self.logger.warning("Matrix bridge enabled but no channels configured")
-            return
+        """Subscribe first, then check the token and resolve aliases in the background.
 
-        self._open_http_session()
+        Services start one after another, so waiting here on a homeserver that
+        drops packets would hold up every later service by the HTTP timeout per
+        request. Messages that arrive before the checks finish are queued.
+        """
+        await super().start()
+        if self._running:
+            self._startup_task = asyncio.create_task(self._startup_checks())
+
+    async def stop(self) -> None:
+        task, self._startup_task = self._startup_task, None
+        await self._cancel_tasks(task)
+        await super().stop()
+
+    async def _startup_checks(self) -> None:
         if await self._validate_access_token() is False:
-            if self.http_session is not None:
-                with contextlib.suppress(Exception):
-                    await self.http_session.close()
-                self.http_session = None
+            # Detach first so stop() does not cancel the task running it.
+            self._startup_task = None
+            await self._disable_for_rejected_token()
             return
 
         await self._resolve_configured_aliases()
@@ -233,7 +240,14 @@ class MatrixBridgeService(ChannelBridgeBase):
                 "retried when messages arrive"
             )
 
-        await super().start()
+    async def _disable_for_rejected_token(self) -> None:
+        """Stop the bridge for good after the homeserver rejects the token.
+
+        Clearing ``enabled`` keeps the service supervisor from restarting it on
+        every health tick; a new token needs a bot restart anyway.
+        """
+        self.enabled = False
+        await self.stop()
 
     def _open_http_session(self) -> None:
         if AIOHTTP_AVAILABLE:
@@ -310,6 +324,21 @@ class MatrixBridgeService(ChannelBridgeBase):
             queued_msg.retry_count = max(0, queued_msg.retry_count - 1)
             return False
 
+        if status == 401 or errcode in ('M_UNKNOWN_TOKEN', 'M_MISSING_TOKEN'):
+            # The token was revoked or logged out after startup. Every later
+            # send would fail the same way, so stop instead of dropping each
+            # message while still looking healthy.
+            self.logger.error(
+                f"Matrix bridge: access token rejected while sending (status {status}, "
+                f"{errcode or 'no errcode'}); stopping the bridge until the bot restarts"
+            )
+            self._running = False
+            # stop() cancels the queue processor, which is running this call.
+            self._shutdown_task = asyncio.get_running_loop().create_task(
+                self._disable_for_rejected_token()
+            )
+            return True
+
         if status in MATRIX_PERMANENT_STATUSES or errcode in MATRIX_PERMANENT_ERROR_CODES:
             # Permanent: logging once and dropping is kinder than retrying five
             # times. Returning True tells the base queue the message is handled.
@@ -376,11 +405,6 @@ class MatrixBridgeService(ChannelBridgeBase):
             return None
         return homeserver
 
-    def _mask_token(self, token: str) -> str:
-        if not token or len(token) < 8:
-            return "***"
-        return token[:4] + "..." + token[-4:]
-
     def _prepare_message_text(self, message_text: str) -> str:
         """Render MeshCore @[name] mentions as plain text (no Matrix pills)."""
         return re.sub(r'@\[([^\]]+)\]', r'@\1', message_text)
@@ -443,12 +467,13 @@ class MatrixBridgeService(ChannelBridgeBase):
             return cached
         if time.time() < self._alias_retry_at.get(alias, 0.0):
             return None
+        # Claim the retry slot before the request so concurrent deliveries for
+        # the same alias do not all ask the homeserver at once.
+        self._alias_retry_at[alias] = time.time() + MATRIX_ALIAS_RETRY_INTERVAL
         room_id = await self._resolve_room_alias(alias)
         if room_id:
             self.resolved_room_ids[alias] = room_id
             self._alias_retry_at.pop(alias, None)
-        else:
-            self._alias_retry_at[alias] = time.time() + MATRIX_ALIAS_RETRY_INTERVAL
         return room_id
 
     async def _resolve_room_alias(self, alias: str) -> Optional[str]:
@@ -500,10 +525,7 @@ class MatrixBridgeService(ChannelBridgeBase):
         user_id = data.get('user_id')
         if status == 200 and user_id:
             self.matrix_user_id = str(user_id)
-            self.logger.info(
-                f"Matrix bridge authenticated as {self.matrix_user_id} "
-                f"(token {self._mask_token(self.access_token)})"
-            )
+            self.logger.info(f"Matrix bridge authenticated as {self.matrix_user_id}")
             return True
 
         errcode = str(data.get('errcode') or '')

@@ -6,7 +6,7 @@ The Matrix Bridge service posts MeshCore channel messages to Matrix rooms via th
 
 - One-way message flow (MeshCore → Matrix only)
 - Multi-channel mapping to room IDs or `#alias:server` aliases, with fan-out to several rooms
-- Access token checked with `GET /account/whoami` at startup; a rejected token stops the bridge, an unreachable homeserver does not
+- Access token checked with `GET /account/whoami` in the background at startup; a rejected token stops the bridge, an unreachable homeserver does not
 - `m.text` events with an HTML-formatted body (`org.matrix.custom.html`)
 - **DMs are NEVER bridged** (hardcoded for privacy)
 - Per-room and overall rate limiting, a pause across all rooms on HTTP 429, retries with exponential backoff, and idempotent resends
@@ -142,7 +142,7 @@ Matrix rate limits are enforced per user, not per room. The service keeps a cons
 - Queues messages per room and spaces sends out
 - On HTTP 429 / `M_LIMIT_EXCEEDED`, pauses sends to every room for the homeserver's `retry_after_ms` (or the `Retry-After` header) without spending the retry budget
 - Uses exponential backoff on other transient failures and drops messages after max retries or max queue age (5 minutes)
-- Drops permanent failures (`M_FORBIDDEN`, `M_NOT_FOUND`, `M_UNKNOWN_TOKEN`, HTTP 401/403/404) immediately instead of retrying
+- Drops permanent failures (`M_FORBIDDEN`, `M_NOT_FOUND`, HTTP 403/404) immediately instead of retrying, and stops the bridge on a rejected token (HTTP 401, `M_UNKNOWN_TOKEN`)
 
 Each queued message gets one transaction ID per room, reused across retries, so a retry after an ambiguous timeout does not post a duplicate.
 
@@ -180,7 +180,7 @@ Bridged messages are sent as `m.text` events with an HTML body:
 
 ### Token Rejected (`M_UNKNOWN_TOKEN`)
 
-The token was revoked, expired, or belongs to a different homeserver. Log the bot out of all sessions and create a new token.
+The token was revoked, expired, or belongs to a different homeserver. Whether that shows up at startup or later while sending, the bridge logs `access token rejected` at ERROR and stays stopped until the bot restarts. Create a new token, update the config, and restart.
 
 ### Messages Not Appearing in Matrix
 
@@ -223,7 +223,7 @@ A: Set `enabled = false` in `[MatrixBridge]` and restart the bot.
 - **Base**: `BaseServicePlugin` (`modules/service_plugins/base_service.py`) via `ChannelBridgeBase`
 - **Event**: Subscribes to `EventType.CHANNEL_MSG_RECV` only
 - **HTTP**: `aiohttp` with fallback to `requests` in an executor; timeout ~10 s
-- **Startup checks**: `GET /_matrix/client/v3/account/whoami`, then one `GET /_matrix/client/v3/directory/room/{alias}` per configured alias; failed aliases are retried on delivery at most once per minute
+- **Startup checks**: run in the background after subscribing, so a slow homeserver doesn't hold up other services: `GET /_matrix/client/v3/account/whoami`, then one `GET /_matrix/client/v3/directory/room/{alias}` per configured alias; failed aliases are retried on delivery at most once per minute
 - **Send**: `PUT /_matrix/client/v3/rooms/{roomId}/send/m.room.message/{txnId}`
 - **Config**: `config.ini` section `[MatrixBridge]`; example in `config.ini.example`
 - **Service file**: `modules/service_plugins/matrix_bridge_service.py`
