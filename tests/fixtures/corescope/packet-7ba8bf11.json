@@ -1,0 +1,120 @@
+{
+  "packet": {
+    "hash": "7ba8bf1119ca1fe1",
+    "id": 1987202,
+    "first_seen": "2026-11-14T19:28:15Z",
+    "direction": "rx",
+    "observation_count": 6,
+    "decoded_json": "{\"type\":\"CHAN\",\"channelHash\":129,\"channelHashHex\":\"81\",\"decryptionStatus\":\"decrypted\",\"channel\":\"#wardriving\",\"text\":\"H: MM:OEzHach0AQ\",\"sender\":\"H\",\"sender_timestamp\":1794684494}",
+    "observations": [
+      {
+        "id": 16015619,
+        "observer_id": "5AAE66B1A16F201B329A58681C2A9263D6E3E2CC5B8B629EC62E5C3317919E70",
+        "observer_name": "RUST-CORE",
+        "observer_iata": "SAT",
+        "path_json": "[\"DB82\",\"E34C\"]",
+        "resolved_path": [
+          "db821c023fb65d32114d0459a7d84029d28d8803159eb66d9dd81d780cc43b99",
+          "e34cdc63a1ac49985d916226871a8cd2d97e656003150f60b935787f9824fddc"
+        ],
+        "snr": 11.7,
+        "rssi": -70,
+        "radio": "910.525,62.5,7,5",
+        "timestamp": "2026-11-14T19:28:15.000Z",
+        "direction": "rx"
+      },
+      {
+        "id": 16015621,
+        "observer_id": "04F0AFA35C9B56ACBA270B788160AE5DA5E727CE21D57F0A69C75733B96F3030",
+        "observer_name": "OVN(WEST)",
+        "observer_iata": "SAT",
+        "path_json": "[\"DB82\",\"E34C\",\"A937\"]",
+        "resolved_path": [
+          "db821c023fb65d32114d0459a7d84029d28d8803159eb66d9dd81d780cc43b99",
+          "e34cdc63a1ac49985d916226871a8cd2d97e656003150f60b935787f9824fddc",
+          "a937024228656fac80b07dcb092609f3eba510484daf38364713d880cf999ddd"
+        ],
+        "snr": 11.5,
+        "rssi": -30,
+        "radio": "910.525,62.5,7,5",
+        "timestamp": "2026-11-14T19:28:16.000Z",
+        "direction": "rx"
+      },
+      {
+        "id": 16015622,
+        "observer_id": "5AAE66B1A16F201B329A58681C2A9263D6E3E2CC5B8B629EC62E5C3317919E70",
+        "observer_name": "RUST-CORE",
+        "observer_iata": "SAT",
+        "path_json": "[\"DB82\",\"E34C\",\"3D73\"]",
+        "resolved_path": [
+          "db821c023fb65d32114d0459a7d84029d28d8803159eb66d9dd81d780cc43b99",
+          "e34cdc63a1ac49985d916226871a8cd2d97e656003150f60b935787f9824fddc",
+          "3d73667f21b660fa2ffd6a3d54316561aeb439f7757f4c8b50d48bc028ee350c"
+        ],
+        "snr": 10.5,
+        "rssi": -91,
+        "radio": "910.525,62.5,7,5",
+        "timestamp": "2026-11-14T19:28:16.000Z",
+        "direction": "rx"
+      },
+      {
+        "id": 16015623,
+        "observer_id": "577E2F721CF40595A66638375E4FC20C6908835D60CB13CDD7FD635712627A0F",
+        "observer_name": "Forum Observer",
+        "observer_iata": "SAT",
+        "path_json": "[\"DB82\",\"E34C\",\"3D73\"]",
+        "resolved_path": [
+          "db821c023fb65d32114d0459a7d84029d28d8803159eb66d9dd81d780cc43b99",
+          "e34cdc63a1ac49985d916226871a8cd2d97e656003150f60b935787f9824fddc",
+          "3d73667f21b660fa2ffd6a3d54316561aeb439f7757f4c8b50d48bc028ee350c"
+        ],
+        "snr": 11.5,
+        "rssi": -9,
+        "radio": "910.525,62.5,7,5",
+        "timestamp": "2026-11-14T19:28:16.000Z",
+        "direction": "rx"
+      },
+      {
+        "id": 16015673,
+        "observer_id": "42E7CB5A670CE88AF5556034CC23E627568663E355459F0FA9C10726587A66A6",
+        "observer_name": "🐉 Observer",
+        "observer_iata": "AUS",
+        "path_json": "[\"DB82\",\"E34C\",\"7E7F\",\"5757\",\"4216\",\"2AD2\",\"1EE8\",\"349D\",\"5790\",\"90E2\",\"42E7\",\"A84B\"]",
+        "resolved_path": [
+          "db821c023fb65d32114d0459a7d84029d28d8803159eb66d9dd81d780cc43b99",
+          "e34cdc63a1ac49985d916226871a8cd2d97e656003150f60b935787f9824fddc",
+          "7e7f7602d2b7ad55b52dd9a3d8751a40890d08a2a37b35174a56c90aad675c8b",
+          "5757dc210afb52bd922f64a620db093c4a41c8604b2b140134f883223ee66442",
+          "4216261797c98713a0e9ff091ccdaa7ed5bc19c222d91aecbc4d306895a689e7",
+          "2ad26b3824b523e64d5c1bd2614362b8698af5b7888cbe995d1365c5c191b437",
+          "1ee8e56d6df3c6ecbd6a6c58d497aa27b2336d9074b9561164726b8ffb319eab",
+          "349daaf74ddae6192f9254e477630632f5f4b9041079b36370057c76386195a1",
+          "57900050563f906362f774f761734d96172e3eca9d0732a77bfaa775c6e40089",
+          "90e2dc42014abd3a9b4d029de5767bb2a27b441508bc189729265d10d1c41b45",
+          "42e7cb5a670ce88af5556034cc23e627568663e355459f0fa9c10726587a66a6",
+          "a84be1d3dff984954388e6613ff1c4c6915ffa9690ad7fd107e213e4afb448ab"
+        ],
+        "snr": -1,
+        "rssi": -115,
+        "radio": "910.525,62.5,7,5",
+        "timestamp": "2026-11-14T19:28:21.000Z",
+        "direction": "rx"
+      },
+      {
+        "id": 16015638,
+        "observer_id": "5AAE66B1A16F201B329A58681C2A9263D6E3E2CC5B8B629EC62E5C3317919E70",
+        "observer_name": "RUST-CORE",
+        "observer_iata": "SAT",
+        "path_json": "[\"DB82\"]",
+        "resolved_path": [
+          "db821c023fb65d32114d0459a7d84029d28d8803159eb66d9dd81d780cc43b99"
+        ],
+        "snr": -1.5,
+        "rssi": -110,
+        "radio": "910.525,62.5,7,5",
+        "timestamp": "2026-11-14T19:28:17.000Z",
+        "direction": "rx"
+      }
+    ]
+  }
+}

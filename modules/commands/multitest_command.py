@@ -9,14 +9,27 @@ import re
 import time
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Literal, Optional
+from functools import partial
+from typing import Any, Literal, Optional
 
 CondensePathsMode = Literal["off", "flat", "nested"]
 
+from ..clients.corescope_client import (
+    DEFAULT_CACHE_SECONDS,
+    DEFAULT_TIMEOUT,
+    CoreScopeClient,
+    ScopePacket,
+    normalize_base_url,
+)
 from ..models import MeshMessage
-from ..template_reference import template_spec
-from ..utils import calculate_packet_hash, parse_path_string
+from ..response_template import format_piped_template_async
+from ..template_reference import MESSAGE_PLACEHOLDERS, template_spec
+from ..utils import calculate_packet_hash, decode_escape_sequences, parse_path_string
 from .base_command import BaseCommand
+
+# Seconds to wait for observers to report to CoreScope before asking it. Long
+# enough that the count is not a snapshot of whoever reported first.
+DEFAULT_SETTLE_SECONDS = 30.0
 
 _BRANCH_INTER = "\u251c"  # ├ (intermediate branch)
 _BRANCH_LAST = "\u2514"  # └ (last branch)
@@ -474,17 +487,60 @@ class MultitestCommand(BaseCommand):
     usage = "multitest"
     examples = ["multitest", "mt"]
 
+    # Reply used when response_format is blank. Rendered through the same piped
+    # engine as a configured template, so the two cannot drift apart.
+    DEFAULT_FORMAT = "Paths({path_count}):\n{paths}"
+
+    # CoreScope mode reports the count and links to the map instead of listing
+    # the routes. An observer network routinely reports dozens -- a 40-path reply
+    # measured 1285 bytes, eight transmissions, for one command on a shared
+    # channel -- and the map shows them better than a wrapped list of hex hops.
+    DEFAULT_CORESCOPE_FORMAT = (
+        "Paths({path_count}) via {scope_observers} obs "
+        "({scope_observations} rx, {scope_max_hops} hops)\n{scope_url|shorten}"
+    )
+
+    # Sent as soon as a CoreScope request is accepted, because the settle delay
+    # leaves the user waiting half a minute with nothing. Plain ASCII and short:
+    # it is a second transmission on a shared mesh and has to fit the budget on
+    # its own.
+    DEFAULT_ACK_MESSAGE = "Checking CoreScope for all paths, reply in ~{wait_seconds}s"
+
+    # Longest settle an operator can configure. A typo of 3000 would otherwise
+    # hold the command path for 50 minutes.
+    MAX_SETTLE_SECONDS = 300.0
+
+    # "long"/"xlong" lengthen the local listening window; in CoreScope mode there
+    # is no window, so they lengthen the wait for observers to report instead.
+    SETTLE_MULTIPLIERS = {"": 1, "long": 2, "xlong": 3}
+
     # Web-viewer settings schema (see modules/settings_schema.py)
     settings_schema = [
         {"key": "response_format", "label": "Response format", "type": "str",
          "default": "",
          "help": "Result template. Empty = default.",
-         "template": template_spec("format", {
-             "sender": "Sender's name",
-             "path_count": "Number of unique paths heard",
-             "paths": "The paths, laid out per Path layout",
-             "listening_duration": "Seconds the bot listened",
-         }, notes=["\\n starts a new line."], preview="multitest")},
+         "template": template_spec(
+             "piped",
+             MESSAGE_PLACEHOLDERS + (
+                 "path_count", "paths", "listening_duration",
+                 "scope_observers", "scope_observations", "scope_max_hops", "scope_url",
+             ),
+             notes=[
+                 "The message placeholders describe the triggering message, the one "
+                 "whose packet the bot listened for.",
+                 "The scope_ fields need CoreScope configured; they are empty when "
+                 "the bot collected the paths itself. With CoreScope on, "
+                 "{path_count} and {paths} are what the observer network heard, "
+                 "not just this radio.",
+                 "Left blank in CoreScope mode, the reply sends the count and a "
+                 "shortened map link rather than the routes: the network often "
+                 "reports dozens, which is several transmissions. Add {paths} to "
+                 "list them anyway.",
+                 "\\n starts a new line.",
+             ],
+             blank_default=DEFAULT_FORMAT,
+             preview="multitest",
+         )},
         {"key": "condense_paths", "label": "Path layout", "type": "enum",
          "options": [
              {"value": "true", "label": "Condensed tree (default)"},
@@ -499,6 +555,46 @@ class MultitestCommand(BaseCommand):
         {"key": "require_path_bytes_failure_response", "label": "Path-byte reject reply", "type": "str",
          "default": "",
          "help": "Reply when rejected by the path-byte requirement. Empty = silent reject."},
+        {"key": "corescope_enabled", "label": "Ask CoreScope instead of listening", "type": "bool",
+         "default": False,
+         "help": "Report the paths the whole observer network heard, not just this radio's. "
+                 "The bot stops listening for packets itself: no listening window, and "
+                 "\"long\"/\"xlong\" lengthen the wait for observers instead. Needs a CoreScope "
+                 "URL below and observers covering this area — with neither, a request has "
+                 "nothing to report. Off keeps the listening window."},
+        {"key": "corescope_url", "label": "CoreScope URL", "type": "str",
+         "section": "External_Data", "default": "",
+         "help": "Base URL of the CoreScope instance, e.g. https://analyzer.comchan.net. "
+                 "Shared with anything else that links to it. Blank leaves the bot listening "
+                 "locally even when the setting above is on."},
+        {"key": "corescope_settle_seconds", "label": "Wait for observers", "type": "float",
+         "min": 0, "max": MAX_SETTLE_SECONDS, "default": DEFAULT_SETTLE_SECONDS, "unit": "s",
+         "help": "Seconds to wait before asking, so observers have reported. Asking at once "
+                 "returns only whoever reported first. The reply is this much later, and "
+                 "\"long\"/\"xlong\" wait 2x/3x. 0 asks immediately."},
+        {"key": "corescope_ack_message", "label": "Acknowledgement", "type": "str",
+         "default": DEFAULT_ACK_MESSAGE,
+         "help": "Sent as soon as the request is accepted, so the wait above does not look "
+                 "like the bot ignoring it. Empty sends nothing.",
+         "template": template_spec(
+             "piped",
+             MESSAGE_PLACEHOLDERS + ("wait_seconds",),
+             notes=[
+                 "Only sent when CoreScope is on. Leave it empty to send nothing — unlike "
+                 "the response format, blank here is off rather than a default.",
+                 "{wait_seconds} is the wait this request will actually do, so it stays "
+                 "right for \"long\" and \"xlong\" too.",
+                 "\\n starts a new line.",
+             ],
+         )},
+        {"key": "corescope_timeout", "label": "CoreScope timeout", "type": "float",
+         "min": 0.5, "max": 30, "default": DEFAULT_TIMEOUT, "unit": "s",
+         "help": "How long to wait for CoreScope to answer, on top of the wait above. "
+                 "A lookup that times out replies that no data was found."},
+        {"key": "corescope_cache_seconds", "label": "CoreScope cache", "type": "int",
+         "min": 0, "max": 3600, "default": DEFAULT_CACHE_SECONDS, "unit": "s",
+         "help": "How long one packet's answer is reused, so repeat requests for the same "
+                 "packet do not ask again."},
     ]
 
     def __init__(self, bot):
@@ -523,13 +619,11 @@ class MultitestCommand(BaseCommand):
         if response_format and response_format.strip():
             # Strip quotes if present (config parser may add them)
             response_format = self._strip_quotes_from_config(response_format).strip()
-            # Decode escape sequences (e.g., \n -> newline)
-            try:
-                # Use encode/decode to convert escape sequences to actual characters
-                self.response_format = response_format.encode('latin-1').decode('unicode_escape')
-            except (UnicodeDecodeError, UnicodeEncodeError):
-                # If decoding fails, use as-is (fallback)
-                self.response_format = response_format
+            # Decode escape sequences (e.g. \n -> newline) the way every other
+            # response template does. The old encode('latin-1') route also read
+            # \uXXXX, but it raised on any non-latin-1 character, so one emoji in
+            # the template left every \n in it literal.
+            self.response_format = decode_escape_sequences(response_format)
         else:
             self.response_format = None  # Use default format
 
@@ -537,6 +631,114 @@ class MultitestCommand(BaseCommand):
             'Multitest_Command', 'condense_paths', fallback='true'
         )
         self.condense_paths_mode: CondensePathsMode = _parse_condense_paths_mode(raw_cp)
+
+        self._corescope = self._build_corescope_client()
+        self.corescope_settle_seconds = self._load_settle_seconds()
+
+        ack = self.get_config_value(
+            'Multitest_Command', 'corescope_ack_message', fallback=None
+        )
+        if ack is None:
+            self.corescope_ack_message: str = self.DEFAULT_ACK_MESSAGE
+        else:
+            # An explicitly blank value disables the acknowledgement; anything else
+            # is a template, decoded like every other configured response.
+            stripped = self._strip_quotes_from_config(ack).strip()
+            self.corescope_ack_message = decode_escape_sequences(stripped) if stripped else ""
+
+    def _load_settle_seconds(self) -> float:
+        """Seconds to wait before asking CoreScope, clamped to a sane range.
+
+        Observers publish to CoreScope over MQTT as they hear a packet, so asking
+        the moment the trigger is decoded returns a floor rather than a total.
+        Waiting is the whole point of the delay; an out-of-range value is rejected
+        rather than honoured, since the command path is occupied throughout.
+        """
+        # Read as text and parse here: get_config_value's 'float' coercion falls
+        # back silently, so a typo would quietly become the default with nothing
+        # in the log to explain why the bot is not waiting as long as configured.
+        raw = self.get_config_value(
+            'Multitest_Command', 'corescope_settle_seconds', fallback=None
+        )
+        if raw is None or not str(raw).strip():
+            return DEFAULT_SETTLE_SECONDS
+        try:
+            value = float(str(raw).strip())
+        except ValueError:
+            self.logger.warning(
+                f"Multitest: corescope_settle_seconds {raw!r} is not a number; "
+                f"using {DEFAULT_SETTLE_SECONDS:g}s"
+            )
+            return DEFAULT_SETTLE_SECONDS
+
+        clamped = max(0.0, min(value, self.MAX_SETTLE_SECONDS))
+        if clamped != value:
+            self.logger.warning(
+                f"Multitest: corescope_settle_seconds {value:g} is out of range "
+                f"(0-{self.MAX_SETTLE_SECONDS:g}); using {clamped:g}s"
+            )
+        return clamped
+
+    def _settle_for_variant(self, variant: str) -> float:
+        """The settle this run waits: the configured value, scaled by the variant."""
+        multiplier = self.SETTLE_MULTIPLIERS.get(variant, 1)
+        return min(self.corescope_settle_seconds * multiplier, self.MAX_SETTLE_SECONDS)
+
+    def _build_corescope_client(self) -> Optional[CoreScopeClient]:
+        """The CoreScope client, or ``None`` to keep listening locally.
+
+        Rebuilt on every config load so a changed URL or toggle takes effect
+        without a restart. Enabled with no usable URL degrades to the local
+        listening window rather than breaking the command: there is no default
+        instance to guess at, since this sends a packet hash the bot heard to a
+        third-party service the operator has to name.
+        """
+        if not self.get_config_value(
+            'Multitest_Command', 'corescope_enabled', fallback=False, value_type='bool'
+        ):
+            return None
+
+        base_url = normalize_base_url(
+            self.get_config_value('External_Data', 'corescope_url', fallback='') or ''
+        )
+        if not base_url:
+            self.logger.warning(
+                "Multitest: corescope_enabled is on but [External_Data] corescope_url is "
+                "missing or unusable; listening locally instead"
+            )
+            return None
+
+        return CoreScopeClient(
+            base_url,
+            timeout=self.get_config_value(
+                'Multitest_Command', 'corescope_timeout',
+                fallback=DEFAULT_TIMEOUT, value_type='float',
+            ),
+            cache_seconds=self.get_config_value(
+                'Multitest_Command', 'corescope_cache_seconds',
+                fallback=DEFAULT_CACHE_SECONDS, value_type='int',
+            ),
+            logger=self.logger,
+        )
+
+    @property
+    def uses_corescope(self) -> bool:
+        """True when paths come from CoreScope rather than from listening."""
+        return self._corescope is not None
+
+    @property
+    def default_format(self) -> str:
+        """The reply template used when ``response_format`` is blank.
+
+        Mode-dependent, because the two modes have different amounts to say and
+        different ways to say it. Listening collects a handful of paths from one
+        radio and no link exists to send instead, so it lists them. CoreScope
+        reports what a whole observer network heard and owns a map page for it,
+        so it sends the count and the link.
+        """
+        if self.uses_corescope:
+            return self.DEFAULT_CORESCOPE_FORMAT
+        return self.DEFAULT_FORMAT
 
     @property
     def condense_paths(self) -> bool:
@@ -847,10 +1049,237 @@ class MultitestCommand(BaseCommand):
         except Exception as e:
             self.logger.debug(f"Error scanning recent RF data for user {session.user_id}: {e}")
 
+    async def _render_reply(
+        self,
+        message: MeshMessage,
+        template: str,
+        *,
+        paths_text: str,
+        path_count: int,
+        listening_duration: int,
+        packet_hash: Optional[str] = None,
+        scope: Optional[ScopePacket] = None,
+    ) -> str:
+        """Render the result template, off the event loop.
+
+        Takes the same placeholders and ``|filter`` chains as the test reply and
+        the path reply prefix: every standard message field (``{packet_hash}``,
+        ``{path}``, ``{hops}``, ``{snr}``, ...) describing the *triggering*
+        message, plus this command's ``{path_count}``, ``{paths}`` and
+        ``{listening_duration}``. An unknown placeholder renders as nothing, the
+        way it does in the other piped templates.
+
+        ``{paths}`` is offered in both modes, but no built-in template uses it in
+        CoreScope mode: see :attr:`DEFAULT_CORESCOPE_FORMAT` for why. An operator
+        who writes it into their own template gets the full list.
+
+        Async because a ``shorten`` filter makes a blocking HTTP call, which
+        rendered inline would stall radio RX and every other handler for its
+        whole timeout.
+        """
+        if self.uses_corescope:
+            # No path list here either: the fallback exists for a broken
+            # template, not as a licence to send eight messages. The URL goes out
+            # unshortened, since the shortener lives in the engine that failed.
+            scope_url = self._scope_fields(scope, packet_hash)['scope_url']
+            default = f"Paths({path_count}): {scope_url}".rstrip()
+        else:
+            default = f"Paths({path_count}):\n{paths_text}"
+        try:
+            fields: dict[str, Any] = self.get_standard_placeholder_fields(message)
+            fields.update({
+                'sender': message.sender_id or "Unknown",
+                'path_count': path_count,
+                'paths': paths_text,
+                'listening_duration': listening_duration,
+            })
+            fields.update(self._scope_fields(scope, packet_hash))
+            return await format_piped_template_async(
+                template,
+                {k: str(v) for k, v in fields.items()},
+                message=message,
+                logger=self.logger,
+                config=self.bot.config,
+                prefix_hex_chars=getattr(self.bot, 'prefix_hex_chars', 2),
+            )
+        except (KeyError, ValueError) as e:
+            # Fall back to the plain path list rather than dropping the reply.
+            self.logger.debug(f"Error formatting multitest response: {e}, using default format")
+            return default
+
+    async def _collect_locally(self, session: MultitestSession) -> None:
+        """Listen for the window, collecting paths the bot's own radio hears.
+
+        Scanning before and after covers packets the message handler had not
+        processed yet when the window opened, and those that arrive while it is
+        closing.
+        """
+        self._scan_recent_rf_data(session)
+        await asyncio.sleep(session.listening_duration)
+        self._scan_recent_rf_data(session)
+
+    async def _send_corescope_ack(
+        self, message: MeshMessage, session: MultitestSession
+    ) -> None:
+        """Tell the user the request landed, before waiting out the settle.
+
+        Without this the bot is silent for the whole settle and reads as having
+        ignored the request. Sent with ``skip_user_rate_limit`` because the user's
+        budget should be charged for the result, not for the bot's progress note,
+        and truncated rather than chunked if an operator configures something
+        long: a progress note is not worth two transmissions.
+        """
+        template = self.corescope_ack_message
+        if not template:
+            return
+
+        wait_seconds = int(round(session.listening_duration))
+        text = await self._render_ack(message, template, wait_seconds=wait_seconds)
+        if not text.strip():
+            return
+
+        budget = self.get_max_message_length(message)
+        if len(text.encode("utf-8")) > budget:
+            chunks = self.bot.command_manager.split_text_into_utf8_chunks(text, budget)
+            self.logger.debug(
+                f"Multitest: acknowledgement is longer than {budget} bytes, truncating"
+            )
+            text = chunks[0] if chunks else text
+        await self.send_response(message, text, skip_user_rate_limit=True)
+
+    async def _render_ack(
+        self, message: MeshMessage, template: str, *, wait_seconds: int
+    ) -> str:
+        """Render the acknowledgement, off the event loop like the reply.
+
+        Takes ``{wait_seconds}`` -- the wait this run will actually do, variant
+        scaling included -- plus the standard message placeholders, so the text
+        cannot promise a delay the command is not about to take.
+        """
+        try:
+            fields: dict[str, Any] = self.get_standard_placeholder_fields(message)
+            fields.update({
+                'sender': message.sender_id or "Unknown",
+                'wait_seconds': wait_seconds,
+            })
+            return await format_piped_template_async(
+                template,
+                {k: str(v) for k, v in fields.items()},
+                message=message,
+                logger=self.logger,
+                config=self.bot.config,
+                prefix_hex_chars=getattr(self.bot, 'prefix_hex_chars', 2),
+            )
+        except (KeyError, ValueError) as e:
+            # Silence is the thing this message exists to prevent, so fall back to
+            # the built-in text rather than dropping it.
+            self.logger.debug(f"Error formatting multitest acknowledgement: {e}, using default")
+            return self.DEFAULT_ACK_MESSAGE.replace("{wait_seconds}", str(wait_seconds))
+
+    async def _collect_from_corescope(
+        self, message: MeshMessage, session: MultitestSession, *, started: float
+    ) -> Optional[ScopePacket]:
+        """Ask CoreScope for the packet's paths instead of listening for them.
+
+        No listening window, no RF scan, no listener registration: the observer
+        network already heard what this command would have waited for, and from
+        more radios than this one has. ``None`` when the lookup found nothing,
+        which the caller turns into :meth:`_corescope_miss_response`.
+
+        Acknowledges first, then waits out the settle so observers have reported
+        before the lookup. The wait runs to a deadline measured from *started*,
+        the moment this command picked the trigger up, rather than sleeping a flat
+        interval after the acknowledgement: that send takes real time (the rate
+        limiter, and a DM waits for an ACK), which would otherwise push the total
+        past the configured wait.
+
+        The client blocks on HTTP, so it runs in the executor. Inline it would
+        stall radio RX and every other handler for the whole timeout.
+        """
+        client = self._corescope
+        if client is None:
+            return None
+
+        await self._send_corescope_ack(message, session)
+
+        remaining = session.listening_duration - (time.monotonic() - started)
+        if remaining > 0:
+            await asyncio.sleep(remaining)
+
+        self.logger.info(
+            f"Multitest: asking CoreScope for packet {session.target_packet_hash} "
+            f"after {session.listening_duration:g}s"
+        )
+        return await asyncio.get_running_loop().run_in_executor(
+            None, partial(client.fetch, session.target_packet_hash)
+        )
+
+    async def _end_session(self, user_id: str) -> None:
+        """Drop the session and release the listener when nothing else needs it."""
+        async with self._get_execution_lock():
+            self._active_sessions.pop(user_id, None)
+            if not self._active_sessions and self.bot.message_handler.multitest_listener == self:
+                self.bot.message_handler.multitest_listener = None
+
+    def _scope_fields(
+        self, scope: Optional[ScopePacket], packet_hash: Optional[str]
+    ) -> dict[str, str]:
+        """The ``scope_*`` placeholders, empty unless CoreScope answered.
+
+        Always every key, so one template serves both modes: a clause written as
+        ``{scope_url|shorten|prefix_if_nonempty: | Map: }`` disappears label and
+        all when the bot listened locally, instead of depending on how an unknown
+        placeholder happens to render.
+
+        There is deliberately no ``scope_path_count``: ``{path_count}`` already
+        carries CoreScope's count in the mode where it exists, and a second name
+        for the same number only invites a template that prints both.
+        """
+        fields = {
+            'scope_observers': '',
+            'scope_observations': '',
+            'scope_max_hops': '',
+            'scope_url': '',
+        }
+        if scope is None or self._corescope is None:
+            return fields
+        fields['scope_observers'] = str(scope.observers)
+        fields['scope_observations'] = str(scope.observations)
+        fields['scope_max_hops'] = str(scope.max_hops)
+        fields['scope_url'] = self._corescope.map_url(packet_hash or '')
+        return fields
+
+    def _lay_out_paths(self, paths: list[str]) -> str:
+        """Render *paths* per the configured layout. One path is always one line."""
+        if len(paths) > 1 and self.condense_paths_mode in ("flat", "nested"):
+            return _condense_path_lines(paths, self.condense_paths_mode)
+        return "\n".join(paths)
+
+    def _corescope_miss_response(
+        self, tracking_hash: Optional[str], session: MultitestSession
+    ) -> str:
+        """Reply for a CoreScope lookup that came back with nothing.
+
+        CoreScope mode does not listen, so there is no local path list to fall
+        back on -- except the triggering message's own path, which was extracted
+        at trigger time and costs nothing to report. Saying which packet missed
+        matters: the usual cause is that no observer covers the bot's area, and
+        the hash is what the operator needs to check that on the map.
+        """
+        miss = f"No CoreScope data for packet {tracking_hash}."
+        if session.initial_path:
+            return f"{miss} Heard locally: {session.initial_path}"
+        return f"{miss} No observer has reported it."
+
     async def execute(self, message: MeshMessage) -> bool:
         """Execute the multitest command"""
         user_id = message.sender_id or "unknown"
+        # Marks when this command picked the trigger up, so a CoreScope settle can
+        # run to a deadline rather than a flat sleep after the acknowledgement.
+        started = time.monotonic()
         required_path_bytes_mode = self._get_required_path_bytes_setting('Multitest_Command')
+        # Before anything is sent: a request the path-byte requirement rejects gets
+        # the configured reject reply or silence, never an acknowledgement.
         if not await self.enforce_path_byte_requirement(message, 'Multitest_Command'):
             return True
 
@@ -868,18 +1297,26 @@ class MultitestCommand(BaseCommand):
             # Record execution time BEFORE starting async work to prevent race conditions
             self.record_execution(user_id)
 
-            # Determine listening duration based on command variant
+            # Determine how long this run occupies: the listening window locally,
+            # the settle in CoreScope mode. Either way it is what the duplicate-session
+            # guard above measures against and what {listening_duration} reports.
             _trigger, args = self.split_trigger_and_args(message.content)
-            listening_duration = 6.0  # Default
             # Variants: "<trigger> long" / "<trigger> xlong" (trigger = multitest, mt, or alias)
             variant = args.split()[0].lower() if args else ""
-            if variant == 'long':
+            if self.uses_corescope:
+                listening_duration = self._settle_for_variant(variant)
+                self.logger.info(
+                    f"Multitest command ({variant or 'default'}) executed by {user_id} - "
+                    f"waiting {listening_duration:g}s for observers to report to CoreScope"
+                )
+            elif variant == 'long':
                 listening_duration = 10.0
                 self.logger.info(f"Multitest command (long) executed by {user_id} - starting 10 second listening window")
             elif variant == 'xlong':
                 listening_duration = 14.0
                 self.logger.info(f"Multitest command (xlong) executed by {user_id} - starting 14 second listening window")
             else:
+                listening_duration = 6.0
                 self.logger.info(f"Multitest command executed by {user_id} - starting 6 second listening window")
 
             # Get RF data for the triggering message (contains pre-calculated packet hash)
@@ -936,67 +1373,54 @@ class MultitestCommand(BaseCommand):
             # Register this session
             self._active_sessions[user_id] = session
 
-            # Register this command instance as the active listener (if not already registered)
-            # Store reference in message handler so it can call on_message_received
-            if self.bot.message_handler.multitest_listener is None:
+            # Only the local listening window needs the message handler to feed it
+            # matching packets; CoreScope mode never collects any itself.
+            if not self.uses_corescope and self.bot.message_handler.multitest_listener is None:
                 self.bot.message_handler.multitest_listener = self
 
             self.logger.info(f"Tracking packet hash for user {user_id}: {packet_hash[:16]}... (full: {packet_hash})")
             self.logger.debug(f"Triggering message timestamp for user {user_id}: {triggering_rf_timestamp}")
 
-        # Release lock before async sleep to allow other users to start their sessions
-        # Also scan recent RF data for matching hashes (in case messages haven't been processed yet)
-        # But only include packets that arrived at or after the triggering message
-        self._scan_recent_rf_data(session)
-
+        # Lock released, so other users can start their own sessions while this one
+        # waits.
+        scope: Optional[ScopePacket] = None
         try:
-            # Wait for the listening duration
-            await asyncio.sleep(session.listening_duration)
+            if self.uses_corescope:
+                scope = await self._collect_from_corescope(
+                    message, session, started=started
+                )
+            else:
+                await self._collect_locally(session)
         finally:
-            # Re-acquire lock to clean up session
-            async with self._get_execution_lock():
-                # Remove this session
-                if user_id in self._active_sessions:
-                    del self._active_sessions[user_id]
-
-                # Unregister listener if no more active sessions
-                if not self._active_sessions and self.bot.message_handler.multitest_listener == self:
-                    self.bot.message_handler.multitest_listener = None
-
-        # Do a final scan of RF data in case any matching packets arrived
-        self._scan_recent_rf_data(session)
+            await self._end_session(user_id)
 
         # Store hash for error message before clearing it
         tracking_hash = session.target_packet_hash
 
-        # Format the collected paths
-        if session.collected_paths:
-            # Sort paths for consistent output
-            sorted_paths = sorted(session.collected_paths)
-            if len(sorted_paths) > 1 and self.condense_paths_mode == "flat":
-                paths_text = _condense_path_lines(sorted_paths, "flat")
-            elif len(sorted_paths) > 1 and self.condense_paths_mode == "nested":
-                paths_text = _condense_path_lines(sorted_paths, "nested")
-            else:
-                paths_text = "\n".join(sorted_paths)
-            path_count = len(sorted_paths)
+        # One source or the other, never both: CoreScope mode did not listen, so
+        # session.collected_paths holds nothing but the triggering message's own path.
+        if self.uses_corescope:
+            paths = list(scope.paths) if scope is not None else []
+        else:
+            paths = sorted(session.collected_paths)
 
-            # Use configured format if available, otherwise use default
-            if self.response_format:
-                try:
-                    response = self.response_format.format(
-                        sender=message.sender_id or "Unknown",
-                        path_count=path_count,
-                        paths=paths_text,
-                        listening_duration=int(session.listening_duration)
-                    )
-                except (KeyError, ValueError) as e:
-                    # If formatting fails, fall back to default
-                    self.logger.debug(f"Error formatting multitest response: {e}, using default format")
-                    response = f"Paths({path_count}):\n{paths_text}"
-            else:
-                # Default format
-                response = f"Paths({path_count}):\n{paths_text}"
+        # Format the collected paths
+        if paths:
+            paths_text = self._lay_out_paths(paths)
+
+            # Configured template or the built-in default; both take the same
+            # placeholders and filters, and both render the same way.
+            response = await self._render_reply(
+                message,
+                self.response_format or self.default_format,
+                paths_text=paths_text,
+                path_count=len(paths),
+                listening_duration=int(session.listening_duration),
+                packet_hash=tracking_hash,
+                scope=scope,
+            )
+        elif self.uses_corescope:
+            response = self._corescope_miss_response(tracking_hash, session)
         else:
             # Provide more helpful error message with diagnostic info
             matching_packets = 0

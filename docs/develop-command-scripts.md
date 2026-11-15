@@ -240,8 +240,10 @@ settings_schema = [
 
 A `str` field that holds a reply template can add `"template"`, built with `template_spec` from `modules.template_reference`. The Plugins page then puts a `{ }` button beside the field that opens a list of its placeholders (click one to insert it at the cursor). Name the syntax the plugin renders the value with:
 
-- `"piped"`: the plugin renders it with `format_piped_template` from `modules.response_template`. The panel also lists the filters and conditionals and previews the template against sample messages (2-byte, 1-byte and direct).
-- `"format"`: the plugin uses Python's `str.format`. The panel lists placeholders only. To preview it, add a renderer to `FORMAT_PREVIEWS` in `modules/template_reference.py` that formats sample values the way the plugin does, including what the plugin sends when the template fails, and name it with `preview=`.
+- `"piped"`: the plugin renders it with `format_piped_template` from `modules.response_template` (or `format_piped_template_async` from async code, which the `shorten` filter's blocking HTTP call requires). The panel also lists the filters and conditionals and previews the template against sample messages (2-byte, 1-byte and direct).
+- `"format"`: the plugin uses Python's `str.format`. The panel lists placeholders only. To preview it, add a renderer to `PREVIEW_RENDERERS` in `modules/template_reference.py` that formats sample values the way the plugin does, including what the plugin sends when the template fails, and name it with `preview=`.
+
+A piped field needs no renderer, unless some of its sample values come from the plugin's other settings: `multitest`'s `{paths}` follows its saved path layout, so it names a renderer that supplies those two fields and hands the rest to the generic piped preview.
 
 ```python
 from modules.template_reference import MESSAGE_PLACEHOLDERS, template_spec

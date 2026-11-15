@@ -6,15 +6,18 @@ show which placeholders the field takes (and, for piped templates, the filters),
 and the preview endpoint renders a piped template against sample messages with
 :func:`render_preview`.
 
-Three template syntaxes exist, and a field must say which one it uses, because a
+Two template syntaxes exist, and a field must say which one it uses, because a
 reference that offered filters to a ``str.format`` field would be wrong:
 
 - ``piped``: :mod:`modules.response_template` (``{field|filter:arg}``, quoted
-  literals, conditionals). Used by the test reply and the path reply prefix.
+  literals, conditionals). Used by the test reply, the multitest reply and the
+  path reply prefix.
 - ``format``: Python ``str.format``. Placeholders only, no filters. What an
-  unknown name does depends on the plugin (the greeter sends nothing, multitest
-  falls back to its default), so each such field names a renderer in
-  :data:`FORMAT_PREVIEWS` that reproduces its plugin's handling.
+  unknown name does depends on the plugin (the greeter sends nothing, the
+  weather formats fall back to their default), so each such field names a
+  renderer in :data:`PREVIEW_RENDERERS` that reproduces its plugin's handling.
+  A piped field names one too when its sample values come from the plugin's
+  other settings, as multitest's paths follow the saved path layout.
 
 The catalog here is data for the UI. The fields themselves come from the
 commands that render them; ``tests/test_template_reference.py`` keeps the
@@ -97,6 +100,21 @@ _EXTRA_PLACEHOLDERS: dict[str, tuple[str, Any]] = {
         "confident 2- or 3-byte match keeps its hex prefix",
         {"multibyte": "BlackHls▸KalamaSum▸e5f6", "onebyte": "a1▸c3▸e5", "direct": "Direct"},
     ),
+    # Multitest. The preview overrides {paths} with the saved path layout.
+    "path_count": ("Number of unique paths heard", "3"),
+    "paths": ("The paths, laid out per Path layout", "a1,b7,e5\na1,c3,e5\na1,c3,f2"),
+    "listening_duration": ("Seconds the bot listened, or waited for CoreScope", "6"),
+    # Multitest with CoreScope configured. Empty when the bot listened for the
+    # paths itself, so a clause built on one disappears rather than going blank.
+    "wait_seconds": ("Seconds this request will wait before it answers", "30"),
+    "scope_observers": ("CoreScope: observers that heard the packet", "25"),
+    "scope_observations": ("CoreScope: times it was heard, all observers", "46"),
+    "scope_max_hops": ("CoreScope: hops on the longest path", "12"),
+    "scope_url": (
+        "CoreScope: map link showing every path. Shorten it before labelling it: "
+        "{scope_url|shorten|prefix_if_nonempty: | Map: }",
+        "https://analyzer.example.net/#/map?packet=7ba8bf1119ca1fe1&paths=all",
+    ),
 }
 
 ALL_PLACEHOLDERS = {**_MESSAGE_PLACEHOLDERS, **_EXTRA_PLACEHOLDERS}
@@ -164,10 +182,12 @@ def template_spec(
     ``{name: value_or_{scenario_id: value}}``. ``blank_default`` is the
     template the plugin uses when the field is blank, which the preview renders
     in that case; ``blank_config`` is a ``(section, key)`` the plugin tries
-    first. ``preview`` names the :data:`FORMAT_PREVIEWS` renderer for a
-    ``format`` field; piped fields always preview.
+    first. ``preview`` names the :data:`PREVIEW_RENDERERS` entry that reproduces
+    the plugin's own handling: required for a ``format`` field, optional for a
+    piped one whose sample values depend on the plugin's other settings
+    (multitest's path layout). A piped field without one previews generically.
     """
-    if preview is not None and preview not in FORMAT_PREVIEWS:
+    if preview is not None and preview not in PREVIEW_RENDERERS:
         raise ValueError(f"unknown format preview {preview!r}")
     if syntax not in ("piped", "format"):
         raise ValueError(f"unknown template syntax {syntax!r}")
@@ -192,10 +212,10 @@ def template_spec(
         spec["syntax_notes"] = PIPED_SYNTAX_NOTES
         spec["previewable"] = True
         spec["sample_note"] = "Sample values from a message by Alice."
-    elif preview:
+    if preview:
         spec["preview"] = preview
         spec["previewable"] = True
-        spec["sample_note"] = FORMAT_PREVIEWS[preview][1]
+        spec["sample_note"] = PREVIEW_RENDERERS[preview][1]
     return spec
 
 
@@ -276,12 +296,14 @@ def render_preview(
     template that change the output (a [Keywords] fallback, the multitest path
     layout, the MQTT length limit); without it the defaults apply.
     """
-    if spec.get("syntax") == "piped":
-        return _preview_piped(spec, template, config)
-    renderer = FORMAT_PREVIEWS.get(spec.get("preview") or "")
+    renderer = PREVIEW_RENDERERS.get(spec.get("preview") or "")
     if renderer is None:
+        if spec.get("syntax") == "piped":
+            return _preview_piped(spec, template, config)
         raise ValueError("this template field has no preview")
-    if _oversized_format_spec(template):
+    # Only str.format evaluates a `{field:spec}`; a piped template reads the
+    # whole `field:spec` as a name it does not have and renders nothing.
+    if spec.get("syntax") != "piped" and _oversized_format_spec(template):
         return _preview([_row("template", "Template", "",
                               f"A format width or precision over {_MAX_FORMAT_WIDTH} isn't previewed.")])
     return renderer[0](spec, template, config)
@@ -293,7 +315,12 @@ def _config_get(config: Optional[configparser.ConfigParser], section: str, key: 
     return config.get(section, key, raw=True)
 
 
-def _preview_piped(spec: dict[str, Any], template: str, config: Optional[configparser.ConfigParser]) -> Preview:
+def _preview_piped(
+    spec: dict[str, Any],
+    template: str,
+    config: Optional[configparser.ConfigParser],
+    samples: Optional[dict[str, Any]] = None,
+) -> Preview:
     """Render a piped template against every sample scenario.
 
     Mirrors what the commands do before rendering: surrounding double quotes are
@@ -301,6 +328,11 @@ def _preview_piped(spec: dict[str, Any], template: str, config: Optional[configp
     then ``blank_default``) and, when the field takes them, escape sequences are
     decoded. The ``shorten`` filter gets no config, so it passes the URL through
     instead of calling the shortener.
+
+    ``samples`` are extra field values from the field's own renderer, for the
+    ones the catalog cannot know on its own (multitest's paths follow the saved
+    path layout). They take precedence over the field's ``samples`` and the
+    catalog's.
     """
     text = _strip_quotes(template.strip()).strip()
     note = None
@@ -316,7 +348,7 @@ def _preview_piped(spec: dict[str, Any], template: str, config: Optional[configp
     if spec.get("escapes", True):
         text = decode_escape_sequences(text)
 
-    overrides = spec.get("samples") or {}
+    overrides = {**(spec.get("samples") or {}), **(samples or {})}
     names = [p["name"] for p in spec.get("placeholders", [])]
     results = []
     for scenario in SCENARIOS:
@@ -331,6 +363,48 @@ def _preview_piped(spec: dict[str, Any], template: str, config: Optional[configp
         output = format_piped_template(text, fields, message=_scenario_message(scenario))
         results.append(_row(sid, scenario["label"], output))
     return _preview(results, note)
+
+
+_MULTITEST_PATHS = ["a1,c3,e5", "a1,b7,e5", "a1,c3,f2"]
+
+
+def _previews_corescope(config: Optional[configparser.ConfigParser]) -> bool:
+    """True when the saved config has multitest deferring to CoreScope.
+
+    Both halves, as :meth:`MultitestCommand._build_corescope_client` requires
+    them: the switch on and a usable URL.
+    """
+    from .clients.corescope_client import normalize_base_url
+
+    enabled = (_config_get(config, "Multitest_Command", "corescope_enabled") or "").strip().lower()
+    if enabled not in ("true", "yes", "1", "on"):
+        return False
+    return bool(normalize_base_url(_config_get(config, "External_Data", "corescope_url") or ""))
+
+
+def _preview_multitest(spec: dict[str, Any], template: str, config: Optional[configparser.ConfigParser]) -> Preview:
+    """As MultitestCommand's reply: the saved path layout, then the piped template.
+
+    Only ``{paths}`` and ``{path_count}`` need supplying here; every other field
+    is a message placeholder the scenarios already describe.
+
+    What a blank field falls back to depends on the saved mode, so the preview
+    reads it: CoreScope mode's default links to the map instead of listing the
+    routes, and showing the listening default there would preview a reply the
+    operator will never receive.
+    """
+    from .commands.multitest_command import (
+        MultitestCommand,
+        _condense_path_lines,
+        _parse_condense_paths_mode,
+    )
+
+    mode = _parse_condense_paths_mode(_config_get(config, "Multitest_Command", "condense_paths") or "true")
+    paths = sorted(_MULTITEST_PATHS)
+    paths_text = _condense_path_lines(paths, mode) if mode != "off" else "\n".join(paths)
+    if _previews_corescope(config):
+        spec = {**spec, "blank_default": MultitestCommand.DEFAULT_CORESCOPE_FORMAT}
+    return _preview_piped(spec, template, config, {"paths": paths_text, "path_count": len(paths)})
 
 
 # --- str.format fields ------------------------------------------------------
@@ -407,35 +481,6 @@ def _preview_mesh_info(spec: dict[str, Any], template: str, config: Optional[con
     except Exception as exc:  # noqa: BLE001 - the greeter catches everything here
         return _preview([_row("mesh_info", "Appended", "",
                               f"{_describe_format_error(exc)}. The greeting goes out without mesh info.")], note)
-
-
-_MULTITEST_PATHS = ["a1,c3,e5", "a1,b7,e5", "a1,c3,f2"]
-
-
-def _preview_multitest(spec: dict[str, Any], template: str, config: Optional[configparser.ConfigParser]) -> Preview:
-    """As MultitestCommand._load_config and its reply: layout, decoding, default on error."""
-    from .commands.multitest_command import _condense_path_lines, _parse_condense_paths_mode
-
-    mode = _parse_condense_paths_mode(_config_get(config, "Multitest_Command", "condense_paths") or "true")
-    paths = sorted(_MULTITEST_PATHS)
-    paths_text = _condense_path_lines(paths, mode) if mode != "off" else "\n".join(paths)
-    sample = {"sender": "Alice", "path_count": len(paths), "paths": paths_text, "listening_duration": 6}
-    default = f"Paths({len(paths)}):\n{paths_text}"
-
-    text = _strip_quotes(template.strip()).strip()
-    if not text:
-        return _preview([_row("reply", "Reply", default)], "The field is blank, so multitest uses its default format.")
-    try:
-        text = text.encode("latin-1").decode("unicode_escape")
-    except (UnicodeDecodeError, UnicodeEncodeError):
-        pass
-    try:
-        return _preview([_row("reply", "Reply", text.format(**sample))])
-    except (KeyError, ValueError) as exc:
-        return _preview([_row("reply", "Reply", default,
-                              f"{_describe_format_error(exc)}. Multitest sends its default format instead.")])
-    except Exception as exc:  # noqa: BLE001 - shows what reaches the command's caller
-        return _preview([_row("reply", "Reply", "", f"{_describe_format_error(exc)}. The multitest reply fails.")])
 
 
 _MQTT_SAMPLES = [
@@ -523,11 +568,14 @@ def _temperature_preview(key: str, high: Optional[int], low: Optional[int], labe
 
 
 # name -> (renderer, description of the sample data shown under the preview)
-FORMAT_PREVIEWS: dict[str, tuple[Renderer, str]] = {
+PREVIEW_RENDERERS: dict[str, tuple[Renderer, str]] = {
     "greeting": (_preview_greeting, "Greeting a user named Alice. Mesh info, when on, is added to the last message."),
     "channel_greetings": (_preview_channel_greetings, "Greeting a user named Alice on each listed channel."),
     "mesh_info": (_preview_mesh_info, "Sample counts: 412 contacts, 57 repeaters, 331 companions, 38 active."),
-    "multitest": (_preview_multitest, "Alice heard over 3 paths in 6 seconds, laid out per the saved Path layout."),
+    "multitest": (_preview_multitest, "Alice heard over 3 paths in 6 seconds, laid out per the saved Path layout; "
+                                      "the other values come from her triggering message. A blank field "
+                                      "previews the default for the saved mode -- the path list when the bot "
+                                      "listens, the count and map link when CoreScope answers."),
     "mqtt_json": (_preview_mqtt_json, "Two sample station payloads; the second has no humidity. "
                                       "Uses the saved passthrough length limit."),
     "temp_pair": (_temperature_preview("temperature_high_low_format", 68, 51, "High 68, low 51"),

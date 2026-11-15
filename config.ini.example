@@ -862,6 +862,12 @@ short_url_website = https://v.gd
 # alternate hosts). Required for shlink, where it is sent as an X-Api-Key header.
 short_url_website_api_key =
 
+# CoreScope instance used by [Multitest_Command] corescope_enabled for mesh-wide
+# path counts and map links, e.g. https://analyzer.comchan.net. Blank leaves the
+# bot listening for paths locally even when that setting is on; there is no default
+# host, since this sends a packet hash the bot heard to a third-party service.
+corescope_url =
+
 # Weather API key (future feature)
 weather_api_key =
 
@@ -1557,13 +1563,24 @@ long_jokes = false
 enabled = false
 [Multitest_Command]
 # Response format for multitest command results
-# Available fields: {sender}, {path_count}, {paths}, {listening_duration}
-# {sender}: Name/ID of message sender
+# Multitest's own fields: {path_count}, {paths}, {listening_duration}
 # {path_count}: Number of unique paths found
-# {paths}: Newline-separated list of paths
+# {paths}: Newline-separated list of paths (laid out per condense_paths below)
 # {listening_duration}: Listening window duration in seconds
-# Leave empty to use default format
+# Plus the same message placeholders and pipe filters as [Test_Command] response_format,
+# describing the TRIGGERING message: {sender}, {connection_info}, {path}, {hops},
+# {hops_label}, {timestamp}, {snr}, {rssi}, {packet_hash}. See the [Test_Command]
+# response_format comments for the filter list (pathbytes_min, hops_min,
+# prefix_if_nonempty, if_nonempty/if_notempty, shorten/shorten_url) and the quoting rules.
+# Leave empty to use the default, which depends on the mode below: listening sends
+# Paths({path_count}):\n{paths}, while CoreScope sends the count and a shortened map
+# link instead of the routes (see the CoreScope section at the end of this block).
 # Example: "Found {path_count} unique path(s) for @[{sender}]:\n{paths}"
+# Example with a packet link that disappears when RF correlation failed:
+# response_format = @[{sender}] {path_count} path(s):\n{paths}{packet_hash|if_notempty:"\nhttps://scope.example.net/#/packets/{packet_hash}"|shorten}
+# NOTE: this field is no longer plain str.format, so {{ }} for a literal brace and
+# format specs such as {path_count:03d} are not interpreted; an unknown placeholder
+# renders as nothing instead of making the whole reply fall back to the default.
 response_format = @[{sender}] found {path_count} unique path(s):\n{paths}
 # condense_paths: false = one full path per line; true = flat condensed tree (default); nested = indented ├/└ under ┐ sub-blocks (uses ASCII spaces, not U+2502, to save bytes vs old │).
 condense_paths = true
@@ -1575,6 +1592,52 @@ condense_paths = true
 require_path_bytes_greater_or_equal_to = 0
 # Optional response when rejected by path-byte requirement; leave empty for silent reject
 require_path_bytes_failure_response =
+# --- CoreScope: report what the whole observer network heard ---------------
+# The bot only hears the paths that reach the bot. A CoreScope instance collects
+# the same packet from many observers, so it knows every path the packet took --
+# 40 unique paths across 46 receptions on a busy packet, where this radio hears a
+# handful.
+# corescope_enabled: true asks CoreScope for the paths INSTEAD of listening for
+# them. The listening window is not used at all, {path_count} and {paths} become
+# the whole network's view, and "multitest long"/"xlong" lengthen the wait for
+# observers instead of a window. Needs corescope_url in [External_Data] and
+# observers covering this area -- without observer coverage a request has nothing
+# to report, and there is no local listening to fall back on. Default: false.
+corescope_enabled = false
+# Seconds to wait before asking, so observers have had time to report. Observers
+# publish as they hear the packet, so asking at once counts only whoever reported
+# first. The reply is this much later than the request: 30s by default, 60s for
+# "long" and 90s for "xlong". Range 0-300; 0 asks immediately. Default: 30.
+corescope_settle_seconds = 30
+# Sent as soon as the request is accepted, so the wait above does not look like the
+# bot ignoring it. Takes the same placeholders and filters as response_format, plus
+# {wait_seconds} for the wait this request will actually do -- write the placeholder
+# rather than a number, so it stays right for "long" and "xlong". Leave EMPTY to
+# send nothing (unlike response_format, blank here is off, not a default).
+corescope_ack_message = Checking CoreScope for all paths, reply in ~{wait_seconds}s
+# Seconds to wait for CoreScope itself to answer, on top of corescope_settle_seconds.
+# A lookup that times out replies that no data was found. Default: 4.
+corescope_timeout = 4
+# How long one packet's answer is reused, so repeated requests for the same packet
+# do not ask again. Default: 300.
+corescope_cache_seconds = 300
+# THE REPLY DOES NOT LIST THE ROUTES in CoreScope mode. The network commonly
+# reports dozens -- 40 paths measured 1285 bytes, around eight transmissions for one
+# command on a shared channel -- so a blank response_format sends the count and a
+# shortened map link instead:
+#   Paths(40) via 25 obs (46 rx, 12 hops)
+#   https://v.gd/Ab3xYz
+# The response_format set above lists {paths} explicitly, which overrides that. With
+# CoreScope on, either blank the field or drop {paths} from it; keeping {paths} means
+# the bot does send all of them.
+# With CoreScope on, the reply can also use what only the observer network knows:
+# {scope_observers}, {scope_observations}, {scope_max_hops} and {scope_url}, a map
+# link drawing every path. They are empty when the bot listened locally, so a clause
+# built on one disappears instead of going blank. SHORTEN BEFORE LABELLING --
+# {scope_url|shorten|prefix_if_nonempty: | Map: } works, while
+# {scope_url|if_notempty:"Map: {scope_url}"|shorten} hands the shortener the label too.
+# Example: response_format = Paths({path_count}) seen by {scope_observers} observers{scope_url|shorten|prefix_if_nonempty:\n}
+
 [Greeter_Command]
 # Enable greeter to greet users on first channel message (true/false)
 enabled = false

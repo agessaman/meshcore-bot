@@ -414,14 +414,22 @@ max_prefix_range = 200
 enabled = true
 
 # Response format for multitest command results
-# Available fields: {sender}, {path_count}, {paths}, {listening_duration}
-# {sender}: Name/ID of message sender
+# Multitest's own fields: {path_count}, {paths}, {listening_duration}
 # {path_count}: Number of unique paths found
 # {paths}: Newline-separated list of paths
 # {listening_duration}: Listening window duration in seconds
+# Also takes the triggering message's placeholders and the pipe filters the test
+# command's response_format documents: {sender}, {path}, {hops}, {hops_label},
+# {connection_info}, {timestamp}, {snr}, {rssi}, {packet_hash}
 # Leave empty to use default format
 # Example: "Found {path_count} unique path(s) for @[{sender}]:\n{paths}"
 response_format = Found {path_count} unique path(s) for @[{sender}]:\n{paths}
+
+# The bot hears only the routes that reach the bot. With a CoreScope instance
+# configured it can report every route the packet took instead, from every
+# observer that heard it -- see [Multitest_Command] corescope_enabled in
+# config.ini.example. That mode does not listen locally at all and answers ~30s
+# later, so it needs observer coverage near this bot. Off here.
 
 [Help_Command]
 # Enable or disable the help command

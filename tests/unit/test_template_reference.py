@@ -88,9 +88,22 @@ class TestCatalogMatchesTheEngine:
         assert {p["name"] for p in spec["placeholders"]} == set(JSON_TEMPLATE_PLACEHOLDERS)
 
     def test_format_fields_offer_no_filters(self):
-        spec = _field(MultitestCommand, "response_format")["template"]
+        spec = _field(GreeterCommand, "greeting_message")["template"]
         assert spec["syntax"] == "format"
         assert "filters" not in spec
+
+    def test_multitest_reply_is_piped_with_its_own_counts(self):
+        spec = _field(MultitestCommand, "response_format")["template"]
+        assert spec["syntax"] == "piped"
+        assert spec["filters"] is PIPED_FILTERS
+        assert [p["name"] for p in spec["placeholders"]] == [
+            *MESSAGE_PLACEHOLDERS, "path_count", "paths", "listening_duration",
+            "scope_observers", "scope_observations", "scope_max_hops", "scope_url",
+        ]
+
+    def test_multitest_blank_default_is_the_command_default(self):
+        spec = _field(MultitestCommand, "response_format")["template"]
+        assert spec["blank_default"] == MultitestCommand.DEFAULT_FORMAT
 
     def test_every_template_field_has_a_preview(self):
         from modules.settings_schema import build_plugin_settings_view
@@ -203,17 +216,25 @@ class TestFormatPreviews:
         assert row["output"] == "\n\n57 repeaters"
 
     def test_multitest_blank_is_the_default_format(self):
-        (row,) = _preview(MultitestCommand, "response_format", "")
-        assert row["output"].startswith("Paths(3):\n")
+        out = _by_id(_preview(MultitestCommand, "response_format", ""))
+        assert out["direct"].startswith("Paths(3):\n")
 
-    def test_multitest_bad_template_falls_back_to_the_default(self):
-        (row,) = _preview(MultitestCommand, "response_format", "{nope}")
-        assert row["output"].startswith("Paths(3):\n")
-        assert "default format" in row["error"]
+    def test_multitest_unknown_placeholder_renders_as_nothing(self):
+        """Piped syntax, so a typo drops that clause instead of the whole template."""
+        out = _by_id(_preview(MultitestCommand, "response_format", "{path_count} via {nope}"))
+        assert out["direct"] == "3 via "
 
     def test_multitest_decodes_like_the_command(self):
-        (row,) = _preview(MultitestCommand, "response_format", '"{path_count}\\n{listening_duration}s"')
-        assert row["output"] == "3\n6s"
+        out = _by_id(_preview(MultitestCommand, "response_format", '"{path_count}\\n{listening_duration}s"'))
+        assert out["direct"] == "3\n6s"
+
+    def test_multitest_takes_the_message_fields_and_filters(self):
+        out = _by_id(_preview(
+            MultitestCommand, "response_format",
+            "{path_count}{packet_hash|prefix_if_nonempty: #}{hops|hops_min:1|prefix_if_nonempty: via }",
+        ))
+        assert out["multibyte"] == "3 #3F2A9C1B7E4D0A65 via 3"
+        assert out["direct"] == "3 #3F2A9C1B7E4D0A65"
 
     def test_mqtt_format_spec_fails_on_a_missing_reading(self):
         full, partial = _preview(MqttWeatherService, "json_template", "{humidity:.0f}%")
@@ -248,8 +269,9 @@ class TestCodexReviewFixes:
         assert "built-in default" in result["note"]
 
     def test_quoted_empty_multitest_format_is_the_default(self):
-        (row,) = _preview(MultitestCommand, "response_format", '""')
-        assert row["output"].startswith("Paths(3):\n")
+        result = _render_preview(_field(MultitestCommand, "response_format")["template"], '""')
+        assert _by_id(result["scenarios"])["direct"].startswith("Paths(3):\n")
+        assert "built-in default" in result["note"]
 
     def test_multitest_follows_the_saved_path_layout(self):
         spec = _field(MultitestCommand, "response_format")["template"]
@@ -311,3 +333,97 @@ class TestSchemaFixes:
         field = _field(RepeaterPrefixCollisionService, "notify_on_prefix_bytes")
         assert validate_field(field, "2, 3") == (True, ["2", "3"], None)
         assert validate_field(field, "4")[0] is False
+
+
+class TestMultitestScopePlaceholders:
+    """The scope_* names are catalogued, and previewing them stays offline."""
+
+    def test_the_scope_names_resolve_in_the_catalog(self):
+        from modules.template_reference import ALL_PLACEHOLDERS
+
+        for name in ("scope_observers", "scope_observations", "scope_max_hops", "scope_url"):
+            assert name in ALL_PLACEHOLDERS
+
+    def test_the_sample_url_carries_paths_all(self):
+        from modules.template_reference import ALL_PLACEHOLDERS
+
+        assert "&paths=all" in ALL_PLACEHOLDERS["scope_url"][1]
+
+    def test_previewing_them_makes_no_network_call(self):
+        """A preview renders per keystroke; it must never reach CoreScope."""
+        from unittest.mock import patch
+
+        spec = _field(MultitestCommand, "response_format")["template"]
+        with patch("modules.clients.corescope_client.CoreScopeClient.fetch") as fetch:
+            rows = _by_id(render_preview(
+                spec, "{scope_observers}/{scope_observations} {scope_max_hops} {scope_url}"
+            ))
+        fetch.assert_not_called()
+        # Sample values, from the catalog rather than from a lookup.
+        assert rows["direct"] == (
+            "25/46 12 https://analyzer.example.net/#/map?packet=7ba8bf1119ca1fe1&paths=all"
+        )
+
+    def test_the_ack_previews_generically_from_the_catalog(self):
+        """A piped field with no custom renderer still previews, offline."""
+        from unittest.mock import patch
+
+        spec = _field(MultitestCommand, "corescope_ack_message")["template"]
+        with patch("modules.clients.corescope_client.CoreScopeClient.fetch") as fetch:
+            rows = _by_id(render_preview(spec, "@[{sender}] {wait_seconds}s"))
+        fetch.assert_not_called()
+        assert rows["direct"] == "@[Alice] 30s"
+
+    def test_the_wait_is_catalogued(self):
+        from modules.template_reference import ALL_PLACEHOLDERS
+
+        assert "wait_seconds" in ALL_PLACEHOLDERS
+
+
+@pytest.mark.unit
+class TestMultitestBlankPreviewFollowsTheMode:
+    """A blank response_format means a different reply per mode, so preview says which."""
+
+    def _config(self, *, enabled=None, url=None):
+        config = configparser.ConfigParser()
+        config.add_section("Multitest_Command")
+        config.add_section("External_Data")
+        if enabled is not None:
+            config.set("Multitest_Command", "corescope_enabled", enabled)
+        if url is not None:
+            config.set("External_Data", "corescope_url", url)
+        return config
+
+    def _blank(self, config):
+        spec = _field(MultitestCommand, "response_format")["template"]
+        return _by_id(render_preview(spec, "", config))["direct"]
+
+    def test_listening_previews_the_path_list(self):
+        rendered = self._blank(self._config())
+        assert rendered.startswith("Paths(3):")
+        assert "https://" not in rendered
+
+    def test_corescope_previews_the_count_and_the_map_link(self):
+        rendered = self._blank(
+            self._config(enabled="true", url="https://analyzer.example.net")
+        )
+        assert rendered.startswith("Paths(3) via 25 obs (46 rx, 12 hops)")
+        assert rendered.endswith(
+            "https://analyzer.example.net/#/map?packet=7ba8bf1119ca1fe1&paths=all"
+        )
+
+    @pytest.mark.parametrize(
+        "enabled,url",
+        [("false", "https://analyzer.example.net"), ("true", None), ("true", "ftp://nope")],
+    )
+    def test_a_half_configured_mode_previews_listening(self, enabled, url):
+        """Same two conditions _build_corescope_client requires to defer at all."""
+        assert self._blank(self._config(enabled=enabled, url=url)).startswith("Paths(3):")
+
+    def test_the_preview_stays_offline(self):
+        config = self._config(enabled="true", url="https://analyzer.example.net")
+        with patch("modules.clients.corescope_client.CoreScopeClient.fetch") as fetch:
+            with patch("modules.response_template.shorten_url_sync") as shortener:
+                self._blank(config)
+        fetch.assert_not_called()
+        shortener.assert_not_called()
