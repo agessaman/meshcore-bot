@@ -337,13 +337,14 @@ If you see database locked errors:
 
 ### "Database Disk Image Is Malformed"
 
-SQLite reports `database disk image is malformed` when a page on disk no longer matches the database structure. The bot detects this while running, logs a CRITICAL line, writes `<db>.corrupt-detected`, and exits with status 75 so Docker restarts it. On the next start, before any migrations run, it checks the database and:
+SQLite reports `database disk image is malformed` when a page on disk no longer matches the database structure. The bot detects this while running, logs a CRITICAL line, writes `<db>.corrupt-detected`, and exits with status 75 so Docker restarts it. On the next start, before any migrations run, it checks the database (with the full `integrity_check` when the previous run left that marker) and:
 
 - moves the damaged file and its `-wal`/`-shm` sidecars to `<db>.corrupt-<UTC timestamp>` beside the database (nothing is deleted);
-- restores the newest backup in the configured backup directory that passes validation;
+- applies a restore you staged from the web viewer, if there is one;
+- otherwise restores the newest backup in the configured backup directory that passes validation. Each backup run writes `<db>.backup-dir` beside the database so this still works when the damaged file can't be read at all;
 - otherwise starts with a new empty database and rebuilds the schema.
 
-Set `[Bot] db_auto_recover = false` to turn this off. The bot then refuses to start and names the corrupt file and the error; stop the container, move that file and its sidecars aside, and restart.
+Set `[Bot] db_auto_recover = false` to turn this off. The bot then refuses to start and names the corrupt file and the error. With `restart: unless-stopped`, Docker keeps retrying and logging the same error without touching the file; stop the container, move that file and its sidecars aside (or stage a restore from the web viewer), and start it again.
 
 Keep databases on a local disk. WAL mode needs shared memory and reliable file locking that NFS, SMB, and NAS mounts often do not provide. If the database must live on a network share, set `[Bot] sqlite_journal_mode = DELETE` and expect slower writes.
 

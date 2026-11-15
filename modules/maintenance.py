@@ -687,6 +687,7 @@ class MaintenanceRunner:
         db_path = Path(str(self.bot.db_manager.db_path))
         ts = _utc_now().strftime('%Y%m%dT%H%M%S')
         backup_path = backup_dir / f"{db_path.stem}_{ts}.db"
+        backup_complete = False
 
         try:
             src = _sqlite3.connect(str(db_path), check_same_thread=False)
@@ -726,8 +727,19 @@ class MaintenanceRunner:
                 # recovery point left after this one failed.
                 return
 
+            backup_complete = True
             size_mb = backup_path.stat().st_size / 1_048_576
             self.logger.info(f"DB backup created: {backup_path} ({size_mb:.1f} MB)")
+
+            # Startup recovery reads the backup directory from the database, which
+            # it cannot do once the file is damaged. Leave a pointer beside it.
+            from .database_health import backup_location_path
+            try:
+                backup_location_path(db_path).write_text(
+                    f"{backup_dir.resolve()}\n", encoding="utf-8"
+                )
+            except OSError as e:
+                self.logger.warning(f"DB backup: could not record backup location: {e}")
 
             stem = db_path.stem
             backups = sorted(backup_dir.glob(f"{stem}_*.db"), key=lambda p: p.stat().st_mtime)
@@ -756,6 +768,12 @@ class MaintenanceRunner:
 
         except Exception as e:
             self.logger.error(f"DB backup failed: {e}")
+            if not backup_complete:
+                # A partial file would take a retention slot from a good backup.
+                try:
+                    backup_path.unlink()
+                except OSError:
+                    pass
             wk = _iso_week_key_from_ran_at(ran_at)
             self._last_db_backup_stats = {'ran_at': ran_at, 'error': str(e), **({'week_key': wk} if wk else {})}
             try:

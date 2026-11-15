@@ -315,6 +315,99 @@ class TestRecovery:
         assert len(results) == 1
         assert not marker.exists()
 
+    def test_unreadable_database_uses_the_backup_location_pointer(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A wiped header (SQLITE_NOTADB) hides the backup_dir setting stored
+        # inside the database; the pointer file beside it must still lead to it.
+        database = tmp_path / "bot.db"
+        backup_dir = tmp_path / "custom-backups"
+        backup_dir.mkdir()
+        _create_meshcore_database(backup_dir / "bot_20260101T000000.db", marker="good-backup")
+        database.write_bytes(b"\x00" * 8192)
+        database_health.backup_location_path(database).write_text(
+            f"{backup_dir}\n", encoding="utf-8"
+        )
+        monkeypatch.setattr(
+            database_health, "DEFAULT_BACKUP_DIR", tmp_path / "no-such-backups"
+        )
+
+        results = recover_corrupt_databases_from_config(
+            _write_config(tmp_path, db_name="bot.db")
+        )
+
+        assert len(results) == 1
+        assert results[0].restored_from is not None
+        assert _marker(database) == "good-backup"
+
+    def test_staged_restore_is_applied_to_a_corrupt_database(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from modules.database_restore import (
+            apply_pending_restores_from_config,
+            pending_restore_path,
+            stage_database_restore,
+        )
+
+        database = tmp_path / "bot.db"
+        chosen = tmp_path / "chosen.db"
+        _create_meshcore_database(database)
+        _create_meshcore_database(chosen, marker="operator-choice")
+        stage_database_restore(chosen, database)
+        database.write_bytes(b"\x00" * 8192)
+        monkeypatch.setattr(
+            database_health, "DEFAULT_BACKUP_DIR", tmp_path / "no-such-backups"
+        )
+        config_path = _write_config(tmp_path, db_name="bot.db", db_auto_recover=False)
+
+        results = recover_corrupt_databases_from_config(config_path)
+
+        assert len(results) == 1
+        assert results[0].quarantined_path.exists()
+        assert _marker(database) == "operator-choice"
+        assert not pending_restore_path(database).exists()
+        # The normal restore step that follows has nothing left to do.
+        assert apply_pending_restores_from_config(config_path) == []
+
+    def test_marker_requests_a_full_integrity_check(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        database = tmp_path / "bot.db"
+        _create_meshcore_database(database)
+        marker = Path(f"{database}.corrupt-detected")
+        marker.write_text("runtime failure", encoding="utf-8")
+        calls: list[bool] = []
+        real_check = database_health.check_database
+
+        def spy(path, *, full=False):
+            calls.append(full)
+            return real_check(path, full=full)
+
+        monkeypatch.setattr(database_health, "check_database", spy)
+
+        recover_corrupt_databases_from_config(_write_config(tmp_path, db_name="bot.db"))
+
+        assert calls == [True]
+        assert not marker.exists()
+
+    def test_marker_survives_when_the_check_cannot_run(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        database = tmp_path / "bot.db"
+        _create_meshcore_database(database)
+        marker = Path(f"{database}.corrupt-detected")
+        marker.write_text("runtime failure", encoding="utf-8")
+
+        def locked(path, *, full=False):
+            raise sqlite3.OperationalError("database is locked")
+
+        monkeypatch.setattr(database_health, "check_database", locked)
+
+        assert recover_corrupt_databases_from_config(
+            _write_config(tmp_path, db_name="bot.db")
+        ) == []
+        assert marker.exists()
+
     def test_disabled_auto_recover_raises_without_moving(
         self, tmp_path: Path
     ) -> None:

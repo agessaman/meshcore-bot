@@ -33,6 +33,7 @@ from .database_restore import (
     _configured_database_paths,
     _fsync_directory,
     apply_pending_database_restore,
+    pending_restore_path,
     stage_database_restore,
     validate_restore_database,
 )
@@ -69,23 +70,40 @@ def corruption_marker_path(database: str | Path) -> Path:
     return Path(f"{database}.corrupt-detected")
 
 
-def check_database(path: str | Path) -> str | None:
+def backup_location_path(database: str | Path) -> Path:
+    """Small text file beside the database naming its backup directory.
+
+    The backup directory is a setting stored inside the database, which is
+    exactly what cannot be read once the file is damaged.  The maintenance
+    runner writes this pointer after every successful backup so recovery can
+    still find a non-default backup directory.
+    """
+
+    return Path(f"{database}.backup-dir")
+
+
+def check_database(path: str | Path, *, full: bool = False) -> str | None:
     """Return None when *path* is missing or intact, else a short detail string.
 
     The connection is opened normally rather than read-only so a leftover WAL
     is replayed before the check.  Corruption errors are returned; every other
     SQLite failure (a lock, an I/O error, a permissions problem) is re-raised so
     a healthy database is never quarantined for a transient reason.
+
+    *full* runs ``integrity_check`` instead of ``quick_check``.  It also checks
+    that indexes match their tables, which quick_check skips, and is used when
+    the previous run already reported corruption.
     """
 
     database = Path(path)
+    pragma = "integrity_check" if full else "quick_check"
     if not database.exists():
         return None
 
     try:
         conn = sqlite3.connect(str(database), timeout=10.0)
         try:
-            row = conn.execute("PRAGMA quick_check(1)").fetchone()
+            row = conn.execute(f"PRAGMA {pragma}(1)").fetchone()
         finally:
             conn.close()
     except sqlite3.DatabaseError as exc:
@@ -94,7 +112,7 @@ def check_database(path: str | Path) -> str | None:
         raise
 
     if not row:
-        return "quick_check returned no result"
+        return f"{pragma} returned no result"
     detail = str(row[0])
     if detail.strip().lower() == "ok":
         return None
@@ -147,8 +165,14 @@ def _backup_dir_for_database(database: Path) -> Path | None:
         if row and row[0]:
             configured = str(row[0])
     except Exception:
-        # The damaged file may not be readable at all; the default is enough.
+        # The damaged file may not be readable at all.
         pass
+
+    if not configured:
+        try:
+            configured = backup_location_path(database).read_text(encoding="utf-8").strip() or None
+        except OSError:
+            configured = None
 
     backup_dir = Path(configured) if configured else DEFAULT_BACKUP_DIR
     if backup_dir.is_dir():
@@ -273,6 +297,9 @@ def recover_corrupt_databases_from_config(
         if not database.exists():
             _discard_marker(marker)
             continue
+        # The previous run hit corruption at runtime: run the full check, which
+        # also catches index damage that quick_check does not look for.
+        runtime_corruption = marker.exists()
 
         try:
             size = database.stat().st_size
@@ -287,23 +314,25 @@ def recover_corrupt_databases_from_config(
             )
 
         try:
-            detail = check_database(database)
+            detail = check_database(database, full=runtime_corruption)
         except sqlite3.Error as exc:
             # A lock or I/O problem is not evidence of corruption. Leave the
             # file alone and let normal startup report it as it always has.
+            # Keep any marker so the next start runs the full check again.
             print(
                 f"Warning: could not check database integrity of {database}: {exc}",
                 file=sys.stderr,
             )
             continue
-        finally:
-            # The marker explains why the previous process exited.  Whether or
-            # not the check confirms corruption, it has served its purpose.
-            _discard_marker(marker)
+
+        # The check ran, so the marker has served its purpose either way.
+        _discard_marker(marker)
 
         if detail is None:
             continue
-        if not auto_recover:
+
+        pending = pending_restore_path(database)
+        if not auto_recover and not pending.exists():
             raise DatabaseRestoreError(_manual_recovery_message(database, detail))
 
         # Read the backup location before quarantine moves the file away.
@@ -311,7 +340,13 @@ def recover_corrupt_databases_from_config(
         quarantined = quarantine_database(database)
 
         restored_from: Path | None = None
-        if backup_dir is not None:
+        if pending.exists():
+            # A restore staged from the web viewer is the operator's own choice
+            # and wins over the newest backup. With the corrupt file moved
+            # aside, applying it no longer needs to copy the damaged database.
+            apply_pending_database_restore(database)
+            restored_from = pending
+        elif backup_dir is not None:
             backup = find_restorable_backup(database, backup_dir)
             if backup is not None:
                 stage_database_restore(backup, database)

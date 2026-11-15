@@ -305,28 +305,11 @@ def main():
         print(f"Error: {exc}", file=sys.stderr)
         sys.exit(1)
 
-    # A restore requested by the viewer is applied only here, before importing
-    # and constructing MeshCoreBot (which opens the DB and launches writers).
-    # The service manager must restart the bot and viewer as one unit.
-
-    try:
-        restore_results = apply_pending_restores_from_config(args.config)
-    except DatabaseRestoreError as exc:
-        print(f"Error: pending database restore was not applied: {exc}", file=sys.stderr)
-        print(
-            "The active database was left unchanged. Correct or remove the pending restore "
-            "file before restarting.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-    for restore_result in restore_results:
-        recovery = restore_result.recovery_backup_path
-        recovery_note = f"; recovery backup: {recovery}" if recovery else ""
-        print(f"Applied pending database restore: {restore_result.database_path}{recovery_note}")
-
     # The instance lock is held and nothing has the database open yet, so a
     # database left corrupt by a previous run can be moved aside and replaced
-    # from a validated backup before migrations touch it.
+    # before migrations touch it. This runs before pending restores: copying a
+    # corrupt database into a pre-restore backup fails, so a restore staged for
+    # a corrupt database is applied by the recovery step instead.
     from modules.database_health import recover_corrupt_databases_from_config
 
     try:
@@ -346,6 +329,25 @@ def main():
             f"{recovery_result.quarantined_path}; {outcome}",
             file=sys.stderr,
         )
+
+    # A restore requested by the viewer is applied only here, before importing
+    # and constructing MeshCoreBot (which opens the DB and launches writers).
+    # The service manager must restart the bot and viewer as one unit.
+
+    try:
+        restore_results = apply_pending_restores_from_config(args.config)
+    except DatabaseRestoreError as exc:
+        print(f"Error: pending database restore was not applied: {exc}", file=sys.stderr)
+        print(
+            "The active database was left unchanged. Correct or remove the pending restore "
+            "file before restarting.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    for restore_result in restore_results:
+        recovery = restore_result.recovery_backup_path
+        recovery_note = f"; recovery backup: {recovery}" if recovery else ""
+        print(f"Applied pending database restore: {restore_result.database_path}{recovery_note}")
 
     from modules.core import MeshCoreBot
 

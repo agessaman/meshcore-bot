@@ -250,6 +250,61 @@ class TestRunDbBackupIntegration:
         assert dst.execute("SELECT i FROM x").fetchone()[0] == 1
         dst.close()
 
+    def _runner(self, tmp_path: Path, db_file: Path) -> MaintenanceRunner:
+        bot = MagicMock()
+        bot.logger = Mock()
+        bot.db_manager.db_path = db_file
+        bot.db_manager.get_metadata = Mock(return_value=None)
+        bot.db_manager.set_metadata = Mock()
+        runner = MaintenanceRunner(bot, get_current_time=lambda: datetime.datetime.now())
+        runner.get_maint = Mock(side_effect=lambda key: {
+            "db_backup_dir": str(tmp_path / "bk"),
+            "db_backup_retention_count": "3",
+        }.get(key, ""))
+        return runner
+
+    def test_backup_records_its_location_beside_the_database(self, tmp_path: Path):
+        db_file = tmp_path / "live.db"
+        sqlite3.connect(str(db_file)).close()
+
+        self._runner(tmp_path, db_file).run_db_backup()
+
+        pointer = Path(f"{db_file}.backup-dir")
+        assert pointer.read_text(encoding="utf-8").strip() == str((tmp_path / "bk").resolve())
+
+    def test_failed_backup_leaves_no_partial_file(self, tmp_path: Path, monkeypatch):
+        db_file = tmp_path / "live.db"
+        conn = sqlite3.connect(str(db_file))
+        conn.execute("CREATE TABLE x (i INTEGER)")
+        conn.commit()
+        conn.close()
+        real_connect = sqlite3.connect
+
+        class FailingBackup:
+            def __init__(self, inner):
+                self._inner = inner
+
+            def backup(self, *args, **kwargs):
+                raise sqlite3.OperationalError("database is locked")
+
+            def __getattr__(self, name):
+                return getattr(self._inner, name)
+
+        calls = []
+
+        def connect(path, *args, **kwargs):
+            calls.append(path)
+            inner = real_connect(path, *args, **kwargs)
+            return FailingBackup(inner) if len(calls) == 1 else inner
+
+        monkeypatch.setattr(sqlite3, "connect", connect)
+        runner = self._runner(tmp_path, db_file)
+        runner.run_db_backup()
+        monkeypatch.setattr(sqlite3, "connect", real_connect)
+
+        assert list((tmp_path / "bk").glob("live_*.db")) == []
+        assert "error" in runner._last_db_backup_stats
+
     def test_backup_of_wal_database_uses_rollback_journal(self, tmp_path: Path):
         db_file = tmp_path / "live.db"
         src = sqlite3.connect(str(db_file))
