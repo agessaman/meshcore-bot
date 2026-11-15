@@ -29,6 +29,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .database_restore import (
+    DEFAULT_MAX_RESTORE_BYTES,
     DatabaseRestoreError,
     _configured_database_paths,
     _fsync_directory,
@@ -65,9 +66,13 @@ def is_corruption_error(exc: BaseException) -> bool:
 
 
 def corruption_marker_path(database: str | Path) -> Path:
-    """The runtime marker left by ``DBManager`` for the next startup check."""
+    """The runtime marker left by ``DBManager`` for the next startup check.
 
-    return Path(f"{database}.corrupt-detected")
+    Resolved so the writer (which may hold a path through a symlink) and the
+    startup check (which resolves configured paths) agree on one location.
+    """
+
+    return Path(f"{Path(database).resolve()}.corrupt-detected")
 
 
 def backup_location_path(database: str | Path) -> Path:
@@ -79,7 +84,7 @@ def backup_location_path(database: str | Path) -> Path:
     still find a non-default backup directory.
     """
 
-    return Path(f"{database}.backup-dir")
+    return Path(f"{Path(database).resolve()}.backup-dir")
 
 
 def check_database(path: str | Path, *, full: bool = False) -> str | None:
@@ -140,11 +145,24 @@ def quarantine_database(path: str | Path) -> Path:
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
     quarantined = _unique_quarantine_path(database, timestamp)
 
-    os.replace(database, quarantined)
-    for suffix in ("-wal", "-shm"):
-        sidecar = Path(f"{database}{suffix}")
-        if sidecar.exists():
-            os.replace(sidecar, Path(f"{quarantined}{suffix}"))
+    moved: list[tuple[Path, Path]] = []
+    try:
+        for suffix in ("", "-wal", "-shm"):
+            source = Path(f"{database}{suffix}")
+            if suffix and not source.exists():
+                continue
+            target = Path(f"{quarantined}{suffix}")
+            os.replace(source, target)
+            moved.append((source, target))
+    except OSError as exc:
+        # Put back whatever already moved so the database is never left
+        # half-quarantined, with its sidecars stranded at the old name.
+        for source, target in reversed(moved):
+            try:
+                os.replace(target, source)
+            except OSError:
+                pass
+        raise DatabaseRestoreError(f"Could not move corrupt database {database} aside: {exc}") from exc
 
     _fsync_directory(database.parent)
     return quarantined
@@ -218,6 +236,7 @@ class RecoveryResult:
     quarantined_path: Path
     restored_from: Path | None
     detail: str
+    from_staged_restore: bool = False
 
 
 def _read_config(config_path: str | Path) -> configparser.ConfigParser | None:
@@ -291,8 +310,16 @@ def recover_corrupt_databases_from_config(
 
     results: list[RecoveryResult] = []
     auto_recover = _auto_recover_enabled(config_path)
+    database_paths = _configured_database_paths(config_path)
 
-    for database in _configured_database_paths(config_path):
+    # Staged bot/viewer restores are one set. Validate all of them before
+    # recovery applies any, as the normal restore step does, so a bad viewer
+    # candidate cannot leave the bot database restored and the viewer not.
+    for staged in (pending_restore_path(path) for path in database_paths):
+        if staged.exists():
+            validate_restore_database(staged)
+
+    for database in database_paths:
         marker = corruption_marker_path(database)
         if not database.exists():
             _discard_marker(marker)
@@ -335,23 +362,31 @@ def recover_corrupt_databases_from_config(
         if not auto_recover and not pending.exists():
             raise DatabaseRestoreError(_manual_recovery_message(database, detail))
 
-        # Read the backup location before quarantine moves the file away.
-        backup_dir = _backup_dir_for_database(database)
-        quarantined = quarantine_database(database)
-
-        restored_from: Path | None = None
-        if pending.exists():
-            # A restore staged from the web viewer is the operator's own choice
-            # and wins over the newest backup. With the corrupt file moved
-            # aside, applying it no longer needs to copy the damaged database.
-            apply_pending_database_restore(database)
-            restored_from = pending
-        elif backup_dir is not None:
-            backup = find_restorable_backup(database, backup_dir)
+        # A restore staged from the web viewer is the operator's own choice and
+        # wins over the newest backup. Otherwise stage the newest valid backup
+        # now, while the corrupt file is still in place: if staging fails (no
+        # space, for example) startup stops with the database untouched, and
+        # the next start tries again instead of finding no database and
+        # starting empty.
+        staged_by_operator = pending.exists()
+        restored_from: Path | None = pending if staged_by_operator else None
+        if not staged_by_operator:
+            # Read the backup location before quarantine moves the file away.
+            backup_dir = _backup_dir_for_database(database)
+            backup = find_restorable_backup(database, backup_dir) if backup_dir else None
             if backup is not None:
-                stage_database_restore(backup, database)
-                apply_pending_database_restore(database)
+                # The size limit guards uploads through the web viewer; a
+                # backup the bot wrote itself may legitimately be larger.
+                limit = max(DEFAULT_MAX_RESTORE_BYTES, backup.stat().st_size * 2)
+                stage_database_restore(backup, database, max_bytes=limit)
                 restored_from = backup
+
+        quarantined = quarantine_database(database)
+        if restored_from is not None:
+            # With the corrupt file moved aside, applying no longer needs to
+            # copy the damaged database. If this fails, the staged file stays
+            # and the normal restore step applies it on the next start.
+            apply_pending_database_restore(database)
 
         results.append(
             RecoveryResult(
@@ -359,6 +394,7 @@ def recover_corrupt_databases_from_config(
                 quarantined_path=quarantined,
                 restored_from=restored_from,
                 detail=detail,
+                from_staged_restore=staged_by_operator,
             )
         )
 

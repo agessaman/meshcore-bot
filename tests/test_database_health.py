@@ -212,6 +212,28 @@ class TestIsCorruptionError:
 
 
 class TestQuarantine:
+    def test_failed_sidecar_move_puts_everything_back(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        database = tmp_path / "bot.db"
+        database.write_bytes(b"main")
+        Path(f"{database}-wal").write_bytes(b"wal")
+        real_replace = os.replace
+
+        def flaky_replace(src, dst):
+            if str(src).endswith("-wal"):
+                raise PermissionError("file in use")
+            return real_replace(src, dst)
+
+        monkeypatch.setattr(database_health.os, "replace", flaky_replace)
+
+        with pytest.raises(DatabaseRestoreError, match="file in use"):
+            quarantine_database(database)
+
+        assert database.read_bytes() == b"main"
+        assert Path(f"{database}-wal").read_bytes() == b"wal"
+        assert not list(tmp_path.glob("bot.db.corrupt-*"))
+
     def test_moves_database_and_sidecars_without_deleting(
         self, tmp_path: Path
     ) -> None:
@@ -233,6 +255,20 @@ class TestQuarantine:
         assert Path(f"{quarantined}-wal").read_bytes() == b"committed wal"
         assert Path(f"{quarantined}-shm").read_bytes() == b"shared memory"
         assert len(list(tmp_path.iterdir())) == 3
+
+
+class TestSideFilePaths:
+    def test_marker_and_pointer_resolve_through_symlinks(self, tmp_path: Path) -> None:
+        real_dir = tmp_path / "ssd"
+        real_dir.mkdir()
+        (real_dir / "bot.db").write_bytes(b"")
+        link_dir = tmp_path / "data"
+        link_dir.symlink_to(real_dir)
+
+        via_link = link_dir / "bot.db"
+        real = real_dir / "bot.db"
+        assert database_health.corruption_marker_path(via_link) == database_health.corruption_marker_path(real)
+        assert database_health.backup_location_path(via_link) == database_health.backup_location_path(real)
 
 
 class TestRecovery:
@@ -407,6 +443,53 @@ class TestRecovery:
             _write_config(tmp_path, db_name="bot.db")
         ) == []
         assert marker.exists()
+
+    def test_failed_staging_leaves_the_corrupt_database_in_place(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # If the backup can't be staged (no space, say), the database must stay
+        # where it is so the next start retries instead of starting empty.
+        database = tmp_path / "bot.db"
+        backup_dir = tmp_path / "backups"
+        backup_dir.mkdir()
+        _create_meshcore_database(backup_dir / "bot_20260101T000000.db", marker="good-backup")
+        database.write_bytes(b"\x00" * 8192)
+        database_health.backup_location_path(database).write_text(str(backup_dir), encoding="utf-8")
+
+        def no_space(*args, **kwargs):
+            raise DatabaseRestoreError("No space left on device")
+
+        monkeypatch.setattr(database_health, "stage_database_restore", no_space)
+
+        with pytest.raises(DatabaseRestoreError, match="No space"):
+            recover_corrupt_databases_from_config(_write_config(tmp_path, db_name="bot.db"))
+
+        assert database.exists()
+        assert not list(tmp_path.glob("bot.db.corrupt-*"))
+
+    def test_split_restore_set_is_validated_before_anything_changes(
+        self, tmp_path: Path
+    ) -> None:
+        from modules.database_restore import pending_restore_path, stage_database_restore
+
+        bot_db = tmp_path / "bot.db"
+        viewer_db = tmp_path / "viewer.db"
+        candidate = tmp_path / "candidate.db"
+        _create_meshcore_database(bot_db)
+        _create_meshcore_database(candidate, marker="bot-restore")
+        stage_database_restore(candidate, bot_db)
+        bot_db.write_bytes(b"\x00" * 8192)
+        pending_restore_path(viewer_db).write_bytes(b"not a database")
+        config_path = _write_config(tmp_path, db_name="bot.db")
+        with config_path.open("a", encoding="utf-8") as handle:
+            handle.write("[Web_Viewer]\ndb_path = viewer.db\n")
+
+        with pytest.raises(DatabaseRestoreError):
+            recover_corrupt_databases_from_config(config_path)
+
+        assert bot_db.read_bytes() == b"\x00" * 8192
+        assert pending_restore_path(bot_db).exists()
+        assert not list(tmp_path.glob("bot.db.corrupt-*"))
 
     def test_disabled_auto_recover_raises_without_moving(
         self, tmp_path: Path

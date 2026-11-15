@@ -318,11 +318,12 @@ def main():
         print(f"Error: database recovery failed: {exc}", file=sys.stderr)
         sys.exit(1)
     for recovery_result in recovery_results:
-        outcome = (
-            f"restored from {recovery_result.restored_from}"
-            if recovery_result.restored_from is not None
-            else "starting with a new empty database"
-        )
+        if recovery_result.from_staged_restore:
+            outcome = "applied the restore staged from the web viewer"
+        elif recovery_result.restored_from is not None:
+            outcome = f"restored from {recovery_result.restored_from}"
+        else:
+            outcome = "starting with a new empty database"
         print(
             f"Corrupt database {recovery_result.database_path} "
             f"({recovery_result.detail}); moved to "
