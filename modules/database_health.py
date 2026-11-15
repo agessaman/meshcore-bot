@@ -1,0 +1,401 @@
+"""Detect SQLite corruption and recover a usable database at startup.
+
+The bot and the web viewer keep the database on a filesystem an operator
+controls.  A network share, a power loss, or a killed writer can leave SQLite
+reporting ``database disk image is malformed``.  Nothing previously checked the
+live database, so the failure surfaced only when a query happened to touch the
+damaged page and every later start failed the same way.
+
+This module adds two pieces:
+
+* a bounded integrity check that distinguishes corruption from ordinary
+  transient failures such as a lock or a permissions problem; and
+* startup recovery that moves a corrupt database aside and, when one is
+  available, restores the newest backup that still validates.
+
+Detection at runtime lives in :class:`modules.db_manager.DBManager`, which
+writes ``<db>.corrupt-detected`` and asks the process to restart into this
+startup check.
+"""
+
+from __future__ import annotations
+
+import configparser
+import os
+import sqlite3
+import sys
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+
+from .database_restore import (
+    DEFAULT_MAX_RESTORE_BYTES,
+    DatabaseRestoreError,
+    _configured_database_paths,
+    _fsync_directory,
+    apply_pending_database_restore,
+    pending_restore_path,
+    stage_database_restore,
+    validate_restore_database,
+)
+
+SQLITE_CORRUPT = 11
+SQLITE_NOTADB = 26
+DEFAULT_BACKUP_DIR = Path("/data/backups")
+_ANNOUNCE_CHECK_BYTES = 256 * 1_048_576
+
+# Python 3.11+ exposes sqlite_errorcode; older versions only have the message.
+_CORRUPTION_MESSAGES = (
+    "database disk image is malformed",
+    "file is not a database",
+)
+
+
+def is_corruption_error(exc: BaseException) -> bool:
+    """Return True only when *exc* means the database file itself is damaged."""
+
+    if not isinstance(exc, sqlite3.DatabaseError):
+        return False
+
+    code = getattr(exc, "sqlite_errorcode", None)
+    if isinstance(code, int):
+        return (code & 0xFF) in (SQLITE_CORRUPT, SQLITE_NOTADB)
+
+    message = str(exc).lower()
+    return any(fragment in message for fragment in _CORRUPTION_MESSAGES)
+
+
+def corruption_marker_path(database: str | Path) -> Path:
+    """The runtime marker left by ``DBManager`` for the next startup check.
+
+    Resolved so the writer (which may hold a path through a symlink) and the
+    startup check (which resolves configured paths) agree on one location.
+    """
+
+    return Path(f"{Path(database).resolve()}.corrupt-detected")
+
+
+def backup_location_path(database: str | Path) -> Path:
+    """Small text file beside the database naming its backup directory.
+
+    The backup directory is a setting stored inside the database, which is
+    exactly what cannot be read once the file is damaged.  The maintenance
+    runner writes this pointer after every successful backup so recovery can
+    still find a non-default backup directory.
+    """
+
+    return Path(f"{Path(database).resolve()}.backup-dir")
+
+
+def check_database(path: str | Path, *, full: bool = False) -> str | None:
+    """Return None when *path* is missing or intact, else a short detail string.
+
+    The connection is opened normally rather than read-only so a leftover WAL
+    is replayed before the check.  Corruption errors are returned; every other
+    SQLite failure (a lock, an I/O error, a permissions problem) is re-raised so
+    a healthy database is never quarantined for a transient reason.
+
+    *full* runs ``integrity_check`` instead of ``quick_check``.  It also checks
+    that indexes match their tables, which quick_check skips, and is used when
+    the previous run already reported corruption.
+    """
+
+    database = Path(path)
+    pragma = "integrity_check" if full else "quick_check"
+    if not database.exists():
+        return None
+
+    try:
+        conn = sqlite3.connect(str(database), timeout=10.0)
+        try:
+            row = conn.execute(f"PRAGMA {pragma}(1)").fetchone()
+        finally:
+            conn.close()
+    except sqlite3.DatabaseError as exc:
+        if is_corruption_error(exc):
+            return str(exc) or type(exc).__name__
+        raise
+
+    if not row:
+        return f"{pragma} returned no result"
+    detail = str(row[0])
+    if detail.strip().lower() == "ok":
+        return None
+    return detail
+
+
+def _unique_quarantine_path(database: Path, timestamp: str) -> Path:
+    target = database.with_name(f"{database.name}.corrupt-{timestamp}")
+    index = 1
+    while target.exists():
+        target = database.with_name(f"{database.name}.corrupt-{timestamp}-{index}")
+        index += 1
+    return target
+
+
+def quarantine_database(path: str | Path) -> Path:
+    """Move *path* and its WAL sidecars aside, returning the new main path.
+
+    Nothing is deleted: the damaged file and any sidecars stay next to the
+    database for inspection.  Sidecars keep their ``-wal``/``-shm`` suffix
+    after the quarantine timestamp.
+    """
+
+    database = Path(path)
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+    quarantined = _unique_quarantine_path(database, timestamp)
+
+    moved: list[tuple[Path, Path]] = []
+    try:
+        for suffix in ("", "-wal", "-shm"):
+            source = Path(f"{database}{suffix}")
+            if suffix and not source.exists():
+                continue
+            target = Path(f"{quarantined}{suffix}")
+            os.replace(source, target)
+            moved.append((source, target))
+    except OSError as exc:
+        # Put back whatever already moved so the database is never left
+        # half-quarantined, with its sidecars stranded at the old name.
+        for source, target in reversed(moved):
+            try:
+                os.replace(target, source)
+            except OSError:
+                pass
+        raise DatabaseRestoreError(f"Could not move corrupt database {database} aside: {exc}") from exc
+
+    _fsync_directory(database.parent)
+    return quarantined
+
+
+def _backup_dir_for_database(database: Path) -> Path | None:
+    """Best-effort backup directory read from a database that may be damaged."""
+
+    configured: str | None = None
+    try:
+        conn = sqlite3.connect(str(database), timeout=5.0)
+        try:
+            row = conn.execute(
+                "SELECT value FROM bot_metadata WHERE key = 'maint.db_backup_dir'"
+            ).fetchone()
+        finally:
+            conn.close()
+        if row and row[0]:
+            configured = str(row[0])
+    except Exception:
+        # The damaged file may not be readable at all.
+        pass
+
+    if not configured:
+        try:
+            configured = backup_location_path(database).read_text(encoding="utf-8").strip() or None
+        except OSError:
+            configured = None
+
+    backup_dir = Path(configured) if configured else DEFAULT_BACKUP_DIR
+    if backup_dir.is_dir():
+        return backup_dir
+    return None
+
+
+def find_restorable_backup(db_path: str | Path, backup_dir: str | Path) -> Path | None:
+    """Return the newest backup for *db_path* that passes restore validation."""
+
+    database = Path(db_path)
+    directory = Path(backup_dir)
+    if not directory.is_dir():
+        return None
+
+    try:
+        candidates = sorted(
+            directory.glob(f"{database.stem}_*.db"),
+            key=lambda item: (item.stat().st_mtime, item.name),
+            reverse=True,
+        )
+    except OSError:
+        return None
+
+    for candidate in candidates:
+        try:
+            validate_restore_database(candidate)
+        except Exception as exc:
+            print(
+                f"Skipping invalid database backup {candidate}: {exc}",
+                file=sys.stderr,
+            )
+            continue
+        return candidate
+    return None
+
+
+@dataclass(frozen=True)
+class RecoveryResult:
+    """Description of a corrupt database handled during startup."""
+
+    database_path: Path
+    quarantined_path: Path
+    restored_from: Path | None
+    detail: str
+    from_staged_restore: bool = False
+
+
+def _read_config(config_path: str | Path) -> configparser.ConfigParser | None:
+    """Read the config and its local overlay the same way restore does."""
+
+    path = Path(config_path).resolve()
+    if not path.exists():
+        return None
+
+    config = configparser.ConfigParser()
+    try:
+        loaded = config.read(path, encoding="utf-8")
+    except configparser.Error as exc:
+        raise DatabaseRestoreError(f"Could not read database recovery configuration: {exc}") from exc
+    if not loaded:
+        return None
+
+    base = path.parent
+    local_dir = Path(config.get("Bot", "local_dir_path", fallback="local"))
+    if not local_dir.is_absolute():
+        local_dir = base / local_dir
+    local_config = local_dir / "config.ini"
+    if local_config.exists():
+        try:
+            config.read(local_config, encoding="utf-8")
+        except configparser.Error as exc:
+            raise DatabaseRestoreError(
+                f"Could not read local database recovery configuration: {exc}"
+            ) from exc
+    return config
+
+
+def _auto_recover_enabled(config_path: str | Path) -> bool:
+    config = _read_config(config_path)
+    if config is None:
+        return True
+    try:
+        return config.getboolean("Bot", "db_auto_recover", fallback=True)
+    except (configparser.Error, ValueError):
+        return True
+
+
+def _discard_marker(marker: Path) -> None:
+    try:
+        marker.unlink()
+    except FileNotFoundError:
+        pass
+    except OSError as exc:
+        print(f"Could not remove corruption marker {marker}: {exc}", file=sys.stderr)
+
+
+def _manual_recovery_message(database: Path, detail: str) -> str:
+    return (
+        f"Database {database} is corrupt ({detail}) and [Bot] db_auto_recover is "
+        "disabled. Stop the bot, move the database and its -wal and -shm files "
+        "aside, then restart so migrations create a fresh database or restore a "
+        "backup."
+    )
+
+
+def recover_corrupt_databases_from_config(
+    config_path: str | Path,
+) -> list[RecoveryResult]:
+    """Check every configured database and recover the corrupt ones.
+
+    Runs before the bot imports and constructs :class:`MeshCoreBot`, while the
+    instance lock is held and no process has the database open.  A valid backup
+    is restored through the existing staged-restore machinery; without one the
+    path is left absent so migrations create a fresh database.
+    """
+
+    results: list[RecoveryResult] = []
+    auto_recover = _auto_recover_enabled(config_path)
+    database_paths = _configured_database_paths(config_path)
+
+    # Staged bot/viewer restores are one set. Validate all of them before
+    # recovery applies any, as the normal restore step does, so a bad viewer
+    # candidate cannot leave the bot database restored and the viewer not.
+    for staged in (pending_restore_path(path) for path in database_paths):
+        if staged.exists():
+            validate_restore_database(staged)
+
+    for database in database_paths:
+        marker = corruption_marker_path(database)
+        if not database.exists():
+            _discard_marker(marker)
+            continue
+        # The previous run hit corruption at runtime: run the full check, which
+        # also catches index damage that quick_check does not look for.
+        runtime_corruption = marker.exists()
+
+        try:
+            size = database.stat().st_size
+        except OSError:
+            size = 0
+        if size >= _ANNOUNCE_CHECK_BYTES:
+            # quick_check reads the whole file; on a Pi's SD card a large
+            # database takes long enough to look like a hang.
+            print(
+                f"Checking database integrity: {database} ({size // 1_048_576} MB)",
+                file=sys.stderr,
+            )
+
+        try:
+            detail = check_database(database, full=runtime_corruption)
+        except sqlite3.Error as exc:
+            # A lock or I/O problem is not evidence of corruption. Leave the
+            # file alone and let normal startup report it as it always has.
+            # Keep any marker so the next start runs the full check again.
+            print(
+                f"Warning: could not check database integrity of {database}: {exc}",
+                file=sys.stderr,
+            )
+            continue
+
+        # The check ran, so the marker has served its purpose either way.
+        _discard_marker(marker)
+
+        if detail is None:
+            continue
+
+        pending = pending_restore_path(database)
+        if not auto_recover and not pending.exists():
+            raise DatabaseRestoreError(_manual_recovery_message(database, detail))
+
+        # A restore staged from the web viewer is the operator's own choice and
+        # wins over the newest backup. Otherwise stage the newest valid backup
+        # now, while the corrupt file is still in place: if staging fails (no
+        # space, for example) startup stops with the database untouched, and
+        # the next start tries again instead of finding no database and
+        # starting empty.
+        staged_by_operator = pending.exists()
+        restored_from: Path | None = pending if staged_by_operator else None
+        if not staged_by_operator:
+            # Read the backup location before quarantine moves the file away.
+            backup_dir = _backup_dir_for_database(database)
+            backup = find_restorable_backup(database, backup_dir) if backup_dir else None
+            if backup is not None:
+                # The size limit guards uploads through the web viewer; a
+                # backup the bot wrote itself may legitimately be larger.
+                limit = max(DEFAULT_MAX_RESTORE_BYTES, backup.stat().st_size * 2)
+                stage_database_restore(backup, database, max_bytes=limit)
+                restored_from = backup
+
+        quarantined = quarantine_database(database)
+        if restored_from is not None:
+            # With the corrupt file moved aside, applying no longer needs to
+            # copy the damaged database. If this fails, the staged file stays
+            # and the normal restore step applies it on the next start.
+            apply_pending_database_restore(database)
+
+        results.append(
+            RecoveryResult(
+                database_path=database,
+                quarantined_path=quarantined,
+                restored_from=restored_from,
+                detail=detail,
+                from_staged_restore=staged_by_operator,
+            )
+        )
+
+    return results

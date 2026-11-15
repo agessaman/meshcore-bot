@@ -250,6 +250,141 @@ class TestRunDbBackupIntegration:
         assert dst.execute("SELECT i FROM x").fetchone()[0] == 1
         dst.close()
 
+    def _runner(self, tmp_path: Path, db_file: Path) -> MaintenanceRunner:
+        bot = MagicMock()
+        bot.logger = Mock()
+        bot.db_manager.db_path = db_file
+        bot.db_manager.get_metadata = Mock(return_value=None)
+        bot.db_manager.set_metadata = Mock()
+        runner = MaintenanceRunner(bot, get_current_time=lambda: datetime.datetime.now())
+        runner.get_maint = Mock(side_effect=lambda key: {
+            "db_backup_dir": str(tmp_path / "bk"),
+            "db_backup_retention_count": "3",
+        }.get(key, ""))
+        return runner
+
+    def test_backup_records_its_location_beside_the_database(self, tmp_path: Path):
+        db_file = tmp_path / "live.db"
+        sqlite3.connect(str(db_file)).close()
+
+        self._runner(tmp_path, db_file).run_db_backup()
+
+        pointer = Path(f"{db_file}.backup-dir")
+        assert pointer.read_text(encoding="utf-8").strip() == str((tmp_path / "bk").resolve())
+
+    def test_failed_backup_leaves_no_partial_file(self, tmp_path: Path, monkeypatch):
+        db_file = tmp_path / "live.db"
+        conn = sqlite3.connect(str(db_file))
+        conn.execute("CREATE TABLE x (i INTEGER)")
+        conn.commit()
+        conn.close()
+        real_connect = sqlite3.connect
+
+        class FailingBackup:
+            def __init__(self, inner):
+                self._inner = inner
+
+            def backup(self, *args, **kwargs):
+                raise sqlite3.OperationalError("database is locked")
+
+            def __getattr__(self, name):
+                return getattr(self._inner, name)
+
+        calls = []
+
+        def connect(path, *args, **kwargs):
+            calls.append(path)
+            inner = real_connect(path, *args, **kwargs)
+            return FailingBackup(inner) if len(calls) == 1 else inner
+
+        monkeypatch.setattr(sqlite3, "connect", connect)
+        runner = self._runner(tmp_path, db_file)
+        runner.run_db_backup()
+        monkeypatch.setattr(sqlite3, "connect", real_connect)
+
+        assert list((tmp_path / "bk").glob("live_*.db")) == []
+        assert "error" in runner._last_db_backup_stats
+
+    def test_backup_of_wal_database_uses_rollback_journal(self, tmp_path: Path):
+        db_file = tmp_path / "live.db"
+        src = sqlite3.connect(str(db_file))
+        src.execute("PRAGMA journal_mode=WAL")
+        src.execute("CREATE TABLE x (i INTEGER)")
+        src.commit()
+
+        bot = MagicMock()
+        bot.logger = Mock()
+        bot.db_manager.db_path = db_file
+        bot.db_manager.get_metadata = Mock(return_value=None)
+        bot.db_manager.set_metadata = Mock()
+        runner = MaintenanceRunner(bot, get_current_time=lambda: datetime.datetime.now())
+        runner.get_maint = Mock(side_effect=lambda key: {
+            "db_backup_dir": str(tmp_path / "bk"),
+            "db_backup_retention_count": "3",
+        }.get(key, ""))
+
+        try:
+            runner.run_db_backup()
+        finally:
+            src.close()
+
+        backups = list((tmp_path / "bk").glob("live_*.db"))
+        assert len(backups) == 1
+        dst = sqlite3.connect(f"{backups[0].as_uri()}?mode=ro", uri=True)
+        try:
+            assert dst.execute("PRAGMA journal_mode").fetchone()[0] == "delete"
+        finally:
+            dst.close()
+        assert sorted(p.name for p in (tmp_path / "bk").iterdir()) == [backups[0].name]
+
+    def test_bad_backup_is_deleted_and_older_backups_are_not_pruned(
+        self, tmp_path: Path
+    ):
+        db_file = tmp_path / "live.db"
+        src = sqlite3.connect(str(db_file))
+        src.execute("CREATE TABLE x (i INTEGER)")
+        src.execute("INSERT INTO x VALUES (1)")
+        src.commit()
+        src.close()
+
+        backup_dir = tmp_path / "bk"
+        backup_dir.mkdir()
+        older = backup_dir / "live_20260101T000000.db"
+        older.write_bytes(b"older known-good backup")
+
+        bot = MagicMock()
+        bot.logger = Mock()
+        bot.db_manager.db_path = db_file
+        bot.db_manager.get_metadata = Mock(return_value=None)
+        bot.db_manager.set_metadata = Mock()
+
+        def get_maint(key: str) -> str:
+            return {
+                "db_backup_dir": str(backup_dir),
+                "db_backup_retention_count": "1",
+            }.get(key, "")
+
+        runner = MaintenanceRunner(bot, get_current_time=lambda: datetime.datetime.now())
+        runner.get_maint = Mock(side_effect=get_maint)
+
+        with patch(
+            "modules.maintenance._quick_check_backup",
+            return_value="database disk image is malformed",
+        ):
+            runner.run_db_backup()
+
+        backups = list(backup_dir.glob("live_*.db"))
+        assert backups == [older]
+        assert older.read_bytes() == b"older known-good backup"
+        outcomes = [
+            call.args[1]
+            for call in bot.db_manager.set_metadata.call_args_list
+            if call.args[0] == "maint.status.db_backup_outcome"
+        ]
+        assert outcomes
+        assert "integrity check" in outcomes[-1]
+        assert "error" in runner._last_db_backup_stats
+
 
 class TestSmtpHelpers:
     """read_smtp_settings / send_smtp_message are shared by the digest and the radio alerts."""
