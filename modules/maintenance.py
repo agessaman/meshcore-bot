@@ -693,6 +693,10 @@ class MaintenanceRunner:
             dst = _sqlite3.connect(str(backup_path))
             try:
                 src.backup(dst, pages=200)
+                # The copy inherits WAL mode from the live database. A backup
+                # is a static file, and in WAL mode every read-only check of it
+                # would leave -wal/-shm files behind in the backup directory.
+                dst.execute('PRAGMA journal_mode=DELETE')
             finally:
                 dst.close()
                 src.close()

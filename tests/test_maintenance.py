@@ -250,6 +250,38 @@ class TestRunDbBackupIntegration:
         assert dst.execute("SELECT i FROM x").fetchone()[0] == 1
         dst.close()
 
+    def test_backup_of_wal_database_uses_rollback_journal(self, tmp_path: Path):
+        db_file = tmp_path / "live.db"
+        src = sqlite3.connect(str(db_file))
+        src.execute("PRAGMA journal_mode=WAL")
+        src.execute("CREATE TABLE x (i INTEGER)")
+        src.commit()
+
+        bot = MagicMock()
+        bot.logger = Mock()
+        bot.db_manager.db_path = db_file
+        bot.db_manager.get_metadata = Mock(return_value=None)
+        bot.db_manager.set_metadata = Mock()
+        runner = MaintenanceRunner(bot, get_current_time=lambda: datetime.datetime.now())
+        runner.get_maint = Mock(side_effect=lambda key: {
+            "db_backup_dir": str(tmp_path / "bk"),
+            "db_backup_retention_count": "3",
+        }.get(key, ""))
+
+        try:
+            runner.run_db_backup()
+        finally:
+            src.close()
+
+        backups = list((tmp_path / "bk").glob("live_*.db"))
+        assert len(backups) == 1
+        dst = sqlite3.connect(f"{backups[0].as_uri()}?mode=ro", uri=True)
+        try:
+            assert dst.execute("PRAGMA journal_mode").fetchone()[0] == "delete"
+        finally:
+            dst.close()
+        assert sorted(p.name for p in (tmp_path / "bk").iterdir()) == [backups[0].name]
+
     def test_bad_backup_is_deleted_and_older_backups_are_not_pruned(
         self, tmp_path: Path
     ):

@@ -16,6 +16,7 @@ semantic versioning.
 
 - Database backups are now validated with `PRAGMA quick_check(1)` before pruning ([#368](https://github.com/agessaman/meshcore-bot/issues/368)): a newly written backup that fails the check is removed and recorded as an error, and older backups are kept instead of being rotated out behind a bad copy.
 - Docker troubleshooting no longer tells users to delete `-wal`/`-shm` files or to tar a live database, both of which could lose committed transactions ([#368](https://github.com/agessaman/meshcore-bot/issues/368)); the docs now stop the container before copying database files and explain automatic corruption recovery.
+- Restoring a database no longer leaves stray `-wal`/`-shm` files beside the staging and pre-restore temp names, and nightly backups are written in rollback-journal mode so checking them doesn't leave sidecars in the backup directory ([#368](https://github.com/agessaman/meshcore-bot/issues/368)).
 
 ## [1.2.0] - 2026-11-14
 
