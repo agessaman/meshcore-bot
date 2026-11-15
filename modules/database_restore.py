@@ -16,6 +16,7 @@ unit (that is, no separately managed viewer process is still using the file).
 from __future__ import annotations
 
 import configparser
+import contextlib
 import os
 import shutil
 import sqlite3
@@ -77,7 +78,7 @@ def validate_restore_database(database_path: str | Path) -> None:
                 raise DatabaseRestoreError("Restore file is not a SQLite database")
 
         uri = f"{path.as_uri()}?mode=ro"
-        with sqlite3.connect(uri, uri=True, timeout=5.0) as conn:
+        with contextlib.closing(sqlite3.connect(uri, uri=True, timeout=5.0)) as conn:
             integrity_row = conn.execute("PRAGMA integrity_check(1)").fetchone()
             if not integrity_row or str(integrity_row[0]).lower() != "ok":
                 detail = str(integrity_row[0]) if integrity_row else "no result"
@@ -187,18 +188,23 @@ def stage_database_restore(
         os.close(descriptor)
         temp_path = Path(temp_name)
         source_uri = f"{source.as_uri()}?mode=ro"
-        with sqlite3.connect(source_uri, uri=True, timeout=30.0) as source_conn:
+        with contextlib.closing(sqlite3.connect(source_uri, uri=True, timeout=30.0)) as source_conn:
             page_count = int(source_conn.execute("PRAGMA page_count").fetchone()[0])
             page_size = int(source_conn.execute("PRAGMA page_size").fetchone()[0])
             if page_count * page_size > max_bytes:
                 raise DatabaseRestoreError(
                     f"Restore database exceeds the {max_bytes}-byte safety limit"
                 )
-            with sqlite3.connect(str(temp_path), timeout=30.0) as destination_conn:
+            with contextlib.closing(sqlite3.connect(str(temp_path), timeout=30.0)) as destination_conn:
                 # SQLite's online backup API produces a self-contained snapshot
                 # and includes committed WAL content; a raw file copy does not.
                 source_conn.backup(destination_conn)
                 destination_conn.commit()
+                # The copy inherits WAL mode from its source. Switch it to a
+                # rollback journal so read-only validation and the later rename
+                # do not strand -wal/-shm files beside the temp name; the bot
+                # turns WAL back on when it opens the database.
+                destination_conn.execute("PRAGMA journal_mode=DELETE")
 
         if temp_path.stat().st_size > max_bytes:
             raise DatabaseRestoreError(
@@ -236,10 +242,15 @@ def _create_recovery_backup(database: Path) -> Path:
     os.close(descriptor)
     temp_path = Path(temp_name)
     try:
-        with sqlite3.connect(str(database), timeout=30.0) as source_conn:
-            with sqlite3.connect(str(temp_path), timeout=30.0) as destination_conn:
+        with contextlib.closing(sqlite3.connect(str(database), timeout=30.0)) as source_conn:
+            with contextlib.closing(sqlite3.connect(str(temp_path), timeout=30.0)) as destination_conn:
                 source_conn.backup(destination_conn)
                 destination_conn.commit()
+                # The copy inherits WAL mode from its source. Switch it to a
+                # rollback journal so read-only validation and the later rename
+                # do not strand -wal/-shm files beside the temp name; the bot
+                # turns WAL back on when it opens the database.
+                destination_conn.execute("PRAGMA journal_mode=DELETE")
         _match_database_ownership(temp_path, database)
         validate_restore_database(temp_path)
         os.replace(temp_path, recovery)

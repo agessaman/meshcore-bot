@@ -15,6 +15,7 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
+from .database_health import corruption_marker_path, is_corruption_error
 from .db_migrations import MigrationRunner
 from .db_retention import (
     delete_timestamp_rows_in_chunks,
@@ -76,6 +77,8 @@ class DBManager:
         self._journal_mode_lock = threading.Lock()
         self._journal_mode_initialized: set[str] = set()
         self._journal_mode_warned: set[str] = set()
+        self._corruption_lock = threading.Lock()
+        self._corruption_handled = False
         self._init_database()
 
     def _init_database(self) -> None:
@@ -625,6 +628,89 @@ class DBManager:
                 return
             self._journal_mode_initialized.add(section)
 
+    def _request_shutdown(self) -> None:
+        """Stop the process so the service manager restarts into startup recovery.
+
+        A database call can run on any thread, so the bot's ``threading.Event``
+        is the portable signal.  When the bot has a running event loop, its
+        asyncio shutdown event is also set from that loop to avoid waiting for
+        the main loop's next poll.
+        """
+
+        bot = self.bot
+        if bot is None:
+            return
+
+        try:
+            bot.fatal_exit_code = 75
+        except (AttributeError, TypeError):
+            pass
+
+        shutdown_event = getattr(bot, "_shutdown_event", None)
+        if shutdown_event is not None and callable(getattr(shutdown_event, "set", None)):
+            try:
+                shutdown_event.set()
+            except Exception:
+                pass
+
+        try:
+            bot.connected = False
+        except (AttributeError, TypeError):
+            pass
+
+        loop = getattr(bot, "main_event_loop", None)
+        asyncio_event = getattr(bot, "_asyncio_shutdown_event", None)
+        if (
+            loop is not None
+            and asyncio_event is not None
+            and callable(getattr(loop, "is_running", None))
+            and callable(getattr(loop, "call_soon_threadsafe", None))
+            and callable(getattr(asyncio_event, "set", None))
+        ):
+            try:
+                if loop.is_running():
+                    loop.call_soon_threadsafe(asyncio_event.set)
+            except RuntimeError:
+                # The loop closed between the check and the call.
+                pass
+
+    def _handle_corruption(self, exc: sqlite3.DatabaseError) -> None:
+        """Record the first corruption and ask the service manager for a restart."""
+
+        if str(self.db_path) == ":memory:":
+            return
+
+        with self._corruption_lock:
+            if self._corruption_handled:
+                return
+            self._corruption_handled = True
+
+        try:
+            self.logger.critical(
+                "Database corruption detected at %s: %s. The bot will restart "
+                "to quarantine the database and recover at startup.",
+                self.db_path,
+                exc,
+            )
+        except (AttributeError, TypeError):
+            pass
+
+        marker = corruption_marker_path(self.db_path)
+        timestamp = datetime.now(timezone.utc).isoformat()
+        try:
+            marker.write_text(f"{timestamp}\n{exc}\n", encoding="utf-8")
+        except OSError as write_error:
+            try:
+                self.logger.error(
+                    "Could not write database corruption marker %s: %s",
+                    marker,
+                    write_error,
+                )
+            except (AttributeError, TypeError):
+                pass
+
+        self._request_shutdown()
+
     @contextmanager
     def connection(self) -> Generator[sqlite3.Connection, None, None]:
         """Context manager that yields a configured connection and closes it on exit.
@@ -635,6 +721,10 @@ class DBManager:
         self._apply_sqlite_pragmas(conn, for_web_viewer=False)
         try:
             yield conn
+        except sqlite3.DatabaseError as exc:
+            if is_corruption_error(exc):
+                self._handle_corruption(exc)
+            raise
         finally:
             conn.close()
 

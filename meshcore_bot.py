@@ -305,6 +305,32 @@ def main():
         print(f"Error: {exc}", file=sys.stderr)
         sys.exit(1)
 
+    # The instance lock is held and nothing has the database open yet, so a
+    # database left corrupt by a previous run can be moved aside and replaced
+    # before migrations touch it. This runs before pending restores: copying a
+    # corrupt database into a pre-restore backup fails, so a restore staged for
+    # a corrupt database is applied by the recovery step instead.
+    from modules.database_health import recover_corrupt_databases_from_config
+
+    try:
+        recovery_results = recover_corrupt_databases_from_config(args.config)
+    except DatabaseRestoreError as exc:
+        print(f"Error: database recovery failed: {exc}", file=sys.stderr)
+        sys.exit(1)
+    for recovery_result in recovery_results:
+        if recovery_result.from_staged_restore:
+            outcome = "applied the restore staged from the web viewer"
+        elif recovery_result.restored_from is not None:
+            outcome = f"restored from {recovery_result.restored_from}"
+        else:
+            outcome = "starting with a new empty database"
+        print(
+            f"Corrupt database {recovery_result.database_path} "
+            f"({recovery_result.detail}); moved to "
+            f"{recovery_result.quarantined_path}; {outcome}",
+            file=sys.stderr,
+        )
+
     # A restore requested by the viewer is applied only here, before importing
     # and constructing MeshCoreBot (which opens the DB and launches writers).
     # The service manager must restart the bot and viewer as one unit.
@@ -368,6 +394,9 @@ def main():
         if sys.platform != 'win32':
             shutdown_event = asyncio.Event()
             bot_task = None
+            # DBManager can run on a worker thread and ask for the same
+            # shutdown a signal would trigger; it needs the loop's event.
+            bot._asyncio_shutdown_event = shutdown_event
 
             try:
                 # Register signal handlers
@@ -435,6 +464,9 @@ def main():
         print(f"Error: {e}")
         sys.exit(1)
     else:
+        fatal_exit_code = getattr(bot, "fatal_exit_code", None)
+        if fatal_exit_code is not None:
+            sys.exit(int(fatal_exit_code))
         if not started:
             # A startup connection failure must exit non-zero: launchd
             # (KeepAlive SuccessfulExit=false) and the Supervisor watchdog only

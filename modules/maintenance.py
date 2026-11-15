@@ -52,6 +52,24 @@ def _row_n(cur: sqlite3.Cursor) -> int:
         return int(row['n'])
 
 
+def _quick_check_backup(path: Path) -> str | None:
+    """Return the quick_check detail for a new backup, or None when it is intact."""
+
+    try:
+        conn = sqlite3.connect(str(path), timeout=30.0)
+        try:
+            row = conn.execute('PRAGMA quick_check(1)').fetchone()
+        finally:
+            conn.close()
+    except sqlite3.Error as exc:
+        return str(exc) or exc.__class__.__name__
+
+    if not row:
+        return 'quick_check returned no result'
+    detail = str(row[0]).strip()
+    return None if detail.lower() == 'ok' else detail
+
+
 def _count_log_errors_last_24h(log_path: Path) -> tuple[int | str, int | str]:
     """Count ERROR / CRITICAL log lines from the last 24 hours.
 
@@ -669,18 +687,59 @@ class MaintenanceRunner:
         db_path = Path(str(self.bot.db_manager.db_path))
         ts = _utc_now().strftime('%Y%m%dT%H%M%S')
         backup_path = backup_dir / f"{db_path.stem}_{ts}.db"
+        backup_complete = False
 
         try:
             src = _sqlite3.connect(str(db_path), check_same_thread=False)
             dst = _sqlite3.connect(str(backup_path))
             try:
                 src.backup(dst, pages=200)
+                # The copy inherits WAL mode from the live database. A backup
+                # is a static file, and in WAL mode every read-only check of it
+                # would leave -wal/-shm files behind in the backup directory.
+                dst.execute('PRAGMA journal_mode=DELETE')
             finally:
                 dst.close()
                 src.close()
 
+            check_detail = _quick_check_backup(backup_path)
+            if check_detail is not None:
+                error = f'backup failed integrity check: {check_detail}'
+                self.logger.error(f"DB backup failed integrity check: {backup_path}: {check_detail}")
+                try:
+                    backup_path.unlink()
+                except OSError:
+                    pass
+                wk = _iso_week_key_from_ran_at(ran_at)
+                self._last_db_backup_stats = {
+                    'ran_at': ran_at,
+                    'error': error,
+                    **({'week_key': wk} if wk else {}),
+                }
+                try:
+                    self.bot.db_manager.set_metadata('maint.status.db_backup_ran_at', ran_at)
+                    self.bot.db_manager.set_metadata(
+                        'maint.status.db_backup_outcome', f'error: {error}'
+                    )
+                except Exception:
+                    pass
+                # Do not prune: the known-good older backups are the only
+                # recovery point left after this one failed.
+                return
+
+            backup_complete = True
             size_mb = backup_path.stat().st_size / 1_048_576
             self.logger.info(f"DB backup created: {backup_path} ({size_mb:.1f} MB)")
+
+            # Startup recovery reads the backup directory from the database, which
+            # it cannot do once the file is damaged. Leave a pointer beside it.
+            from .database_health import backup_location_path
+            try:
+                backup_location_path(db_path).write_text(
+                    f"{backup_dir.resolve()}\n", encoding="utf-8"
+                )
+            except OSError as e:
+                self.logger.warning(f"DB backup: could not record backup location: {e}")
 
             stem = db_path.stem
             backups = sorted(backup_dir.glob(f"{stem}_*.db"), key=lambda p: p.stat().st_mtime)
@@ -709,6 +768,12 @@ class MaintenanceRunner:
 
         except Exception as e:
             self.logger.error(f"DB backup failed: {e}")
+            if not backup_complete:
+                # A partial file would take a retention slot from a good backup.
+                try:
+                    backup_path.unlink()
+                except OSError:
+                    pass
             wk = _iso_week_key_from_ran_at(ran_at)
             self._last_db_backup_stats = {'ran_at': ran_at, 'error': str(e), **({'week_key': wk} if wk else {})}
             try:

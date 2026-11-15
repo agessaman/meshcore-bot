@@ -328,15 +328,25 @@ If you see database locked errors:
    ls -la data/databases/*.db-*
    ```
 
-3. **Remove lock files** (if safe):
-   ```bash
-   rm data/databases/*.db-shm data/databases/*.db-wal
-   ```
+3. **Never delete `-wal` or `-shm` files.** They can hold committed transactions, so removing them while the container is running loses data and can corrupt the database. A clean shutdown checkpoints and removes them on its own. If the bot still reports a lock after a clean stop, move the database and both sidecars together to a backup location before restarting.
 
 4. **Restart**:
    ```bash
    docker-compose up -d
    ```
+
+### "Database Disk Image Is Malformed"
+
+SQLite reports `database disk image is malformed` when a page on disk no longer matches the database structure. The bot detects this while running, logs a CRITICAL line, writes `<db>.corrupt-detected`, and exits with status 75 so Docker restarts it. On the next start, before any migrations run, it checks the database (with the full `integrity_check` when the previous run left that marker) and:
+
+- moves the damaged file and its `-wal`/`-shm` sidecars to `<db>.corrupt-<UTC timestamp>` beside the database (nothing is deleted);
+- applies a restore you staged from the web viewer, if there is one;
+- otherwise restores the newest backup in the configured backup directory that passes validation. Each backup run writes `<db>.backup-dir` beside the database so this still works when the damaged file can't be read at all;
+- otherwise starts with a new empty database and rebuilds the schema.
+
+Set `[Bot] db_auto_recover = false` to turn this off. The bot then refuses to start and names the corrupt file and the error. With `restart: unless-stopped`, Docker keeps retrying and logging the same error without touching the file; stop the container, move that file and its sidecars aside (or stage a restore from the web viewer), and start it again.
+
+Keep databases on a local disk. WAL mode needs shared memory and reliable file locking that NFS, SMB, and NAS mounts often do not provide. If the database must live on a network share, set `[Bot] sqlite_journal_mode = DELETE` and expect slower writes.
 
 ### Container Won't Start
 
@@ -459,12 +469,14 @@ For production deployments:
 
 ### Backup
 
-```bash
-# Backup databases
-docker-compose exec meshcore-bot tar czf /data/backups/backup-$(date +%Y%m%d).tar.gz /data/databases
+Use the web viewer's scheduled database backup, or its **Backup now** button, so SQLite's online backup API records a consistent snapshot while the bot runs.
 
-# Or from host
+To copy the database files yourself, stop the container first. Copying `data/databases` while the bot is running can capture a half-written database:
+
+```bash
+docker-compose stop meshcore-bot
 tar czf backups/backup-$(date +%Y%m%d).tar.gz data/databases/
+docker-compose start meshcore-bot
 ```
 
 ### Restore

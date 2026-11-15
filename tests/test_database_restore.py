@@ -267,3 +267,33 @@ def test_configured_restore_failure_rolls_back_and_requeues_prior_database(
     assert _marker(active_viewer) == "old-viewer"
     assert _marker(pending_restore_path(active_bot)) == "new-bot"
     assert _marker(pending_restore_path(active_viewer)) == "new-viewer"
+
+
+def _use_wal(path: Path) -> None:
+    conn = sqlite3.connect(path)
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+    finally:
+        conn.close()
+
+
+def test_stage_and_apply_leave_no_stray_sidecar_files(tmp_path: Path) -> None:
+    active = tmp_path / "active.db"
+    backup = tmp_path / "backup.db"
+    _create_meshcore_database(active, "active")
+    _create_meshcore_database(backup, "backup")
+    _use_wal(active)
+    _use_wal(backup)
+
+    stage_database_restore(backup, active)
+    result = apply_pending_database_restore(active)
+
+    assert result is not None
+    # Only the active database's own name may carry sidecars; the staging,
+    # pre-restore and pending copies must not strand any under their names.
+    leftovers = sorted(
+        p.name for p in tmp_path.iterdir()
+        if p.name.startswith(".active.db") or ".pending" in p.name
+        or (p.name.startswith("active.") and p.name.endswith(("-wal", "-shm")))
+    )
+    assert leftovers == []
