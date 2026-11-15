@@ -289,6 +289,7 @@ teams = seahawks
         example_keys = load_documented_keys_from_example(EXAMPLE_PATH)
         assert is_known_config_key("DiscordBridge", "bridge.public", example_keys)
         assert is_known_config_key("TelegramBridge", "bridge.howltest", example_keys)
+        assert is_known_config_key("MatrixBridge", "bridge.public", example_keys)
 
         cfg = configparser.ConfigParser()
         cfg.optionxform = str
@@ -306,6 +307,12 @@ monitor_channels = general
 enabled = true
 avatar_style = fun-emoji
 bridge.public = https://discord.com/api/webhooks/example
+
+[MatrixBridge]
+enabled = true
+homeserver = https://matrix.example
+access_token = example-token
+bridge.public = !room:matrix.example
 """)
         issues = tui_validate_config(cfg, example_keys)
         bridge_warnings = [
@@ -313,6 +320,11 @@ bridge.public = https://discord.com/api/webhooks/example
             if i[0] == "WARNING" and i[1] == "DiscordBridge" and "bridge.public" in i[2]
         ]
         assert bridge_warnings == []
+        matrix_warnings = [
+            i for i in issues
+            if i[0] == "WARNING" and i[1] == "MatrixBridge"
+        ]
+        assert matrix_warnings == []
 
     def test_announcements_trigger_keys_not_unknown(self):
         example_keys = load_documented_keys_from_example(EXAMPLE_PATH)

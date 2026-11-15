@@ -79,7 +79,7 @@ STANDARD_SERVICE_KEYS = frozenset({
 })
 
 # Mesh channel → external target mappings in bridge service sections.
-BRIDGE_SECTIONS = frozenset({"DiscordBridge", "TelegramBridge"})
+BRIDGE_SECTIONS = frozenset({"DiscordBridge", "TelegramBridge", "MatrixBridge"})
 BRIDGE_CHANNEL_KEY_PREFIX = "bridge."
 
 # User-defined announcement triggers in Announcements_Command.

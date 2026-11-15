@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Shared base for one-way bridges that post MeshCore channel messages elsewhere
-(Discord, Telegram). The file name ends in ``_utils`` so the service loader
+(Discord, Telegram, Matrix). The file name ends in ``_utils`` so the service loader
 does not take ChannelBridgeBase for a service of its own.
 """
 
@@ -27,13 +27,16 @@ class ChannelBridgeBase(BaseServicePlugin):
     ``*_log`` templates.
     """
 
-    # "Discord" or "Telegram": names the bridge in shared log lines
+    # "Discord", "Telegram" or "Matrix": names the bridge in shared log lines
     bridge_label = ""
     # Payload key holding the message text (for the dropped-after-retries line)
     payload_text_key = "text"
     old_message_log = "Dropping old message from queue [{channel}]: age {age:.1f}s > {max_age}s"
     retry_log = "Message failed, retry in {delay:.1f}s ({retry}/{max_retries}) [{channel}]"
     processor_error_log = "Error in queue processor: {error}"
+    # When True, a rate-limit wait a subclass stored in next_retry_at is kept
+    # instead of being overwritten by the generic exponential backoff below.
+    preserve_next_retry_at = False
 
     # Set by subclasses in __init__ (annotations for type checkers)
     filter_profanity: str
@@ -264,7 +267,11 @@ class ChannelBridgeBase(BaseServicePlugin):
                             )
                         else:
                             delay = self.retry_delay_base * (2 ** (queued_msg.retry_count - 1))
-                            queued_msg.next_retry_at = current_time + delay
+                            # A subclass may already have scheduled a longer
+                            # rate-limit wait (e.g. Matrix retry_after_ms). Keep
+                            # it instead of overwriting it with the backoff.
+                            if not self.preserve_next_retry_at or queued_msg.next_retry_at <= current_time:
+                                queued_msg.next_retry_at = current_time + delay
                             self.logger.debug(self.retry_log.format(
                                 delay=delay,
                                 retry=queued_msg.retry_count,

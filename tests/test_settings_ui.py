@@ -267,6 +267,19 @@ class TestBuildView:
         assert ping is not None and ping["source"] == "base"
         assert earthquake is not None and earthquake["source"] == "base"
 
+    def test_matrix_bridge_exposes_a_masked_password_token(self, view):
+        entry = self._entry(view, "service", "matrixbridge")
+        assert entry is not None
+        assert entry["section"] == "MatrixBridge"
+        token = next(f for f in entry["fields"] if f["key"] == "access_token")
+        assert token["type"] == "password"
+        assert token["value"] == ""
+        assert token["has_value"] is False
+        dynamic = next(
+            d for d in entry["dynamic_sections"] if d["section"] == "MatrixBridge"
+        )
+        assert dynamic["key_prefix"] == "bridge."
+
 
 class TestBuildViewLocalCommandSource:
     """Local commands (discovered via _discover_local_classes) must be tagged
@@ -746,6 +759,29 @@ class TestPluginsApi:
         cfg.read(tmp_path / "config.ini", encoding="utf-8")
         assert cfg.get("DiscordBridge", "bridge.#test") == url
         assert not cfg.has_option("DiscordBridge", "bridge.bridge.#test")
+
+    def test_matrix_bridge_mapping_saved(self, viewer, tmp_path):
+        """Matrix room mappings use the same dynamic bridge.* editor."""
+        client = viewer.app.test_client()
+        resp = client.post(
+            "/api/plugins/service/matrixbridge",
+            json={
+                "enabled": False,
+                "values": {"homeserver": "https://matrix.example"},
+                "dynamic_sections": {
+                    "MatrixBridge": [
+                        {"key": "Public", "value": "!room:matrix.example"},
+                        {"key": "emergency", "value": "#alias:matrix.example"},
+                    ]
+                },
+            },
+        )
+        assert resp.status_code == 200, resp.get_json()
+        cfg = configparser.ConfigParser()
+        cfg.read(tmp_path / "config.ini", encoding="utf-8")
+        assert cfg.get("MatrixBridge", "bridge.public") == "!room:matrix.example"
+        assert cfg.get("MatrixBridge", "bridge.emergency") == "#alias:matrix.example"
+        assert cfg.get("MatrixBridge", "homeserver") == "https://matrix.example"
 
     def test_dynamic_key_with_leading_hash_without_prefix_rejected(self, viewer):
         """Without a prefix a leading # would turn the option into a comment."""
