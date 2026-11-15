@@ -33,6 +33,7 @@ A Python bot that connects to MeshCore mesh networks via serial port, BLE, or TC
 
 - **Discord Bridge**: One-way webhook bridge to post mesh messages to Discord ([docs](docs/discord-bridge.md))
 - **Telegram Bridge**: One-way bridge to post mesh messages to Telegram ([docs](docs/telegram-bridge.md))
+- **Matrix Bridge**: One-way bridge to post mesh messages to Matrix rooms ([docs](docs/matrix-bridge.md))
 - **Packet Capture**: Capture and publish packets to MQTT brokers, with optional zero-hop neighbor discovery — periodically records which repeaters the bot hears directly, with measured SNR, and feeds those confirmed links to the mesh graph. Off by default; a cycle spends airtime ([docs](docs/packet-capture.md))
 - **Map Uploader**: Upload node adverts to map.meshcore.dev ([docs](docs/map-uploader.md))
 - **Weather Service**: Scheduled forecasts, alerts, and lightning detection ([docs](docs/weather-service.md))

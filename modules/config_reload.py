@@ -46,6 +46,7 @@ class ConfigReloadMixin:
             "Feed_Manager",
             "Logging",
             "MapUploader",
+            "MatrixBridge",
             "MqttWeather",
             "PacketCapture",
             "RepeaterPrefixCollision_Service",

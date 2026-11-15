@@ -6,6 +6,7 @@ Service plugins extend the bot with background services that run alongside the m
 |--------|-------------|
 | [Discord Bridge](discord-bridge.md) | One-way webhook bridge to post mesh messages to Discord channels |
 | [Telegram Bridge](telegram-bridge.md) | One-way bridge to post mesh messages to Telegram chats/channels |
+| [Matrix Bridge](matrix-bridge.md) | One-way bridge to post mesh messages to Matrix rooms |
 | [Packet Capture](packet-capture.md) | Capture packets from the mesh and publish them to MQTT brokers |
 | [Map Uploader](map-uploader.md) | Upload node advertisements to [map.meshcore.dev](https://map.meshcore.dev) for network visualization |
 | [Weather Service](weather-service.md) | Scheduled weather forecasts, weather alerts, and lightning detection |

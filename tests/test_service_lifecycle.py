@@ -185,11 +185,13 @@ def _plain_bot(sections):
 
 def test_bridges_close_their_http_session_when_meshcore_is_missing():
     from modules.service_plugins.discord_bridge_service import DiscordBridgeService
+    from modules.service_plugins.matrix_bridge_service import MatrixBridgeService
     from modules.service_plugins.telegram_bridge_service import TelegramBridgeService
 
     for cls, section, mapping in (
         (DiscordBridgeService, "DiscordBridge", "channel_webhooks"),
         (TelegramBridgeService, "TelegramBridge", "channel_chat_ids"),
+        (MatrixBridgeService, "MatrixBridge", "channel_rooms"),
     ):
         bot = _plain_bot({section: {"enabled": "true"}})
         service = cls(bot)

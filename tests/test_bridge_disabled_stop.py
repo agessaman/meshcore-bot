@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from modules.service_plugins.discord_bridge_service import DiscordBridgeService
+from modules.service_plugins.matrix_bridge_service import MatrixBridgeService
 from modules.service_plugins.telegram_bridge_service import TelegramBridgeService
 
 
@@ -16,6 +17,7 @@ def bot(mock_logger):
     bot.config = ConfigParser()
     bot.config.add_section("DiscordBridge")
     bot.config.add_section("TelegramBridge")
+    bot.config.add_section("MatrixBridge")
     bot.channel_sent_listeners = []
     return bot
 
@@ -51,3 +53,18 @@ class TestDisabledBridgesStop:
         assert service.enabled is False
         await _start_and_stop(service, bot)
         bot.logger.info.assert_any_call("Discord bridge service stopped")
+
+    async def test_matrix_without_access_token(self, bot, monkeypatch):
+        monkeypatch.delenv("MATRIX_ACCESS_TOKEN", raising=False)
+        service = MatrixBridgeService(bot)
+        assert service.enabled is False
+        await _start_and_stop(service, bot)
+        bot.logger.info.assert_any_call("Matrix bridge service stopped")
+
+    async def test_matrix_without_http_library(self, bot):
+        with patch("modules.service_plugins.matrix_bridge_service.AIOHTTP_AVAILABLE", False), \
+                patch("modules.service_plugins.matrix_bridge_service.REQUESTS_AVAILABLE", False):
+            service = MatrixBridgeService(bot)
+        assert service.enabled is False
+        await _start_and_stop(service, bot)
+        bot.logger.info.assert_any_call("Matrix bridge service stopped")

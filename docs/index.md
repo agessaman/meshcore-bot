@@ -43,6 +43,7 @@ Documentation for the MeshCore bot: setup, configuration, commands, and services
 | [Service Plugins overview](service-plugins.md) | Enable and configure background services |
 | [Discord Bridge](discord-bridge.md) | One-way bridge to Discord |
 | [Telegram Bridge](telegram-bridge.md) | One-way bridge to Telegram |
+| [Matrix Bridge](matrix-bridge.md) | One-way bridge to Matrix rooms |
 | [Earthquake Service](earthquake-service.md) | Scheduled earthquake alerts from USGS |
 | [Packet Capture](packet-capture.md) | Packet capture and MQTT |
 | [Map Uploader](map-uploader.md) | Uploading to map.meshcore.dev |

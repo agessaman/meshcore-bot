@@ -2821,6 +2821,43 @@ enabled = false
 # bridge.Public = @YourChannelName
 # bridge.emergency = -1001234567890
 
+[MatrixBridge]
+# Enable Matrix bridge service
+# Posts MeshCore channel messages to Matrix rooms via the Client-Server API (one-way, read-only)
+# true: Enable Matrix bridge
+# false: Matrix bridge disabled (default)
+enabled = false
+
+# IMPORTANT: Direct messages (DMs) are NEVER bridged to Matrix (hardcoded for privacy)
+# Only unencrypted rooms are supported; end-to-end encrypted rooms are out of scope.
+
+# Base URL of your Matrix homeserver (no trailing slash needed). HTTPS is required
+# except for localhost/127.0.0.1. Example: https://matrix.org
+# homeserver = https://matrix.org
+
+# Access token for the bot's Matrix account. Can also be set via MATRIX_ACCESS_TOKEN
+# env var (env takes precedence). Never put the token in a bridge.* mapping.
+# The bot account must already be joined to every room below.
+# access_token = syt_...
+
+# Optional: max message length (1-4000). Long messages are truncated. Default: 4000
+# max_message_length = 4000
+
+# Profanity handling for bridged message content and usernames: drop (default), censor, or off
+# drop = do not bridge messages that contain profanity; censor = replace with **** and bridge; off = no filtering
+# filter_profanity = drop
+
+# Bridge the bot's own channel responses (e.g. command replies) to Matrix. true (default) = bridge; false = only bridge other users' messages
+# bridge_bot_responses = true
+
+# Channel mappings: bridge.<meshcore_channel> = <room_id>[, <room_id>...]
+# Room IDs look like !abcdef:server; aliases like #room:server are resolved at startup
+# and retried about once a minute if that fails.
+# Comma-separate several rooms to fan out one MeshCore channel.
+# See docs/matrix-bridge.md for setup
+# bridge.Public = !abcdef:matrix.org
+# bridge.emergency = #emergency:matrix.org, !ghijkl:matrix.org
+
 # =============================================================================
 # Command plugins (*_Command sections, alphabetical)
 # =============================================================================
