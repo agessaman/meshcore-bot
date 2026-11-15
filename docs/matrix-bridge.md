@@ -120,7 +120,7 @@ bridge.emergency = #emergency:matrix.org, !qrstuvwxyz:matrix.org
 
 ### Token Security
 
-- **Do not log or expose the access token.** The service masks it in logs (first/last four characters).
+- **Do not log or expose the access token.** The service never writes it, or any part of it, to the log; it is sent only in the `Authorization` header.
 - The token is read only from `[MatrixBridge] access_token` or `MATRIX_ACCESS_TOKEN`. It is never read from a `bridge.*` mapping row, which the settings UI renders as plain text.
 - Prefer the `MATRIX_ACCESS_TOKEN` environment variable in shared environments.
 - **Rotate the token** (log the bot out of all sessions, then log in again) if it was ever exposed.
@@ -140,7 +140,7 @@ The bridge posts to unencrypted rooms. End-to-end encrypted rooms are not suppor
 Matrix rate limits are enforced per user, not per room. The service keeps a conservative default of about **one message per second overall**, plus a per-room minimum interval, so a busy mesh cannot exhaust the bot account's limits. It:
 
 - Queues messages per room and spaces sends out
-- On HTTP 429 / `M_LIMIT_EXCEEDED`, pauses sends to every room for the homeserver's `retry_after_ms` (or the `Retry-After` header) without spending the retry budget
+- On HTTP 429 / `M_LIMIT_EXCEEDED`, pauses sends to every room for the homeserver's `retry_after_ms` (or the `Retry-After` header), capped at 5 minutes (the queue's max age), without spending the retry budget; queued messages still expire during the pause
 - Uses exponential backoff on other transient failures and drops messages after max retries or max queue age (5 minutes)
 - Drops permanent failures (`M_FORBIDDEN`, `M_NOT_FOUND`, HTTP 403/404) immediately instead of retrying, and stops the bridge on a rejected token (HTTP 401, `M_UNKNOWN_TOKEN`)
 

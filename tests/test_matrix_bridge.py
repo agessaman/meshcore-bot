@@ -577,6 +577,59 @@ async def test_concurrent_deliveries_resolve_an_alias_once(matrix_bot):
 
 
 @pytest.mark.asyncio
+async def test_messages_during_an_alias_lookup_wait_for_it(matrix_bot):
+    matrix_bot.config.set("MatrixBridge", "bridge.Public", "#room:matrix.example")
+    service = _service(matrix_bot)
+    service.http_session = FakeSession(
+        get_responder=lambda url: FakeResponse(200, {"room_id": "!room:matrix.example"})
+    )
+
+    await asyncio.gather(
+        service._deliver(["#room:matrix.example"], "Alice", "one", "Public"),
+        service._deliver(["#room:matrix.example"], "Bob", "two", "Public"),
+    )
+
+    lookups = [r for r in service.http_session.requests if "directory/room" in r[1]]
+    assert len(lookups) == 1
+    assert len(service.message_queues["!room:matrix.example"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_429_wait_is_capped_at_the_queue_age(matrix_bot):
+    session = FakeSession(
+        put_responder=lambda url, payload: FakeResponse(
+            429, {"errcode": "M_LIMIT_EXCEEDED", "retry_after_ms": 86_400_000}
+        )
+    )
+    service = _service(matrix_bot)
+    service.http_session = session
+    queued = QueuedMessage(
+        room_id="!room:matrix.example", payload={"body": "x"}, channel_name="Public", txn_id="t1"
+    )
+
+    assert await service._send_queued(queued) is False
+
+    assert service._rate_limited_until <= time.time() + service.max_queue_age + 1
+
+
+def test_messages_expire_while_rate_limited(matrix_bot):
+    service = _service(matrix_bot)
+    now = time.time()
+    service._rate_limited_until = now + 120
+    old = QueuedMessage(
+        room_id="!room:matrix.example", payload={"body": "old"}, channel_name="Public",
+        txn_id="t1", first_queued=now - service.max_queue_age - 10,
+    )
+    fresh = QueuedMessage(
+        room_id="!room:matrix.example", payload={"body": "new"}, channel_name="Public", txn_id="t2"
+    )
+    queue = [old, fresh]
+
+    assert service._throttled("!room:matrix.example", queue, now) is True
+    assert queue == [fresh]
+
+
+@pytest.mark.asyncio
 async def test_alias_resolution_success_and_failure(matrix_bot):
     matrix_bot.config.set(
         "MatrixBridge", "bridge.Public", "#ok:matrix.example, #bad:matrix.example"

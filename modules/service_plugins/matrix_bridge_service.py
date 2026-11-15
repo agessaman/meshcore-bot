@@ -123,6 +123,7 @@ class MatrixBridgeService(ChannelBridgeBase):
         self.channel_rooms: dict[str, list[str]] = {}
         self.resolved_room_ids: dict[str, str] = {}
         self._alias_retry_at: dict[str, float] = {}
+        self._alias_lookups: dict[str, asyncio.Future] = {}
         self._rate_limited_until = 0.0
         self.message_queues: dict[str, list[QueuedMessage]] = {}
         self.send_times: dict[str, deque] = {}
@@ -214,7 +215,9 @@ class MatrixBridgeService(ChannelBridgeBase):
 
         Services start one after another, so waiting here on a homeserver that
         drops packets would hold up every later service by the HTTP timeout per
-        request. Messages that arrive before the checks finish are queued.
+        request. Messages for room IDs that arrive before the checks finish are
+        queued; messages for an alias wait for its lookup and are skipped only
+        if it fails.
         """
         await super().start()
         if self._running:
@@ -278,6 +281,16 @@ class MatrixBridgeService(ChannelBridgeBase):
     def _throttled(self, key: str, queue: Any, current_time: float) -> bool:
         # Matrix rate limits are per user: a 429 in one room pauses every room.
         if current_time < self._rate_limited_until:
+            # The base queue only ages messages out when it picks one to send,
+            # which it never does while paused. Expire them here so a long
+            # pause on a busy channel cannot grow the queue without bound.
+            for msg in [m for m in queue if current_time - m.first_queued > self.max_queue_age]:
+                queue.remove(msg)
+                self.logger.warning(self.old_message_log.format(
+                    channel=msg.channel_name,
+                    age=current_time - msg.first_queued,
+                    max_age=self.max_queue_age,
+                ))
             return True
         # Cap sends across every room as well.
         if self._last_send_at and (current_time - self._last_send_at) < self.global_min_interval:
@@ -313,7 +326,9 @@ class MatrixBridgeService(ChannelBridgeBase):
             return True
 
         if status == 429 or errcode == 'M_LIMIT_EXCEEDED':
-            retry_after = self._retry_after_seconds(data, headers)
+            # Messages expire after max_queue_age anyway, so a longer wait (a
+            # bogus value from a proxy, say) would only stall every room.
+            retry_after = min(self._retry_after_seconds(data, headers), float(self.max_queue_age))
             self.logger.warning(
                 f"Matrix rate limit for [{queued_msg.channel_name}]. Retry after: {retry_after:.0f}s"
             )
@@ -465,15 +480,24 @@ class MatrixBridgeService(ChannelBridgeBase):
         cached = self.resolved_room_ids.get(alias)
         if cached:
             return cached
-        if time.time() < self._alias_retry_at.get(alias, 0.0):
-            return None
-        # Claim the retry slot before the request so concurrent deliveries for
-        # the same alias do not all ask the homeserver at once.
-        self._alias_retry_at[alias] = time.time() + MATRIX_ALIAS_RETRY_INTERVAL
-        room_id = await self._resolve_room_alias(alias)
+        # Concurrent deliveries for the same alias wait on one shared request
+        # rather than each asking the homeserver, or skipping the message
+        # while another caller's lookup is still in flight.
+        lookup = self._alias_lookups.get(alias)
+        if lookup is None:
+            if time.time() < self._alias_retry_at.get(alias, 0.0):
+                return None
+            lookup = asyncio.ensure_future(self._resolve_room_alias(alias))
+            self._alias_lookups[alias] = lookup
+            lookup.add_done_callback(lambda _task: self._alias_lookups.pop(alias, None))
+        # shield: one cancelled caller (stop() cancelling the startup task)
+        # must not cancel the lookup other deliveries are waiting on.
+        room_id = await asyncio.shield(lookup)
         if room_id:
             self.resolved_room_ids[alias] = room_id
             self._alias_retry_at.pop(alias, None)
+        else:
+            self._alias_retry_at[alias] = time.time() + MATRIX_ALIAS_RETRY_INTERVAL
         return room_id
 
     async def _resolve_room_alias(self, alias: str) -> Optional[str]:
