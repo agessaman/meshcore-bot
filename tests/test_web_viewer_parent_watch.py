@@ -257,6 +257,37 @@ def test_run_viewer_command_includes_exit_with_parent(tmp_path: Path):
     assert cmd[flag + 1] == str(os.getpid())
 
 
+def test_run_viewer_passes_our_import_path(tmp_path: Path, monkeypatch):
+    """A wrapper-added sys.path entry (Nix) must reach the viewer subprocess."""
+    from modules.web_viewer.integration import WebViewerIntegration
+
+    bot = _make_bot(str(tmp_path / "config.ini"))
+    with patch("modules.web_viewer.integration.BotIntegration._init_http_session"), \
+         patch("modules.web_viewer.integration.BotIntegration._init_packet_stream_table"), \
+         patch("modules.web_viewer.integration.BotIntegration._start_drain_thread"):
+        wvi = WebViewerIntegration(bot)
+    wvi.port = 18765
+    wrapper_dir = str(tmp_path / "wrapper-site-packages")
+    monkeypatch.setattr(sys, "path", [*sys.path, wrapper_dir])
+    monkeypatch.setenv("MESHCORE_TEST_MARKER", "kept")
+    envs: list[dict[str, str]] = []
+
+    def fake_popen(cmd, **kwargs):
+        envs.append(kwargs["env"])
+        proc = MagicMock()
+        proc.poll.return_value = 1
+        proc.returncode = 1
+        return proc
+
+    with patch("modules.web_viewer.integration.subprocess.Popen", side_effect=fake_popen), \
+         patch("modules.web_viewer.integration.time.sleep"):
+        wvi._run_viewer()
+
+    assert len(envs) == 1
+    assert wrapper_dir in envs[0]["PYTHONPATH"].split(os.pathsep)
+    assert envs[0]["MESHCORE_TEST_MARKER"] == "kept"
+
+
 def test_main_without_flag_does_not_start_watcher():
     with patch("modules.web_viewer.app.BotDataViewer") as viewer_cls, \
          patch("modules.web_viewer.parent_watch.start_parent_watcher") as start:

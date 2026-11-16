@@ -47,6 +47,23 @@ def normalized_web_viewer_password(config) -> str:
     return s
 
 
+def _viewer_environment() -> dict[str, str]:
+    """Environment for the viewer subprocess: ours, plus our import path.
+
+    The viewer runs as ``sys.executable app.py``. Launchers that add the
+    package's dependencies to ``sys.path`` from inside a wrapper script, as
+    Nix's Python wrappers do, leave the bare interpreter unable to import
+    them, so the child gets the bot's ``sys.path`` through ``PYTHONPATH``.
+    An existing ``PYTHONPATH`` is already part of ``sys.path`` and keeps its
+    place in the order.
+    """
+    env = os.environ.copy()
+    paths = [p for p in sys.path if p]
+    if paths:
+        env["PYTHONPATH"] = os.pathsep.join(paths)
+    return env
+
+
 class BotIntegration:
     """Simple bot integration for web viewer compatibility"""
 
@@ -1135,7 +1152,8 @@ class WebViewerIntegration:
                 cmd,
                 stdout=popen_stdout,
                 stderr=popen_stderr,
-                text=True
+                text=True,
+                env=_viewer_environment(),
             )
 
             # Give it a moment to start up
