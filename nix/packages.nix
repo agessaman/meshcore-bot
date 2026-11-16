@@ -69,6 +69,12 @@
         flatbuffers
       ];
 
+      # Every openmeteo-sdk release pins flatbuffers to the exact version its
+      # generated reader code was built with (==25.9.23 as of 1.30.0), and
+      # nixpkgs moves past it. The flatbuffers runtime reads buffers from older
+      # generated code, so the pin can be relaxed.
+      pythonRelaxDeps = ["flatbuffers"];
+
       doCheck = false;
     };
     openmeteo-requests = pkgs.python3Packages.buildPythonPackage rec {
