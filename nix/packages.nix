@@ -155,10 +155,13 @@
           aiohttp
           aiohttp-retry
           aiomqtt
+          aiosqlite
+          apscheduler
           bleak
           colorlog
           feedparser
           flask
+          flask-compress
           flask-socketio
           geopy
           meshcore
