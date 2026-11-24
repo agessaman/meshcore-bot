@@ -33,7 +33,7 @@ def _reply(time, is_day=..., code=0, language="en", budget=None):
     if budget is not None:
         cmd.get_max_message_length = Mock(return_value=budget)
         kwargs["message"] = Mock()
-    with patch(f"{MODULE}.requests.get", return_value=response) as get:
+    with patch("requests.Session.get", return_value=response) as get:
         text = cmd.get_open_meteo_weather(47.6, -122.3, **kwargs)
     return text, get.call_args.kwargs["params"]
 

@@ -51,7 +51,7 @@ def _data(cmd, **current):
 def _run(cmd, data, forecast_type="default", ok=True):
     response = Mock(ok=ok, status_code=503 if not ok else 200)
     response.json.return_value = data
-    with patch(f"{MODULE}.requests.get", return_value=response) as get:
+    with patch("requests.Session.get", return_value=response) as get:
         result = cmd._get_weather_for_location_sync(
             "Test City", forecast_type=forecast_type, num_days=2, message=Mock()
         )
@@ -196,7 +196,7 @@ def test_public_weather_getter_still_returns_text():
     cmd = _gwx()
     response = Mock(ok=True)
     response.json.return_value = _data(cmd, temperature_2m=100, weather_code=99, wind_speed_10m=50)
-    with patch(f"{MODULE}.requests.get", return_value=response) as get:
+    with patch("requests.Session.get", return_value=response) as get:
         text = cmd.get_open_meteo_weather(1.0, 2.0)
     assert isinstance(text, str)
     assert "100°F" in text

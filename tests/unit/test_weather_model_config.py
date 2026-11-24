@@ -44,14 +44,14 @@ def test_gwx_blank_weather_model_omits_models_param(mock_logger, monkeypatch):
     cmd = GlobalWxCommand(_build_bot(mock_logger, config))
     captured = {}
 
-    def _fake_get(_url, params=None, timeout=0):
+    def _fake_get(_session, _url, params=None, timeout=0):
         captured["params"] = params
         response = Mock()
         response.ok = True
         response.json.return_value = _openmeteo_payload()
         return response
 
-    monkeypatch.setattr("modules.commands.alternatives.wx_international.requests.get", _fake_get)
+    monkeypatch.setattr("requests.Session.get", _fake_get)
 
     cmd.get_open_meteo_weather(47.6, -122.3, forecast_type="tomorrow")
     assert "models" not in captured["params"]
@@ -64,14 +64,14 @@ def test_gwx_unset_weather_model_uses_best_match(mock_logger, monkeypatch):
     cmd = GlobalWxCommand(_build_bot(mock_logger, config))
     captured = {}
 
-    def _fake_get(_url, params=None, timeout=0):
+    def _fake_get(_session, _url, params=None, timeout=0):
         captured["params"] = params
         response = Mock()
         response.ok = True
         response.json.return_value = _openmeteo_payload()
         return response
 
-    monkeypatch.setattr("modules.commands.alternatives.wx_international.requests.get", _fake_get)
+    monkeypatch.setattr("requests.Session.get", _fake_get)
 
     cmd.get_open_meteo_weather(47.6, -122.3, forecast_type="tomorrow")
     assert captured["params"]["models"] == "best_match"

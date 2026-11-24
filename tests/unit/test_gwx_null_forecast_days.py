@@ -72,7 +72,7 @@ def test_default_reply_with_null_precipitation_probability_still_shows_tomorrow(
     data["current"] = {"temperature_2m": 18.0, "relative_humidity_2m": 70, "weather_code": 3}
     response = Mock(ok=True)
     response.json.return_value = data
-    with patch("modules.commands.alternatives.wx_international.requests.get", return_value=response):
+    with patch("requests.Session.get", return_value=response):
         text = cmd.get_open_meteo_weather(51.5, -0.13, message=Mock())
     assert "<commands.gwx.periods.tomorrow>" in text
     cmd.logger.error.assert_not_called()

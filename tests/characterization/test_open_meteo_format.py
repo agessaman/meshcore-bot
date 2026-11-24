@@ -80,7 +80,7 @@ def _run(cmd, data, now, budget=None, **kwargs):
         cmd.get_max_message_length = Mock(return_value=budget)
         kwargs["message"] = Mock()
     get = Mock(return_value=_response(data))
-    with patch(f"{MODULE}.datetime", _frozen(now)), patch(f"{MODULE}.requests.get", get):
+    with patch(f"{MODULE}.datetime", _frozen(now)), patch("requests.Session.get", get):
         text = cmd.get_open_meteo_weather(data["latitude"], data["longitude"], **kwargs)
     params = get.call_args.kwargs["params"] if get.call_args else None
     logs = [(c[0], c[1][0]) for c in cmd.logger.method_calls if c[0] in ("info", "warning", "error")]
@@ -162,7 +162,7 @@ def test_open_meteo_text_distorted(name):
     results["mmhg"] = _text_and_logs(_run(cmd, data, DAY, budget=260))
     cmd = _gwx(UNITS[name])
     get = Mock(return_value=_response({}, ok=False))
-    with patch(f"{MODULE}.requests.get", get):
+    with patch("requests.Session.get", get):
         results["http-error"] = [
             cmd.get_open_meteo_weather(1.0, 2.0, forecast_type=t) for t in ("default", "tomorrow", "multiday")
         ]
