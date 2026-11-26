@@ -1,11 +1,15 @@
 version: 2
 
+# Version updates open against dev, where every PR lands first; dev reaches main
+# with each release. Security updates from Dependabot alerts ignore
+# target-branch and always open against main.
 updates:
   # GitHub Actions — the highest-value ecosystem here. Actions are pinned by major
   # tag (actions/checkout@v4), so a compromised or abandoned action is a real
   # supply-chain risk and these updates are few and easy to review.
   - package-ecosystem: github-actions
     directory: "/"
+    target-branch: dev
     schedule:
       interval: weekly
     groups:
@@ -20,6 +24,7 @@ updates:
   # by this cadence.
   - package-ecosystem: pip
     directory: "/"
+    target-branch: dev
     schedule:
       interval: monthly
     open-pull-requests-limit: 5
@@ -34,6 +39,7 @@ updates:
   # runtime code, so monthly and grouped is plenty.
   - package-ecosystem: npm
     directory: "/"
+    target-branch: dev
     schedule:
       interval: monthly
     open-pull-requests-limit: 3
@@ -50,6 +56,7 @@ updates:
   # pages look. vendor-refresh.yml adds the regenerated files to each PR.
   - package-ecosystem: npm
     directory: "/scripts/web-vendor"
+    target-branch: dev
     schedule:
       interval: monthly
     open-pull-requests-limit: 5
