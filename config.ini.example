@@ -1833,6 +1833,11 @@ enabled = true
 # Worth adding to Admin_ACL admin_commands, since a cycle spends airtime.
 enabled = true
 # channels =
+# Seconds to wait after acknowledging before sending the discover request
+# (0-30, default 5). Nearby repeaters are still repeating the request and the
+# reply for a few seconds, and a repeater that is transmitting can't hear
+# discovery; without a pause, a manual cycle can come back with no neighbors.
+# settle_seconds = 5
 [Test_Command]
 enabled = true
 # Require minimum path byte length before responding to test/t

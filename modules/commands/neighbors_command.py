@@ -17,6 +17,16 @@ from .base_command import BaseCommand
 # that "busy" / "disabled" is not a fifteen-minute lockout.
 _REFUSAL_RETRY_SECONDS = 60.0
 
+# Pause between acknowledging the request and sending the discover broadcast.
+# The request and our reply are still being repeated by nearby repeaters -- the
+# same ones discovery asks -- for a few seconds after the reply's ACK returns. A
+# repeater that is transmitting cannot hear the zero-hop discover request, and a
+# response can collide with those echoes; the scheduled cycle has no such
+# traffic around it. GitHub #385: zero responses without a pause, success with
+# five seconds.
+_DEFAULT_SETTLE_SECONDS = 5.0
+_MAX_SETTLE_SECONDS = 30.0
+
 
 class NeighborsCommand(BaseCommand):
     """Runs one neighbor discovery cycle immediately.
@@ -55,10 +65,24 @@ class NeighborsCommand(BaseCommand):
         self.command_enabled = self.get_config_value(
             'Neighbors_Command', 'enabled', fallback=True, value_type='bool'
         )
+        self.settle_seconds = self._read_settle_seconds()
         # Tracked so a second invocation cannot start an overlapping *report*
         # task. Overlapping cycles are refused by the service itself, which is
         # where the scheduler's own trigger is also visible.
         self._cycle_task: Optional[asyncio.Task] = None
+
+    def _read_settle_seconds(self) -> float:
+        """``[Neighbors_Command] settle_seconds``, clamped to 0-30."""
+        try:
+            value = float(self.get_config_value(
+                'Neighbors_Command', 'settle_seconds',
+                fallback=_DEFAULT_SETTLE_SECONDS, value_type='float',
+            ))
+        except (TypeError, ValueError):
+            return _DEFAULT_SETTLE_SECONDS
+        if not math.isfinite(value):
+            return _DEFAULT_SETTLE_SECONDS
+        return min(max(value, 0.0), _MAX_SETTLE_SECONDS)
 
     def get_help_text(self, message: MeshMessage | None = None) -> str:
         """Get help text for the neighbors command.
@@ -216,11 +240,25 @@ class NeighborsCommand(BaseCommand):
 
         # Run detached so the discover window does not hold the command open, and
         # bound it so a stalled radio link cannot leave the task alive forever.
+        progress = {'cycle_started': False}
         self._cycle_task = asyncio.create_task(
             self._run_and_report(
-                message, service, cfg.cycle_budget, already_claimed=claimed
+                message, service, cfg.cycle_budget,
+                already_claimed=claimed, progress=progress,
             )
         )
+        if claimed:
+            # run_neighbors_cycle releases the claim in its finally, but a task
+            # cancelled before it gets there -- during the settle pause, or
+            # before its first step, when none of its code runs -- never calls
+            # it, and the claim would then refuse every later cycle.
+            def _release_if_never_ran(task: asyncio.Task) -> None:
+                if task.cancelled() and not progress['cycle_started']:
+                    release = getattr(service, 'release_neighbors_cycle', None)
+                    if callable(release):
+                        release()
+
+            self._cycle_task.add_done_callback(_release_if_never_ran)
         return True
 
     async def _run_and_report(
@@ -230,8 +268,24 @@ class NeighborsCommand(BaseCommand):
         budget: float,
         *,
         already_claimed: bool = False,
+        progress: Optional[dict[str, bool]] = None,
     ) -> None:
-        """Run one cycle and DM the outcome."""
+        """Run one cycle and DM the outcome.
+
+        ``progress['cycle_started']`` is set once the cycle owns the claim, so
+        the caller knows whether a cancellation left it to release.
+        """
+        if self.settle_seconds > 0:
+            # Outside the cycle budget: the budget bounds the radio work, and
+            # this pause is not radio work. The claim is held throughout so the
+            # scheduler cannot start a cycle in the gap.
+            self.logger.debug(
+                f"Neighbors: waiting {self.settle_seconds:g}s for the request's "
+                f"traffic to settle before discovery"
+            )
+            await asyncio.sleep(self.settle_seconds)
+        if progress is not None:
+            progress['cycle_started'] = True
         try:
             summary = await asyncio.wait_for(
                 service.run_neighbors_cycle(already_claimed=already_claimed),
