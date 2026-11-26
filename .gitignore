@@ -197,3 +197,6 @@ aqi_http_cache.sqlite
 *.db.heartbeat
 *.db.backup-dir
 *.db.corrupt-*
+
+# Local git worktrees (each is its own checkout; never commit them as gitlinks)
+.worktrees/
