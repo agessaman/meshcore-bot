@@ -21,6 +21,7 @@ semantic versioning.
 - Database backups are now validated with `PRAGMA quick_check(1)` before pruning ([#368](https://github.com/agessaman/meshcore-bot/issues/368)): a newly written backup that fails the check, or a partial one left by a failed backup run, is removed and recorded as an error, and older backups are kept instead of being rotated out behind a bad copy.
 - Docker troubleshooting no longer tells users to delete `-wal`/`-shm` files or to tar a live database, both of which could lose committed transactions ([#368](https://github.com/agessaman/meshcore-bot/issues/368)); the docs now stop the container before copying database files and explain automatic corruption recovery.
 - Restoring a database no longer leaves stray `-wal`/`-shm` files beside the staging and pre-restore temp names, and nightly backups are written in rollback-journal mode so checking them doesn't leave sidecars in the backup directory ([#368](https://github.com/agessaman/meshcore-bot/issues/368)).
+- `gwx`, and `wx` with `weather_provider = openmeteo`, retry an Open-Meteo forecast request that stalls. Each attempt waits up to 6 seconds for a reply and a stalled request is tried up to three times, where before a single 10-second timeout answered "Error fetching weather data from Open-Meteo" even though the next request a minute later usually worked.
 
 ## [1.2.0] - 2026-11-14
 

@@ -30,7 +30,7 @@ def _tomorrow(budget, language="ru"):
     data["daily"]["precipitation_sum"][1] = 4.2
     response = Mock(ok=True)
     response.json.return_value = data
-    with patch(f"{MODULE}.requests.get", return_value=response):
+    with patch("requests.Session.get", return_value=response):
         return cmd.get_open_meteo_weather(64.1, -21.9, forecast_type="tomorrow", message=Mock())
 
 

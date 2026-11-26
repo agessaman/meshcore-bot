@@ -10,7 +10,7 @@ import re
 from datetime import datetime, timedelta
 from typing import Any, Optional, Union
 
-import requests
+import requests  # noqa: F401  module attribute other code patches
 
 from ...clients.mqtt_weather import (  # noqa: F401  re-exported
     get_mqtt_weather_topic,
@@ -18,6 +18,7 @@ from ...clients.mqtt_weather import (  # noqa: F401  re-exported
     mqtt_weather_display_for_topic,
 )
 from ...clients.wxsim_parser import WXSIMParser
+from ...http_retry import make_retry_session
 from ...location import get_bot_lat_lon, get_companion_lat_lon
 from ...models import MeshMessage
 from ...utils import (  # noqa: F401  format_temperature_high_low and get_nominatim_geocoder re-exported
@@ -48,6 +49,11 @@ HPA_TO_MMHG = 0.750062
 # Past ~20 mi / 32 km, visibility is reported as unlimited anyway.
 VISIBILITY_CAP_MI = 20
 VISIBILITY_CAP_KM = 32
+
+# Open-Meteo normally answers in about a second but now and then stalls without
+# answering. A short read timeout plus make_retry_session's two retries gets past
+# a stall in about 20 s at worst, where one 10 s attempt failed the command.
+OPEN_METEO_TIMEOUT = (5, 6)  # (connect, read) seconds, per attempt
 
 
 
@@ -880,7 +886,9 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
             if forecast_type == "hourly":
                 params['hourly'] += ',precipitation_probability,is_day'
 
-            response = requests.get(api_url, params=params, timeout=self.url_timeout)
+            # A session per request: gwx runs in worker threads and a session is not thread-safe.
+            with make_retry_session() as session:
+                response = session.get(api_url, params=params, timeout=OPEN_METEO_TIMEOUT)
 
             if not response.ok:
                 self.logger.warning(f"Error fetching weather from Open-Meteo: {response.status_code}")

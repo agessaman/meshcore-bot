@@ -49,7 +49,7 @@ def _response(data):
 def test_open_meteo_hourly_uses_current_time_and_packs_whole_lines(current, first):
     cmd = _command()
     cmd.get_max_message_length = Mock(return_value=158)
-    with patch(f"{MODULE}.requests.get", return_value=_response(_data(current))) as get:
+    with patch("requests.Session.get", return_value=_response(_data(current))) as get:
         text = cmd.get_open_meteo_weather(47.6, -122.3, "hourly", message=Mock(), location_prefix_len=18)
     lines = text.splitlines()
     assert lines[0].startswith(first)
@@ -66,7 +66,7 @@ def test_open_meteo_hourly_rolls_over_midnight():
     data = _data("2035-05-31T23:45")
     data["hourly"]["time"] = ["2035-05-31T23:00", "2035-06-01T00:00", "2035-06-01T01:00"]
     cmd = _command()
-    with patch(f"{MODULE}.requests.get", return_value=_response(data)):
+    with patch("requests.Session.get", return_value=_response(data)):
         text = cmd.get_open_meteo_weather(0, 0, "hourly")
     assert text.startswith("12AM:")
     assert "1AM:" in text
@@ -87,7 +87,7 @@ def _hourly_clear(is_day=None):
     if is_day is not None:
         data["hourly"]["is_day"] = is_day
     cmd = _command()
-    with patch(f"{MODULE}.requests.get", return_value=_response(data)) as get:
+    with patch("requests.Session.get", return_value=_response(data)) as get:
         text = cmd.get_open_meteo_weather(0, 0, "hourly", message=Mock())
     return text.splitlines(), get.call_args.kwargs["params"]
 
@@ -110,7 +110,7 @@ def test_hourly_preserves_zero_temperature_and_omits_null_optional_values():
     data["hourly"]["precipitation_probability"] = [None] * 6
     data["hourly"]["wind_speed_10m"] = [None] * 6
     cmd = _command(temperature_unit="celsius")
-    with patch(f"{MODULE}.requests.get", return_value=_response(data)):
+    with patch("requests.Session.get", return_value=_response(data)):
         text = cmd.get_open_meteo_weather(0, 0, "hourly")
     assert "0°" in text
     assert "%" not in text
@@ -131,14 +131,14 @@ def test_hourly_without_usable_data_is_not_available(mutation):
     else:
         data["hourly"].pop("weather_code")
     cmd = _command()
-    with patch(f"{MODULE}.requests.get", return_value=_response(data)):
+    with patch("requests.Session.get", return_value=_response(data)):
         assert cmd.get_open_meteo_weather(0, 0, "hourly") == "Hourly forecast not available"
 
 
 @pytest.mark.parametrize("temperature,wind", [("celsius", "kmh"), ("fahrenheit", "mph")])
 def test_hourly_requests_configured_units_and_translates_wind(temperature, wind):
     cmd = _command(language="ru", temperature_unit=temperature, wind_speed_unit=wind)
-    with patch(f"{MODULE}.requests.get", return_value=_response(_data())) as get:
+    with patch("requests.Session.get", return_value=_response(_data())) as get:
         text = cmd.get_open_meteo_weather(0, 0, "hourly")
     assert "ЮЗ5" in text
     assert get.call_args.kwargs["params"]["temperature_unit"] == temperature
@@ -155,7 +155,7 @@ async def test_hourly_execution_geocodes_only_the_location(command_class, keywor
     actual._format_location_display = Mock(return_value="München, DE")
     actual.get_max_message_length = Mock(return_value=158)
     message = SimpleNamespace(content=f"{keyword} Seattle hourly", sender_id="u")
-    with patch(f"{MODULE}.requests.get", return_value=_response(_data())):
+    with patch("requests.Session.get", return_value=_response(_data())):
         assert await cmd.execute(message)
     actual.geocode_location.assert_called_once_with("Seattle")
     cmd.send_response.assert_awaited_once()

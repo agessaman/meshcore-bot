@@ -29,7 +29,7 @@ def _run(cmd, data, forecast_type="default", *, budget=None, failure=None, num_d
     if budget is not None:
         cmd.get_max_message_length = Mock(return_value=budget)
         kwargs["message"] = Mock()
-    with patch(f"{MODULE}.datetime", _frozen(DAY)), patch(f"{MODULE}.requests.get", get):
+    with patch(f"{MODULE}.datetime", _frozen(DAY)), patch("requests.Session.get", get):
         try:
             text = cmd.get_open_meteo_weather(
                 data["latitude"], data["longitude"], forecast_type=forecast_type, num_days=num_days, **kwargs

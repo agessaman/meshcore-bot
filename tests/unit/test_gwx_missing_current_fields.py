@@ -29,7 +29,7 @@ def _reply(**current_overrides):
             data["current"][key] = value
     response = Mock(ok=True)
     response.json.return_value = data
-    with patch("modules.commands.alternatives.wx_international.requests.get", return_value=response):
+    with patch("requests.Session.get", return_value=response):
         return cmd.get_open_meteo_weather(33.45, -112.07), cmd.logger
 
 
