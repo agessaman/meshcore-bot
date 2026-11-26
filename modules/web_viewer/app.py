@@ -2793,6 +2793,14 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
                             'last_advert_timestamp': row['last_advert_timestamp']
                         })
 
+                    # The bot's own radio is the far end of every confirmed-neighbor
+                    # edge; without it those edges have nothing to attach to.
+                    known_keys = {(node['public_key'] or '').lower() for node in nodes}
+                    nodes.extend(
+                        node for node in self._local_radio_nodes(conn, prefix_hex_chars, days)
+                        if node['public_key'] not in known_keys
+                    )
+
                     return jsonify({'nodes': nodes})
             except Exception as e:
                 self.logger.error(f"Error getting mesh nodes: {e}")

@@ -42,6 +42,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 import random
 import time
 from dataclasses import dataclass
@@ -169,14 +170,28 @@ class NeighborEntry:
     """One discovered neighbor. Snapshotted so later table changes can't alter it."""
 
     pubkey: str
-    snr: float
+    snr: float                        # how well we heard their response
     heard_at: float                   # wall clock of the response
     scopes: str = ""
     status: str = STATUS_TIMEOUT
+    # How well they heard our request: the repeater echoes its receive SNR in the
+    # response. None when the library did not decode it.
+    snr_in: Optional[float] = None
 
     def heard_secs_ago(self, now: Optional[float] = None) -> int:
         now = time.time() if now is None else now
         return max(0, int(now - self.heard_at))
+
+
+def _optional_snr(value: Any) -> Optional[float]:
+    """A discover-response SNR field as a float, or None if absent or malformed."""
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        snr = float(value)
+    except (TypeError, ValueError):
+        return None
+    return snr if math.isfinite(snr) else None
 
 
 def sort_key(entry: NeighborEntry, now: Optional[float] = None) -> tuple[int, float, str]:
@@ -255,15 +270,23 @@ async def discover_neighbors(
             return
 
         snr = float(payload.get("SNR", 0) or 0)
+        snr_in = _optional_snr(payload.get("SNR_in"))
         existing = collected.get(pubkey)
         if existing is None:
-            collected[pubkey] = NeighborEntry(pubkey=pubkey, snr=snr, heard_at=time.time())
+            collected[pubkey] = NeighborEntry(
+                pubkey=pubkey, snr=snr, heard_at=time.time(), snr_in=snr_in
+            )
         else:
             # Same neighbor heard again (repeaters delay responses randomly).
             # putNeighbour() refreshes the timestamp on every response, so do
-            # that unconditionally; keep the strongest SNR seen.
+            # that unconditionally; keep the strongest SNR seen, each direction
+            # on its own.
             existing.heard_at = time.time()
             existing.snr = max(existing.snr, snr)
+            if snr_in is not None:
+                existing.snr_in = (
+                    snr_in if existing.snr_in is None else max(existing.snr_in, snr_in)
+                )
 
     # Subscribe per-run rather than at startup: the service drops every
     # subscription on reconnect, and this handler is only wanted for the
@@ -725,10 +748,10 @@ def record_neighbors(
                     """
                     INSERT INTO neighbor_observations
                         (observed_at, self_public_key, neighbor_public_key,
-                         snr, heard_secs_ago, scopes, status)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                         snr, snr_in, heard_secs_ago, scopes, status)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                    (stamp, self_key, entry.pubkey.lower(), entry.snr,
+                    (stamp, self_key, entry.pubkey.lower(), entry.snr, entry.snr_in,
                      entry.heard_secs_ago(), entry.scopes or "", entry.status),
                 )
                 # ON CONFLICT rather than a read-modify-write: the aggregate must
@@ -738,8 +761,9 @@ def record_neighbors(
                     INSERT INTO neighbor_links
                         (self_public_key, neighbor_public_key, first_seen, last_seen,
                          observation_count, snr_sum, snr_count, best_snr, last_snr,
+                         snr_in_sum, snr_in_count, best_snr_in, last_snr_in,
                          last_status, scopes)
-                    VALUES (?, ?, ?, ?, 1, ?, 1, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, 1, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(self_public_key, neighbor_public_key) DO UPDATE SET
                         last_seen = excluded.last_seen,
                         observation_count = observation_count + 1,
@@ -747,6 +771,17 @@ def record_neighbors(
                         snr_count = snr_count + 1,
                         best_snr = MAX(COALESCE(best_snr, excluded.best_snr), excluded.best_snr),
                         last_snr = excluded.last_snr,
+                        -- Inbound SNR may be missing from a response. Multi-argument
+                        -- MAX() is NULL if any argument is, so guard both sides,
+                        -- and never let a missing reading erase a measured one.
+                        snr_in_sum = COALESCE(snr_in_sum, 0) + excluded.snr_in_sum,
+                        snr_in_count = COALESCE(snr_in_count, 0) + excluded.snr_in_count,
+                        best_snr_in = CASE
+                            WHEN excluded.best_snr_in IS NULL THEN best_snr_in
+                            WHEN best_snr_in IS NULL THEN excluded.best_snr_in
+                            ELSE MAX(best_snr_in, excluded.best_snr_in)
+                        END,
+                        last_snr_in = COALESCE(excluded.last_snr_in, last_snr_in),
                         last_status = excluded.last_status,
                         -- Keep the last non-empty scopes: a cycle with stage 2
                         -- disabled must not erase scopes an earlier cycle learned.
@@ -755,7 +790,11 @@ def record_neighbors(
                         END
                     """,
                     (self_key, entry.pubkey.lower(), stamp, stamp,
-                     entry.snr, entry.snr, entry.snr, entry.status, entry.scopes or ""),
+                     entry.snr, entry.snr, entry.snr,
+                     entry.snr_in if entry.snr_in is not None else 0.0,
+                     1 if entry.snr_in is not None else 0,
+                     entry.snr_in, entry.snr_in,
+                     entry.status, entry.scopes or ""),
                 )
                 # Discover is a confirmed direct RF reception: keep the dashboard
                 # neighbour list in sync. SNR only — leave RSSI to zero-path adverts.

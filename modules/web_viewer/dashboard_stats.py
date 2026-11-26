@@ -232,6 +232,10 @@ def _parse_aware_utc(value: Any) -> datetime | None:
     return parsed.astimezone(timezone.utc)
 
 
+def _rounded_snr(value: Any) -> float | None:
+    return round(float(value), 1) if value is not None else None
+
+
 def _neighbor_window_cutoff_utc(window: str) -> datetime:
     days = 1 if window == "24h" else 7
     return datetime.now(timezone.utc) - timedelta(days=days)
@@ -1250,11 +1254,17 @@ class DashboardStatsService:
         if not _table_exists(conn, "neighbor_links"):
             return found
         cutoff = _neighbor_window_cutoff_utc(window)
+        # last_snr_in arrived with migration 25; read NULL before it.
+        snr_in = (
+            "last_snr_in"
+            if _column_exists(conn, "neighbor_links", "last_snr_in")
+            else "NULL AS last_snr_in"
+        )
         for row in conn.execute(
-            """
-            SELECT neighbor_public_key, last_snr, last_seen
+            f"""
+            SELECT neighbor_public_key, last_snr, {snr_in}, last_seen
             FROM neighbor_links
-            """
+            """  # noqa: S608 - snr_in is one of two fixed strings
         ):
             key = (row["neighbor_public_key"] or "").lower()
             if not key:
@@ -1264,6 +1274,7 @@ class DashboardStatsService:
                 continue
             found[key] = {
                 "snr": row["last_snr"],
+                "snr_in": row["last_snr_in"],
                 "last_seen": row["last_seen"],
             }
         return found
@@ -1276,7 +1287,8 @@ class DashboardStatsService:
         is not used for membership — it over-claims zero-hop.
 
         Signal prefers the path-row measurement, then discover SNR, then the
-        contact row only when hop_count is 0.
+        contact row only when hop_count is 0. ``snr_in`` is the other direction
+        (how well the neighbor heard us), which only discover measures.
         """
         has_path_snr = _table_exists(conn, "observed_paths") and _column_exists(
             conn, "observed_paths", "snr"
@@ -1325,6 +1337,7 @@ class DashboardStatsService:
                 "public_key": row["public_key"],
                 "role": normalize_role(row["role"]),
                 "snr": round(float(snr), 1) if corroborated else None,
+                "snr_in": _rounded_snr(link.get("snr_in") if link else None),
                 "rssi": (
                     round(float(rssi)) if corroborated and rssi is not None else None
                 ),
@@ -1354,6 +1367,7 @@ class DashboardStatsService:
                     "public_key": (contact["public_key"] if contact else key),
                     "role": normalize_role(contact["role"] if contact else None),
                     "snr": round(float(snr), 1) if snr is not None else None,
+                    "snr_in": _rounded_snr(link.get("snr_in")),
                     "rssi": None,
                     "signal_corroborated": corroborated,
                     "last_seen": link.get("last_seen"),

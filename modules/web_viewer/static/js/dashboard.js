@@ -1201,6 +1201,10 @@
                         : ' / ' + Math.round(item.rssi) + ' dBm',
                     'neighbor-row__rssi')
             );
+            values.title = 'How well we hear this node'
+                + (item.snr_in === null || item.snr_in === undefined
+                    ? ''
+                    : '. It hears us at ' + formatSigned(item.snr_in) + ' dB (neighbor discovery).');
         } else {
             track.classList.add('neighbor-row__track--unknown');
             const unknown = makeTextElement('span', 'no signal reading', 'neighbor-row__rssi');
