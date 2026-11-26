@@ -742,10 +742,10 @@
 
 <!-- Leaflet JS -->
 <script src="{{ url_for('static', filename='vendor/leaflet/leaflet.js') }}"></script>
-<!-- MapLibre GL + Leaflet bridge, for the vector dark basemap. Must load after Leaflet:
-     the bridge binds against both globals. -->
-<script src="{{ url_for('static', filename='vendor/maplibre-gl/maplibre-gl.js') }}"></script>
-<script src="{{ url_for('static', filename='vendor/maplibre-gl-leaflet/leaflet-maplibre-gl.js') }}"></script>
+<!-- MapLibre GL + Leaflet bridge, for the vector dark basemap. MapLibre is an ES
+     module; the loader exposes it as a global, then loads the bridge, which binds
+     against both globals and so must come after Leaflet. Fires `maplibre-ready`. -->
+<script type="module" src="{{ url_for('static', filename='js/maplibre_loader.mjs') }}"></script>
 <!-- vis-network JS -->
 <script src="{{ url_for('static', filename='vendor/vis-network/vis-network.min.js') }}"></script>
 
@@ -970,6 +970,13 @@
         }
         return vectorBasemapSupported;
     }
+
+    // MapLibre arrives through a module script (static/js/maplibre_loader.mjs), which
+    // runs after this one, so the map may already be up on the raster fallback.
+    window.addEventListener('maplibre-ready', () => {
+        vectorBasemapSupported = null; // the probe may have run before MapLibre loaded
+        setBaseTileLayer(); // no-op until the map exists
+    });
 
     function setBaseTileLayer() {
         if (!map) return;
