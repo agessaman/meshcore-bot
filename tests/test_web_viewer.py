@@ -12,6 +12,7 @@ import logging
 import re
 import sqlite3
 from contextlib import closing, contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
 
@@ -2130,6 +2131,35 @@ class TestMeshGraphRoutes:
     def test_get_mesh_nodes_with_prefix_param(self, client):
         resp = client.get("/api/mesh/nodes?prefix_hex_chars=4")
         assert resp.status_code == 200
+
+    def test_mesh_nodes_include_local_radio_after_discovery(self, viewer, client):
+        """Confirmed-neighbor edges need the bot's own radio as an endpoint (#386)."""
+        self_key = "fe" * 32
+        stamp = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+        with closing(sqlite3.connect(viewer.db_path)) as conn:
+            conn.execute(
+                "INSERT INTO neighbor_links (self_public_key, neighbor_public_key, "
+                "first_seen, last_seen) VALUES (?, ?, ?, ?)",
+                (self_key, "ab" * 32, stamp, stamp),
+            )
+            conn.commit()
+        try:
+            with (
+                _temp_config_option(viewer.config, "Bot", "bot_latitude", "47.5"),
+                _temp_config_option(viewer.config, "Bot", "bot_longitude", "-122.3"),
+            ):
+                resp = client.get("/api/mesh/nodes?prefix_hex_chars=4&days=7")
+            assert resp.status_code == 200
+            local = [n for n in json.loads(resp.data)["nodes"] if n.get("is_local")]
+            assert len(local) == 1
+            assert local[0]["public_key"] == self_key
+            assert local[0]["prefix"] == self_key[:4]
+            assert local[0]["name"] == "TestBot"
+            assert (local[0]["latitude"], local[0]["longitude"]) == (47.5, -122.3)
+        finally:
+            with closing(sqlite3.connect(viewer.db_path)) as conn:
+                conn.execute("DELETE FROM neighbor_links WHERE self_public_key = ?", (self_key,))
+                conn.commit()
 
     def test_get_mesh_edges_returns_200(self, client):
         resp = client.get("/api/mesh/edges")

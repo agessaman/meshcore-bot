@@ -403,6 +403,8 @@
         /* Nodes. Star gold is the star icon's color, not the warning lamp. */
         --mesh-node-repeater: #0d6efd;
         --mesh-node-roomserver: #0f9f80;
+        /* The bot's own radio: ink rather than a hue, so it reads as "here", not as a third node type */
+        --mesh-node-local: #343a40;
         --mesh-node-ring: #ffffff;
         --mesh-star: #ffc107;
 
@@ -441,6 +443,7 @@
 
         --mesh-node-repeater: #3d8bfd;
         --mesh-node-roomserver: #20c997;
+        --mesh-node-local: #dee2e6;
         --mesh-node-ring: #ffffff;
         --mesh-star: #ffc107;
 
@@ -822,13 +825,31 @@
   
     // Helper function to create unique node identifier
     function getNodeId(node) {
+        if (!hasCoords(node)) return `${node.public_key}-local`;
         return `${node.prefix}-${node.latitude.toFixed(6)}-${node.longitude.toFixed(6)}`;
     }
 
+    // The local radio may have no position: it then appears in the graph view
+    // (laid out by force) but not on the map.
+    function hasCoords(node) {
+        return Boolean(node) && Number.isFinite(node.latitude) && Number.isFinite(node.longitude);
+    }
+
     // Resolve an edge prefix (2, 4, or 6 hex chars) to a node when node.prefix may be longer or equal.
+    // The local radio is a companion and never repeats, so a path prefix must
+    // never resolve to it; it is only ever matched by full public key.
     function findNodeByEdgePrefix(prefix) {
         if (!prefix) return null;
-        return filteredNodeMap[prefix] || filteredNodes.find(n => n.prefix.startsWith(prefix) || prefix.startsWith(n.prefix)) || null;
+        return filteredNodeMap[prefix] || filteredNodes.find(n => !n.is_local && (n.prefix.startsWith(prefix) || prefix.startsWith(n.prefix))) || null;
+    }
+
+    // Whether the edge's `end` ('from' or 'to') is this node: by public key, or
+    // by compatible prefix for anything but the local radio (see findNodeByEdgePrefix).
+    function edgeEndMatches(edge, end, node) {
+        const key = edge[`${end}_public_key`];
+        if (key && node.public_key && key === node.public_key) return true;
+        if (node.is_local) return false;
+        return prefixesCompatible(edge[`${end}_prefix`], node.prefix);
     }
 
     // Prefix-compatible equality across resolutions (2, 4, or 6 hex chars):
@@ -840,7 +861,11 @@
     }
 
     function edgeTouchesNode(edge, node) {
-        return prefixesCompatible(edge.from_prefix, node.prefix) || prefixesCompatible(edge.to_prefix, node.prefix);
+        return edgeEndMatches(edge, 'from', node) || edgeEndMatches(edge, 'to', node);
+    }
+
+    function nodeRoleLabel(node) {
+        return node.is_local ? 'This bot (local radio)' : node.role;
     }
 
     // Great-circle distance fallback for edges without a stored distance
@@ -858,7 +883,7 @@
         if (edge.geographic_distance !== null && edge.geographic_distance !== undefined) {
             return edge.geographic_distance;
         }
-        if (fromNode && toNode) {
+        if (hasCoords(fromNode) && hasCoords(toNode)) {
             return haversineKm(fromNode.latitude, fromNode.longitude, toNode.latitude, toNode.longitude);
         }
         return null;
@@ -976,7 +1001,7 @@
     const MESH_COLOR_VARS = {
         ageDay: '--mesh-age-day', ageWeek: '--mesh-age-week', ageMonth: '--mesh-age-month',
         ageOlder: '--mesh-age-older', ageUnknown: '--mesh-age-unknown',
-        repeater: '--mesh-node-repeater', roomserver: '--mesh-node-roomserver',
+        repeater: '--mesh-node-repeater', roomserver: '--mesh-node-roomserver', local: '--mesh-node-local',
         ring: '--mesh-node-ring', star: '--mesh-star', select: '--mesh-select',
         dirIn: '--mesh-dir-in', dirOut: '--mesh-dir-out', dirBoth: '--mesh-dir-both', dim: '--mesh-dim',
         label: '--mesh-label', labelHalo: '--mesh-label-halo',
@@ -1148,6 +1173,7 @@
     }
 
     function getNodeFillColor(node) {
+        if (node.is_local) return meshColor('local');
         if (edgeColorMode === 'heat') {
             return viridisThemed(nodeHeatT(node));
         }
@@ -1192,6 +1218,7 @@
         let nearestId = null;
         let nearestKm = Infinity;
         nodesById.forEach((node, id) => {
+            if (!hasCoords(node)) return;
             const d = haversineKm(botLocation.latitude, botLocation.longitude, node.latitude, node.longitude);
             if (d <= 30) seeds.push(id);
             if (d < nearestKm) {
@@ -1218,7 +1245,7 @@
         const bounds = [];
         visited.forEach(id => {
             const n = nodesById.get(id);
-            bounds.push([n.latitude, n.longitude]);
+            if (hasCoords(n)) bounds.push([n.latitude, n.longitude]);
         });
         return bounds;
     }
@@ -1673,8 +1700,9 @@
             && typeof node.prefix === 'string'
             && node.prefix.length > 0
             && typeof node.name === 'string'
-            && Number.isFinite(node.latitude)
-            && Number.isFinite(node.longitude)
+            && ((Number.isFinite(node.latitude) && Number.isFinite(node.longitude))
+                // The local radio may have no position (see hasCoords)
+                || (node.is_local === true && node.latitude === null && node.longitude === null))
         );
     }
 
@@ -1904,7 +1932,7 @@
             const nextNodeMap = {};
             const nextNodeMapByKey = {};
             nextNodes.forEach(node => {
-                nextNodeMap[node.prefix] = node;
+                if (!node.is_local) nextNodeMap[node.prefix] = node;
                 if (node.public_key) {
                     nextNodeMapByKey[node.public_key] = node;
                 }
@@ -2046,7 +2074,7 @@
         filteredNodeMap = {};
         filteredNodeMapByKey = {};
         filteredNodes.forEach(node => {
-            filteredNodeMap[node.prefix] = node;
+            if (!node.is_local) filteredNodeMap[node.prefix] = node;
             if (node.public_key) filteredNodeMapByKey[node.public_key] = node;
         });
 
@@ -2315,6 +2343,7 @@
             let fromNode = (edge.from_public_key && filteredNodeMapByKey[edge.from_public_key]) ? filteredNodeMapByKey[edge.from_public_key] : (filteredNodeMap[edge.from_prefix] || findNodeByEdgePrefix(edge.from_prefix));
             let toNode = (edge.to_public_key && filteredNodeMapByKey[edge.to_public_key]) ? filteredNodeMapByKey[edge.to_public_key] : (filteredNodeMap[edge.to_prefix] || findNodeByEdgePrefix(edge.to_prefix));
             if (!fromNode || !toNode) return;
+            if (!hasCoords(fromNode) || !hasCoords(toNode)) return; // local radio without a position
             
             const color = getEdgeColor(edge);
             const weight = getMapEdgeWeight(edge);
@@ -2442,6 +2471,7 @@
         
         // Add markers for nodes AFTER edges (so they appear on top and are easier to click)
         filteredNodes.forEach(node => {
+            if (!hasCoords(node)) return; // graph view only
             // Zoom-scaled size based on current filtered edges (changes with filters/zoom)
             const nodeSize = getMapNodeSize(node);
             // Calculate border weight that scales with node size
@@ -2460,16 +2490,13 @@
             
             // Create information-rich tooltip with all node details
             // Match edges to this node by public_key or prefix (including prefix prefix-match: node "a58296" matches edge "a582")
-            const connections = filteredEdges.filter(e => {
-                const fromMatch = (e.from_public_key && e.from_public_key === node.public_key) || e.from_prefix === node.prefix || (node.prefix && e.from_prefix && (node.prefix.startsWith(e.from_prefix) || e.from_prefix.startsWith(node.prefix)));
-                const toMatch = (e.to_public_key && e.to_public_key === node.public_key) || e.to_prefix === node.prefix || (node.prefix && e.to_prefix && (node.prefix.startsWith(e.to_prefix) || e.to_prefix.startsWith(node.prefix)));
-                return fromMatch || toMatch;
-            });
-            const incoming = connections.filter(e => (e.to_public_key && e.to_public_key === node.public_key) || e.to_prefix === node.prefix || (node.prefix && e.to_prefix && (node.prefix.startsWith(e.to_prefix) || e.to_prefix.startsWith(node.prefix)))).length;
-            const outgoing = connections.filter(e => (e.from_public_key && e.from_public_key === node.public_key) || e.from_prefix === node.prefix || (node.prefix && e.from_prefix && (node.prefix.startsWith(e.from_prefix) || e.from_prefix.startsWith(node.prefix)))).length;
+            const connections = filteredEdges.filter(e => edgeTouchesNode(e, node));
+            const incoming = connections.filter(e => edgeEndMatches(e, 'to', node)).length;
+            const outgoing = connections.filter(e => edgeEndMatches(e, 'from', node)).length;
             // Infer prefix byte width only from edges we know are this node (public_key match, or exact prefix match). Avoid prefix prefix-match so we don't count edges from other nodes that share a shorter prefix (e.g. another "a7" node).
             const connectionsForByteWidth = filteredEdges.filter(e =>
-                (e.from_public_key && e.from_public_key === node.public_key) || (e.to_public_key && e.to_public_key === node.public_key) || e.from_prefix === node.prefix || e.to_prefix === node.prefix
+                (e.from_public_key && e.from_public_key === node.public_key) || (e.to_public_key && e.to_public_key === node.public_key)
+                || (!node.is_local && (e.from_prefix === node.prefix || e.to_prefix === node.prefix))
             );
             let numBytes = 1;
             for (const e of connectionsForByteWidth) {
@@ -2496,7 +2523,7 @@
                         </tr>
                         <tr>
                             <td class="mesh-popup-label"><strong>Role:</strong></td>
-                            <td style="padding: 2px 0; text-transform: capitalize;">${escapeHtml(node.role)}</td>
+                            <td style="padding: 2px 0; text-transform: capitalize;">${escapeHtml(nodeRoleLabel(node))}</td>
                         </tr>
                         <tr>
                             <td class="mesh-popup-label"><strong>Location:</strong></td>
@@ -2550,11 +2577,14 @@
             // Store marker with unique node identifier
             const nodeId = getNodeId(node);
             nodeMarkers.set(nodeId, marker);
-            // Also store by prefix for backward compatibility (array of markers)
-            if (!nodeMarkersByPrefix.has(node.prefix)) {
-                nodeMarkersByPrefix.set(node.prefix, []);
+            // Also store by prefix for backward compatibility (array of markers).
+            // Not the local radio: prefix lookups resolve path hops, which it never is.
+            if (!node.is_local) {
+                if (!nodeMarkersByPrefix.has(node.prefix)) {
+                    nodeMarkersByPrefix.set(node.prefix, []);
+                }
+                nodeMarkersByPrefix.get(node.prefix).push({ marker: marker, node: node });
             }
-            nodeMarkersByPrefix.get(node.prefix).push({ marker: marker, node: node });
             bounds.push([node.latitude, node.longitude]);
         });
         
@@ -2639,6 +2669,7 @@
                         hover: { background: getNodeFillColor(node), border: meshColor('select') }
                     },
                     size: getNodeSize(node),
+                    shape: node.is_local ? 'diamond' : 'dot',
                     borderWidth: getBorderWeight(getNodeSize(node), node.is_starred),
                     font: { size: 12 }
                 });
@@ -3469,8 +3500,8 @@
     function showNodeDetails(node) {
         // Prefix-compatible matching across resolutions (see edgeTouchesNode)
         const connections = filteredEdges.filter(e => edgeTouchesNode(e, node));
-        const incoming = connections.filter(e => prefixesCompatible(e.to_prefix, node.prefix)).length;
-        const outgoing = connections.filter(e => prefixesCompatible(e.from_prefix, node.prefix)).length;
+        const incoming = connections.filter(e => edgeEndMatches(e, 'to', node)).length;
+        const outgoing = connections.filter(e => edgeEndMatches(e, 'from', node)).length;
         
         document.getElementById('nodeDetailsTitle').textContent = node.name;
         const table = document.createElement('table');
@@ -3488,8 +3519,10 @@
         };
         addRow('Prefix', node.prefix);
         addRow('Public Key', formatPublicKeyText(node.public_key), true);
-        addRow('Role', node.role);
-        addRow('Location', `${Number(node.latitude).toFixed(6)}, ${Number(node.longitude).toFixed(6)}`);
+        addRow('Role', nodeRoleLabel(node));
+        addRow('Location', hasCoords(node)
+            ? `${node.latitude.toFixed(6)}, ${node.longitude.toFixed(6)}`
+            : 'Not set ([Bot] bot_latitude/bot_longitude)');
         addRow('Starred', node.is_starred ? 'Yes' : 'No');
         addRow('Last Heard', node.last_heard || 'Never');
         addRow('Last Advert', node.last_advert_timestamp || 'Never');

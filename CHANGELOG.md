@@ -15,6 +15,7 @@ semantic versioning.
 
 ### Fixed
 
+- The mesh graph's Neighbors Only view drew no links ([#386](https://github.com/agessaman/meshcore-bot/issues/386)). Every confirmed-neighbor link ends at the bot's own radio, which is a companion and so never appeared in the node list. The radio is now a node of its own, named from its contact row or `[Bot] bot_name` and placed from its contact row or `[Bot] bot_latitude`/`bot_longitude`; without a position it appears in the graph view only. It is drawn as an ink diamond, and path edges never attach to it by prefix.
 - The Nix flake builds again on current nixpkgs. openmeteo-sdk pins `flatbuffers==25.9.23` exactly and nixpkgs now ships 25.12.19, so its runtime dependency check failed; the flake relaxes that pin ([#352](https://github.com/agessaman/meshcore-bot/issues/352)).
 - The Nix package now installs `apscheduler`, `aiosqlite` and `flask-compress`. Without `apscheduler` the bot exited at startup with `No module named 'apscheduler'`, and the web viewer sent uncompressed responses without `flask-compress`; a test now fails if `requirements.txt` gains a package the flake doesn't install ([#352](https://github.com/agessaman/meshcore-bot/issues/352)).
 - The web viewer started by the bot (`[Web_Viewer] auto_start`) can import the bot's dependencies when they come from a launcher wrapper rather than the interpreter's own site-packages, as on Nix, where it failed with `No module named 'flask'`. The viewer subprocess now inherits the bot's import path ([#352](https://github.com/agessaman/meshcore-bot/issues/352)).

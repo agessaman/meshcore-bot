@@ -2,9 +2,36 @@
 
 from __future__ import annotations
 
+import math
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, NamedTuple
+
+
+def _parse_utc(value: Any) -> datetime | None:
+    """Parse a ``neighbor_links`` timestamp (UTC ISO, with or without offset)."""
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace('Z', '+00:00'))
+    except (TypeError, ValueError):
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _valid_coordinates(latitude: Any, longitude: Any) -> bool:
+    """Same rule the repeater node query applies: present, finite, in range, nonzero."""
+    try:
+        lat, lon = float(latitude), float(longitude)
+    except (TypeError, ValueError):
+        return False
+    if not (math.isfinite(lat) and math.isfinite(lon)):
+        return False
+    if lat == 0 or lon == 0:
+        return False
+    return -90 <= lat <= 90 and -180 <= lon <= 180
 
 
 class NeighborEvidenceKeys(NamedTuple):
@@ -31,7 +58,114 @@ class MeshEvidenceMixin:
     _multibyte_graph_cache_failure_at: Any
     _multibyte_graph_cache_retry_seconds: Any
     _with_db_connection: Any
+    config: Any
     logger: Any
+
+    def _local_radio_nodes(
+        self,
+        conn: Any,
+        prefix_hex_chars: int,
+        days: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """The bot's own radio as mesh nodes, one per key that ran discovery.
+
+        Every neighbor-evidence edge has the local radio on one end, but the
+        radio is a companion, so it never appears among the repeater and room
+        server contacts the node list is built from. Without this, the graph
+        drops every confirmed-neighbor edge for want of an endpoint.
+
+        The key comes from ``neighbor_links.self_public_key``: the viewer runs in
+        its own process and has no other record of the device's identity. More
+        than one key means the radio was replaced; only the most recent one is
+        given the configured name and position, since those describe the
+        station as it is now.
+
+        Position prefers the radio's own contact row, then ``[Bot]
+        bot_latitude``/``bot_longitude``. A node with neither is still returned,
+        with null coordinates: the graph view lays nodes out by force, not by
+        position, and the map view skips it.
+        """
+        try:
+            rows = conn.execute(
+                '''
+                SELECT self_public_key, MAX(last_seen) AS last_seen
+                FROM neighbor_links
+                GROUP BY self_public_key
+                ORDER BY last_seen DESC
+                '''
+            ).fetchall()
+        except Exception as exc:
+            # A pre-migration database has no neighbor_links table.
+            self.logger.debug(f"Local radio node unavailable: {exc}")
+            return []
+
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days) if days is not None else None
+        nodes: list[dict[str, Any]] = []
+        for index, row in enumerate(rows):
+            public_key = (row['self_public_key'] or '').lower()
+            if not public_key:
+                continue
+            last_seen = row['last_seen']
+            if cutoff is not None:
+                seen = _parse_utc(last_seen)
+                if seen is None or seen < cutoff:
+                    continue
+            is_current = index == 0
+            contact = self._local_radio_contact(conn, public_key)
+
+            latitude = longitude = None
+            if contact and _valid_coordinates(contact['latitude'], contact['longitude']):
+                latitude, longitude = float(contact['latitude']), float(contact['longitude'])
+            elif is_current:
+                latitude, longitude = self._configured_bot_position()
+
+            prefix = public_key[:prefix_hex_chars]
+            name = (contact['name'] if contact else '') or ''
+            if not name and is_current:
+                name = (self.config.get('Bot', 'bot_name', fallback='') or '').strip()
+            if not name:
+                name = f"Local radio {prefix.upper()}"
+
+            nodes.append({
+                'public_key': public_key,
+                'prefix': prefix,
+                'name': name,
+                'latitude': latitude,
+                'longitude': longitude,
+                'role': 'local',
+                'is_local': True,
+                'is_starred': False,
+                'last_heard': last_seen,
+                'last_advert_timestamp': None,
+            })
+        return nodes
+
+    @staticmethod
+    def _local_radio_contact(conn: Any, public_key: str) -> Any:
+        """The radio's own contact row, if another node's advert put it there."""
+        try:
+            return conn.execute(
+                '''
+                SELECT name, latitude, longitude
+                FROM complete_contact_tracking
+                WHERE LOWER(public_key) = ?
+                LIMIT 1
+                ''',
+                (public_key,),
+            ).fetchone()
+        except Exception:
+            return None
+
+    def _configured_bot_position(self) -> tuple[float | None, float | None]:
+        """``[Bot] bot_latitude``/``bot_longitude``, or (None, None) if unusable."""
+        try:
+            latitude = self.config.getfloat('Bot', 'bot_latitude', fallback=None)
+            longitude = self.config.getfloat('Bot', 'bot_longitude', fallback=None)
+        except (TypeError, ValueError):
+            return None, None
+        if _valid_coordinates(latitude, longitude):
+            return float(latitude), float(longitude)
+        return None, None
 
     def _derive_multibyte_evidence_edges(
         self,
