@@ -896,6 +896,24 @@ def _m0024_region_scope_tables(cursor: sqlite3.Cursor) -> None:
     )
 
 
+def _m0025_neighbor_inbound_snr(cursor: sqlite3.Cursor) -> None:
+    """Inbound SNR for neighbor discovery: how well each neighbor heard us.
+
+    A discover response carries two measurements. The existing ``snr`` columns
+    hold how well we heard the response; the repeater also echoes how well it
+    heard our request, and that one was dropped. Kept as sum+count like
+    ``snr``, so any later window re-aggregates exactly. Rows written before
+    this migration stay NULL: that direction was never measured for them.
+    """
+    if _table_exists(cursor, "neighbor_links"):
+        _add_column(cursor, "neighbor_links", "snr_in_sum", "REAL DEFAULT 0")
+        _add_column(cursor, "neighbor_links", "snr_in_count", "INTEGER DEFAULT 0")
+        _add_column(cursor, "neighbor_links", "best_snr_in", "REAL")
+        _add_column(cursor, "neighbor_links", "last_snr_in", "REAL")
+    if _table_exists(cursor, "neighbor_observations"):
+        _add_column(cursor, "neighbor_observations", "snr_in", "REAL")
+
+
 # ---------------------------------------------------------------------------
 # Migration registry — append new entries here, never remove or reorder.
 # ---------------------------------------------------------------------------
@@ -927,6 +945,7 @@ MIGRATIONS: list[MigrationEntry] = [
     (22, "neighbor discovery tables", _m0022_neighbor_tables),
     (23, "observed_paths: snr/rssi for zero-hop adverts", _m0023_observed_paths_zero_hop_signal),
     (24, "regional flood scope tallies and warning events", _m0024_region_scope_tables),
+    (25, "neighbor discovery: inbound snr", _m0025_neighbor_inbound_snr),
 ]
 
 

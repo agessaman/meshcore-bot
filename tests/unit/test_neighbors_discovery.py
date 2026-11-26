@@ -316,6 +316,24 @@ async def test_discover_dedupes_keeping_strongest_snr(fast_cfg, no_sleep):
     assert entries[0].snr == 9.0
 
 
+async def test_discover_keeps_inbound_snr_separately(fast_cfg, no_sleep):
+    """SNR_in is how well they heard us; it must not mix with how we heard them."""
+    radio = FakeRadio([
+        response(KEY_A, 9.0, SNR_in=-4.0),
+        response(KEY_A, 3.0, SNR_in=-1.5),
+        response(KEY_A, 5.0),  # a response without the inbound figure
+    ])
+    [found] = await nb.discover_neighbors(radio, fast_cfg, SELF_KEY, LOGGER)
+    assert found.snr == 9.0
+    assert found.snr_in == -1.5
+
+
+async def test_discover_leaves_inbound_snr_unset_when_absent(fast_cfg, no_sleep):
+    radio = FakeRadio([response(KEY_A, 2.0), response(KEY_B, 1.0, SNR_in="junk")])
+    entries = await nb.discover_neighbors(radio, fast_cfg, SELF_KEY, LOGGER)
+    assert [e.snr_in for e in entries] == [None, None]
+
+
 async def test_discover_accepts_uppercase_pubkeys_as_lowercase(fast_cfg, no_sleep):
     radio = FakeRadio([response(KEY_A.upper(), 1.0)])
     entries = await nb.discover_neighbors(radio, fast_cfg, SELF_KEY, LOGGER)
@@ -761,6 +779,39 @@ def test_record_neighbors_accumulates_snr_as_sum_and_count(db):
     assert row["last_snr"] == 3.0
     assert row["first_seen"] == "T1"
     assert row["last_seen"] == "T3"
+
+
+def test_record_neighbors_accumulates_inbound_snr_on_its_own(db):
+    """A cycle without the inbound reading neither counts nor erases one."""
+    for snr_in, stamp in ((-4.0, "T1"), (None, "T2"), (2.0, "T3"), (None, "T4")):
+        nb.record_neighbors(
+            db, SELF_KEY,
+            [nb.NeighborEntry(pubkey=KEY_A, snr=5.0, heard_at=0.0, snr_in=snr_in)],
+            LOGGER, observed_at=stamp,
+        )
+    row = _link_rows(db)[0]
+    assert row["observation_count"] == 4
+    assert row["snr_count"] == 4
+    assert row["snr_in_sum"] == pytest.approx(-2.0)
+    assert row["snr_in_count"] == 2
+    assert row["best_snr_in"] == 2.0
+    assert row["last_snr_in"] == 2.0
+
+    with db.connection() as conn:
+        history = [r["snr_in"] for r in conn.execute(
+            "SELECT snr_in FROM neighbor_observations ORDER BY observed_at"
+        )]
+    assert history == [-4.0, None, 2.0, None]
+
+
+def test_record_neighbors_without_any_inbound_reading_leaves_it_null(db):
+    nb.record_neighbors(
+        db, SELF_KEY, [nb.NeighborEntry(pubkey=KEY_A, snr=5.0, heard_at=0.0)], LOGGER,
+    )
+    row = _link_rows(db)[0]
+    assert row["snr_in_count"] == 0
+    assert row["best_snr_in"] is None
+    assert row["last_snr_in"] is None
 
 
 def test_record_neighbors_keeps_previously_learned_scopes(db):

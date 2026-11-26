@@ -132,7 +132,8 @@ def test_edges_carry_full_public_keys(seeded):
 
 
 def test_edges_report_measured_snr(seeded):
-    edge = find_edge(seeded._compute_neighbor_evidence_edges(), SELF_KEY, KEY_A)
+    # The stored snr is our reception of their response: the neighbor-to-us edge.
+    edge = find_edge(seeded._compute_neighbor_evidence_edges(), KEY_A, SELF_KEY)
     assert edge["snr"] == pytest.approx(30.0 / 4)
     assert edge["best_snr"] == 9.5
     assert edge["last_snr"] == 7.0
@@ -234,3 +235,57 @@ def test_pre_migration_database_degrades_quietly(tmp_path):
     edges, chars = stub._derive_neighbor_evidence_graph(days=7)
     assert edges == []
     assert chars == ViewerStub.NEIGHBOR_PREFIX_HEX_CHARS
+
+
+def test_each_direction_carries_its_own_measurement(viewer):
+    """An edge is measured where it is received: self->neighbor is their SNR_in."""
+    with viewer._with_db_connection() as conn:
+        insert_link(conn, SELF_KEY, KEY_A, observations=2, snr_sum=20.0,
+                    snr_count=2, best_snr=11.0, last_snr=9.0)
+        conn.execute(
+            "UPDATE neighbor_links SET snr_in_sum = -14.0, snr_in_count = 2, "
+            "best_snr_in = -6.0, last_snr_in = -8.0"
+        )
+        conn.commit()
+    edges = viewer._compute_neighbor_evidence_edges()
+
+    outbound = find_edge(edges, SELF_KEY, KEY_A)
+    assert outbound["snr"] == pytest.approx(-7.0)
+    assert outbound["best_snr"] == -6.0
+    assert outbound["last_snr"] == -8.0
+
+    inbound = find_edge(edges, KEY_A, SELF_KEY)
+    assert inbound["snr"] == pytest.approx(10.0)
+    assert inbound["best_snr"] == 11.0
+    assert inbound["last_snr"] == 9.0
+
+
+def test_unmeasured_direction_does_not_borrow_the_other(seeded):
+    """Links recorded before inbound SNR was kept have none for that direction."""
+    edges = seeded._compute_neighbor_evidence_edges()
+    outbound = find_edge(edges, SELF_KEY, KEY_A)
+    assert outbound["snr"] is None
+    assert outbound["best_snr"] is None
+    assert outbound["last_snr"] is None
+    assert find_edge(edges, KEY_A, SELF_KEY)["best_snr"] == 9.5
+
+
+def test_pre_migration_table_without_inbound_columns(tmp_path):
+    path = tmp_path / "old.db"
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "CREATE TABLE neighbor_links (self_public_key TEXT, neighbor_public_key TEXT, "
+        "observation_count INTEGER, snr_sum REAL, snr_count INTEGER, best_snr REAL, "
+        "last_snr REAL, first_seen TEXT, last_seen TEXT)"
+    )
+    conn.execute(
+        "INSERT INTO neighbor_links VALUES (?, ?, 1, 4.0, 1, 4.0, 4.0, ?, ?)",
+        (SELF_KEY, KEY_A, RECENT, RECENT),
+    )
+    conn.commit()
+    conn.close()
+
+    edges = ViewerStub(path)._compute_neighbor_evidence_edges()
+    assert len(edges) == 2
+    assert find_edge(edges, KEY_A, SELF_KEY)["snr"] == pytest.approx(4.0)
+    assert find_edge(edges, SELF_KEY, KEY_A)["snr"] is None

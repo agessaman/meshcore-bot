@@ -913,6 +913,25 @@ class TestOneHopNeighbours:
         assert items["discover-only"]["rssi"] is None
         assert self._top(viewer)["total"] == 2
 
+    def test_discover_inbound_snr_is_reported_alongside(self, viewer):
+        """snr stays how we hear them; snr_in is how they hear us, from discover only."""
+        with sqlite3.connect(viewer.db_path) as conn:
+            self._seed_contact(conn, _pk(1), "heard-advert", "repeater", 0, None, None)
+            self._seed_path(conn, _pk(1), 0, 1, snr=3.0, rssi=-90.0)
+            self._seed_neighbor_link(conn, _pk(1), snr=4.0)
+            self._seed_contact(conn, _pk(2), "discover-only", "repeater", 1, None, None)
+            self._seed_neighbor_link(conn, _pk(2), snr=8.5)
+            conn.execute(
+                "UPDATE neighbor_links SET last_snr_in = -6.25 WHERE neighbor_public_key = ?",
+                (_pk(2),),
+            )
+
+        items = {item["name"]: item for item in self._top(viewer)["items"]}
+        assert items["heard-advert"]["snr"] == 3.0
+        assert items["heard-advert"]["snr_in"] is None
+        assert items["discover-only"]["snr"] == 8.5
+        assert items["discover-only"]["snr_in"] == -6.2
+
     def test_windows_are_capped_below_retention(self, viewer):
         """observed_paths keeps 90 days; a month-old link says nothing about today."""
         options = viewer.dashboard_stats.derive_windows()["windows"]["neighbors"]

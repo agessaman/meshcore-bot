@@ -524,7 +524,12 @@ class MeshEvidenceMixin:
           discover response *is* the authoritative first-party measurement.
 
         Both directions are emitted per link: a discover response proves we
-        transmitted, they received, they transmitted, and we received.
+        transmitted, they received, they transmitted, and we received. Each
+        direction carries its own measurement: neighbor-to-us is how well we
+        heard the response (``snr``), us-to-neighbor is how well they heard the
+        request (``snr_in``, echoed in the response). Links recorded before the
+        inbound figure was kept have none for that direction, so it carries no
+        SNR rather than borrowing the other direction's.
         """
         chars = self.NEIGHBOR_PREFIX_HEX_CHARS
         query = '''
@@ -536,13 +541,22 @@ class MeshEvidenceMixin:
                 snr_count,
                 best_snr,
                 last_snr,
+                {inbound},
                 first_seen,
                 last_seen
             FROM neighbor_links
         '''
         try:
             with self._with_db_connection() as conn:
-                rows = conn.execute(query).fetchall()
+                columns = {
+                    row[1] for row in conn.execute("PRAGMA table_info(neighbor_links)")
+                }
+                # Before migration 25 there are no inbound columns; select NULLs.
+                inbound = ', '.join(
+                    name if name in columns else f'NULL AS {name}'
+                    for name in ('snr_in_sum', 'snr_in_count', 'best_snr_in', 'last_snr_in')
+                )
+                rows = conn.execute(query.format(inbound=inbound)).fetchall()
         except Exception as exc:
             self.logger.debug(f"Neighbor evidence edges unavailable: {exc}")
             return []
@@ -554,8 +568,22 @@ class MeshEvidenceMixin:
             if not self_key or not neighbor_key:
                 continue
             snr_count = row['snr_count'] or 0
-            mean_snr = (row['snr_sum'] / snr_count) if snr_count else None
-            for from_key, to_key in ((self_key, neighbor_key), (neighbor_key, self_key)):
+            heard_by_us = {
+                'snr': (row['snr_sum'] / snr_count) if snr_count else None,
+                'best_snr': row['best_snr'],
+                'last_snr': row['last_snr'],
+            }
+            snr_in_count = row['snr_in_count'] or 0
+            heard_by_them = {
+                'snr': (row['snr_in_sum'] / snr_in_count) if snr_in_count else None,
+                'best_snr': row['best_snr_in'] if snr_in_count else None,
+                'last_snr': row['last_snr_in'] if snr_in_count else None,
+            }
+            # An edge from A to B is measured where B receives.
+            for from_key, to_key, signal in (
+                (self_key, neighbor_key, heard_by_them),
+                (neighbor_key, self_key, heard_by_us),
+            ):
                 edges.append({
                     'from_prefix': from_key[:chars],
                     'to_prefix': to_key[:chars],
@@ -568,9 +596,9 @@ class MeshEvidenceMixin:
                     # that crosses it.
                     'avg_hop_position': 1.0,
                     'geographic_distance': None,
-                    'snr': mean_snr,
-                    'best_snr': row['best_snr'],
-                    'last_snr': row['last_snr'],
+                    'snr': signal['snr'],
+                    'best_snr': signal['best_snr'],
+                    'last_snr': signal['last_snr'],
                     'evidence': 'neighbors',
                 })
 
