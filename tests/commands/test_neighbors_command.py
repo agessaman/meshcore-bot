@@ -69,7 +69,7 @@ def make_service(*, neighbors_enabled=True, summary=None, hang=False,
     return service
 
 
-def make_command(command_mock_bot, service, *, enabled=True):
+def make_command(command_mock_bot, service, *, enabled=True, settle_seconds=0.0):
     """Build the command without __init__ (which reads config and the ACL)."""
     command_mock_bot.packet_capture_service = service
     command = object.__new__(NeighborsCommand)
@@ -77,6 +77,8 @@ def make_command(command_mock_bot, service, *, enabled=True):
     command.logger = command_mock_bot.logger
     command.command_enabled = enabled
     command._cycle_task = None
+    # No settle pause by default, so the tests that are not about it stay fast.
+    command.settle_seconds = settle_seconds
     # Normally set up by BaseCommand.__init__, which make_command skips.
     command._user_cooldowns = {}
     command.cooldown_seconds = NeighborsCommand.cooldown_seconds
@@ -382,3 +384,71 @@ async def test_the_cooldown_expires(command_mock_bot, message):
 def test_disabled_command_cannot_execute(command_mock_bot, message):
     command, _ = make_command(command_mock_bot, make_service(), enabled=False)
     assert command.can_execute(message) is False
+
+
+# ---------------------------------------------------------------------------
+# Settle pause before discovery (GitHub #385)
+# ---------------------------------------------------------------------------
+
+async def test_discovery_waits_for_the_settle_pause(command_mock_bot, message):
+    """The discover request must not follow the reply straight onto the air."""
+    service = make_service()
+    command, sent = make_command(command_mock_bot, service, settle_seconds=0.2)
+
+    await command.execute(message)
+    await asyncio.sleep(0.05)
+    assert sent == ["started seconds=60"]
+    assert service.calls == 0
+    # Still claimed, so the scheduler cannot take the gap.
+    assert service.neighbors_cycle_active is True
+
+    await command._cycle_task
+    assert service.calls == 1
+    assert service.neighbors_cycle_active is False
+
+
+async def test_the_settle_pause_does_not_eat_the_cycle_budget(command_mock_bot, message):
+    """The budget bounds the radio work; a pause longer than it must not time out."""
+    service = make_service(cycle_budget=0.05)
+    command, sent = make_command(command_mock_bot, service, settle_seconds=0.1)
+    await command.execute(message)
+    await command._cycle_task
+    assert service.calls == 1
+    assert not sent[1].startswith("error")
+
+
+async def test_cancelling_during_the_pause_releases_the_claim(command_mock_bot, message):
+    """The cycle never ran, so nothing else would release the claim."""
+    service = make_service()
+    command, _ = make_command(command_mock_bot, service, settle_seconds=5.0)
+    await command.execute(message)
+    assert service.neighbors_cycle_active is True
+
+    command._cycle_task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await command._cycle_task
+    assert service.neighbors_cycle_active is False
+    assert service.calls == 0
+
+
+@pytest.mark.parametrize(
+    ("configured", "expected"),
+    [
+        (None, 5.0),          # unset: the default
+        (2.5, 2.5),
+        (0, 0.0),             # 0 turns the pause off
+        (-3, 0.0),
+        (120, 30.0),          # capped
+        (float("nan"), 5.0),
+        ("junk", 5.0),
+    ],
+)
+def test_settle_seconds_config(command_mock_bot, configured, expected):
+    command = object.__new__(NeighborsCommand)
+
+    def get_config_value(section, key, fallback=None, value_type="str"):
+        assert (section, key) == ("Neighbors_Command", "settle_seconds")
+        return fallback if configured is None else configured
+
+    command.get_config_value = get_config_value
+    assert command._read_settle_seconds() == expected

@@ -510,6 +510,14 @@ It acknowledges immediately and reports the result in a second DM once the windo
 closes. Enabled via `[Neighbors_Command]`; add `neighbors` to
 `[Admin_ACL] admin_commands` to restrict it, since a cycle spends airtime.
 
+The discover request goes out `settle_seconds` (default 5) after the
+acknowledgement. Until then, the repeaters around you are still repeating your
+request and the bot's reply, and those are the repeaters discovery asks: one
+that is transmitting can't hear the discover request, and its answer can collide
+with the echoes. Without the pause a manual cycle can find no neighbors at all,
+while the scheduled one, with nothing on the air around it, finds them. Set it in
+`[Neighbors_Command]`, from 0 to 30 seconds.
+
 Two guards keep the airtime bounded. Both live in the service rather than in the
 command, because what is being rationed belongs to the whole mesh and every
 trigger reaches the same radio — the scheduler included:
