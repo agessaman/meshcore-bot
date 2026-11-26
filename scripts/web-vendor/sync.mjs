@@ -53,7 +53,10 @@ const LIBRARIES = {
     'vendor/leaflet/LICENSE': 'LICENSE',
   },
   'maplibre-gl': {
-    'vendor/maplibre-gl/maplibre-gl.js': 'dist/maplibre-gl.js',
+    // v6 ships ES modules only. The main module spawns the worker from
+    // ./maplibre-gl-worker.mjs beside itself, so the two must stay together.
+    'vendor/maplibre-gl/maplibre-gl.mjs': 'dist/maplibre-gl.mjs',
+    'vendor/maplibre-gl/maplibre-gl-worker.mjs': 'dist/maplibre-gl-worker.mjs',
     'vendor/maplibre-gl/maplibre-gl.css': 'dist/maplibre-gl.css',
     'vendor/maplibre-gl/LICENSE.txt': 'LICENSE.txt',
   },
@@ -116,7 +119,7 @@ for (const [name, files] of Object.entries(LIBRARIES)) {
     const out = path.join(STATIC, dest);
     fs.mkdirSync(path.dirname(out), { recursive: true });
     const from = path.join(packageDir(name), src);
-    if (/\.(js|css)$/.test(src)) {
+    if (/\.(m?js|css)$/.test(src)) {
       fs.writeFileSync(out, fs.readFileSync(from, 'utf8').replace(SOURCE_MAP_COMMENT, ''));
     } else {
       fs.copyFileSync(from, out);
