@@ -2232,11 +2232,14 @@
                 
                 // Clear highlights when clicking on map (not on a marker)
                 map.on('click', (e) => {
-                    // Only clear if clicking directly on the map, not on a marker or popup
-                    const target = e.originalEvent.target;
-                    if (target && target.classList.contains('leaflet-container')) {
-                        clearHighlights();
-                    }
+                    // Clear on any basemap click. Test for what was *not* hit rather
+                    // than for the container itself: the dark vector basemap renders
+                    // into its own element over the container, so a click there never
+                    // lands on .leaflet-container.
+                    const target = e.originalEvent && e.originalEvent.target;
+                    if (!(target instanceof Element)) return;
+                    if (target.closest('.leaflet-interactive, .leaflet-popup, .leaflet-control')) return;
+                    clearHighlights();
                 });
                 
                 // Preserve highlights when zooming/panning
