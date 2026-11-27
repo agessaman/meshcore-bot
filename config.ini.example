@@ -1009,7 +1009,7 @@ alerts_provider = auto
 
 # Meteoalarm API token, needed only with alerts_provider = meteoalarm
 # Request one from the MeteoGate developer portal (devportal.meteogate.eu): sign in, then "Create API Key".
-# The data is CC BY 4.0, provided by EUMETNET members; Norway and Andorra are not covered.
+# The data is CC BY 4.0, provided by EUMETNET members.
 #meteoalarm_token =
 
 # Meteoalarm API base URL, needed only with alerts_provider = meteoalarm

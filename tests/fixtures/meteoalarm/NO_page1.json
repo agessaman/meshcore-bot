@@ -1,0 +1,978 @@
+{
+ "type": "FeatureCollection",
+ "features": [
+  {
+   "id": "f-gale-en",
+   "links": [
+    {
+     "type": "application/xml",
+     "rel": "canonical",
+     "href": "https://storage.example.invalid/warnings/alert-gale.xml"
+    },
+    {
+     "type": "application/json",
+     "rel": "json",
+     "href": "https://storage.example.invalid/warnings/alert-gale.json"
+    },
+    {
+     "type": "application/xml",
+     "rel": "xml",
+     "href": "https://storage.example.invalid/warnings/alert-gale.xml"
+    },
+    {
+     "type": "application/geo+json",
+     "rel": "geometry",
+     "href": "https://storage.example.invalid/features/f-gale-en.geojson"
+    }
+   ],
+   "type": "Feature",
+   "properties": {
+    "supersededByAlertId": null,
+    "supersededAt": null,
+    "supersedeType": null,
+    "geometryDescription": "geometry is bbox only, link (member of the feature's links array) with type application/geo+json points to geojson describing the exact shape",
+    "geometryType": "bbox",
+    "OBJECTID": "f-gale-en",
+    "alertId": "alert-gale",
+    "countryCode": "NO",
+    "featureType": "polygon",
+    "hubLanguage": "en-GB",
+    "indexArea": 0,
+    "indexFeature": 0,
+    "indexInfo": 1,
+    "hubTime": "2026-11-27T08:25:30Z",
+    "hubLink": "https://storage.example.invalid/warnings/alert-gale.xml"
+   },
+   "geometry": {
+    "coordinates": [
+     [
+      [
+       5.5248,
+       58.2
+      ],
+      [
+       5.5248,
+       58.6587
+      ],
+      [
+       6.4088,
+       58.6587
+      ],
+      [
+       6.4088,
+       58.2
+      ],
+      [
+       5.5248,
+       58.2
+      ]
+     ]
+    ],
+    "crs": {
+     "properties": {
+      "name": "EPSG:4326"
+     },
+     "type": "name"
+    },
+    "type": "Polygon"
+   }
+  },
+  {
+   "id": "f-gale-no",
+   "links": [
+    {
+     "type": "application/xml",
+     "rel": "canonical",
+     "href": "https://storage.example.invalid/warnings/alert-gale.xml"
+    },
+    {
+     "type": "application/json",
+     "rel": "json",
+     "href": "https://storage.example.invalid/warnings/alert-gale.json"
+    },
+    {
+     "type": "application/xml",
+     "rel": "xml",
+     "href": "https://storage.example.invalid/warnings/alert-gale.xml"
+    },
+    {
+     "type": "application/geo+json",
+     "rel": "geometry",
+     "href": "https://storage.example.invalid/features/f-gale-no.geojson"
+    }
+   ],
+   "type": "Feature",
+   "properties": {
+    "supersededByAlertId": null,
+    "supersededAt": null,
+    "supersedeType": null,
+    "geometryDescription": "geometry is bbox only, link (member of the feature's links array) with type application/geo+json points to geojson describing the exact shape",
+    "geometryType": "bbox",
+    "OBJECTID": "f-gale-no",
+    "alertId": "alert-gale",
+    "countryCode": "NO",
+    "featureType": "polygon",
+    "hubLanguage": "no",
+    "indexArea": 0,
+    "indexFeature": 0,
+    "indexInfo": 0,
+    "hubTime": "2026-11-27T08:25:30Z",
+    "hubLink": "https://storage.example.invalid/warnings/alert-gale.xml"
+   },
+   "geometry": {
+    "coordinates": [
+     [
+      [
+       5.5248,
+       58.2
+      ],
+      [
+       5.5248,
+       58.6587
+      ],
+      [
+       6.4088,
+       58.6587
+      ],
+      [
+       6.4088,
+       58.2
+      ],
+      [
+       5.5248,
+       58.2
+      ]
+     ]
+    ],
+    "crs": {
+     "properties": {
+      "name": "EPSG:4326"
+     },
+     "type": "name"
+    },
+    "type": "Polygon"
+   }
+  },
+  {
+   "id": "f-exact",
+   "links": [
+    {
+     "type": "application/xml",
+     "rel": "canonical",
+     "href": "https://storage.example.invalid/warnings/alert-exact.xml"
+    },
+    {
+     "type": "application/json",
+     "rel": "json",
+     "href": "https://storage.example.invalid/warnings/alert-exact.json"
+    },
+    {
+     "type": "application/xml",
+     "rel": "xml",
+     "href": "https://storage.example.invalid/warnings/alert-exact.xml"
+    },
+    {
+     "type": "application/geo+json",
+     "rel": "geometry",
+     "href": "https://storage.example.invalid/features/f-exact.geojson"
+    }
+   ],
+   "type": "Feature",
+   "properties": {
+    "supersededByAlertId": null,
+    "supersededAt": null,
+    "supersedeType": null,
+    "geometryDescription": "geometry is bbox only, link (member of the feature's links array) with type application/geo+json points to geojson describing the exact shape",
+    "geometryType": "exact",
+    "OBJECTID": "f-exact",
+    "alertId": "alert-exact",
+    "countryCode": "NO",
+    "featureType": "polygon",
+    "hubLanguage": "en-GB",
+    "indexArea": 0,
+    "indexFeature": 0,
+    "indexInfo": 1,
+    "hubTime": "2026-11-27T08:25:30Z",
+    "hubLink": "https://storage.example.invalid/warnings/alert-exact.xml"
+   },
+   "geometry": {
+    "coordinates": [
+     [
+      [
+       6.3025,
+       58.2
+      ],
+      [
+       6.4088,
+       58.3058
+      ],
+      [
+       6.3185,
+       58.3302
+      ],
+      [
+       6.2137,
+       58.3592
+      ],
+      [
+       6.0827,
+       58.3988
+      ],
+      [
+       5.9707,
+       58.4442
+      ],
+      [
+       5.8422,
+       58.4987
+      ],
+      [
+       5.6927,
+       58.5687
+      ],
+      [
+       5.5955,
+       58.6587
+      ],
+      [
+       5.5248,
+       58.6458
+      ],
+      [
+       5.632,
+       58.5455
+      ],
+      [
+       5.633,
+       58.5447
+      ],
+      [
+       5.635,
+       58.5432
+      ],
+      [
+       5.6767,
+       58.5157
+      ],
+      [
+       5.8387,
+       58.4185
+      ],
+      [
+       5.8398,
+       58.4178
+      ],
+      [
+       5.8508,
+       58.4118
+      ],
+      [
+       5.8527,
+       58.411
+      ],
+      [
+       6.0673,
+       58.3112
+      ],
+      [
+       6.3025,
+       58.2
+      ],
+      [
+       6.3025,
+       58.2
+      ]
+     ]
+    ],
+    "crs": {
+     "properties": {
+      "name": "EPSG:4326"
+     },
+     "type": "name"
+    },
+    "type": "Polygon"
+   }
+  },
+  {
+   "id": "f-bbox-miss",
+   "links": [
+    {
+     "type": "application/xml",
+     "rel": "canonical",
+     "href": "https://storage.example.invalid/warnings/alert-bbox-miss.xml"
+    },
+    {
+     "type": "application/json",
+     "rel": "json",
+     "href": "https://storage.example.invalid/warnings/alert-bbox-miss.json"
+    },
+    {
+     "type": "application/xml",
+     "rel": "xml",
+     "href": "https://storage.example.invalid/warnings/alert-bbox-miss.xml"
+    },
+    {
+     "type": "application/geo+json",
+     "rel": "geometry",
+     "href": "https://storage.example.invalid/features/f-bbox-miss.geojson"
+    }
+   ],
+   "type": "Feature",
+   "properties": {
+    "supersededByAlertId": null,
+    "supersededAt": null,
+    "supersedeType": null,
+    "geometryDescription": "geometry is bbox only, link (member of the feature's links array) with type application/geo+json points to geojson describing the exact shape",
+    "geometryType": "bbox",
+    "OBJECTID": "f-bbox-miss",
+    "alertId": "alert-bbox-miss",
+    "countryCode": "NO",
+    "featureType": "polygon",
+    "hubLanguage": "en-GB",
+    "indexArea": 0,
+    "indexFeature": 0,
+    "indexInfo": 1,
+    "hubTime": "2026-11-27T08:25:30Z",
+    "hubLink": "https://storage.example.invalid/warnings/alert-bbox-miss.xml"
+   },
+   "geometry": {
+    "coordinates": [
+     [
+      [
+       5.5248,
+       58.2
+      ],
+      [
+       5.5248,
+       58.6587
+      ],
+      [
+       6.4088,
+       58.6587
+      ],
+      [
+       6.4088,
+       58.2
+      ],
+      [
+       5.5248,
+       58.2
+      ]
+     ]
+    ],
+    "crs": {
+     "properties": {
+      "name": "EPSG:4326"
+     },
+     "type": "name"
+    },
+    "type": "Polygon"
+   }
+  },
+  {
+   "id": "f-superseded",
+   "links": [
+    {
+     "type": "application/xml",
+     "rel": "canonical",
+     "href": "https://storage.example.invalid/warnings/alert-superseded.xml"
+    },
+    {
+     "type": "application/json",
+     "rel": "json",
+     "href": "https://storage.example.invalid/warnings/alert-superseded.json"
+    },
+    {
+     "type": "application/xml",
+     "rel": "xml",
+     "href": "https://storage.example.invalid/warnings/alert-superseded.xml"
+    },
+    {
+     "type": "application/geo+json",
+     "rel": "geometry",
+     "href": "https://storage.example.invalid/features/f-superseded.geojson"
+    }
+   ],
+   "type": "Feature",
+   "properties": {
+    "supersededByAlertId": "alert-gale",
+    "supersededAt": null,
+    "supersedeType": null,
+    "geometryDescription": "geometry is bbox only, link (member of the feature's links array) with type application/geo+json points to geojson describing the exact shape",
+    "geometryType": "bbox",
+    "OBJECTID": "f-superseded",
+    "alertId": "alert-superseded",
+    "countryCode": "NO",
+    "featureType": "polygon",
+    "hubLanguage": "en-GB",
+    "indexArea": 0,
+    "indexFeature": 0,
+    "indexInfo": 1,
+    "hubTime": "2026-11-27T08:25:30Z",
+    "hubLink": "https://storage.example.invalid/warnings/alert-superseded.xml"
+   },
+   "geometry": {
+    "coordinates": [
+     [
+      [
+       6.3025,
+       58.2
+      ],
+      [
+       6.4088,
+       58.3058
+      ],
+      [
+       6.3185,
+       58.3302
+      ],
+      [
+       6.2137,
+       58.3592
+      ],
+      [
+       6.0827,
+       58.3988
+      ],
+      [
+       5.9707,
+       58.4442
+      ],
+      [
+       5.8422,
+       58.4987
+      ],
+      [
+       5.6927,
+       58.5687
+      ],
+      [
+       5.5955,
+       58.6587
+      ],
+      [
+       5.5248,
+       58.6458
+      ],
+      [
+       5.632,
+       58.5455
+      ],
+      [
+       5.633,
+       58.5447
+      ],
+      [
+       5.635,
+       58.5432
+      ],
+      [
+       5.6767,
+       58.5157
+      ],
+      [
+       5.8387,
+       58.4185
+      ],
+      [
+       5.8398,
+       58.4178
+      ],
+      [
+       5.8508,
+       58.4118
+      ],
+      [
+       5.8527,
+       58.411
+      ],
+      [
+       6.0673,
+       58.3112
+      ],
+      [
+       6.3025,
+       58.2
+      ],
+      [
+       6.3025,
+       58.2
+      ]
+     ]
+    ],
+    "crs": {
+     "properties": {
+      "name": "EPSG:4326"
+     },
+     "type": "name"
+    },
+    "type": "Polygon"
+   }
+  },
+  {
+   "id": "f-expired",
+   "links": [
+    {
+     "type": "application/xml",
+     "rel": "canonical",
+     "href": "https://storage.example.invalid/warnings/alert-expired.xml"
+    },
+    {
+     "type": "application/json",
+     "rel": "json",
+     "href": "https://storage.example.invalid/warnings/alert-expired.json"
+    },
+    {
+     "type": "application/xml",
+     "rel": "xml",
+     "href": "https://storage.example.invalid/warnings/alert-expired.xml"
+    },
+    {
+     "type": "application/geo+json",
+     "rel": "geometry",
+     "href": "https://storage.example.invalid/features/f-expired.geojson"
+    }
+   ],
+   "type": "Feature",
+   "properties": {
+    "supersededByAlertId": null,
+    "supersededAt": null,
+    "supersedeType": null,
+    "geometryDescription": "geometry is bbox only, link (member of the feature's links array) with type application/geo+json points to geojson describing the exact shape",
+    "geometryType": "exact",
+    "OBJECTID": "f-expired",
+    "alertId": "alert-expired",
+    "countryCode": "NO",
+    "featureType": "polygon",
+    "hubLanguage": "en-GB",
+    "indexArea": 0,
+    "indexFeature": 0,
+    "indexInfo": 1,
+    "hubTime": "2026-11-27T08:25:30Z",
+    "hubLink": "https://storage.example.invalid/warnings/alert-expired.xml"
+   },
+   "geometry": {
+    "coordinates": [
+     [
+      [
+       6.3025,
+       58.2
+      ],
+      [
+       6.4088,
+       58.3058
+      ],
+      [
+       6.3185,
+       58.3302
+      ],
+      [
+       6.2137,
+       58.3592
+      ],
+      [
+       6.0827,
+       58.3988
+      ],
+      [
+       5.9707,
+       58.4442
+      ],
+      [
+       5.8422,
+       58.4987
+      ],
+      [
+       5.6927,
+       58.5687
+      ],
+      [
+       5.5955,
+       58.6587
+      ],
+      [
+       5.5248,
+       58.6458
+      ],
+      [
+       5.632,
+       58.5455
+      ],
+      [
+       5.633,
+       58.5447
+      ],
+      [
+       5.635,
+       58.5432
+      ],
+      [
+       5.6767,
+       58.5157
+      ],
+      [
+       5.8387,
+       58.4185
+      ],
+      [
+       5.8398,
+       58.4178
+      ],
+      [
+       5.8508,
+       58.4118
+      ],
+      [
+       5.8527,
+       58.411
+      ],
+      [
+       6.0673,
+       58.3112
+      ],
+      [
+       6.3025,
+       58.2
+      ],
+      [
+       6.3025,
+       58.2
+      ]
+     ]
+    ],
+    "crs": {
+     "properties": {
+      "name": "EPSG:4326"
+     },
+     "type": "name"
+    },
+    "type": "Polygon"
+   }
+  },
+  {
+   "id": "f-cancel",
+   "links": [
+    {
+     "type": "application/xml",
+     "rel": "canonical",
+     "href": "https://storage.example.invalid/warnings/alert-cancel.xml"
+    },
+    {
+     "type": "application/json",
+     "rel": "json",
+     "href": "https://storage.example.invalid/warnings/alert-cancel.json"
+    },
+    {
+     "type": "application/xml",
+     "rel": "xml",
+     "href": "https://storage.example.invalid/warnings/alert-cancel.xml"
+    },
+    {
+     "type": "application/geo+json",
+     "rel": "geometry",
+     "href": "https://storage.example.invalid/features/f-cancel.geojson"
+    }
+   ],
+   "type": "Feature",
+   "properties": {
+    "supersededByAlertId": null,
+    "supersededAt": null,
+    "supersedeType": null,
+    "geometryDescription": "geometry is bbox only, link (member of the feature's links array) with type application/geo+json points to geojson describing the exact shape",
+    "geometryType": "exact",
+    "OBJECTID": "f-cancel",
+    "alertId": "alert-cancel",
+    "countryCode": "NO",
+    "featureType": "polygon",
+    "hubLanguage": "en-GB",
+    "indexArea": 0,
+    "indexFeature": 0,
+    "indexInfo": 1,
+    "hubTime": "2026-11-27T08:25:30Z",
+    "hubLink": "https://storage.example.invalid/warnings/alert-cancel.xml"
+   },
+   "geometry": {
+    "coordinates": [
+     [
+      [
+       6.3025,
+       58.2
+      ],
+      [
+       6.4088,
+       58.3058
+      ],
+      [
+       6.3185,
+       58.3302
+      ],
+      [
+       6.2137,
+       58.3592
+      ],
+      [
+       6.0827,
+       58.3988
+      ],
+      [
+       5.9707,
+       58.4442
+      ],
+      [
+       5.8422,
+       58.4987
+      ],
+      [
+       5.6927,
+       58.5687
+      ],
+      [
+       5.5955,
+       58.6587
+      ],
+      [
+       5.5248,
+       58.6458
+      ],
+      [
+       5.632,
+       58.5455
+      ],
+      [
+       5.633,
+       58.5447
+      ],
+      [
+       5.635,
+       58.5432
+      ],
+      [
+       5.6767,
+       58.5157
+      ],
+      [
+       5.8387,
+       58.4185
+      ],
+      [
+       5.8398,
+       58.4178
+      ],
+      [
+       5.8508,
+       58.4118
+      ],
+      [
+       5.8527,
+       58.411
+      ],
+      [
+       6.0673,
+       58.3112
+      ],
+      [
+       6.3025,
+       58.2
+      ],
+      [
+       6.3025,
+       58.2
+      ]
+     ]
+    ],
+    "crs": {
+     "properties": {
+      "name": "EPSG:4326"
+     },
+     "type": "name"
+    },
+    "type": "Polygon"
+   }
+  },
+  {
+   "id": "f-low",
+   "links": [
+    {
+     "type": "application/xml",
+     "rel": "canonical",
+     "href": "https://storage.example.invalid/warnings/alert-low.xml"
+    },
+    {
+     "type": "application/json",
+     "rel": "json",
+     "href": "https://storage.example.invalid/warnings/alert-low.json"
+    },
+    {
+     "type": "application/xml",
+     "rel": "xml",
+     "href": "https://storage.example.invalid/warnings/alert-low.xml"
+    },
+    {
+     "type": "application/geo+json",
+     "rel": "geometry",
+     "href": "https://storage.example.invalid/features/f-low.geojson"
+    }
+   ],
+   "type": "Feature",
+   "properties": {
+    "supersededByAlertId": null,
+    "supersededAt": null,
+    "supersedeType": null,
+    "geometryDescription": "geometry is bbox only, link (member of the feature's links array) with type application/geo+json points to geojson describing the exact shape",
+    "geometryType": "exact",
+    "OBJECTID": "f-low",
+    "alertId": "alert-low",
+    "countryCode": "NO",
+    "featureType": "polygon",
+    "hubLanguage": "en-GB",
+    "indexArea": 0,
+    "indexFeature": 0,
+    "indexInfo": 1,
+    "hubTime": "2026-11-27T08:25:30Z",
+    "hubLink": "https://storage.example.invalid/warnings/alert-low.xml"
+   },
+   "geometry": {
+    "coordinates": [
+     [
+      [
+       6.3025,
+       58.2
+      ],
+      [
+       6.4088,
+       58.3058
+      ],
+      [
+       6.3185,
+       58.3302
+      ],
+      [
+       6.2137,
+       58.3592
+      ],
+      [
+       6.0827,
+       58.3988
+      ],
+      [
+       5.9707,
+       58.4442
+      ],
+      [
+       5.8422,
+       58.4987
+      ],
+      [
+       5.6927,
+       58.5687
+      ],
+      [
+       5.5955,
+       58.6587
+      ],
+      [
+       5.5248,
+       58.6458
+      ],
+      [
+       5.632,
+       58.5455
+      ],
+      [
+       5.633,
+       58.5447
+      ],
+      [
+       5.635,
+       58.5432
+      ],
+      [
+       5.6767,
+       58.5157
+      ],
+      [
+       5.8387,
+       58.4185
+      ],
+      [
+       5.8398,
+       58.4178
+      ],
+      [
+       5.8508,
+       58.4118
+      ],
+      [
+       5.8527,
+       58.411
+      ],
+      [
+       6.0673,
+       58.3112
+      ],
+      [
+       6.3025,
+       58.2
+      ],
+      [
+       6.3025,
+       58.2
+      ]
+     ]
+    ],
+    "crs": {
+     "properties": {
+      "name": "EPSG:4326"
+     },
+     "type": "name"
+    },
+    "type": "Polygon"
+   }
+  },
+  {
+   "id": "f-nogeom",
+   "links": [
+    {
+     "type": "application/xml",
+     "rel": "canonical",
+     "href": "https://storage.example.invalid/warnings/alert-nogeom.xml"
+    },
+    {
+     "type": "application/json",
+     "rel": "json",
+     "href": "https://storage.example.invalid/warnings/alert-nogeom.json"
+    },
+    {
+     "type": "application/xml",
+     "rel": "xml",
+     "href": "https://storage.example.invalid/warnings/alert-nogeom.xml"
+    }
+   ],
+   "type": "Feature",
+   "properties": {
+    "supersededByAlertId": null,
+    "supersededAt": null,
+    "supersedeType": null,
+    "geometryDescription": "geometry is bbox only, link (member of the feature's links array) with type application/geo+json points to geojson describing the exact shape",
+    "geometryType": "no_geometry",
+    "OBJECTID": "f-nogeom",
+    "alertId": "alert-nogeom",
+    "countryCode": "NO",
+    "featureType": "polygon",
+    "hubLanguage": "en-GB",
+    "indexArea": 0,
+    "indexFeature": 0,
+    "indexInfo": 1,
+    "hubTime": "2026-11-27T08:25:30Z",
+    "hubLink": "https://storage.example.invalid/warnings/alert-nogeom.xml"
+   },
+   "geometry": null
+  }
+ ],
+ "metadata": {
+  "page_size": 100,
+  "total_count": 9,
+  "total_pages": 1,
+  "page": 1
+ }
+}

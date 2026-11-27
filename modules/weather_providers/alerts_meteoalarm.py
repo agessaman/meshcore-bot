@@ -7,6 +7,13 @@ per warning area, and a feature whose ``geometryType`` is not ``exact`` is
 confirmed against the outline in its ``rel=geometry`` link. Event, level and
 expiry live in the CAP 1.2 document the feature links to, not in the feature.
 
+The API wants a ``datetime`` range shorter than a day and still carries
+warnings sent days ago, so each country is asked for once per UTC day over the
+last four days. It throttles hard, so requests are spaced a second apart and a
+429 pauses every request until its Retry-After passes, serving cached alerts
+meanwhile. The feature links are pre-signed URLs on a storage host: they are
+fetched without the token and never logged above DEBUG.
+
 The token is sent as a bearer header, never as a query parameter, so it stays
 out of URLs and logs. Nothing here raises into the command: a failed fetch
 logs one WARNING per failure streak and answers with no alerts.
@@ -22,8 +29,10 @@ import asyncio
 import threading
 import time
 import xml.etree.ElementTree as ET
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
 from typing import Any, Optional
+from urllib.parse import urlparse
 
 from ..http_retry import make_retry_session
 from .base import AlertsProvider, AlertSummary, ProviderHost
@@ -43,8 +52,16 @@ CONNECT_TIMEOUT = 5
 READ_TIMEOUT = 10
 
 LOCATIONS_TTL = 24 * 60 * 60
-COUNTRY_TTL = 10 * 60
+# The API rejects a datetime range of 24 hours or more, so each UTC day is a
+# window of its own: today's moves and is cached briefly, past days are fixed.
+WINDOW_TTL_TODAY = 10 * 60
+WINDOW_TTL_PAST = 60 * 60
+PAST_DAYS = 3
 MAX_PAGES = 5
+# The gateway throttles at roughly 25 requests in a few seconds, so requests are
+# spaced out and a 429 pauses everything until its Retry-After passes.
+MIN_REQUEST_INTERVAL = 1.0
+DEFAULT_RETRY_AFTER = 300.0
 
 CAP_NS = {"cap": "urn:oasis:names:tc:emergency:cap:1.2"}
 LEVEL_EMOJI = {2: "\U0001f7e1", 3: "\U0001f7e0", 4: "\U0001f534"}
@@ -89,6 +106,50 @@ def geometry_contains(geometry: Optional[dict], lon: float, lat: float) -> bool:
     if kind == "MultiPolygon":
         return any(_point_in_polygon(lon, lat, polygon) for polygon in coordinates)
     return False
+
+
+def _stamp(moment: datetime) -> str:
+    """A UTC timestamp in the ISO 8601 form the API's datetime parameter takes."""
+    return moment.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _retry_after_seconds(headers: Any, now: datetime) -> float:
+    """Retry-After as seconds, from a number or an HTTP date; 300 s by default."""
+    raw = (headers or {}).get("Retry-After")
+    if not raw:
+        return DEFAULT_RETRY_AFTER
+    text = str(raw).strip()
+    try:
+        return max(float(text), 0.0)
+    except ValueError:
+        pass
+    try:
+        when = parsedate_to_datetime(text)
+    except (TypeError, ValueError):
+        return DEFAULT_RETRY_AFTER
+    if when is None:
+        return DEFAULT_RETRY_AFTER
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    return max((when - now).total_seconds(), 0.0)
+
+
+def _geometry_of(body: Any) -> Optional[dict]:
+    """The geometry in a GeoJSON Feature, FeatureCollection or bare geometry."""
+    if not isinstance(body, dict):
+        return None
+    kind = body.get("type")
+    if kind == "Feature":
+        return body.get("geometry")
+    if kind == "FeatureCollection":
+        for feature in body.get("features") or []:
+            geometry = (feature or {}).get("geometry")
+            if geometry:
+                return geometry
+        return None
+    if kind in ("Polygon", "MultiPolygon"):
+        return body
+    return None
 
 
 def _parse_time(value: Optional[str]) -> Optional[datetime]:
@@ -145,8 +206,8 @@ def parse_cap(text: str, language: str) -> Optional[dict]:
     """The alert details a CAP 1.2 document carries, or None when it has no info block.
 
     Parsed with ElementTree rather than defusedxml: the document comes over
-    HTTPS from one fixed host (storage.meteoalarm.org), which the API's own
-    links name, and the project does not depend on defusedxml.
+    HTTPS from the storage host the API's own links name, and the project does
+    not depend on defusedxml.
     """
     try:
         root = ET.fromstring(text)
@@ -167,6 +228,7 @@ def parse_cap(text: str, language: str) -> Optional[dict]:
             awareness_type = _awareness_type(value)
 
     return {
+        "msg_type": (root.findtext("cap:msgType", default="", namespaces=CAP_NS) or "").strip(),
         "event": (info.findtext("cap:event", default="", namespaces=CAP_NS) or "").strip(),
         "headline": (info.findtext("cap:headline", default="", namespaces=CAP_NS) or "").strip(),
         "onset": _parse_time(info.findtext("cap:onset", default="", namespaces=CAP_NS)),
@@ -199,11 +261,16 @@ class MeteoalarmAlertsProvider(AlertsProvider):
         self.session = session if session is not None else make_retry_session()
         # One lock for every cache. Never held across HTTP.
         self._lock = threading.Lock()
+        self._api_host = urlparse(self.base_url).netloc
         self._locations: Optional[tuple] = None
-        self._countries: dict[str, tuple] = {}
+        self._windows: dict[tuple, tuple] = {}
         self._geometries: dict[str, dict] = {}
         self._caps: dict[str, tuple] = {}
         self._streaks: set[str] = set()
+        # Monotonic seconds: when the next request may go out, and when a 429
+        # pause ends. Both are read and written under the lock.
+        self._last_request = 0.0
+        self._retry_until = 0.0
 
     # --- clock ------------------------------------------------------------
 
@@ -231,12 +298,71 @@ class MeteoalarmAlertsProvider(AlertsProvider):
 
     # --- HTTP -------------------------------------------------------------
 
-    def _get(self, url: str, params: Optional[dict] = None):
-        """One GET with the bearer token. The token never reaches the URL or a log."""
-        headers = {"Authorization": f"Bearer {self.token}"} if self.token else {}
-        return self.session.get(
-            url, params=params, headers=headers, timeout=(CONNECT_TIMEOUT, READ_TIMEOUT)
+    def _wait(self, seconds: float) -> None:
+        """Sleep between gateway requests. Tests replace this with a fake clock."""
+        time.sleep(seconds)
+
+    def _pace(self) -> None:
+        """Space gateway requests at least MIN_REQUEST_INTERVAL apart."""
+        with self._lock:
+            now = self._clock()
+            wait = MIN_REQUEST_INTERVAL - (now - self._last_request) if self._last_request else 0.0
+            self._last_request = now + max(wait, 0.0)
+        if wait > 0:
+            self._wait(wait)
+
+    def _throttled(self, response) -> None:
+        """Honor Retry-After: no gateway requests at all until it passes."""
+        delay = _retry_after_seconds(getattr(response, "headers", None), self._utcnow())
+        with self._lock:
+            self._retry_until = self._clock() + delay
+        self._warn_once(
+            "throttled",
+            f"Meteoalarm rate limited the request; pausing for {int(delay)} s",
         )
+
+    def _get(self, url: str, params: Optional[dict] = None):
+        """One GET, paced and rate-limit aware. Returns the response, or None.
+
+        The bearer token goes only to the API host. The feature links are
+        pre-signed URLs on a storage host, and those must never see it.
+        """
+        with self._lock:
+            paused = self._clock() < self._retry_until
+        if paused:
+            return None
+        self._pace()
+        headers = {}
+        if self.token and urlparse(url).netloc == self._api_host:
+            headers["Authorization"] = f"Bearer {self.token}"
+        try:
+            response = self.session.get(
+                url, params=params, headers=headers, timeout=(CONNECT_TIMEOUT, READ_TIMEOUT)
+            )
+        except Exception as error:
+            self._warn_once(
+                f"http:{urlparse(url).netloc}",
+                f"Meteoalarm request failed: {type(error).__name__}",
+            )
+            return None
+        if response.status_code == 429:
+            self._throttled(response)
+            return None
+        if self._rejected(response):
+            return None
+        if response.status_code >= 400:
+            self._warn_once("status", f"Meteoalarm answered HTTP {response.status_code}")
+            return None
+        self._clear_streak("status")
+        self._clear_streak("throttled")
+        return response
+
+    def _json(self, response):
+        """The JSON body, or None when the body is empty or not JSON."""
+        try:
+            return response.json()
+        except Exception:
+            return None
 
     def _rejected(self, response) -> bool:
         """Whether the API refused the token; logs once per streak, without the token."""
@@ -258,15 +384,17 @@ class MeteoalarmAlertsProvider(AlertsProvider):
         if cached is not None and self._clock() - cached[0] < LOCATIONS_TTL:
             return cached[1]
 
-        try:
-            response = self._get(self.locations_url)
-            if self._rejected(response):
-                return None
-            response.raise_for_status()
-            features = response.json().get("features") or []
-        except Exception as error:
-            self._warn_once("locations", f"Meteoalarm locations fetch failed: {type(error).__name__}")
+        response = self._get(self.locations_url)
+        if response is None:
             return None
+        if response.status_code == 204:
+            features = []
+        else:
+            body = self._json(response)
+            if body is None:
+                self._warn_once("locations", "Meteoalarm locations fetch returned no JSON")
+                return None
+            features = body.get("features") or []
 
         countries = [
             (feature.get("id"), feature.get("geometry"))
@@ -278,70 +406,102 @@ class MeteoalarmAlertsProvider(AlertsProvider):
         self._clear_streak("locations")
         return countries
 
-    def _country_features(self, country: str) -> Optional[list]:
-        """One country's active warnings, following pagination, cached for ten minutes."""
-        with self._lock:
-            cached = self._countries.get(country)
-        if cached is not None and self._clock() - cached[0] < COUNTRY_TTL:
-            return cached[1]
+    def _window_specs(self) -> list:
+        """One query window per UTC day: today so far, then the three previous days.
 
-        # The spec requires both filters; an interval from now to now asks for
-        # warnings active at this moment.
-        moment = self._utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
-        interval = f"{moment}/{moment}"
+        The API rejects a ``datetime`` range of 24 hours or more, and warnings
+        sent days ago are still active, so each day is asked for separately.
+        """
+        now = self._utcnow()
+        today = now.date()
+        first = datetime.combine(today, datetime.min.time(), tzinfo=timezone.utc)
+        end = now if now > first else first + timedelta(seconds=1)
+        specs = [(today, f"{_stamp(first)}/{_stamp(end)}", WINDOW_TTL_TODAY)]
+        for offset in range(1, PAST_DAYS + 1):
+            day = today - timedelta(days=offset)
+            start = datetime.combine(day, datetime.min.time(), tzinfo=timezone.utc)
+            last = datetime.combine(day, datetime.max.time(), tzinfo=timezone.utc).replace(microsecond=0)
+            specs.append((day, f"{_stamp(start)}/{_stamp(last)}", WINDOW_TTL_PAST))
+        return specs
+
+    def _fetch_window(self, country: str, interval: str) -> Optional[list]:
+        """One country's warnings for one window, following pagination."""
+        moment = _stamp(self._utcnow())
         features: list = []
-        try:
-            for page in range(1, MAX_PAGES + 1):
-                response = self._get(
-                    self.country_url.format(country=country),
-                    params={"active": interval, "datetime": interval, "page": page},
-                )
-                if self._rejected(response):
-                    return None
-                response.raise_for_status()
-                body = response.json()
-                features.extend(body.get("features") or [])
-                total_pages = (body.get("metadata") or {}).get("total_pages") or 1
-                if page >= total_pages:
-                    break
-        except Exception as error:
-            self._warn_once(
-                f"country:{country}",
-                f"Meteoalarm warnings fetch failed for {country}: {type(error).__name__}",
+        for page in range(1, MAX_PAGES + 1):
+            response = self._get(
+                self.country_url.format(country=country),
+                params={"active": f"{moment}/{moment}", "datetime": interval, "page": page},
             )
-            return None
-
-        with self._lock:
-            self._countries[country] = (self._clock(), features)
+            if response is None:
+                return None
+            if response.status_code == 204:
+                break
+            body = self._json(response)
+            if body is None:
+                self._warn_once(
+                    f"country:{country}",
+                    f"Meteoalarm warnings fetch for {country} returned no JSON",
+                )
+                return None
+            features.extend(body.get("features") or [])
+            total_pages = (body.get("metadata") or {}).get("total_pages") or 1
+            if page >= total_pages:
+                break
         self._clear_streak(f"country:{country}")
         return features
 
+    def _country_features(self, country: str) -> list:
+        """Every active warning for one country, merged over the day windows."""
+        merged: dict[Any, dict] = {}
+        for day, interval, ttl in self._window_specs():
+            key = (country, day)
+            with self._lock:
+                cached = self._windows.get(key)
+            if cached is not None and self._clock() - cached[0] < ttl:
+                features = cached[1]
+            else:
+                features = self._fetch_window(country, interval)
+                if features is None:
+                    # A failed window serves whatever is cached, stale included.
+                    features = cached[1] if cached is not None else []
+                else:
+                    with self._lock:
+                        self._windows[key] = (self._clock(), features)
+            for feature in features:
+                merged[feature.get("id") or id(feature)] = feature
+        return list(merged.values())
+
     def _exact_geometry(self, feature: dict) -> Optional[dict]:
-        """The outline behind a bbox feature, cached by URL."""
+        """The outline behind a bbox feature, cached by feature id.
+
+        The link is pre-signed and changes between responses, so the id is the
+        only stable key.
+        """
+        properties = feature.get("properties") or {}
+        key = feature.get("id") or properties.get("OBJECTID")
+        if not key:
+            return None
+        with self._lock:
+            cached = self._geometries.get(key)
+        if cached is not None:
+            return cached
+
         url = next(
             (link.get("href") for link in feature.get("links") or [] if link.get("rel") == "geometry"),
             None,
         )
         if not url:
             return None
-        with self._lock:
-            cached = self._geometries.get(url)
-        if cached is not None:
-            return cached
-
-        try:
-            response = self._get(url)
-            if self._rejected(response):
-                return None
-            response.raise_for_status()
-            body = response.json()
-        except Exception as error:
-            self._warn_once(f"geometry:{url}", f"Meteoalarm geometry fetch failed: {type(error).__name__}")
+        response = self._get(url)
+        if response is None or response.status_code == 204:
             return None
-
-        geometry = body.get("geometry") if body.get("type") == "Feature" else body
+        geometry = _geometry_of(self._json(response))
+        if geometry is None:
+            self._warn_once(f"geometry:{key}", "Meteoalarm geometry fetch returned no geometry")
+            return None
         with self._lock:
-            self._geometries[url] = geometry
+            self._geometries[key] = geometry
         return geometry
 
     def _language(self) -> str:
@@ -351,32 +511,36 @@ class MeteoalarmAlertsProvider(AlertsProvider):
         except Exception:
             return "en"
 
-    def _cap_details(self, alert_id: str, feature: dict) -> Optional[dict]:
-        """One alert's CAP details, cached by alertId until it expires."""
+    def _cap_details(self, alert_id: str, features: list) -> Optional[dict]:
+        """One alert's CAP details, cached by alertId until it expires.
+
+        Every feature of an alertId links to the same document, so the first
+        one that carries an xml link is enough.
+        """
         with self._lock:
             cached = self._caps.get(alert_id)
         if cached is not None and cached[0] > self._utcnow():
             return cached[1]
 
-        properties = feature.get("properties") or {}
-        url = next(
-            (link.get("href") for link in feature.get("links") or [] if link.get("rel") == "xml"),
-            None,
-        ) or properties.get("hubLink")
+        url = None
+        for feature in features:
+            properties = feature.get("properties") or {}
+            url = next(
+                (link.get("href") for link in feature.get("links") or [] if link.get("rel") == "xml"),
+                None,
+            ) or properties.get("hubLink")
+            if url:
+                break
         if not url:
             return None
 
-        try:
-            response = self._get(url)
-            if self._rejected(response):
-                return None
-            response.raise_for_status()
-            details = parse_cap(response.text, self._language())
-        except Exception as error:
-            self._warn_once(f"cap:{alert_id}", f"Meteoalarm CAP fetch failed: {type(error).__name__}")
+        response = self._get(url)
+        if response is None or response.status_code == 204:
             return None
-
+        details = parse_cap(response.text, self._language())
         if details is None or details["expires"] is None:
+            return None
+        if details["msg_type"].lower() == "cancel":
             return None
         if details["expires"] <= self._utcnow() or details["level"] < MIN_LEVEL:
             return None
@@ -414,28 +578,32 @@ class MeteoalarmAlertsProvider(AlertsProvider):
         return geometry_contains(exact, lon, lat)
 
     def _alerts_for(self, lat: float, lon: float) -> list:
-        """The active alerts covering a point, most severe first."""
+        """The active alerts covering a point, most severe first.
+
+        One alert has a feature per CAP info language and area, so features are
+        grouped by alertId and the point has to fall inside any one of them.
+        """
         countries = self._country_geometries()
         if not countries:
             return []
 
-        grouped: dict[str, dict] = {}
+        grouped: dict[str, list] = {}
         for country, geometry in countries:
             if not geometry_contains(geometry, lon, lat):
                 continue
-            for feature in self._country_features(country) or []:
+            for feature in self._country_features(country):
                 properties = feature.get("properties") or {}
                 if properties.get("supersededByAlertId"):
                     continue
-                if not self._feature_covers(feature, lon, lat):
-                    continue
                 alert_id = properties.get("alertId")
                 if alert_id:
-                    grouped.setdefault(alert_id, feature)
+                    grouped.setdefault(alert_id, []).append(feature)
 
         alerts = []
-        for alert_id, feature in grouped.items():
-            details = self._cap_details(alert_id, feature)
+        for alert_id, features in grouped.items():
+            if not any(self._feature_covers(feature, lon, lat) for feature in features):
+                continue
+            details = self._cap_details(alert_id, features)
             if details is not None:
                 alerts.append(details)
         alerts.sort(key=lambda alert: (-alert["level"], alert["expires"]))

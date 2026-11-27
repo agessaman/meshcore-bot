@@ -1,35 +1,35 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
 <alert xmlns="urn:oasis:names:tc:emergency:cap:1.2">
-  <identifier>2.49.0.0.40.0.AT.20350601120000</identifier>
-  <sender>ZAMG</sender>
-  <sent>2035-06-01T11:00:00+02:00</sent>
+  <identifier>2.49.0.1.578.0.alert-exact</identifier>
+  <sender>meteorologi@met.no</sender>
+  <sent>2026-11-27T08:14:50+00:00</sent>
   <status>Actual</status>
-  <msgType>Alert</msgType>
+  <msgType>Update</msgType>
   <scope>Public</scope>
-  <info>
-    <language>de-AT</language>
-    <category>Met</category>
-    <event>Sturm</event>
-    <urgency>Expected</urgency>
-    <severity>Severe</severity>
-    <certainty>Likely</certainty>
-    <onset>2035-06-01T12:00:00+02:00</onset>
-    <expires>2035-06-01T18:00:00+02:00</expires>
-    <headline>Starker Wind in Teilen Oesterreichs</headline>
-    <parameter><valueName>awareness_level</valueName><value>3; orange; Severe</value></parameter>
-    <parameter><valueName>awareness_type</valueName><value>1; Wind</value></parameter>
-  </info>
+  <code>MCP:v2.0</code>
   <info>
     <language>en-GB</language>
     <category>Met</category>
     <event>Wind</event>
-    <urgency>Expected</urgency>
-    <severity>Severe</severity>
+    <responseType>Monitor</responseType>
+    <urgency>Future</urgency>
+    <severity>Moderate</severity>
     <certainty>Likely</certainty>
-    <onset>2035-06-01T12:00:00+02:00</onset>
-    <expires>2035-06-01T18:00:00+02:00</expires>
-    <headline>Strong wind in parts of Austria</headline>
-    <parameter><valueName>awareness_level</valueName><value>3; orange; Severe</value></parameter>
-    <parameter><valueName>awareness_type</valueName><value>1; Wind</value></parameter>
+    <onset>2026-11-26T18:00:00+00:00</onset>
+    <expires>2026-11-28T10:00:00+00:00</expires>
+    <senderName>Meteorologisk Institutt</senderName>
+    <headline>Gale, yellow level, Aana-Sira - Karmoey</headline>
+    <description>From Friday morning, south-east near gale 15 m/s, occasionally strong gale 20.</description>
+    <parameter>
+      <valueName>awareness_level</valueName>
+      <value>3; orange; Severe</value>
+    </parameter>
+    <parameter>
+      <valueName>awareness_type</valueName>
+      <value>1; Wind</value>
+    </parameter>
+    <area>
+      <areaDesc>Ana-Sira - Karmoy</areaDesc>
+    </area>
   </info>
 </alert>
