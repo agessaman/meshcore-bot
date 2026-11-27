@@ -14,7 +14,7 @@
 #   ./install-service.sh          # Normal installation (non-destructive if already installed)
 #   ./install-service.sh --upgrade # Upgrade mode (copies new files, updates dependencies)
 #   ./install-service.sh -u        # Short form of --upgrade
-#   ./install-service.sh -u --install-extras # upgrade + install optional packages (profanity, geocoding)
+#   ./install-service.sh -u --no-extras  # upgrade without the optional packages (profanity, geocoding)
 #   ./install-service.sh --update-venv           # Only refresh the venv, in place
 #   ./install-service.sh -u --update-venv        # Upgrade code, reuse the venv
 #
@@ -80,7 +80,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Parse command line arguments (before sudo check so help works)
 UPGRADE_MODE=false
 UPDATE_VENV=false
-INSTALL_EXTRAS=false
+INSTALL_EXTRAS=true
 for arg in "$@"; do
     case $arg in
         --upgrade|-u)
@@ -89,7 +89,12 @@ for arg in "$@"; do
         --update-venv)
             UPDATE_VENV=true
             ;;
+        --no-extras)
+            INSTALL_EXTRAS=false
+            ;;
         --install-extras|-ie)
+            # Extras install by default now; still accepted so existing scripts keep
+            # working, and it overrides an earlier --no-extras.
             INSTALL_EXTRAS=true
             ;;
         --help|-h)
@@ -104,13 +109,15 @@ for arg in "$@"; do
             echo "                   nothing else is touched: no file sync, no service"
             echo "                   file changes. Combine with --upgrade to sync code"
             echo "                   and still skip the slow rebuild."
+            echo "  --no-extras      Skip the optional profanity filter and geocoding"
+            echo "                   packages, which are installed by default."
             echo "  --help, -h       Show this help message"
             echo ""
             echo "Examples:"
             echo "  $0                     # Normal installation (non-destructive if already installed)"
             echo "  $0 --upgrade           # Upgrade existing installation (rebuilds the venv)"
             echo "  $0 -u                  # Short form of --upgrade"
-            echo "  $0 -u --install-extras # Upgrade and install optional packages without prompting"
+            echo "  $0 -u --no-extras      # Upgrade without the optional packages"
             echo "  $0 --update-venv       # Refresh dependencies only, keeping the venv"
             echo "  $0 -u --update-venv    # Upgrade code and refresh the venv in place"
             exit 0
@@ -157,29 +164,6 @@ print_warning() {
 # Function to print error messages
 print_error() {
     echo -e "${RED}✗${NC}  $1"
-}
-
-# Function to ask yes/no question
-ask_yes_no() {
-    local prompt="$1"
-    local default="${2:-n}"
-    local response
-
-    if [[ "$default" == "y" ]]; then
-        prompt="${prompt} [Y/n]: "
-    else
-        prompt="${prompt} [y/N]: "
-    fi
-
-    while true; do
-        read -p "$(echo -e "${YELLOW}${prompt}${NC}")" response
-        response="${response:-$default}"
-        case "$response" in
-            [Yy]|[Yy][Ee][Ss]) return 0 ;;
-            [Nn]|[Nn][Oo])     return 1 ;;
-            *) echo "Please answer yes or no." ;;
-        esac
-    done
 }
 
 if [[ "$VENV_ONLY_MODE" == true ]]; then
@@ -389,11 +373,41 @@ fi
 # shellcheck source=scripts/armv7_pip_args.sh
 source "$_ARMV7_PIP_HELPER"
 
+# Optional extras (profanity filter, geocoding), installed on every run unless
+# --no-extras is given.  A rebuilt venv starts without them; an existing one
+# already has them, so pip only confirms they are present.  With --no-extras an
+# existing venv is left as it is, so anything installed earlier stays.  Failures
+# are non-fatal.  Runs before harden_venv_permissions so the new files get the
+# same permissions as the rest of the venv.  Always invoke pip via
+# `python -m pip` so a stale shebang cannot break installs.
+install_optional_extras() {
+    local venv_python="$1/bin/python"
+
+    if [[ "$INSTALL_EXTRAS" != true ]]; then
+        print_info "Skipping the optional profanity filter and geocoding packages (--no-extras)"
+        return 0
+    fi
+
+    print_info "Installing profanity filter packages..."
+    if "$venv_python" -m pip install --quiet "better-profanity>=0.7.0" "unidecode>=1.3.0"; then
+        print_success "Installed profanity filter packages"
+    else
+        print_warning "Failed to install profanity filter packages (non-fatal)"
+    fi
+
+    print_info "Installing geocoding extras..."
+    if "$venv_python" -m pip install --quiet "pycountry>=23.12.0" "us>=2.0.0"; then
+        print_success "Installed geocoding extras"
+    else
+        print_warning "Failed to install geocoding extras (non-fatal)"
+    fi
+}
+
 # Bring an existing virtualenv up to date with requirements.txt.  Plain
 # `pip install -r` (no --upgrade) is deliberate: it installs what is missing and
 # upgrades only what no longer satisfies a specifier, which is the fast path.
-# `--upgrade` would eagerly churn transitive dependencies on every run.  Extras
-# installed previously (profanity filter, geocoding) survive, unlike a rebuild.
+# `--upgrade` would eagerly churn transitive dependencies on every run.  The
+# optional extras are topped up here too, unless --no-extras is given.
 # Also rewrites console-script shebangs so an earlier .venv-build-$$ relocate
 # does not leave venv/bin/pip broken after --update-venv (issue #229).
 update_venv_in_place() {
@@ -409,6 +423,7 @@ update_venv_in_place() {
         print_info "Check your internet connection, or rebuild with: $0 --upgrade"
         return 1
     fi
+    install_optional_extras "$venv"
 
     # Prefer the helper shipped with this installer invocation so --update-venv
     # heals broken shebangs even before a full code sync lands under INSTALL_DIR.
@@ -794,55 +809,8 @@ if [[ "$VENV_UPDATED_IN_PLACE" != true ]]; then
     print_success "Installed all Python dependencies into a fresh virtual environment"
 fi
 
-# Optional extras.  A rebuild starts empty so these have to be re-chosen; an
-# in-place update keeps whatever was installed before, so don't re-prompt.
-# --install-extras installs both sets non-interactively and takes precedence,
-# so an unattended run can top up an in-place venv update too.
-# Always invoke pip via `python -m pip` so a stale shebang cannot break installs.
-VENV_PYTHON="$INSTALL_DIR/venv/bin/python"
-
-install_profanity_packages() {
-    print_info "Installing profanity filter packages..."
-    if "$VENV_PYTHON" -m pip install --quiet "better-profanity>=0.7.0" "unidecode>=1.3.0"; then
-        print_success "Installed profanity filter packages"
-    else
-        print_warning "Failed to install profanity filter packages (non-fatal)"
-    fi
-}
-
-install_geocoding_packages() {
-    print_info "Installing geocoding extras..."
-    if "$VENV_PYTHON" -m pip install --quiet "pycountry>=23.12.0" "us>=2.0.0"; then
-        print_success "Installed geocoding extras"
-    else
-        print_warning "Failed to install geocoding extras (non-fatal)"
-    fi
-}
-
-if [[ "$INSTALL_EXTRAS" == true ]]; then
-    print_info "Installing optional feature packages (--install-extras)"
-    install_profanity_packages
-    install_geocoding_packages
-elif [[ "$VENV_UPDATED_IN_PLACE" == true ]]; then
-    print_info "Kept any optional packages already installed in the virtualenv"
-else
-    echo ""
-    print_info "Optional feature packages are available:"
-    echo "  • Profanity filter (better-profanity, unidecode) — drop/censor offensive messages"
-    echo "  • Geocoding extras (pycountry, us) — improved country/state name resolution"
-    echo ""
-
-    if ask_yes_no "Install profanity filter packages? (recommended if using the profanity filter feature)" "n"; then
-        install_profanity_packages
-    else
-        print_info "Skipping profanity filter packages"
-    fi
-
-    if ask_yes_no "Install geocoding extras? (recommended if using location/path commands)" "n"; then
-        install_geocoding_packages
-    else
-        print_info "Skipping geocoding extras"
-    fi
+if [[ "$VENV_UPDATED_IN_PLACE" != true ]]; then
+    install_optional_extras "$INSTALL_DIR/venv"
 fi
 
 print_section "Step 5: Setting File Permissions"

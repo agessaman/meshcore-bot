@@ -259,8 +259,7 @@ database migration, copies relative-path databases coherently, rewrites the migr
 configuration, builds a fresh virtual environment, and restarts a service that was
 active before the upgrade.
 
-Add `--install-extras` to install the optional profanity-filter and geocoding
-packages without being prompted, which is what you want for an unattended upgrade.
+The installer also installs the optional profanity-filter and geocoding packages without prompting. Add `--no-extras` to leave them out.
 
 Before upgrading, keep a separate backup of your configuration and database. The
 installer preserves:
@@ -306,7 +305,7 @@ country and US-state normalization:
 pip install -e ".[geo]"
 ```
 
-The standalone installer also offers the geocoding extras interactively.
+`install-service.sh` installs the geocoding extras by default; pass `--no-extras` to skip them.
 
 ### Optional Sender-Language Detection
 
