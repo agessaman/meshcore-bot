@@ -71,8 +71,12 @@ class BotIntegration:
     CIRCUIT_BREAKER_THRESHOLD = 3
     CIRCUIT_BREAKER_COOLDOWN_SEC = 60
 
-    # How often (seconds) the drain thread flushes the write queue
-    DRAIN_INTERVAL = 0.5
+    # Default for [Web_Viewer] packet_stream_flush_interval_seconds: how often the
+    # drain thread commits queued packet_stream rows. The realtime page polls
+    # every 2 s, so flushing faster only adds commits.
+    DRAIN_INTERVAL = 2.0
+    DRAIN_INTERVAL_MIN = 0.1
+    DRAIN_INTERVAL_MAX = 60.0
 
     # Bounded packet_stream write queue: producers block up to this long before drop/retry.
     _WRITE_QUEUE_PUT_TIMEOUT_SEC = 5.0
@@ -99,6 +103,8 @@ class BotIntegration:
             except (ValueError, TypeError, OSError):
                 maxsize = 1000
         self._write_queue_maxsize = max(1, int(maxsize))
+        self.drain_interval = self._load_drain_interval()
+        self.packet_stream_enabled = self._get_bool_config("packet_stream_enabled", True)
         # Batched write queue: avoids a per-insert sqlite3.connect() round-trip (bounded for RAM).
         self._write_queue: queue.Queue = queue.Queue(maxsize=self._write_queue_maxsize)
         self._drain_stop = threading.Event()
@@ -116,7 +122,40 @@ class BotIntegration:
         if getattr(self, 'http_session', None):
             self.http_session.headers['X-Stream-Token'] = self._stream_token
         # Start background drain thread after table is confirmed to exist
-        self._start_drain_thread()
+        if self.packet_stream_enabled:
+            self._start_drain_thread()
+        else:
+            self.bot.logger.info(
+                "packet_stream writes are off ([Web_Viewer] packet_stream_enabled = false); "
+                "the realtime page and dashboard packet tiles will have no new packets"
+            )
+
+    def _get_bool_config(self, key: str, fallback: bool) -> bool:
+        """Read a bool from [Web_Viewer] config with a fallback for bad values."""
+        try:
+            return bool(self.bot.config.getboolean("Web_Viewer", key, fallback=fallback))
+        except (ValueError, TypeError, OSError, AttributeError):
+            return fallback
+
+    def _load_drain_interval(self) -> float:
+        """[Web_Viewer] packet_stream_flush_interval_seconds, clamped to a sane range."""
+        interval = self._get_float_config("packet_stream_flush_interval_seconds", self.DRAIN_INTERVAL)
+        return min(self.DRAIN_INTERVAL_MAX, max(self.DRAIN_INTERVAL_MIN, interval))
+
+    def _tune_write_connection(self, conn) -> None:
+        """Give a packet_stream write connection the database's synchronous level.
+
+        These connections bypass DBManager, and SQLite's default FULL would
+        sync the WAL on every commit.
+        """
+        import sqlite3
+
+        try:
+            level = self.bot.db_manager.sqlite_synchronous(for_web_viewer=True)
+        except Exception:
+            return
+        with suppress(sqlite3.OperationalError):
+            conn.execute(f"PRAGMA synchronous={level}")
 
     def _get_float_config(self, key: str, fallback: float) -> float:
         """Read float from [Web_Viewer] config with sane fallback."""
@@ -352,7 +391,7 @@ class BotIntegration:
         return supported
 
     def _start_drain_thread(self) -> None:
-        """Start the background thread that flushes the write queue every DRAIN_INTERVAL seconds."""
+        """Start the background thread that flushes the write queue every drain_interval seconds."""
         self._drain_thread = threading.Thread(
             target=self._drain_loop,
             name="packet-stream-drain",
@@ -361,9 +400,9 @@ class BotIntegration:
         self._drain_thread.start()
 
     def _drain_loop(self) -> None:
-        """Background loop: flush the write queue every DRAIN_INTERVAL seconds."""
+        """Background loop: flush the write queue every drain_interval seconds."""
         while not self._drain_stop.is_set():
-            self._drain_stop.wait(timeout=self.DRAIN_INTERVAL)
+            self._drain_stop.wait(timeout=self.drain_interval)
             self._flush_write_queue()
 
     def _requeue_rows(self, rows: list[tuple]) -> None:
@@ -399,6 +438,7 @@ class BotIntegration:
             for attempt in range(max_retries):
                 try:
                     with closing(sqlite3.connect(str(db_path), timeout=self.sqlite_connect_timeout_sec)) as conn:
+                        self._tune_write_connection(conn)
                         if self._packet_stream_has_dim_columns(conn):
                             conn.executemany(
                                 'INSERT INTO packet_stream '
@@ -442,6 +482,8 @@ class BotIntegration:
         path_len, bytes_per_hop) values for packet rows; command/message/other
         row types pass None and store NULLs.
         """
+        if not getattr(self, "packet_stream_enabled", True):
+            return
         item = (time.time(), data_json, row_type, *(dims or (None, None, None, None)))
         try:
             self._write_queue.put(item, timeout=self._WRITE_QUEUE_PUT_TIMEOUT_SEC)
@@ -681,6 +723,7 @@ class BotIntegration:
                     conn.execute(
                         f"PRAGMA busy_timeout={int(self.sqlite_connect_timeout_sec * 1000)}"
                     )
+                    self._tune_write_connection(conn)
                     yield conn
 
             deleted_count = delete_timestamp_rows_in_chunks(

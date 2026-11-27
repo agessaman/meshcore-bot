@@ -16,6 +16,8 @@ semantic versioning.
 
 ### Changed
 
+- Fewer SD-card writes. Every database helper opens a connection per call, and when the last connection to a WAL database closes, SQLite checkpoints the WAL into the database, syncs both, and deletes the `-wal` file, so most commits paid for a full checkpoint. The bot and the web viewer now each keep one idle connection open, so checkpoints run only when the WAL fills, and WAL connections use `synchronous = NORMAL`, which syncs at checkpoints instead of on every commit; a power cut can lose the last few seconds of writes but cannot corrupt the database. On a Raspberry Pi SD card, 500 metadata writes went from 3,855 write requests and 15.7 MB to 42 requests and 6.3 MB. `[Bot]`/`[Web_Viewer] sqlite_synchronous` overrides the level (rollback-journal modes keep `FULL`).
+- packet_stream rows are committed every 2 seconds instead of every half second, matching the realtime page's 2-second poll; `[Web_Viewer] packet_stream_flush_interval_seconds` sets it, and `packet_stream_enabled = false` stops packet_stream writes for installs that don't use the viewer. A heard echo of a command reply now updates its packet_stream row in one commit instead of two.
 - Web viewer libraries updated: Bootstrap 5.3.9, Chart.js 4.6.1, socket.io-client 4.8.4, Font Awesome 7.3.1, js-sha256 1.0.0, vis-network 10.1.5 and MapLibre GL 6.17.0. MapLibre GL 6 ships only ES modules, so the mesh page now loads it through `static/js/maplibre_loader.mjs`, which exposes it to the Leaflet bridge; the dark vector basemap switches in once it loads.
 
 ### Fixed

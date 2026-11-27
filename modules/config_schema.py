@@ -168,6 +168,7 @@ SECTIONS: dict[str, SectionMeta] = {
         "sqlite_busy_timeout_ms": KeyMeta(type="int", default="30000"),
         "sqlite_foreign_keys": KeyMeta(type="bool", default="true"),
         "sqlite_journal_mode": KeyMeta(default="WAL"),
+        "sqlite_synchronous": KeyMeta(),
         # Advanced tuning knobs the code reads but config.ini.example does not
         # show. Listed here so unknown-key validation doesn't flag them; see
         # tests/test_config_schema_sync.py::test_every_config_read_key_is_known.
@@ -203,10 +204,13 @@ SECTIONS: dict[str, SectionMeta] = {
         # Advanced; read by the viewer but not shown in config.ini.example.
         "cors_allowed_origins": KeyMeta(),
         "packet_stream_write_queue_max": KeyMeta(type="int", default="1000"),
+        "packet_stream_flush_interval_seconds": KeyMeta(type="float", default="2"),
+        "packet_stream_enabled": KeyMeta(type="bool", default="true"),
         "restore_max_bytes": KeyMeta(type="int"),
         "sqlite_busy_timeout_ms": KeyMeta(type="int", default="60000"),
         "sqlite_foreign_keys": KeyMeta(type="bool", default="true"),
         "sqlite_journal_mode": KeyMeta(default="WAL"),
+        "sqlite_synchronous": KeyMeta(),
         "mesh_graph_cache_seconds": KeyMeta(type="int", default="30"),
         # Dashboard snapshot refresher — moves the landing page's aggregate
         # queries off the request path and accumulates trends that outlive the

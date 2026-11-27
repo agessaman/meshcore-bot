@@ -21,7 +21,12 @@ from .db_retention import (
     delete_timestamp_rows_in_chunks,
     retention_delete_settings,
 )
-from .security_utils import VALID_JOURNAL_MODES
+from .security_utils import VALID_JOURNAL_MODES, VALID_SYNCHRONOUS_MODES
+
+# Once a long-lived connection keeps the WAL open, the -wal file stays at its
+# high-water mark. A bulk delete can grow it far past the 4 MB a normal
+# checkpoint cycle uses, so cap what it keeps after a checkpoint resets it.
+WAL_SIZE_LIMIT_BYTES = 16 * 1024 * 1024
 
 
 def _adapt_sqlite_date(val: date) -> str:
@@ -77,8 +82,13 @@ class DBManager:
         self._journal_mode_lock = threading.Lock()
         self._journal_mode_initialized: set[str] = set()
         self._journal_mode_warned: set[str] = set()
+        self._synchronous_warned: set[str] = set()
         self._corruption_lock = threading.Lock()
         self._corruption_handled = False
+        # An idle connection that keeps the WAL open for the life of the
+        # process; see _ensure_wal_keeper.
+        self._wal_keeper: Optional[sqlite3.Connection] = None
+        self._wal_keeper_lock = threading.Lock()
         self._init_database()
 
     def _init_database(self) -> None:
@@ -595,10 +605,12 @@ class DBManager:
                     f"Invalid journal_mode {journal_mode!r} in [{section}], falling back to WAL"
                 )
             journal_mode = "WAL"
+        synchronous = self.sqlite_synchronous(for_web_viewer=for_web_viewer, journal_mode=journal_mode)
 
         try:
             conn.execute(f"PRAGMA foreign_keys={'ON' if foreign_keys else 'OFF'}")
             conn.execute(f"PRAGMA busy_timeout={busy_timeout_ms}")
+            conn.execute(f"PRAGMA synchronous={synchronous}")
         except sqlite3.OperationalError:
             # Connection-local tuning is best-effort when the database is busy.
             pass
@@ -612,21 +624,95 @@ class DBManager:
                 conn.execute(f"PRAGMA journal_mode={journal_mode}")
             return
 
+        with suppress(sqlite3.OperationalError):
+            conn.execute(f"PRAGMA journal_size_limit={WAL_SIZE_LIMIT_BYTES}")
+
         # Tracked per section: [Bot] and [Web_Viewer] are read by different
         # callers against this same database, so one must not starve the other.
-        if section in self._journal_mode_initialized:
-            return
+        if section not in self._journal_mode_initialized:
+            # The first successful connection initializes persistent WAL mode.
+            # If SQLite is locked, leave the section clear so a later connection retries.
+            with self._journal_mode_lock:
+                if section not in self._journal_mode_initialized:
+                    try:
+                        conn.execute(f"PRAGMA journal_mode={journal_mode}")
+                    except sqlite3.OperationalError:
+                        return
+                    self._journal_mode_initialized.add(section)
 
-        # The first successful connection initializes persistent WAL mode.
-        # If SQLite is locked, leave the section clear so a later connection retries.
-        with self._journal_mode_lock:
-            if section in self._journal_mode_initialized:
+        self._ensure_wal_keeper()
+
+    def sqlite_synchronous(self, for_web_viewer: bool = False, journal_mode: Optional[str] = None) -> str:
+        """Return the ``PRAGMA synchronous`` level for a connection.
+
+        ``[Bot]``/``[Web_Viewer] sqlite_synchronous`` wins when it is valid.
+        Otherwise WAL gets NORMAL: a commit no longer waits for the WAL to reach
+        the disk, only a checkpoint does, and a power cut can lose the last
+        commits but never corrupts the database. Rollback-journal modes keep
+        SQLite's FULL, since NORMAL there can corrupt on power loss.
+        """
+        config = getattr(self.bot, "config", None)
+        section = "Web_Viewer" if for_web_viewer else "Bot"
+        configured = ""
+        try:
+            if config is not None:
+                configured = str(config.get(section, "sqlite_synchronous", fallback="")).strip().upper()
+                if journal_mode is None:
+                    journal_mode = config.get(section, "sqlite_journal_mode", fallback="WAL")
+        except Exception:
+            configured = ""
+        if journal_mode is None:
+            journal_mode = "WAL"
+        if configured in VALID_SYNCHRONOUS_MODES:
+            return configured
+        if configured and section not in self._synchronous_warned:
+            self._synchronous_warned.add(section)
+            self.logger.warning(
+                f"Invalid sqlite_synchronous {configured!r} in [{section}], using the default"
+            )
+        return "NORMAL" if str(journal_mode).strip().upper() == "WAL" else "FULL"
+
+    def _ensure_wal_keeper(self) -> None:
+        """Hold one idle connection open so closing the others never checkpoints.
+
+        Every helper here opens a connection per call. When the last connection
+        to a WAL database closes, SQLite checkpoints the WAL into the database,
+        syncs both, and deletes the -wal file, so each commit made with nothing
+        else open paid for a full checkpoint. On a Raspberry Pi SD card, 500
+        set_metadata calls went from 3,855 write requests (15.7 MB) to 42
+        (6.3 MB) with this keeper and synchronous=NORMAL together.
+
+        The keeper reads once so it maps the WAL index, then sits idle with no
+        transaction open, so it never blocks writers or checkpoints.
+        """
+        if self._wal_keeper is not None or str(self.db_path) == ":memory:":
+            return
+        with self._wal_keeper_lock:
+            if self._wal_keeper is not None:
                 return
             try:
-                conn.execute(f"PRAGMA journal_mode={journal_mode}")
-            except sqlite3.OperationalError:
+                keeper = sqlite3.connect(str(self.db_path), timeout=30.0, check_same_thread=False)
+            except sqlite3.Error as e:
+                self.logger.debug(f"Could not open WAL keeper connection: {e}")
                 return
-            self._journal_mode_initialized.add(section)
+            try:
+                keeper.execute("SELECT 1 FROM sqlite_master LIMIT 1").fetchall()
+            except sqlite3.Error as e:
+                keeper.close()
+                self.logger.debug(f"Could not open WAL keeper connection: {e}")
+                return
+            self._wal_keeper = keeper
+
+    def close(self) -> None:
+        """Release the WAL keeper so the last connection's close checkpoints the WAL.
+
+        Safe to call more than once; a later connection opens a new keeper.
+        """
+        with self._wal_keeper_lock:
+            keeper, self._wal_keeper = self._wal_keeper, None
+        if keeper is not None:
+            with suppress(sqlite3.Error):
+                keeper.close()
 
     def _request_shutdown(self) -> None:
         """Stop the process so the service manager restarts into startup recovery.
@@ -777,9 +863,11 @@ class AsyncDBManager:
         value = await self.bot.async_db_manager.get_metadata('key')
     """
 
-    def __init__(self, db_path: str, logger: Any) -> None:
+    def __init__(self, db_path: str, logger: Any, synchronous: Optional[str] = None) -> None:
         self.db_path = db_path
         self.logger = logger
+        # The level DBManager resolved for this database; None keeps SQLite's default.
+        self.synchronous = synchronous if synchronous in VALID_SYNCHRONOUS_MODES else None
 
     @asynccontextmanager
     async def connection(self) -> AsyncGenerator[Any, None]:
@@ -790,6 +878,9 @@ class AsyncDBManager:
             raise RuntimeError("aiosqlite is required for AsyncDBManager. Run: pip install aiosqlite")
         async with aiosqlite.connect(self.db_path, timeout=30.0) as conn:
             conn.row_factory = aiosqlite.Row
+            if self.synchronous:
+                with suppress(sqlite3.OperationalError):
+                    await conn.execute(f"PRAGMA synchronous={self.synchronous}")
             yield conn
 
     async def get_metadata(self, key: str) -> Optional[str]:
