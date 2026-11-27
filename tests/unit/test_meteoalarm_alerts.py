@@ -25,12 +25,14 @@ from modules.weather_providers.alerts_meteoalarm import (
     LOCATIONS_URL,
     MIN_REQUEST_INTERVAL,
     PAST_DAYS,
+    RATE_LIMIT_FLOOR,
     WINDOW_TTL_PAST,
     WINDOW_TTL_TODAY,
     MeteoalarmAlertsProvider,
     geometry_contains,
     parse_cap,
 )
+from modules.weather_providers.base import Coverage
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "meteoalarm"
 NO_URL = f"{DEFAULT_BASE_URL}/collections/warnings/locations/NO"
@@ -374,7 +376,7 @@ def test_an_html_error_body_does_not_raise():
     routes = {url: _Response(500, text="<html>Server Error</html>") for url in _routes()}
     provider, _session_, host, _clock = _provider(routes)
 
-    assert provider.covers(LAT, LON) is False
+    assert provider.coverage_for(LAT, LON) is Coverage.COVERED
     assert provider.summary(LAT, LON, 130) is None
     assert asyncio.run(provider.send_full_list(SimpleNamespace(content="x", sender_id="u"), LAT, LON)) is True
     assert _warnings(host)
@@ -532,8 +534,9 @@ def test_a_rejected_token_logs_one_warning_without_the_token():
     routes[LOCATIONS_URL] = _Response(401)
     provider, _session_, host, _clock = _provider(routes, token="s3cr3t-token")
 
-    assert provider.covers(LAT, LON) is False
-    assert provider.covers(LAT, LON) is False
+    # Unknown coverage inside Europe: possibly covered, so the path goes on.
+    assert provider.coverage_for(LAT, LON) is Coverage.COVERED
+    assert provider.coverage_for(FAR_LAT, FAR_LON) is Coverage.NOT_COVERED
     warnings = _warnings(host)
     assert len(warnings) == 1
     assert "rejected the token" in warnings[0]
@@ -545,17 +548,17 @@ def test_a_failure_streak_logs_once_and_resets_on_success():
     routes[LOCATIONS_URL] = _Response(500, text="<html>Server Error</html>")
     provider, _session_, host, clock = _provider(routes)
 
-    assert provider.covers(LAT, LON) is False
-    assert provider.covers(LAT, LON) is False
+    assert provider.coverage_for(LAT, LON) is Coverage.COVERED
+    assert provider.coverage_for(LAT, LON) is Coverage.COVERED
     assert len(_warnings(host)) == 1
 
     routes[LOCATIONS_URL] = _Response(200, _json("locations.json"))
-    assert provider.covers(LAT, LON) is True
+    assert provider.coverage_for(LAT, LON) is Coverage.COVERED
 
     # Past the day-long cache, so the next failure is a fresh streak.
     clock.advance(LOCATIONS_TTL + 60)
     routes[LOCATIONS_URL] = _Response(500, text="<html>Server Error</html>")
-    assert provider.covers(LAT, LON) is False
+    assert provider.coverage_for(LAT, LON) is Coverage.COVERED
     assert len(_warnings(host)) == 2
 
 
@@ -582,14 +585,20 @@ def test_the_locations_list_is_cached_for_a_day():
     assert session.count(LOCATIONS_URL) == 2
 
 
-def test_a_cap_document_is_cached_until_it_expires():
+def test_a_cap_document_is_cached_for_the_window_ttl_not_until_it_expires():
     provider, session, _host_, clock = _provider()
     provider.summary(LAT, LON, 130)
     assert session.count(CAP_GALE) == 1
 
-    clock.advance(WINDOW_TTL_TODAY + 60)
+    clock.advance(WINDOW_TTL_TODAY - 60)
     provider.summary(LAT, LON, 130)
     assert session.count(CAP_GALE) == 1
+
+    # The document expires in 2026-11-28, but a later Cancel or Update must
+    # not hide behind it, so the cache stops at the window TTL.
+    clock.advance(120)
+    provider.summary(LAT, LON, 130)
+    assert session.count(CAP_GALE) == 2
 
 
 # --- the token --------------------------------------------------------------
@@ -675,6 +684,212 @@ def test_the_locations_list_is_fetched_without_a_token_too():
 def test_a_failing_fetch_never_raises_into_the_command():
     routes = {url: _Response(500, text="<html>Server Error</html>") for url in _routes()}
     provider, _session_, _host_, _clock = _provider(routes, token="s3cr3t-token")
-    assert provider.covers(LAT, LON) is False
+    assert provider.coverage_for(LAT, LON) is Coverage.COVERED
     assert provider.summary(LAT, LON, 130) is None
     assert asyncio.run(provider.send_full_list(SimpleNamespace(content="x", sender_id="u"), LAT, LON)) is True
+
+
+# --- unavailable is not "no alerts" -----------------------------------------
+
+
+def test_an_unavailable_fetch_replies_with_the_error_not_no_alerts():
+    routes = _routes()
+    routes[NO_URL] = _Response(500, text="<html>Server Error</html>")
+    provider, _session_, host, _clock = _provider(routes)
+
+    assert provider.summary(LAT, LON, 130) is None
+    assert asyncio.run(provider.send_full_list(SimpleNamespace(content="x", sender_id="u"), LAT, LON)) is True
+    assert host.send_response.call_args.args[1] == "Error fetching weather alerts"
+
+
+def test_a_429_pause_replies_with_the_error_when_nothing_is_cached():
+    routes = _routes()
+    routes[NO_URL] = _Response(429, text="<html>Too Many Requests</html>", headers={"Retry-After": "60"})
+    provider, _session_, host, _clock = _provider(routes)
+
+    assert provider.summary(LAT, LON, 130) is None
+    assert asyncio.run(provider.send_full_list(SimpleNamespace(content="x", sender_id="u"), LAT, LON)) is True
+    assert host.send_response.call_args.args[1] == "Error fetching weather alerts"
+
+
+# --- coverage is a tri-state ------------------------------------------------
+
+
+def test_coverage_is_possibly_covered_inside_europe_when_the_list_fails():
+    routes = _routes()
+    routes[LOCATIONS_URL] = _Response(500, text="<html>Server Error</html>")
+    provider, _session_, _host_, _clock = _provider(routes)
+
+    assert provider.coverage_for(LAT, LON) is Coverage.COVERED
+    assert provider.coverage_for(FAR_LAT, FAR_LON) is Coverage.NOT_COVERED
+
+
+def test_a_stale_locations_list_still_answers_coverage():
+    provider, _session_, _host_, clock = _provider()
+    assert provider.coverage_for(LAT, LON) is Coverage.COVERED
+
+    provider.session.routes[LOCATIONS_URL] = _Response(500, text="<html>Server Error</html>")
+    clock.advance(LOCATIONS_TTL + 60)
+
+    # The stale list says NO covers the point and that 40 N, 16.4 E is in none.
+    assert provider.coverage_for(LAT, LON) is Coverage.COVERED
+    assert provider.coverage_for(40.0, 16.4) is Coverage.NOT_COVERED
+
+
+# --- summary trimming -------------------------------------------------------
+
+
+def test_the_summary_trims_a_first_line_that_is_too_long():
+    provider, _session_, host, _clock = _provider()
+    summary = provider.summary(LAT, LON, 12)
+
+    assert summary.count == 2
+    assert "\u2026" in summary.text
+    assert host._count_display_width(summary.text) <= 12
+
+
+# --- failure streaks clear on success ---------------------------------------
+
+
+def test_the_auth_streak_clears_on_the_next_success():
+    routes = _routes()
+    routes[LOCATIONS_URL] = _Response(401)
+    provider, _session_, host, _clock = _provider(routes)
+
+    assert provider.coverage_for(LAT, LON) is Coverage.COVERED
+    assert len(_warnings(host)) == 1
+
+    routes[LOCATIONS_URL] = _Response(200, _json("locations.json"))
+    assert provider.coverage_for(LAT, LON) is Coverage.COVERED
+
+    routes[LOCATIONS_URL] = _Response(401)
+    provider._locations = None
+    assert provider.coverage_for(LAT, LON) is Coverage.COVERED
+    assert len(_warnings(host)) == 2
+
+
+def test_the_http_streak_clears_on_the_next_success():
+    routes = _routes()
+    routes[LOCATIONS_URL] = Mock(side_effect=requests.ConnectionError("down"))
+    provider, session, host, _clock = _provider(routes)
+
+    assert provider.coverage_for(LAT, LON) is Coverage.COVERED
+    assert len(_warnings(host)) == 1
+
+    session.routes[LOCATIONS_URL] = _Response(200, _json("locations.json"))
+    assert provider.coverage_for(LAT, LON) is Coverage.COVERED
+
+    session.routes[LOCATIONS_URL] = Mock(side_effect=requests.ConnectionError("down"))
+    provider._locations = None
+    assert provider.coverage_for(LAT, LON) is Coverage.COVERED
+    assert len(_warnings(host)) == 2
+
+
+# --- an outline that cannot be fetched --------------------------------------
+
+
+def test_a_feature_whose_outline_cannot_be_fetched_is_skipped():
+    routes = _routes()
+    routes[GEOM_GALE] = _Response(500, text="<html>Server Error</html>")
+    routes[GEOM_GALE_NO] = _Response(500, text="<html>Server Error</html>")
+    provider, _session_, host, _clock = _provider(routes)
+
+    summary = provider.summary(LAT, LON, 130)
+
+    # The bbox hit is not proof, so the gale alert is dropped, not kept.
+    assert summary.count == 1
+    assert "Gale" not in summary.text
+    assert any("outline" in str(call) for call in host.logger.debug.call_args_list)
+
+
+# --- pagination metadata ----------------------------------------------------
+
+
+def test_a_non_integer_total_pages_is_treated_as_one_page():
+    page = dict(_json("NO_page1.json"))
+    page["metadata"] = {"page_size": 100, "total_count": 9, "total_pages": "many", "page": 1}
+
+    def route(params):
+        if not str(params.get("datetime", "")).startswith(TODAY):
+            return _Response(204)
+        return _Response(200, page)
+
+    routes = _routes()
+    routes[NO_URL] = route
+    provider, session, _host_, _clock = _provider(routes)
+
+    assert provider.summary(LAT, LON, 130).count == 2
+    assert session.count(NO_URL) == 4
+
+
+def test_the_page_cap_logs_once_at_debug():
+    page = dict(_json("NO_page1.json"))
+    page["metadata"] = {"page_size": 100, "total_count": 900, "total_pages": 9, "page": 1}
+
+    def route(params):
+        if not str(params.get("datetime", "")).startswith(TODAY):
+            return _Response(204)
+        return _Response(200, page)
+
+    routes = _routes()
+    routes[NO_URL] = route
+    provider, session, host, _clock = _provider(routes)
+
+    provider.summary(LAT, LON, 130)
+
+    assert session.count(NO_URL) == 4 + 4
+    capped = [call for call in host.logger.debug.call_args_list if "capped at 5" in str(call)]
+    assert len(capped) == 1
+
+
+# --- the rate limit budget --------------------------------------------------
+
+
+def test_a_429_without_retry_after_uses_the_rate_limit_reset():
+    routes = _routes()
+    routes[NO_URL] = _Response(
+        429, text="<html>Too Many Requests</html>", headers={"X-RateLimit-Reset": "90"}
+    )
+    provider, session, _host_, clock = _provider(routes)
+
+    provider.summary(LAT, LON, 130)
+    assert session.count(NO_URL) == 1
+
+    clock.advance(89)
+    provider.summary(LAT, LON, 130)
+    assert session.count(NO_URL) == 1
+
+    # The reset has passed and the gateway answers again.
+    routes[NO_URL] = _country_page
+    clock.advance(2)
+    provider.summary(LAT, LON, 130)
+    assert session.count(NO_URL) == 5
+
+
+def test_a_low_remaining_budget_serves_cache_until_the_reset():
+    routes = _routes()
+    routes[LOCATIONS_URL] = _Response(
+        200, _json("locations.json"),
+        headers={"X-RateLimit-Remaining": str(RATE_LIMIT_FLOOR), "X-RateLimit-Reset": "600"},
+    )
+    provider, session, _host_, clock = _provider(routes)
+
+    # The budget is at the floor, so no window request goes out at all.
+    assert provider.summary(LAT, LON, 130) is None
+    assert session.count(NO_URL) == 0
+
+    clock.advance(601)
+    assert provider.summary(LAT, LON, 130).count == 2
+    assert session.count(NO_URL) == 4
+
+
+def test_a_healthy_remaining_budget_keeps_refreshing():
+    routes = _routes()
+    routes[LOCATIONS_URL] = _Response(
+        200, _json("locations.json"),
+        headers={"X-RateLimit-Remaining": "42", "X-RateLimit-Reset": "600"},
+    )
+    provider, session, _host_, _clock = _provider(routes)
+
+    assert provider.summary(LAT, LON, 130).count == 2
+    assert session.count(NO_URL) == 4

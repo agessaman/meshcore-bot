@@ -53,7 +53,7 @@ from ..weather_providers import (
 from ..weather_providers.alerts_meteoalarm import DEFAULT_BASE_URL as DEFAULT_METEOALARM_API_URL
 from ..weather_providers.alerts_meteoalarm import MeteoalarmAlertsProvider
 from ..weather_providers.alerts_nws import NwsAlertsProvider
-from ..weather_providers.base import AlertsProvider, ForecastReply, WeatherUnits
+from ..weather_providers.base import AlertsProvider, Coverage, ForecastReply, WeatherUnits
 from ..weather_providers.noaa import (
     ERROR_FETCHING_DATA as _ERROR_FETCHING_DATA,
 )
@@ -110,6 +110,7 @@ _PROVIDER_LABELS = {
 }
 _ALERT_PROVIDER_LABELS = {
     "nws": "NWS (US)",
+    "meteoalarm": "Meteoalarm (Europe)",
 }
 
 _P = ParamSpec("_P")
@@ -203,6 +204,14 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
          ],
          "default": "auto", "help": "API used for weather alerts, chosen separately from the forecast provider. "
                                     "Shared weather setting."},
+        {"key": "meteoalarm_api_url", "label": "Meteoalarm API URL", "type": "str", "section": "Weather",
+         "default": DEFAULT_METEOALARM_API_URL,
+         "help": "Only with alerts_provider = meteoalarm. Leave the MeteoGate default unless you hold a "
+                 "Meteoalarm Direct re-user token. Shared weather setting."},
+        {"key": "meteoalarm_token", "label": "Meteoalarm API token", "type": "password", "section": "Weather",
+         "default": "",
+         "help": "Only with alerts_provider = meteoalarm. Create one in the MeteoGate developer portal. "
+                 "Shared weather setting."},
         {"key": "openmeteo_fallback", "label": "Open-Meteo outside NWS coverage", "type": "bool", "section": "Weather",
          "default": False,
          "help": "Only with the NOAA provider: answer wx from Open-Meteo for places NWS does not cover "
@@ -944,7 +953,9 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         if lat is None:
             return True
 
-        if not self.alerts_provider.covers(lat, lon):
+        # Coverage can do HTTP and sleep, so it runs on a worker thread.
+        coverage = await self._run_sync_provider_async(self.alerts_provider.coverage_for, lat, lon)
+        if coverage is not Coverage.COVERED:
             await self.send_response(
                 message, self.translate(f'{self.provider.translation_ns}.source_option_not_available')
             )
@@ -1882,7 +1893,8 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
 
         Returns whether every message was sent; a refused first message ends the list.
         """
-        return await self._nws.send_full_list(message, lat, lon)
+        provider = self.alerts_provider if self.alerts_provider is not None else self._nws
+        return await provider.send_full_list(message, lat, lon)
 
     def abbreviate_city_name(self, city: str) -> str:
         """Abbreviate city names for compact display (e.g., Seattle -> SEA)"""

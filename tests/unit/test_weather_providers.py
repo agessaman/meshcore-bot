@@ -515,3 +515,91 @@ def test_the_help_text_credits_meteoalarm_only_when_it_is_the_alerts_provider():
 
     without = _wx({"weather_provider": "noaa"})
     assert "MeteoAlarm" not in without.get_help_text()
+
+
+# --- the alerts option reaches the configured provider ----------------------
+
+
+def _meteoalarm_command():
+    """A NOAA command whose alerts provider is Meteoalarm on a fake session."""
+    from tests.unit.test_meteoalarm_alerts import _Clock, _routes, _Session
+
+    cmd = _wx({"weather_provider": "noaa", "alerts_provider": "meteoalarm",
+               "meteoalarm_token": "s3cr3t-token"})
+    provider = cmd.alerts_provider
+    assert isinstance(provider, MeteoalarmAlertsProvider)
+    provider.session = _Session(_routes())
+    clock = _Clock()
+    provider._clock = lambda: clock.monotonic
+    provider._utcnow = lambda: clock.wall
+    provider._wait = clock.advance
+
+    cmd.record_execution = Mock()
+    cmd.send_response = AsyncMock(return_value=True)
+    cmd._pace_reply = AsyncMock()
+    cmd.get_max_message_length = Mock(return_value=130)
+    cmd.provider.forecast = Mock(return_value=ForecastReply(text="BODY"))
+    return cmd, provider
+
+
+def test_the_alerts_option_lists_meteoalarm_alerts():
+    cmd, _provider = _meteoalarm_command()
+    message = SimpleNamespace(content="wx 58.43,5.95 alerts", sender_id="u1")
+
+    assert asyncio.run(cmd.execute(message)) is True
+
+    texts = [call.args[1] for call in cmd.send_response.call_args_list]
+    assert len(texts) == 2
+    assert texts[0].startswith("1/2 \U0001f7e0 Wind")
+    assert texts[1].startswith("2/2 \U0001f7e1 Gale")
+    assert not any("No weather alerts" in text for text in texts)
+
+
+def test_the_alerts_option_runs_coverage_off_the_event_loop():
+    import threading
+
+    cmd, provider = _meteoalarm_command()
+    seen = []
+    real = provider.coverage_for
+
+    def coverage_for(lat, lon):
+        seen.append(threading.current_thread())
+        return real(lat, lon)
+
+    provider.coverage_for = coverage_for
+    message = SimpleNamespace(content="wx 58.43,5.95 alerts", sender_id="u1")
+
+    assert asyncio.run(cmd.execute(message)) is True
+
+    assert seen
+    assert all(thread is not threading.main_thread() for thread in seen)
+
+
+def test_the_alerts_option_replies_when_meteoalarm_cannot_fetch():
+    from tests.unit.test_meteoalarm_alerts import NO_URL, _Response
+
+    cmd, provider = _meteoalarm_command()
+    provider.session.routes[NO_URL] = _Response(500, text="<html>Server Error</html>")
+    message = SimpleNamespace(content="wx 58.43,5.95 alerts", sender_id="u1")
+
+    assert asyncio.run(cmd.execute(message)) is True
+
+    texts = [call.args[1] for call in cmd.send_response.call_args_list]
+    assert texts == ["Error fetching weather alerts"]
+
+
+# --- settings schema --------------------------------------------------------
+
+
+def test_the_settings_schema_lists_the_meteoalarm_settings():
+    from modules.commands.wx_command import _ALERT_PROVIDER_LABELS
+
+    assert _ALERT_PROVIDER_LABELS["meteoalarm"] == "Meteoalarm (Europe)"
+
+    fields = {field["key"]: field for field in WxCommand.settings_schema}
+    assert fields["meteoalarm_api_url"]["type"] == "str"
+    assert fields["meteoalarm_api_url"]["section"] == "Weather"
+    assert fields["meteoalarm_api_url"]["default"] == "https://api.meteogate.eu/warnings"
+    assert fields["meteoalarm_token"]["type"] == "password"
+    assert fields["meteoalarm_token"]["section"] == "Weather"
+    assert "meteoalarm" in [option["value"] for option in fields["alerts_provider"]["options"]]

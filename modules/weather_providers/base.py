@@ -127,6 +127,14 @@ class WeatherProvider(ABC):
         """
 
 
+class Coverage(str, Enum):
+    """Whether an alerts provider answers for a point, or cannot tell right now."""
+
+    COVERED = "covered"
+    NOT_COVERED = "not_covered"
+    UNKNOWN = "unknown"
+
+
 class AlertsProvider(ABC):
     """One alert source, chosen independently of the forecast source."""
 
@@ -135,6 +143,14 @@ class AlertsProvider(ABC):
 
     def __init__(self, host: ProviderHost):
         self.host = host
+
+    def coverage_for(self, lat: float, lon: float) -> Coverage:
+        """Whether this provider answers for a point, or cannot tell right now.
+
+        A provider whose coverage lookup can fail overrides this to say UNKNOWN
+        rather than claiming the point is not covered.
+        """
+        return Coverage.COVERED if self.covers(lat, lon) else Coverage.NOT_COVERED
 
     def covers(self, lat: float, lon: float) -> bool:
         """Whether this provider answers for a point (NWS: US only)."""
