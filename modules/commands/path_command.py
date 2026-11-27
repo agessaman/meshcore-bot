@@ -1024,13 +1024,21 @@ class PathCommand(BaseCommand):
         lines = response.split('\n')
         current_message = ""
         message_count = 0
+        continuation_end = self.translate('commands.path.continuation_end')
+        continuation_end_len = self._count_byte_length(continuation_end)
 
         for i, line in enumerate(lines):
             body_budget = first_segment_max if message_count == 0 else max_length
-            if self._count_byte_length(current_message) + self._count_byte_length(line) + 1 > body_budget:
+            # Any line but the last may be followed by a split, so leave room for
+            # the continuation marker; otherwise the marker pushes the chunk past
+            # the RF budget and the send layer splits it a second time.
+            reserve = continuation_end_len if i < len(lines) - 1 else 0
+            if (
+                self._count_byte_length(current_message) + self._count_byte_length(line) + 1 + reserve
+                > body_budget
+            ):
                 if current_message:
-                    if i < len(lines):
-                        current_message += self.translate('commands.path.continuation_end')
+                    current_message += continuation_end
                     out = (prefix + current_message.rstrip()) if message_count == 0 else current_message.rstrip()
                     await self.send_response(
                         message, out,
