@@ -277,14 +277,14 @@ def test_the_local_offset_is_estimated_from_the_longitude():
 def test_days_split_on_the_estimated_local_midnight():
     provider, _session_, _host_, _clock = _provider("tokyo")
 
-    days = provider._daily(_payload("tokyo"), TOKYO[1])
+    days = provider._daily(_payload("tokyo"), *TOKYO)
 
     # 21:00Z is 06:00 the next day in Tokyo, so the first local day starts there.
     assert days[0]["date"].isoformat() == "2026-11-28"
     assert days[0]["high"] >= days[0]["low"]
 
     provider, _session_, _host_, _clock = _provider("seattle")
-    days = provider._daily(_payload("seattle"), SEATTLE[1])
+    days = provider._daily(_payload("seattle"), *SEATTLE)
     # 21:00Z is 13:00 the same day in Seattle.
     assert days[0]["date"].isoformat() == "2026-11-27"
 
@@ -293,7 +293,7 @@ def test_the_daily_high_and_low_are_the_extremes_of_the_local_day():
     provider, _session_, _host_, _clock = _provider("egersund")
     payload = _payload("egersund")
 
-    days = provider._daily(payload, EGERSUND[1])
+    days = provider._daily(payload, *EGERSUND)
 
     first = days[0]
     temperatures = [

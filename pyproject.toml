@@ -32,6 +32,9 @@ dependencies = [
     "geopy>=2.3.0",
     "maidenhead>=1.4.0",
     "pytz>=2023.3",
+    # Real time zones for MET Norway; no armv7 wheel, so the marker keeps the
+    # armv7 Docker build working (the provider falls back to the longitude estimate).
+    "tzfpy>=2.1; platform_machine in \"x86_64 AMD64 aarch64 arm64\"",
     "aiohttp>=3.8.0",
     # 2.3.14+ required for send_msg_with_retry's ACK handling (see requirements.txt)
     "meshcore>=2.3.14",

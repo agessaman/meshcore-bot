@@ -19,9 +19,9 @@ with contact information (``[Weather] metno_user_agent`` overrides it),
 coordinates rounded to four decimals, ``Expires`` respected with
 ``If-Modified-Since`` on the next request, and a pause after a 429.
 
-The forecast carries no timezones and the project has no timezone database, so
-the local offset is estimated from the longitude (see
-:func:`local_offset_hours`). It is used only to label hours and to split days.
+The forecast carries no timezones, so the local offset comes from the point's
+IANA zone through :mod:`._tz` (real zones on 64-bit installs, the longitude
+estimate on armv7). It is used only to label hours and to split days.
 """
 
 from __future__ import annotations
@@ -36,6 +36,7 @@ from typing import Any, Optional
 from ..http_retry import make_retry_session
 from ..version_info import resolve_application_version
 from ..weather_common import _ARROWS_8, _COMPASS_16
+from ._tz import estimate_offset_hours, utc_offset_at
 from .base import Capability, ForecastReply, ProviderHost, WeatherProvider, WeatherUnits
 
 METNO_URL = "https://api.met.no/weatherapi/locationforecast/2.0/compact"
@@ -129,15 +130,14 @@ WMO_DESCRIPTIONS = {
 
 
 def local_offset_hours(lon: float) -> int:
-    """Estimate a location's UTC offset in hours from its longitude.
+    """The longitude estimate of a location's UTC offset in hours.
 
-    The forecast carries no timezones and the project has no timezone database,
-    so the offset is ``round(lon / 15)``: exact where civil time follows solar
-    time, and off by an hour or two where it does not (Spain, western China,
-    the edges of a wide zone). It is used only to label hours and to split the
-    series into local days, never to compare two instants.
+    ``round(lon / 15)``: exact where civil time follows solar time, and off by
+    an hour or two where it does not (Spain, western China, the edges of a wide
+    zone). The provider prefers the real zone from :mod:`._tz` and uses this
+    only when no zone is known.
     """
-    return int(round(lon / 15.0))
+    return estimate_offset_hours(lon)
 
 
 def _default_user_agent() -> str:
@@ -307,12 +307,12 @@ class MetNorwayProvider(WeatherProvider):
 
         try:
             if forecast_type == "tomorrow":
-                return ForecastReply(text=self._tomorrow(data, lon, max_length))
+                return ForecastReply(text=self._tomorrow(data, lat, lon, max_length))
             if forecast_type == "multiday":
-                return ForecastReply(text=self._multiday(data, lon, num_days))
+                return ForecastReply(text=self._multiday(data, lat, lon, num_days))
             if forecast_type == "hourly":
-                return ForecastReply(text=self._hourly(data, lon, max_length))
-            text = self._current(data, lon, max_length)
+                return ForecastReply(text=self._hourly(data, lat, lon, max_length))
+            text = self._current(data, lat, lon, max_length)
             if text is None:
                 return ForecastReply(
                     text=self.host.translate('commands.gwx.metno.error_fetching_api'), ok=False
@@ -513,13 +513,17 @@ class MetNorwayProvider(WeatherProvider):
                 break
         return chosen
 
-    def _daily(self, data: dict, lon: float) -> list:
+    def _offset(self, lat: float, lon: float, when_utc: datetime) -> timedelta:
+        """The point's UTC offset at *when_utc*, so a series can cross a DST change."""
+        return utc_offset_at(lat, lon, when_utc)
+
+    def _daily(self, data: dict, lat: float, lon: float) -> list:
         """Per local day: high, low, precipitation and the daytime symbol."""
-        offset = local_offset_hours(lon)
         days: dict = {}
         order: list = []
         for step in self._steps(data):
-            moment = _parse_time(step["time"]) + timedelta(hours=offset)
+            when = _parse_time(step["time"])
+            moment = when + self._offset(lat, lon, when)
             day = moment.date()
             if day not in days:
                 days[day] = {
@@ -610,7 +614,7 @@ class MetNorwayProvider(WeatherProvider):
             return 'today'
         return 'overnight' if local_hour < 12 else 'tonight'
 
-    def _current(self, data: dict, lon: float, max_length: int) -> Optional[str]:
+    def _current(self, data: dict, lat: float, lon: float, max_length: int) -> Optional[str]:
         """Current conditions for the default reply, with the details that fit."""
         steps = self._steps(data)
         if not steps:
@@ -622,8 +626,8 @@ class MetNorwayProvider(WeatherProvider):
             self.host.logger.warning("MET Norway response has no current temperature")
             return None
 
-        offset = local_offset_hours(lon)
-        local_hour = (_parse_time(step["time"]) + timedelta(hours=offset)).hour
+        when = _parse_time(step["time"])
+        local_hour = (when + self._offset(lat, lon, when)).hour
         base, is_day = self._step_symbol(step)
         condition = f"{self._emoji(base, is_day)}{self._description(base)} " if base else ""
         period_name = self.host.translate(f'commands.gwx.periods.{self._period_key(local_hour)}')
@@ -643,7 +647,7 @@ class MetNorwayProvider(WeatherProvider):
         if conditions and self.host._count_display_width(weather) < conditions_max_length:
             weather += " " + " ".join(conditions)
 
-        days = self._daily(data, lon)
+        days = self._daily(data, lat, lon)
         if days and days[0]["high"] is not None and days[0]["low"] is not None:
             high = self._temperature(days[0]["high"])
             low = self._temperature(days[0]["low"])
@@ -696,9 +700,9 @@ class MetNorwayProvider(WeatherProvider):
                 weather += precip
         return weather
 
-    def _tomorrow(self, data: dict, lon: float, max_length: int) -> str:
+    def _tomorrow(self, data: dict, lat: float, lon: float, max_length: int) -> str:
         """Tomorrow's forecast, with the details that fit the budget."""
-        days = self._daily(data, lon)
+        days = self._daily(data, lat, lon)
         if len(days) < 2 or days[1]["high"] is None or days[1]["low"] is None:
             return self.host.translate('commands.gwx.tomorrow_not_available')
         day = days[1]
@@ -725,9 +729,9 @@ class MetNorwayProvider(WeatherProvider):
                 return candidate
         return candidates[-1]
 
-    def _multiday(self, data: dict, lon: float, num_days: int) -> str:
+    def _multiday(self, data: dict, lat: float, lon: float, num_days: int) -> str:
         """One line per day from tomorrow, as Open-Meteo's multiday reply is."""
-        days = self._daily(data, lon)
+        days = self._daily(data, lat, lon)
         if len(days) < 2:
             return self.host.translate('commands.gwx.multiday_not_available', num_days=num_days)
 
@@ -759,14 +763,14 @@ class MetNorwayProvider(WeatherProvider):
             return self.host.translate('commands.gwx.multiday_not_available', num_days=num_days)
         return "\n".join(parts)
 
-    def _hourly(self, data: dict, lon: float, max_length: int) -> str:
+    def _hourly(self, data: dict, lat: float, lon: float, max_length: int) -> str:
         """The hours after the current one, packed into one reply."""
         steps = self._steps(data)
         if not steps:
             return self.host.translate('commands.gwx.hourly_not_available')
-        offset = local_offset_hours(lon)
         current = self._current_step(steps)
-        current_local = _parse_time(current["time"]) + timedelta(hours=offset)
+        current_when = _parse_time(current["time"])
+        current_local = current_when + self._offset(lat, lon, current_when)
         next_hour = current_local.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
 
         lines = []
@@ -774,7 +778,8 @@ class MetNorwayProvider(WeatherProvider):
             if not self._next(step, "next_1_hours"):
                 # The series turns six-hourly after about two and a half days.
                 continue
-            moment = _parse_time(step["time"]) + timedelta(hours=offset)
+            when = _parse_time(step["time"])
+            moment = when + self._offset(lat, lon, when)
             if moment < next_hour:
                 continue
             details = self._instant(step)
