@@ -11,7 +11,16 @@ import pytest
 import requests
 
 from tests.characterization.golden_util import assert_golden
-from tests.characterization.test_open_meteo_format import DAY, MODULE, UNITS, _frozen, _gwx, _load, _response
+from tests.characterization.test_open_meteo_format import (
+    DAY,
+    MODULE,
+    PROVIDER_MODULE,
+    UNITS,
+    _frozen,
+    _gwx,
+    _load,
+    _response,
+)
 
 
 def _run(cmd, data, forecast_type="default", *, budget=None, failure=None, num_days=7):
@@ -29,7 +38,9 @@ def _run(cmd, data, forecast_type="default", *, budget=None, failure=None, num_d
     if budget is not None:
         cmd.get_max_message_length = Mock(return_value=budget)
         kwargs["message"] = Mock()
-    with patch(f"{MODULE}.datetime", _frozen(DAY)), patch("requests.Session.get", get):
+    with patch(f"{MODULE}.datetime", _frozen(DAY)), patch(
+        f"{PROVIDER_MODULE}.datetime", _frozen(DAY)
+    ), patch("requests.Session.get", get):
         try:
             text = cmd.get_open_meteo_weather(
                 data["latitude"], data["longitude"], forecast_type=forecast_type, num_days=num_days, **kwargs

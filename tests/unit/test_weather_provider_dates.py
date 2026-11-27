@@ -110,7 +110,7 @@ def _gwx_run(forecast_type, num_days=7, data=None):
     # The server's clock says it is already Friday in UTC.
     with patch("requests.Session.get", get), patch(
         "modules.commands.alternatives.wx_international.datetime", _clock(SEATTLE_EVENING)
-    ):
+    ), patch("modules.weather_providers.openmeteo.datetime", _clock(SEATTLE_EVENING)):
         text = gwx.get_open_meteo_weather(47.6, -122.3, forecast_type=forecast_type, num_days=num_days)
     return text, get.call_args.kwargs["params"]
 
