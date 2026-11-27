@@ -192,6 +192,7 @@ class NoaaProvider(WeatherProvider):
     })
     max_days = WX_MULTIDAY_MAX_DAYS
     default_alerts_provider = "nws"
+    uses_command_session = True
 
     def __init__(
         self,

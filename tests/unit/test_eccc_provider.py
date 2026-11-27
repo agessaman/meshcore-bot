@@ -526,6 +526,34 @@ def test_the_period_label_follows_the_period_data():
     assert provider._period_key(3, has_high=False) == "overnight"
 
 
+@pytest.mark.parametrize("when", [
+    # 19:00 and midnight in Vancouver, when the clock alone would say night.
+    datetime(2026, 11, 27, 3, 0, tzinfo=timezone.utc),
+    datetime(2026, 11, 27, 8, 0, tzinfo=timezone.utc),
+])
+def test_the_label_follows_the_data_even_when_the_clock_disagrees(when):
+    provider, _session_, _host_, _clock = _provider("vancouver", now=lambda: when)
+
+    reply = provider.forecast(*VANCOUVER, "default", 7, 0, None)
+
+    # The first period names itself "Today", so the clock does not relabel it.
+    assert reply.text.startswith("Today: ")
+
+
+def test_a_calm_wind_is_named_rather_than_dropped():
+    payload = _payload("vancouver")
+    current = payload["features"][2]["properties"]["currentConditions"]
+    current["wind"]["speed"]["value"] = {"en": "calm", "fr": "calme"}
+    provider, _session_, host, _clock = _provider(
+        response=_Response(200, payload), units=WeatherUnits("celsius", "kmh", "mm")
+    )
+
+    reply = provider.forecast(*VANCOUVER, "default", 7, 0, None)
+
+    assert host.translate("commands.gwx.calm") in reply.text
+    assert "SE" not in reply.text
+
+
 # --- the budget -------------------------------------------------------------
 
 

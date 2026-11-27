@@ -8,6 +8,7 @@ import asyncio
 import re
 import threading
 import xml.dom.minidom  # noqa: F401  re-exported
+from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone  # noqa: F401  re-exported
 from typing import Any, Callable, Optional, ParamSpec, TypeVar
 
@@ -229,8 +230,9 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                  "ask for; leave empty to send the bot's own name and version. Shared weather setting."},
         {"key": "openmeteo_fallback", "label": "Open-Meteo outside NWS coverage", "type": "bool", "section": "Weather",
          "default": False,
-         "help": "Only with the NOAA provider: answer wx from Open-Meteo for places NWS does not cover "
-                 "(outside the US) instead of replying with an error. Shared weather setting."},
+         "help": "Only with the noaa or eccc provider: answer wx from Open-Meteo for places the provider "
+                 "does not cover (outside the US, or past 150 km from a Canadian city page) instead of "
+                 "replying with an error. Shared weather setting."},
         {"key": "default_city", "label": "Default city", "type": "str", "section": "Weather",
          "default": "", "help": "City used for a bare 'wx' when no location is given. Shared weather setting."},
         {"key": "default_state", "label": "Default state", "type": "str", "section": "Weather",
@@ -311,8 +313,9 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                 provider_name = 'noaa'
         self.provider_name = provider_name
 
-        # With NOAA, places outside NWS coverage can be answered from Open-Meteo instead.
-        fallback_enabled = provider_name == 'noaa' and bot.config.getboolean(
+        # A provider that can report no coverage (NOAA outside the US, Environment
+        # Canada past 150 km from a city page) can be answered from Open-Meteo.
+        fallback_enabled = provider_name in ('noaa', 'eccc') and bot.config.getboolean(
             'Weather', 'openmeteo_fallback', fallback=False
         )
 
@@ -395,7 +398,15 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             self.fallback_provider = make_provider(
                 'openmeteo', host=self, units=openmeteo_units, weather_model=openmeteo_model
             )
-            self.logger.info("openmeteo_fallback enabled: wx answers places outside NWS coverage from Open-Meteo")
+            if provider_name == 'noaa':
+                self.logger.info(
+                    "openmeteo_fallback enabled: wx answers places outside NWS coverage from Open-Meteo"
+                )
+            else:
+                self.logger.info(
+                    "openmeteo_fallback enabled: wx answers places outside Environment Canada "
+                    "coverage from Open-Meteo"
+                )
 
         if provider_name == 'openmeteo' and not self.pinned_provider:
             self.logger.info("Weather provider set to 'openmeteo': wx answers from Open-Meteo")
@@ -1151,8 +1162,10 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             # its own message and keeps the full budget.
             max_length = self.get_max_message_length(message) if message else 130
             # The shared session is the provider's, so only its own call is
-            # serialized; geocoding and the alert lookup run outside the lock.
-            with self._sync_provider_lock:
+            # serialized; geocoding and the alert lookup run outside the lock,
+            # and a provider with its own session does not take it at all.
+            lock = self._sync_provider_lock if self.provider.uses_command_session else nullcontext()
+            with lock:
                 result = self.provider.forecast(
                     lat, lon, forecast_type, num_days, self._count_display_width(location_prefix), message
                 )
@@ -1260,7 +1273,9 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             result = self.city_to_lat_lon(location)
             address_info = result[2] if len(result) == 3 else None
         self.logger.info(
-            "%s,%s is outside NWS coverage; answering wx from Open-Meteo", round(lat, 2), round(lon, 2)
+            "%s,%s is outside %s coverage; answering wx from Open-Meteo",
+            round(lat, 2), round(lon, 2),
+            "NWS" if self.provider_name == 'noaa' else "Environment Canada",
         )
         location_prefix = self._global_location_prefix(location, address_info or {}, geocode_result)
         max_length = self.get_max_message_length(message) if message else 130

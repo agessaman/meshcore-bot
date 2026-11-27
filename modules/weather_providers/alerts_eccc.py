@@ -176,7 +176,10 @@ class EcccAlertsProvider(PackedAlertsMixin, AlertsProvider):
             self._warn_once("json", "Environment Canada alerts returned no JSON")
             return [], True
         features = body.get("features") if isinstance(body, dict) else None
-        return [feature for feature in (features or []) if isinstance(feature, dict)], False
+        if not isinstance(features, list):
+            self._warn_once("json", "Environment Canada alerts returned an unexpected body")
+            return [], True
+        return [feature for feature in features if isinstance(feature, dict)], False
 
     # --- reading the data -------------------------------------------------
 

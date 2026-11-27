@@ -248,6 +248,22 @@ def test_a_failed_fetch_is_a_fetch_error_not_an_all_clear():
 
 
 def test_a_malformed_body_is_a_fetch_error():
+    provider, _session_, host, _clock = _provider(response=_Response(200, ["not", "a", "body"]))
+
+    assert asyncio.run(provider.send_full_list(Mock(), *INSIDE)) is True
+
+    assert host.send_response.call_args.args[1] == "Error fetching weather alerts"
+
+
+def test_a_body_without_a_feature_list_is_a_fetch_error():
+    provider, _session_, host, _clock = _provider(response=_Response(200, {"features": "nope"}))
+
+    assert asyncio.run(provider.send_full_list(Mock(), *INSIDE)) is True
+
+    assert host.send_response.call_args.args[1] == "Error fetching weather alerts"
+
+
+def test_junk_features_in_a_valid_body_are_skipped():
     provider, _session_, host, _clock = _provider(response=_Response(200, {"features": [None, 3]}))
 
     assert asyncio.run(provider.send_full_list(Mock(), *INSIDE)) is True

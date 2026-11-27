@@ -275,6 +275,7 @@
       "mqtt_weather_payload_error": "MQTT weather payload error: {detail}",
       "feels_like": "(feels {value}{unit})",
       "humidity": "{value}%RH",
+      "calm": "Calm",
       "dew_point": "💧{value}{unit}",
       "visibility": "👁️{value}mi",
       "visibility_km": "👁️{value}km",

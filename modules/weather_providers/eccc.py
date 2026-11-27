@@ -4,8 +4,8 @@ The public OGC API at api.weather.gc.ca needs no key. A point is answered by the
 nearest city page in ``citypageweather-realtime``: the API takes a bbox and
 returns every city page inside it, so the provider widens the box until it finds
 one and then picks the closest by great-circle distance. Past 150 km the point
-is outside the city-page network, which the reply reports as no coverage so the
-command can fall back to Open-Meteo.
+is outside the city-page network, which the reply reports as no coverage, so
+``[Weather] openmeteo_fallback = true`` answers it from Open-Meteo instead.
 
 Every text field is a ``{"en": ..., "fr": ...}`` pair, so the reply language is
 chosen once per request from ``[Localization] language``.
@@ -375,6 +375,11 @@ class EcccProvider(WeatherProvider):
             value = value * 9 / 5 + 32
         return int(round(value))
 
+    def _is_calm(self, wind: dict) -> bool:
+        """Whether the data says the wind is calm, which it writes as a word."""
+        raw = self._value((wind.get("speed") or {}).get("value"))
+        return isinstance(raw, str) and raw.strip().lower() in ("calm", "calme")
+
     def _wind_speed(self, kmh: Any) -> Optional[int]:
         """A km/h reading in the reply's wind unit, rounded."""
         if kmh is None:
@@ -432,7 +437,7 @@ class EcccProvider(WeatherProvider):
         return utc_offset_at(lat, lon, when)
 
     def _period_key(self, local_hour: int, has_high: bool = True) -> str:
-        """The period label: today while the day's own period is still running.
+        """The period label from the clock, for when the data names no period.
 
         A night period carries a low and no high, so the data says when the day
         has ended even before the clock does: Ottawa at 17:00 in November is
@@ -441,6 +446,27 @@ class EcccProvider(WeatherProvider):
         if has_high and 6 <= local_hour < 18:
             return 'today'
         return 'overnight' if local_hour < 12 else 'tonight'
+
+    @staticmethod
+    def _period_key_from_name(name: str) -> Optional[str]:
+        """The period key a period's own name names, or None when it is unknown.
+
+        The name is the data's, in the reply's language ("Today", "Tonight",
+        "Saturday night", "Ce soir et cette nuit"), so it is matched on the
+        words rather than on a table of every weekday.
+        """
+        text = (name or "").strip().lower()
+        if not text:
+            return None
+        if "overnight" in text or "cette nuit" in text:
+            return 'overnight'
+        if ("tonight" in text or "ce soir" in text or "night" in text
+                or "nuit" in text or "soir" in text):
+            return 'tonight'
+        if ("today" in text or "aujourd'hui" in text or "afternoon" in text
+                or "après-midi" in text or "morning" in text or "matin" in text):
+            return 'today'
+        return None
 
     # --- the replies ------------------------------------------------------
 
@@ -467,18 +493,21 @@ class EcccProvider(WeatherProvider):
             description = days[0]["summary"]
         condition = self._condition(icon, description, is_day)
 
-        # The first period says whether the day is still running: a night
-        # period carries a low and no high.
+        # The first period names itself ("Today", "Tonight", "Saturday night"),
+        # and that name is the label; the clock is only the fallback.
         first = days[0] if days else None
         has_high = bool(first and first["high"] is not None)
-        period_name = self.host.translate(
-            f'commands.gwx.periods.{self._period_key(local_hour, has_high)}'
-        )
+        key = (self._period_key_from_name(first["name"] if first else "")
+               or self._period_key(local_hour, has_high))
+        period_name = self.host.translate(f'commands.gwx.periods.{key}')
 
         wind = current.get("wind") or {}
         speed = self._wind_speed(self._value((wind.get("speed") or {}).get("value")))
         direction = self._text((wind.get("direction") or {}).get("value"))
-        wind_text = f"{direction}{speed}" if speed is not None and speed >= 3 else ""
+        if self._is_calm(wind):
+            wind_text = self.host.translate('commands.gwx.calm')
+        else:
+            wind_text = f"{direction}{speed}" if speed is not None and speed >= 3 else ""
 
         humidity = self._value((current.get("relativeHumidity") or {}).get("value"))
         humidity_text = ""
@@ -670,7 +699,9 @@ class EcccProvider(WeatherProvider):
             wind = hour.get("wind") or {}
             speed = self._wind_speed(self._value((wind.get("speed") or {}).get("value")))
             direction = self._text((wind.get("direction") or {}).get("value"))
-            if speed is not None:
+            if self._is_calm(wind):
+                parts.append(self.host.translate('commands.gwx.calm'))
+            elif speed is not None:
                 parts.append(f"{self.host._without_arrow(direction)}{speed}")
             lines.append(" ".join(parts))
         return self.host._pack_hourly_lines(lines, max_length, self.translation_ns)

@@ -1144,6 +1144,11 @@ def test_eccc_answers_wx_end_to_end():
     cmd.provider._session = _Session(_Response(200, _payload("vancouver")))
     cmd.provider._clock = lambda: 1000.0
     cmd.provider._now = lambda: NOW
+    # auto gives eccc its own alerts provider, so it needs a fake session too.
+    alerts_session = _Session(_Response(200, {"features": []}))
+    cmd.alerts_provider._session = alerts_session
+    cmd.alerts_provider._clock = lambda: 1000.0
+    cmd.alerts_provider._now = lambda: NOW
     cmd.geocode_location = Mock(return_value=(49.28, -123.12, {}, None))
     cmd._get_custom_mqtt_weather_topic = Mock(return_value=None)
     cmd._get_custom_wxsim_source = Mock(return_value=None)
@@ -1158,3 +1163,83 @@ def test_eccc_answers_wx_end_to_end():
     texts = [call.args[1] for call in cmd.send_response.call_args_list]
     assert texts[0].startswith("Today: ")
     assert "°F" in texts[0]
+    # One alerts request, to the fake session, and no second message.
+    assert len(texts) == 1
+    assert alerts_session.count() == 1
+    assert alerts_session.calls[0]["url"].endswith("/weather-alerts/items")
+
+
+# --- the lock is the NOAA session's, not every provider's -------------------
+
+
+class _RecordingLock:
+    """A lock that only counts how often it was entered."""
+
+    def __init__(self):
+        self.entered = 0
+
+    def __enter__(self):
+        self.entered += 1
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+@pytest.mark.parametrize("provider_name", ["eccc", "metno"])
+def test_a_provider_with_its_own_session_does_not_take_the_command_lock(provider_name):
+    cmd = _wx({"weather_provider": provider_name, "alerts_provider": "none"})
+    lock = _RecordingLock()
+    cmd._sync_provider_lock = lock
+    cmd.provider.forecast = Mock(return_value=ForecastReply(text="BODY"))
+    cmd._locate_for_forecast = Mock(return_value=(None, 49.28, -123.12, "Vancouver, CA: "))
+    cmd.get_max_message_length = Mock(return_value=130)
+
+    assert cmd._forecast_for_location("Vancouver", "city").endswith("BODY")
+    assert lock.entered == 0
+
+
+def test_the_noaa_provider_still_takes_the_command_lock():
+    cmd = _wx({"weather_provider": "noaa", "alerts_provider": "none"})
+    lock = _RecordingLock()
+    cmd._sync_provider_lock = lock
+    cmd.provider.forecast = Mock(return_value=ForecastReply(text="BODY"))
+    cmd._locate_for_forecast = Mock(return_value=(None, 47.6, -122.3, "Portland, US: "))
+    cmd.get_max_message_length = Mock(return_value=130)
+
+    assert cmd._forecast_for_location("Portland", "city").endswith("BODY")
+    assert lock.entered == 1
+
+
+# --- the fallback is for any provider that can report no coverage -----------
+
+
+def test_eccc_falls_back_to_openmeteo_past_its_coverage():
+    cmd = _wx({"weather_provider": "eccc", "openmeteo_fallback": "true"})
+    assert isinstance(cmd.fallback_provider, OpenMeteoProvider)
+    cmd.provider.forecast = Mock(return_value=ForecastReply(text="", ok=False, no_coverage=True))
+    cmd.fallback_provider.forecast = Mock(return_value=ForecastReply(text="OM BODY"))
+    cmd._locate_for_forecast = Mock(return_value=(None, 48.0, -140.0, "Nowhere, CA: "))
+    cmd.city_to_lat_lon = Mock(return_value=(48.0, -140.0, {"city": "Nowhere"}))
+    cmd._format_location_display = Mock(return_value="Nowhere, CA")
+    cmd.get_max_message_length = Mock(return_value=130)
+
+    reply = cmd._forecast_for_location("Nowhere", "city")
+
+    assert reply.endswith("OM BODY")
+    cmd.fallback_provider.forecast.assert_called_once()
+    # The log line names the provider that did not cover the point.
+    assert cmd.logger.info.call_args.args[3] == "Environment Canada"
+
+
+def test_noaa_keeps_its_own_fallback_log_line():
+    cmd = _wx({"weather_provider": "noaa", "openmeteo_fallback": "true"})
+    cmd.fallback_provider.forecast = Mock(return_value=ForecastReply(text="OM BODY"))
+    cmd._locate_for_forecast = Mock(return_value=(None, 48.85, 2.35, "Paris, FR: "))
+    cmd.city_to_lat_lon = Mock(return_value=(48.85, 2.35, {"city": "Paris"}))
+    cmd._format_location_display = Mock(return_value="Paris, FR")
+    cmd.get_max_message_length = Mock(return_value=130)
+
+    cmd._forecast_for_location("Paris", "city")
+
+    assert cmd.logger.info.call_args.args[3] == "NWS"

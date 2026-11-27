@@ -56,9 +56,37 @@ def _parse_time(value: Any) -> Optional[datetime]:
     return moment.astimezone(timezone.utc)
 
 
-def _title_case(text: str) -> str:
-    """DWD's events are lower case ("frost", "icy surfaces"); the list is not."""
-    return text[:1].upper() + text[1:] if text else text
+# German warning titles are written in capitals ("FROST", "SCHWERES GEWITTER")
+# and read as title case, except for the joining words.
+_GERMAN_SMALL_WORDS = {"und", "oder", "mit", "bei", "vor", "im", "am"}
+
+
+def _title_case(text: str, language: str = "en") -> str:
+    """DWD's events are written in capitals; the list is not.
+
+    English events arrive lower case ("frost", "icy surfaces") and take a
+    capital on the first word only. German ones arrive in full capitals and
+    read as title case, word by word, with the joining words left alone.
+    """
+    if not text:
+        return text
+    if language != "de":
+        return text[:1].upper() + text[1:]
+    out = []
+    first = True
+    for word in text.lower().split(" "):
+        pieces = []
+        for piece in word.split("-"):
+            if not piece:
+                pieces.append(piece)
+            elif not first and piece in _GERMAN_SMALL_WORDS:
+                pieces.append(piece)
+            else:
+                pieces.append(piece[:1].upper() + piece[1:])
+            if piece:
+                first = False
+        out.append("-".join(pieces))
+    return " ".join(out)
 
 
 class DwdAlertsProvider(PackedAlertsMixin, AlertsProvider):
@@ -182,8 +210,9 @@ class DwdAlertsProvider(PackedAlertsMixin, AlertsProvider):
             return None, True
 
         status = getattr(response, "status_code", None)
-        if status == 404:
-            # Outside the DWD's warning cells: no alerts, not a failure.
+        if status == 404 and not self.covers(lat, lon):
+            # Outside the DWD's warning cells: no alerts, not a failure. Inside
+            # them a 404 is the service failing, so it falls through.
             self._clear_streak("http")
             return None, False
         if not getattr(response, "ok", False):
@@ -234,7 +263,7 @@ class DwdAlertsProvider(PackedAlertsMixin, AlertsProvider):
         severity = str(raw.get("severity") or "").strip().lower()
         return {
             "level": SEVERITY_LEVEL.get(severity, 2),
-            "event": _title_case(str(event).strip()),
+            "event": _title_case(str(event).strip(), language),
             "onset": self._local(onset, lat, lon),
             "expires": self._local(expires, lat, lon),
             "area": area,

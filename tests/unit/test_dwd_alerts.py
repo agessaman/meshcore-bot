@@ -19,6 +19,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
+import pytest
+
 from modules.commands.wx_command import WxCommand
 from modules.i18n import Translator
 from modules.weather_providers.alerts_dwd import (
@@ -142,6 +144,21 @@ def test_a_404_is_no_alerts_rather_than_a_failure():
     host.logger.warning.assert_not_called()
 
 
+def test_a_404_inside_germany_is_a_failure_not_an_all_clear():
+    # Bright Sky answers 404 for a point outside its warning cells, but inside
+    # them a 404 is the service failing, and an all-clear would be a lie.
+    provider, _session_, host, _clock = _provider(
+        response=_Response(404, _payload("paris"))
+    )
+
+    assert provider._alerts_for(*MUNICH) is None
+    assert provider.summary(*MUNICH, 150) is None
+    assert asyncio.run(provider.send_full_list(None, *MUNICH)) is True
+    host.send_response.assert_awaited_once_with(
+        None, host.translate("commands.wx.dwd.error_fetching")
+    )
+
+
 # --- filtering --------------------------------------------------------------
 
 
@@ -215,7 +232,25 @@ def test_the_event_follows_the_bot_language():
     german, _session_, _host_, _clock = _provider("munich", host=german_host)
 
     assert english._alerts_for(*MUNICH)[0]["event"] == "Frost"
-    assert german._alerts_for(*MUNICH)[0]["event"] == "FROST"
+    # German events arrive in capitals and are title-cased for display.
+    assert german._alerts_for(*MUNICH)[0]["event"] == "Frost"
+
+
+@pytest.mark.parametrize("raw,expected", [
+    ("FROST", "Frost"),
+    ("GLÄTTE", "Glätte"),
+    ("SCHWERES GEWITTER", "Schweres Gewitter"),
+    ("GEWITTER MIT ORKANBÖEN", "Gewitter mit Orkanböen"),
+    ("STURMBÖEN-UND-GEWITTER", "Sturmböen-und-Gewitter"),
+    ("NORDSEE-KÜSTE", "Nordsee-Küste"),
+])
+def test_german_events_are_title_cased(raw, expected):
+    german_host = _Host(localization={"language": "de"})
+    provider, _session_, _host_, _clock = _provider(
+        response=_Response(200, _variant(event_de=raw)), host=german_host
+    )
+
+    assert provider._alerts_for(*MUNICH)[0]["event"] == expected
 
 
 def test_the_area_is_the_warning_cell_name():

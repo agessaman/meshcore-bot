@@ -1052,10 +1052,11 @@ default_country = US
 # Default: false (show usage instead)
 use_bot_location_when_no_location = false
 
-# Only with weather_provider = noaa: when a place is outside NWS (weather.gov) coverage,
-# answer wx from Open-Meteo (as gwx would) instead of replying with an error.
-# NWS timeouts and server errors still reply with an error. Ignored with
-# weather_provider = openmeteo, where wx already uses Open-Meteo for everything.
+# Only with weather_provider = noaa or eccc: when a place is outside the provider's coverage
+# (outside the US for NWS, or more than 150 km from a Canadian city page for Environment
+# Canada), answer wx from Open-Meteo (as gwx would) instead of replying with an error.
+# Provider timeouts and server errors still reply with an error. Ignored with
+# weather_provider = openmeteo or metno, which already cover the whole world.
 # Default: false
 openmeteo_fallback = false
 
