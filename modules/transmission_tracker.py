@@ -367,6 +367,11 @@ class TransmissionTracker:
                 db_path = str(Path(self.bot.db_manager.db_path).resolve())
 
             with closing(sqlite3.connect(str(db_path), timeout=30.0)) as conn:
+                try:
+                    synchronous = self.bot.db_manager.sqlite_synchronous(for_web_viewer=True)
+                    conn.execute(f"PRAGMA synchronous={synchronous}")
+                except Exception:
+                    pass
                 cursor = conn.cursor()
 
                 # Find the command entry by command_id
@@ -391,27 +396,15 @@ class TransmissionTracker:
                             if record.packet_hash:
                                 command_data['reply_packet_hash'] = record.packet_hash
 
-                            # Update the database entry
+                            # A newer timestamp is what makes the realtime page's
+                            # poll pick the row up again, so both change together.
                             cursor.execute('''
                                 UPDATE packet_stream
-                                SET data = ?
+                                SET data = ?, timestamp = ?
                                 WHERE id = ?
-                            ''', (json.dumps(command_data), row_id))
-
+                            ''', (json.dumps(command_data), time.time(), row_id))
                             conn.commit()
                             self.logger.info(f"Updated command {record.command_id} in database: {record.repeat_count} repeats, prefixes: {sorted(record.repeater_prefixes)}")
-
-                            # Emit update event via web viewer integration
-                            # The web viewer polling will pick this up, but we can also try to trigger an immediate update
-                            # by inserting a new entry with updated data (the polling will see it)
-                            # Actually, updating the existing entry should work - the polling will see the updated timestamp
-                            # But we need to update the timestamp so the polling picks it up
-                            cursor.execute('''
-                                UPDATE packet_stream
-                                SET timestamp = ?
-                                WHERE id = ?
-                            ''', (time.time(), row_id))
-                            conn.commit()
 
                             break
                     except (json.JSONDecodeError, KeyError):

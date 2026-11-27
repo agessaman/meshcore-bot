@@ -685,6 +685,76 @@ class TestNormalizedWebViewerPassword:
 # ---------------------------------------------------------------------------
 
 
+class TestPacketStreamWriteSettings:
+    def test_flush_interval_defaults_to_realtime_poll(self):
+        bi = _make_bot_integration()
+        assert bi.drain_interval == 2.0
+        assert bi.packet_stream_enabled is True
+
+    def test_flush_interval_from_config_is_clamped(self):
+        bot = _make_bot()
+        bot.config.set("Web_Viewer", "packet_stream_flush_interval_seconds", "10")
+        assert _make_bot_integration(bot).drain_interval == 10.0
+
+        bot = _make_bot()
+        bot.config.set("Web_Viewer", "packet_stream_flush_interval_seconds", "600")
+        assert _make_bot_integration(bot).drain_interval == 60.0
+
+        bot = _make_bot()
+        bot.config.set("Web_Viewer", "packet_stream_flush_interval_seconds", "0.01")
+        assert _make_bot_integration(bot).drain_interval == 0.1
+
+        bot = _make_bot()
+        bot.config.set("Web_Viewer", "packet_stream_flush_interval_seconds", "soon")
+        assert _make_bot_integration(bot).drain_interval == 2.0
+
+    def test_disabled_packet_stream_queues_nothing_and_starts_no_drain(self):
+        from modules.web_viewer.integration import BotIntegration
+
+        bot = _make_bot()
+        bot.config.set("Web_Viewer", "packet_stream_enabled", "false")
+        with patch.object(BotIntegration, "_init_http_session"), \
+             patch.object(BotIntegration, "_init_packet_stream_table"), \
+             patch.object(BotIntegration, "_start_drain_thread") as start_drain:
+            bi = BotIntegration(bot)
+        bi._write_queue = queue.Queue()
+        start_drain.assert_not_called()
+        bi._insert_packet_stream_row('{"x": 1}', "packet")
+        assert bi._write_queue.empty()
+
+    def test_flush_connection_gets_synchronous_level(self, tmp_path):
+        import sqlite3
+        from contextlib import closing
+
+        db_path = tmp_path / "stream.db"
+        with closing(sqlite3.connect(db_path)) as conn:
+            conn.execute(
+                "CREATE TABLE packet_stream (id INTEGER PRIMARY KEY, timestamp REAL, data TEXT, type TEXT)"
+            )
+            conn.commit()
+        bot = _make_bot()
+        bot.db_manager.sqlite_synchronous.return_value = "NORMAL"
+        bi = _make_bot_integration(bot)
+        bi._get_web_viewer_db_path = lambda: db_path
+        bi._packet_stream_has_dim_columns = lambda conn: False
+
+        levels = []
+        real_tune = bi._tune_write_connection
+
+        def spy(conn):
+            real_tune(conn)
+            levels.append(conn.execute("PRAGMA synchronous").fetchone()[0])
+
+        bi._tune_write_connection = spy
+        bi._insert_packet_stream_row('{"x": 1}', "packet")
+        bi._flush_write_queue()
+
+        bot.db_manager.sqlite_synchronous.assert_called_with(for_web_viewer=True)
+        assert levels == [1]
+        with closing(sqlite3.connect(db_path)) as conn:
+            assert conn.execute("SELECT COUNT(*) FROM packet_stream").fetchone()[0] == 1
+
+
 class TestShutdown:
     def test_shutdown_sets_flag(self):
         bi = _make_bot_integration()

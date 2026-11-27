@@ -171,6 +171,108 @@ class TestDatabaseInitialization:
         assert "Bot" not in manager._journal_mode_initialized
 
 
+class TestWriteTuning:
+    """synchronous level and the WAL keeper connection (fewer SD-card writes)."""
+
+    @staticmethod
+    def _manager(mock_logger, tmp_path, **bot_keys):
+        bot = Mock()
+        bot.logger = mock_logger
+        bot.config = configparser.ConfigParser()
+        bot.config["Bot"] = bot_keys
+        return DBManager(bot, str(tmp_path / "tuning.db"))
+
+    @staticmethod
+    def _synchronous(manager, for_web_viewer=False):
+        with closing(sqlite3.connect(manager.db_path)) as conn:
+            manager._apply_sqlite_pragmas(conn, for_web_viewer=for_web_viewer)
+            return conn.execute("PRAGMA synchronous").fetchone()[0]
+
+    def test_wal_connections_use_normal(self, mock_logger, tmp_path):
+        manager = self._manager(mock_logger, tmp_path)
+        assert manager.sqlite_synchronous() == "NORMAL"
+        assert self._synchronous(manager) == 1  # NORMAL
+        manager.close()
+
+    def test_rollback_journal_keeps_full(self, mock_logger, tmp_path):
+        manager = self._manager(mock_logger, tmp_path, sqlite_journal_mode="TRUNCATE")
+        assert manager.sqlite_synchronous() == "FULL"
+        assert self._synchronous(manager) == 2  # FULL
+
+    def test_configured_level_wins(self, mock_logger, tmp_path):
+        manager = self._manager(mock_logger, tmp_path, sqlite_synchronous="full")
+        assert manager.sqlite_synchronous() == "FULL"
+        assert self._synchronous(manager) == 2
+        manager.close()
+
+    def test_invalid_level_warns_once_and_uses_default(self, mock_logger, tmp_path):
+        manager = self._manager(mock_logger, tmp_path, sqlite_synchronous="sometimes")
+        mock_logger.warning.reset_mock()
+        assert manager.sqlite_synchronous() == "NORMAL"
+        assert manager.sqlite_synchronous() == "NORMAL"
+        warnings = [c for c in mock_logger.warning.call_args_list if "sqlite_synchronous" in str(c)]
+        assert len(warnings) <= 1
+        manager.close()
+
+    def test_keeper_keeps_wal_after_a_connection_closes(self, mock_logger, tmp_path):
+        """Without the keeper, closing the only connection checkpoints and deletes the WAL."""
+        manager = self._manager(mock_logger, tmp_path)
+        manager.set_metadata("k", "v")
+        wal = tmp_path / "tuning.db-wal"
+        assert manager._wal_keeper is not None
+        assert wal.exists()
+        assert manager.get_metadata("k") == "v"
+
+        manager.close()
+        assert manager._wal_keeper is None
+        # The keeper was the last connection, so its close checkpointed the WAL away.
+        assert not wal.exists()
+        with closing(sqlite3.connect(manager.db_path)) as conn:
+            assert conn.execute(
+                "SELECT value FROM bot_metadata WHERE key = 'k'"
+            ).fetchone()[0] == "v"
+
+    def test_close_is_idempotent_and_keeper_reopens(self, mock_logger, tmp_path):
+        manager = self._manager(mock_logger, tmp_path)
+        manager.close()
+        manager.close()
+        manager.set_metadata("k", "v")
+        assert manager._wal_keeper is not None
+        manager.close()
+
+    def test_no_keeper_for_rollback_journal(self, mock_logger, tmp_path):
+        manager = self._manager(mock_logger, tmp_path, sqlite_journal_mode="DELETE")
+        manager.set_metadata("k", "v")
+        assert manager._wal_keeper is None
+
+    def test_keeper_does_not_block_writers_or_checkpoints(self, mock_logger, tmp_path):
+        manager = self._manager(mock_logger, tmp_path)
+        for i in range(50):
+            manager.set_metadata(f"k{i}", "x" * 500)
+        with manager.connection() as conn:
+            busy, _log, _ckpt = conn.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+        assert busy == 0
+        manager.close()
+
+
+class TestAsyncSynchronous:
+    def test_async_manager_applies_level(self, tmp_path, mock_logger):
+        import asyncio
+
+        pytest.importorskip("aiosqlite")
+        from modules.db_manager import AsyncDBManager
+
+        async def level(manager):
+            async with manager.connection() as conn:
+                async with conn.execute("PRAGMA synchronous") as cur:
+                    return (await cur.fetchone())[0]
+
+        path = str(tmp_path / "async.db")
+        assert asyncio.run(level(AsyncDBManager(path, mock_logger, synchronous="NORMAL"))) == 1
+        # An unknown level is ignored rather than interpolated into SQL.
+        assert AsyncDBManager(path, mock_logger, synchronous="NORMAL; DROP").synchronous is None
+
+
 class TestGeocoding:
     """Tests for geocoding cache."""
 

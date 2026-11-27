@@ -475,6 +475,48 @@ class TestUpdateCommandInDatabase:
         assert updated["repeater_counts"]["7e"] == 2
         assert updated["repeater_counts"]["ab"] == 1
 
+    def test_update_bumps_timestamp_in_the_same_commit(self, mock_logger, tmp_path, monkeypatch):
+        """The realtime page re-reads a row only when its timestamp moves; one commit does both."""
+        tracker, db_path = _build_tracker_with_db(mock_logger, tmp_path)
+        command_id = "cmd-one-commit"
+        old_ts = time.time() - 60
+        with closing(sqlite3.connect(db_path)) as conn:
+            conn.execute(
+                "INSERT INTO packet_stream (type, timestamp, data) VALUES (?, ?, ?)",
+                ("command", old_ts, json.dumps({"command_id": command_id})),
+            )
+            conn.commit()
+
+        commits = []
+        real_connect = sqlite3.connect
+
+        class CountingConnection(sqlite3.Connection):
+            def commit(self):
+                commits.append(1)
+                return super().commit()
+
+        def counting_connect(*args, **kwargs):
+            kwargs["factory"] = CountingConnection
+            return real_connect(*args, **kwargs)
+
+        monkeypatch.setattr(sqlite3, "connect", counting_connect)
+        rec = TransmissionRecord(
+            timestamp=time.time(),
+            content="hello",
+            target="general",
+            message_type="channel",
+            command_id=command_id,
+            repeat_count=1,
+        )
+        tracker._update_command_in_database(rec)
+        monkeypatch.setattr(sqlite3, "connect", real_connect)
+
+        assert len(commits) == 1
+        with closing(sqlite3.connect(db_path)) as conn:
+            ts, data = conn.execute("SELECT timestamp, data FROM packet_stream").fetchone()
+        assert ts > old_ts
+        assert json.loads(data)["repeat_count"] == 1
+
     def test_update_records_reply_packet_hash(self, mock_logger, tmp_path):
         """The heard-back hash lets the realtime page fold the reply's echoes into the command."""
         tracker, db_path = _build_tracker_with_db(mock_logger, tmp_path)

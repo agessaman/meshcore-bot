@@ -685,6 +685,9 @@ def sanitize_name(name: object, max_length: int = 64) -> str:
 # Valid SQLite journal modes for PRAGMA journal_mode validation
 VALID_JOURNAL_MODES = {"DELETE", "TRUNCATE", "PERSIST", "MEMORY", "WAL", "OFF"}
 
+# Valid SQLite synchronous levels for PRAGMA synchronous validation
+VALID_SYNCHRONOUS_MODES = {"OFF", "NORMAL", "FULL", "EXTRA"}
+
 
 def validate_sql_identifier(identifier: str) -> str:
     """

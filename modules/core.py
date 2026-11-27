@@ -93,7 +93,9 @@ class MeshCoreBot(ServiceSupervisorMixin, RadioLinkMixin, RadioOfflineBreaker, D
         self.logger.info(f"Initializing database manager with database: {db_path}")
         try:
             self.db_manager = DBManager(self, db_path)
-            self.async_db_manager = AsyncDBManager(str(db_path), self.logger)
+            self.async_db_manager = AsyncDBManager(
+                str(db_path), self.logger, synchronous=self.db_manager.sqlite_synchronous()
+            )
             self.logger.info("Database manager initialized successfully")
         except (OSError, ValueError, sqlite3.Error) as e:
             self.logger.error(f"Failed to initialize database manager: {e}")
@@ -1251,6 +1253,14 @@ class MeshCoreBot(ServiceSupervisorMixin, RadioLinkMixin, RadioOfflineBreaker, D
                     await asyncio.to_thread(tracker.close)
                 except Exception as e:
                     self.logger.warning("Error finishing transmission tracker writes: %s", e)
+
+            # Last, so the final connection to close checkpoints the WAL.
+            db_manager = getattr(self, 'db_manager', None)
+            if db_manager is not None and callable(getattr(db_manager, 'close', None)):
+                try:
+                    db_manager.close()
+                except Exception as e:
+                    self.logger.warning("Error closing database: %s", e)
 
             try:
                 self.logger.info("Bot stopped")

@@ -255,6 +255,13 @@ db_path = meshcore_bot.db
 #
 # SQLite journal mode. Default: WAL (use DELETE on a network share; see above)
 #sqlite_journal_mode = WAL
+#
+# SQLite synchronous level: OFF, NORMAL, FULL, or EXTRA. Unset uses NORMAL with
+# WAL and FULL with any other journal mode. NORMAL with WAL syncs only at
+# checkpoints instead of on every commit, which spares SD cards and flash; a
+# power cut can lose the last few seconds of writes but cannot corrupt the
+# database. Set FULL to sync every commit.
+#sqlite_synchronous =
 
 # Local plugins directory (optional)
 # Directory containing commands/, service_plugins/, and optional config.ini.
@@ -2045,6 +2052,20 @@ mesh_graph_cache_seconds = 30
 # them to real columns rather than rewriting the whole table at once, which on
 # an SD-card Pi would stall the bot for minutes. Set to 0 to disable.
 # dashboard_packet_backfill_rows = 2000
+
+# Packet stream: the bot stores each packet, message, and command reply in the
+# packet_stream table for the realtime page and the dashboard's packet tiles.
+# Queued rows are committed together this often. The realtime page polls every
+# 2 seconds, so shorter intervals only add disk writes. Range 0.1 to 60.
+# packet_stream_flush_interval_seconds = 2
+#
+# false: stop writing packet_stream. The realtime page and the dashboard's
+# packet tiles then show no new packets. Useful when nothing reads the viewer
+# and the database is on an SD card.
+# packet_stream_enabled = true
+#
+# SQLite synchronous level for viewer connections; see [Bot] sqlite_synchronous.
+# sqlite_synchronous =
 
 # Optional timeout overrides for web viewer integration (seconds)
 # edge_post_timeout_sec = 1.0
