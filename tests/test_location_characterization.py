@@ -405,7 +405,7 @@ class TestWxLocationClassification:
 
         from modules.commands.wx_command import WxCommand
 
-        source = inspect.getsource(WxCommand._execute_us)
+        source = inspect.getsource(WxCommand._prepare_us_request)
         assert r"^\s*\d{5}\s*$" in source
         assert re.match(r"^\s*\d{5}\s*$", " 98101 ")
 

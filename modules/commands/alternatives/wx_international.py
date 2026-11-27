@@ -178,8 +178,9 @@ class GlobalWxCommand(WxCommand):
             self._get_weather_for_location_sync, location, forecast_type, num_days, message
         )
 
-    async def _global_weather_for_location(self, location: str, forecast_type: str, num_days: int,
-                                           message: MeshMessage) -> Union[str, tuple[str, str, str]]:
+    async def _global_weather_for_location(self, location: str, location_type: str, forecast_type: str,
+                                           num_days: int, message: MeshMessage,
+                                           using_companion_location: bool) -> Union[str, tuple[str, str, str]]:
         """gwx's own four-argument forecast call, kept for its callers and tests."""
         return await self.get_weather_for_location(location, forecast_type, num_days, message)
 

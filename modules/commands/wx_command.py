@@ -807,25 +807,30 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                 self.logger.info(f"Using custom WXSIM source for location '{location}': {wxsim_source}")
             return await self._reply_from_wxsim(message, wxsim_source, forecast_type, num_days, location)
 
-        if self.provider.location_style == "global":
-            return await self._execute_global(message, location, forecast_type, num_days)
-        return await self._execute_us(message, location, forecast_type, num_days, using_companion_location)
+        return await self._execute_request(
+            message, location, forecast_type, num_days, using_companion_location
+        )
 
-    async def _execute_us(self, message: MeshMessage, location: str, forecast_type: str, num_days: int,
-                          using_companion_location: bool) -> bool:
-        """The US path: zip/city/state labels, NWS alerts, wx's error text."""
-        self.logger.debug(f"No custom WXSIM source found for location '{location}', using normal weather API")
+    # Per location style: the pre-dispatch step, the forecast call, and the
+    # subject the error log names. Everything else in a request is shared.
+    _STYLE_HOOKS = {
+        "us": ("_prepare_us_request", "_us_weather_for_location", "weather command"),
+        "global": ("_prepare_global_request", "_global_weather_for_location", "global weather command"),
+    }
 
-        # Check if it's coordinates, zipcode, or city name
-        if re.match(r'^\s*-?\d+\.?\d*\s*,\s*-?\d+\.?\d*\s*$', location):
-            # It's coordinates (lat,lon format)
-            location_type = "coordinates"
-        elif re.match(r'^\s*\d{5}\s*$', location):
-            # It's a zipcode (allow surrounding whitespace; strip later in geocode)
-            location_type = "zipcode"
-        else:
-            # It's a city name (possibly with state)
-            location_type = "city"
+    def _style_hooks(self) -> tuple:
+        """(prepare, forecast, error subject) for the provider's location style."""
+        prepare, forecast, subject = self._STYLE_HOOKS[self.provider.location_style]
+        return getattr(self, prepare), getattr(self, forecast), subject
+
+    async def _execute_request(self, message: MeshMessage, location: str, forecast_type: str,
+                               num_days: int, using_companion_location: bool) -> bool:
+        """One weather request: the style's pre-dispatch step, then the forecast or the alert list."""
+        prepare, forecast, subject = self._style_hooks()
+        location_type = await prepare(message, location, forecast_type)
+        if location_type is None:
+            # The pre-dispatch step already replied.
+            return True
 
         try:
             # Record execution for this user
@@ -837,48 +842,57 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                 return await self._send_alert_list_for(message, location, location_type)
 
             # Get weather data for the location
-            weather_data = await self.get_weather_for_location(location, location_type, forecast_type, num_days, message, using_companion_location=using_companion_location)
+            weather_data = await forecast(
+                location, location_type, forecast_type, num_days, message, using_companion_location
+            )
 
             return await self._send_weather_reply(message, weather_data, forecast_type)
 
         except Exception as e:
-            self.logger.error(f"Error in weather command: {e}")
+            self.logger.error(f"Error in {subject}: {e}")
             await self.send_response(message, self.translate(f'{self.translation_ns}.error', error=str(e)))
             return True
 
-    async def _execute_global(self, message: MeshMessage, location: str, forecast_type: str, num_days: int) -> bool:
-        """The global path: country labels, and alerts only when one is configured."""
+    async def _prepare_us_request(self, message: MeshMessage, location: str,
+                                  forecast_type: str) -> Optional[str]:
+        """wx's pre-dispatch step: log the fallback, then name the location type."""
+        self.logger.debug(f"No custom WXSIM source found for location '{location}', using normal weather API")
+
+        if re.match(r'^\s*-?\d+\.?\d*\s*,\s*-?\d+\.?\d*\s*$', location):
+            # It's coordinates (lat,lon format)
+            return "coordinates"
+        if re.match(r'^\s*\d{5}\s*$', location):
+            # It's a zipcode (allow surrounding whitespace; strip later in geocode)
+            return "zipcode"
+        # It's a city name (possibly with state)
+        return "city"
+
+    async def _prepare_global_request(self, message: MeshMessage, location: str,
+                                      forecast_type: str) -> Optional[str]:
+        """gwx's pre-dispatch step: refuse "alerts" before the request is recorded."""
         if forecast_type == "alerts" and self.alerts_provider is None:
             await self.send_response(
                 message, self.translate(f'{self.provider.translation_ns}.source_option_not_available')
             )
-            return True
+            return None
+        return "city"
 
-        try:
-            # Record execution for this user
-            self.record_execution(message.sender_id)
+    async def _us_weather_for_location(self, location: str, location_type: str, forecast_type: str,
+                                       num_days: int, message: MeshMessage,
+                                       using_companion_location: bool) -> str:
+        """wx's forecast call: the six-argument get_weather_for_location."""
+        return await self.get_weather_for_location(
+            location, location_type, forecast_type, num_days, message,
+            using_companion_location=using_companion_location,
+        )
 
-            if forecast_type == "alerts":
-                return await self._send_alert_list_for(message, location, "city")
-
-            # Get weather data for the location
-            weather_data = await self._global_weather_for_location(location, forecast_type, num_days, message)
-
-            return await self._send_weather_reply(message, weather_data, forecast_type)
-
-        except Exception as e:
-            self.logger.error(f"Error in global weather command: {e}")
-            await self.send_response(
-                message, self.translate(f'{self.provider.translation_ns}.error', error=str(e))
-            )
-            return True
-
-    async def _global_weather_for_location(self, location: str, forecast_type: str, num_days: int,
-                                           message: MeshMessage) -> str:
+    async def _global_weather_for_location(self, location: str, location_type: str, forecast_type: str,
+                                           num_days: int, message: MeshMessage,
+                                           using_companion_location: bool) -> str:
         """The global path's forecast call.
 
         GlobalWxCommand keeps its own four-argument get_weather_for_location, so
-        the call goes through this hook rather than being spelled out twice.
+        the call goes through this hook rather than being spelled inline.
         """
         return await self.get_weather_for_location(location, "city", forecast_type, num_days, message)
 
