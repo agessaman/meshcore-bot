@@ -164,12 +164,33 @@ def _parse_time(value: Any) -> Optional[datetime]:
     return parsed
 
 
+def _parse_http_time(value: Any) -> Optional[datetime]:
+    """An HTTP-date from a response header, or an ISO 8601 timestamp, or None.
+
+    ``Expires`` and ``Date`` are RFC 7231 dates, which ``fromisoformat`` cannot
+    read, so they go through ``parsedate_to_datetime`` first.
+    """
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        parsed = parsedate_to_datetime(value)
+    except (TypeError, ValueError):
+        parsed = None
+    if parsed is None:
+        return _parse_time(value)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
 def _symbol_parts(code: Any) -> tuple[str, bool]:
     """(base symbol, is_day) for a symbol code such as ``partlycloudy_night``."""
     if not isinstance(code, str) or not code:
         return "", True
     base, _, suffix = code.partition("_")
-    return base, suffix != "night"
+    # ``_polartwilight`` is the sun at or below the horizon, so it takes the
+    # moon emoji the same way ``_night`` does.
+    return base, suffix not in ("night", "polartwilight")
 
 
 def _wmo_for(base: str) -> Optional[int]:
@@ -350,10 +371,10 @@ class MetNorwayProvider(WeatherProvider):
 
     def _ttl(self, headers: Any, now: float) -> float:
         """Seconds until the document expires, from Expires and Date."""
-        expires = _parse_time((headers or {}).get("Expires"))
+        expires = _parse_http_time((headers or {}).get("Expires"))
         if expires is None:
             return DEFAULT_TTL
-        issued = _parse_time((headers or {}).get("Date")) or self._now()
+        issued = _parse_http_time((headers or {}).get("Date")) or self._now()
         ttl = (expires - issued).total_seconds()
         return min(max(ttl, MIN_TTL), MAX_TTL)
 
@@ -629,32 +650,63 @@ class MetNorwayProvider(WeatherProvider):
         when = _parse_time(step["time"])
         local_hour = (when + self._offset(lat, lon, when)).hour
         base, is_day = self._step_symbol(step)
-        condition = f"{self._emoji(base, is_day)}{self._description(base)} " if base else ""
+        condition = f"{self._emoji(base, is_day)}{self._description(base)}" if base else ""
         period_name = self.host.translate(f'commands.gwx.periods.{self._period_key(local_hour)}')
 
-        weather = f"{period_name}: {condition}{temperature}{self.temp_symbol}"
-
         wind_speed = self._wind_speed(details.get("wind_speed"))
+        wind = ""
         if wind_speed is not None and wind_speed >= 3:
-            weather += f" {self._compass(details.get('wind_from_direction'))}{wind_speed}"
+            wind = f"{self._compass(details.get('wind_from_direction'))}{wind_speed}"
 
         humidity = details.get("relative_humidity")
+        humidity_text = ""
         if humidity is not None:
-            weather += f" {self.host.translate('commands.gwx.humidity', value=int(round(float(humidity))))}"
+            humidity_text = self.host.translate(
+                'commands.gwx.humidity', value=int(round(float(humidity)))
+            )
 
-        conditions = self._extra_conditions(details)
-        conditions_max_length = max_length - 80
-        if conditions and self.host._count_display_width(weather) < conditions_max_length:
-            weather += " " + " ".join(conditions)
+        pressure = " ".join(self._extra_conditions(details))
 
+        high_low = ""
         days = self._daily(data, lat, lon)
         if days and days[0]["high"] is not None and days[0]["low"] is not None:
-            high = self._temperature(days[0]["high"])
-            low = self._temperature(days[0]["low"])
-            weather += f" | {self.host._format_high_low(high, low, self.temp_symbol)}"
-            if len(days) > 1:
-                weather = self._tomorrow_tail(weather, days[1], max_length)
+            high_low = self.host._format_high_low(
+                self._temperature(days[0]["high"]),
+                self._temperature(days[0]["low"]),
+                self.temp_symbol,
+            )
+
+        # The parts are added in priority order and the least important ones
+        # dropped in turn until the line fits: pressure, then humidity, then
+        # wind, then the condition text. The period, temperature and high/low
+        # always stay.
+        optional = [pressure, humidity_text, wind, condition]
+        weather = ""
+        for dropped in range(len(optional) + 1):
+            pressure_, humidity_, wind_, condition_ = optional[dropped:] + [""] * dropped
+            weather = self._current_line(
+                period_name, condition_, temperature, wind_, humidity_, pressure_, high_low
+            )
+            if self.host._count_display_width(weather) <= max_length:
+                break
+
+        if high_low and len(days) > 1:
+            weather = self._tomorrow_tail(weather, days[1], max_length)
         return weather
+
+    def _current_line(self, period_name: str, condition: str, temperature: int,
+                      wind: str, humidity: str, pressure: str, high_low: str) -> str:
+        """One current-conditions line from the parts that survived the budget."""
+        line = f"{period_name}: "
+        if condition:
+            line += f"{condition} "
+        line += f"{temperature}{self.temp_symbol}"
+        for piece in (wind, humidity, pressure):
+            if piece:
+                line += f" {piece}"
+        if high_low:
+            line += f" | {high_low}"
+        return line
 
     def _extra_conditions(self, details: dict) -> list:
         """The pressure string, when the step carries one.
@@ -770,8 +822,9 @@ class MetNorwayProvider(WeatherProvider):
             return self.host.translate('commands.gwx.hourly_not_available')
         current = self._current_step(steps)
         current_when = _parse_time(current["time"])
-        current_local = current_when + self._offset(lat, lon, current_when)
-        next_hour = current_local.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+        # The cutoff is a UTC instant, so a fall-back day keeps both of its
+        # 02:00 steps; the offset is only used to label each one.
+        next_hour = current_when.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
 
         lines = []
         for step in steps:
@@ -779,9 +832,9 @@ class MetNorwayProvider(WeatherProvider):
                 # The series turns six-hourly after about two and a half days.
                 continue
             when = _parse_time(step["time"])
-            moment = when + self._offset(lat, lon, when)
-            if moment < next_hour:
+            if when < next_hour:
                 continue
+            moment = when + self._offset(lat, lon, when)
             details = self._instant(step)
             temperature = self._temperature(details.get("air_temperature"))
             base, is_day = self._step_symbol(step)

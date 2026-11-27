@@ -18,7 +18,7 @@ pytz>=2026.2
 # Real time zones for MET Norway's local times. Wheels exist for 64-bit x86 and
 # ARM only; on armv7 the import fails and the provider falls back to the
 # longitude estimate, so the marker keeps the Docker build working.
-tzfpy>=2.1; platform_machine in "x86_64 AMD64 aarch64 arm64"
+tzfpy>=2.1; platform_machine == "x86_64" or platform_machine == "AMD64" or platform_machine == "aarch64" or platform_machine == "arm64"
 aiohttp>=3.8.0
 # 2.3.14+ is required, not merely preferred. Before 2.3.13, send_msg_with_retry
 # reported ACKed DMs as failures: it subscribed to the ACK only after send_msg

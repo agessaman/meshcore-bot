@@ -222,6 +222,14 @@ def test_the_lookup_gets_longitude_first(zones):
     assert zones.calls == [(139.7, 35.68)]
 
 
+def test_the_lookup_keeps_four_decimals(zones):
+    # Two decimals put points up to a kilometre apart in the same bucket, which
+    # is enough to cross a zone border in a dense part of Europe.
+    _tz.utc_offset_at(40.416775, -3.703790, datetime(2026, 1, 15, 12, 0, tzinfo=UTC))
+
+    assert zones.calls == [(-3.7038, 40.4168)]
+
+
 # --- the provider -----------------------------------------------------------
 
 

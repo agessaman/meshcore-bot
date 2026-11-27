@@ -68,7 +68,7 @@ def utc_offset_at(lat: float, lon: float, when_utc: datetime) -> timedelta:
     the point. A missing tzfpy is logged once at INFO; an unknown point is
     logged at DEBUG, because it is a property of the coordinate, not a fault.
     """
-    name = _zone_name(round(lat, 2), round(lon, 2))
+    name = _zone_name(round(lat, 4), round(lon, 4))
     if name:
         try:
             zone = pytz.timezone(name)

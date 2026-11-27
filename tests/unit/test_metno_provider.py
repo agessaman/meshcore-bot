@@ -14,14 +14,18 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
+import pytz
+from packaging.requirements import Requirement
 
 from modules.i18n import Translator
 from modules.weather_common import WeatherCommandMixin
+from modules.weather_providers import metno
 from modules.weather_providers.base import WeatherUnits
 from modules.weather_providers.metno import (
     METNO_URL,
     SYMBOL_TO_WMO,
     MetNorwayProvider,
+    _symbol_parts,
     local_offset_hours,
 )
 
@@ -334,8 +338,9 @@ def test_a_304_reuses_the_cached_document():
     provider, session, host, clock = _provider()
     provider.forecast(*EGERSUND, "default", 7, 0, None)
 
-    # Past Expires, so the next request goes out with If-Modified-Since.
-    clock.advance(31 * 60)
+    # Past Expires (31m10s after Date), so the next request goes out with
+    # If-Modified-Since.
+    clock.advance(32 * 60)
     session.response = _Response(304, headers={"Expires": "Fri, 27 Nov 2026 22:30:00 GMT",
                                                "Date": "Fri, 27 Nov 2026 22:00:00 GMT"})
     reply = provider.forecast(*EGERSUND, "default", 7, 0, None)
@@ -458,3 +463,123 @@ def test_extreme_conditions_do_not_ride_along_with_other_forecast_types():
     reply = provider.forecast(*TOKYO, "tomorrow", 7, 0, None)
 
     assert reply.extra is None
+
+
+# --- Expires ----------------------------------------------------------------
+
+
+def test_the_ttl_comes_from_expires_and_date():
+    provider, _session_, _host_, _clock = _provider()
+
+    ten_minutes = {"Date": "Fri, 27 Nov 2026 21:00:00 GMT",
+                   "Expires": "Fri, 27 Nov 2026 21:10:00 GMT"}
+    two_hours = {"Date": "Fri, 27 Nov 2026 21:00:00 GMT",
+                 "Expires": "Fri, 27 Nov 2026 23:00:00 GMT"}
+
+    assert provider._ttl(ten_minutes, 0.0) == 600
+    assert provider._ttl(two_hours, 0.0) == 7200
+
+
+def test_the_cache_honors_a_short_expires():
+    provider, session, _host_, clock = _provider(
+        response=_Response(200, _payload("egersund"), headers={
+            "Date": "Fri, 27 Nov 2026 21:25:34 GMT",
+            "Last-Modified": "Fri, 27 Nov 2026 21:25:34 GMT",
+            "Expires": "Fri, 27 Nov 2026 21:35:34 GMT",
+        })
+    )
+    provider.forecast(*EGERSUND, "default", 7, 0, None)
+
+    clock.advance(9 * 60)
+    provider.forecast(*EGERSUND, "default", 7, 0, None)
+    assert session.count() == 1
+
+    clock.advance(2 * 60)
+    provider.forecast(*EGERSUND, "default", 7, 0, None)
+    assert session.count() == 2
+
+
+# --- the hourly series across a DST change ----------------------------------
+
+
+def _dst_payload():
+    """Steps from 23:00Z on 24 October to 04:00Z on 25 October, hourly."""
+    times = ["2026-10-24T23:00:00Z"] + [f"2026-10-25T{hour:02d}:00:00Z" for hour in range(5)]
+    return {
+        "properties": {
+            "timeseries": [
+                {
+                    "time": moment,
+                    "data": {
+                        "instant": {"details": {"air_temperature": 15.0, "wind_speed": 2.0,
+                                                "wind_from_direction": 180.0}},
+                        "next_1_hours": {
+                            "summary": {"symbol_code": "clearsky_day"},
+                            "details": {"precipitation_amount": 0.0},
+                        },
+                    },
+                }
+                for moment in times
+            ]
+        }
+    }
+
+
+def test_a_dst_repeated_hour_is_kept(monkeypatch):
+    zone = pytz.timezone("Europe/Madrid")
+    monkeypatch.setattr(metno, "utc_offset_at",
+                        lambda lat, lon, when: when.astimezone(zone).utcoffset())
+    provider, _session_, _host_, _clock = _provider()
+    provider._now = lambda: datetime(2026, 10, 24, 23, 30, tzinfo=timezone.utc)
+
+    text = provider._hourly(_dst_payload(), 40.42, -3.70, 400)
+
+    # Madrid falls back at 01:00Z, so 00:00Z and 01:00Z are both 02:00 local.
+    labels = [line.split(":")[0] for line in text.splitlines()]
+    assert labels == ["2AM", "2AM", "3AM", "4AM", "5AM"]
+
+
+# --- the current-conditions budget ------------------------------------------
+
+
+def test_the_current_line_fits_a_small_budget():
+    provider, _session_, host, _clock = _provider("egersund")
+
+    text = provider._current(_payload("egersund"), *EGERSUND, 60)
+
+    assert text is not None
+    assert _width(host, text) <= 60
+    # The least important parts go first, so the pressure is gone.
+    assert "hPa" not in text
+
+
+# --- polar twilight ---------------------------------------------------------
+
+
+def test_polar_twilight_takes_the_moon():
+    provider, _session_, _host_, _clock = _provider()
+
+    base, is_day = _symbol_parts("clearsky_polartwilight")
+
+    assert base == "clearsky"
+    assert is_day is False
+    # The sun at or below the horizon takes the moon, as ``_night`` does.
+    assert provider._emoji("clearsky", is_day=False) == "🌙"
+    assert provider._emoji("clearsky", is_day=True) == "☀️"
+
+
+# --- the tzfpy dependency marker --------------------------------------------
+
+
+def test_the_tzfpy_marker_names_each_64_bit_machine():
+    root = Path(__file__).resolve().parents[2]
+    lines = [line.strip() for line in (root / "requirements.txt").read_text().splitlines()
+             if line.strip().startswith("tzfpy")]
+    assert len(lines) == 1
+    marker = Requirement(lines[0]).marker
+
+    for machine in ("x86_64", "AMD64", "aarch64", "arm64"):
+        assert marker.evaluate({"platform_machine": machine}) is True, machine
+    # The substring form of the marker also matched 32-bit x86.
+    for machine in ("x86", "armv7l", "i686"):
+        assert marker.evaluate({"platform_machine": machine}) is False, machine
