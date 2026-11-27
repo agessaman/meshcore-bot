@@ -191,6 +191,7 @@ class NoaaProvider(WeatherProvider):
         Capability.HOURLY,
     })
     max_days = WX_MULTIDAY_MAX_DAYS
+    default_alerts_provider = "nws"
 
     def __init__(
         self,

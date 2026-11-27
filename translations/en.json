@@ -332,6 +332,9 @@
       "pressure_unit": "hpa",
       "metno": {
         "error_fetching_api": "Error fetching weather data from MET Norway"
+      },
+      "eccc": {
+        "error_fetching_api": "Error fetching weather data from Environment Canada"
       }
     },
     "sports": {

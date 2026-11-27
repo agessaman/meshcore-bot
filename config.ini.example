@@ -992,10 +992,11 @@ prefix_best_do_not_suggest =
 # NOTE: Unit settings are used by both the wx and gwx commands and Weather_Service plugin
 
 # Weather provider selection
-# Options: noaa, openmeteo, metno
+# Options: noaa, openmeteo, metno, eccc
 #   noaa: Use NOAA API (US-focused, better for US locations, includes weather alerts)
 #   openmeteo: Use Open-Meteo API (global coverage, works worldwide)
 #   metno: Use MET Norway Locationforecast (global coverage, no alerts)
+#   eccc: Use Environment Canada city pages (Canada, nearest city within 150 km)
 # Default: noaa
 weather_provider = noaa
 

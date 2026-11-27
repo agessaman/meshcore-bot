@@ -36,6 +36,7 @@ from modules.weather_providers.base import (
     WeatherProvider,
     WeatherUnits,
 )
+from modules.weather_providers.eccc import EcccProvider
 from modules.weather_providers.metno import MetNorwayProvider
 from modules.weather_providers.noaa import NoaaProvider
 from modules.weather_providers.openmeteo import OpenMeteoProvider
@@ -69,10 +70,11 @@ def _warnings(mock):
 
 
 def test_the_registries_hold_the_shipped_providers():
-    assert set(PROVIDERS) == {"metno", "noaa", "openmeteo"}
+    assert set(PROVIDERS) == {"eccc", "metno", "noaa", "openmeteo"}
     assert PROVIDERS["noaa"] is NoaaProvider
     assert PROVIDERS["openmeteo"] is OpenMeteoProvider
     assert PROVIDERS["metno"] is MetNorwayProvider
+    assert PROVIDERS["eccc"] is EcccProvider
     assert set(ALERT_PROVIDERS) == {"meteoalarm", "nws"}
     assert ALERT_PROVIDERS["nws"] is NwsAlertsProvider
     assert ALERT_PROVIDERS["meteoalarm"] is MeteoalarmAlertsProvider
@@ -1122,3 +1124,30 @@ def test_metno_answers_wx_end_to_end():
     assert texts[0].startswith("Today: ")
     assert "°F" in texts[0]
     assert texts[1] == "⚠️ Heavy rain"
+
+
+def test_eccc_answers_wx_end_to_end():
+    from tests.unit.test_eccc_provider import NOW, _Response, _Session, _payload
+
+    cmd = _wx({"weather_provider": "eccc"})
+    assert isinstance(cmd.provider, EcccProvider)
+    assert cmd.provider.location_style == "global"
+    assert cmd.provider.translation_ns == "commands.gwx"
+
+    cmd.provider._session = _Session(_Response(200, _payload("vancouver")))
+    cmd.provider._clock = lambda: 1000.0
+    cmd.provider._now = lambda: NOW
+    cmd.geocode_location = Mock(return_value=(49.28, -123.12, {}, None))
+    cmd._get_custom_mqtt_weather_topic = Mock(return_value=None)
+    cmd._get_custom_wxsim_source = Mock(return_value=None)
+    cmd.record_execution = Mock()
+    cmd.send_response = AsyncMock(return_value=True)
+    cmd._pace_reply = AsyncMock()
+    cmd.get_max_message_length = Mock(return_value=150)
+
+    message = SimpleNamespace(content="wx Vancouver", sender_id="u1")
+    assert asyncio.run(cmd.execute(message)) is True
+
+    texts = [call.args[1] for call in cmd.send_response.call_args_list]
+    assert texts[0].startswith("Today: ")
+    assert "°F" in texts[0]

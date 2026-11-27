@@ -34,11 +34,13 @@ from .base import (
     WeatherProvider,
     WeatherUnits,
 )
+from .eccc import EcccProvider
 from .metno import MetNorwayProvider
 from .noaa import NoaaProvider
 from .openmeteo import OpenMeteoProvider
 
 PROVIDERS: dict[str, type[WeatherProvider]] = {
+    "eccc": EcccProvider,
     "metno": MetNorwayProvider,
     "noaa": NoaaProvider,
     "openmeteo": OpenMeteoProvider,
@@ -79,7 +81,7 @@ def resolve_alerts_provider_name(
     """
     value = (config_value or "").strip().lower()
     if value in ("", "auto"):
-        return "nws" if forecast_name == "noaa" else None
+        return _default_alerts_provider(forecast_name)
     if value == "none":
         return None
     if value in ALERT_PROVIDERS:
@@ -89,7 +91,14 @@ def resolve_alerts_provider_name(
             f"Unknown [Weather] alerts_provider '{value}'; using 'auto'. "
             f"Valid values: auto, none, {', '.join(sorted(ALERT_PROVIDERS))}"
         )
-    return "nws" if forecast_name == "noaa" else None
+    return _default_alerts_provider(forecast_name)
+
+
+def _default_alerts_provider(forecast_name: str) -> str | None:
+    """The alerts provider a forecast source declares for ``auto``, if any."""
+    provider = PROVIDERS.get(forecast_name)
+    declared = getattr(provider, "default_alerts_provider", None) if provider else None
+    return declared if declared in ALERT_PROVIDERS else None
 
 
 __all__ = [
@@ -98,6 +107,7 @@ __all__ = [
     "AlertSummary",
     "AlertsProvider",
     "Capability",
+    "EcccProvider",
     "ForecastReply",
     "MetNorwayProvider",
     "NoaaProvider",

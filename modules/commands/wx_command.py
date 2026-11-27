@@ -114,6 +114,7 @@ _PROVIDER_LABELS = {
     "noaa": "NOAA (US, includes alerts)",
     "openmeteo": "Open-Meteo (global)",
     "metno": "MET Norway (global)",
+    "eccc": "Environment Canada",
 }
 _ALERT_PROVIDER_LABELS = {
     "nws": "NWS (US)",
