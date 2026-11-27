@@ -28,7 +28,6 @@ and is where a public token comes from. Meteoalarm Direct re-user tokens point
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import threading
 import time
@@ -42,9 +41,9 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-from .. import alert_format
+from ._alerts_common import PackedAlertsMixin
 from ._geo import geometry_contains
-from .base import AlertsProvider, AlertSummary, Coverage, ProviderHost
+from .base import AlertsProvider, Coverage, ProviderHost
 
 # MeteoGate serves the same EDR API as Meteoalarm Direct and is where a public
 # token comes from. Direct re-user tokens point [Weather] meteoalarm_api_url at
@@ -94,7 +93,6 @@ INFLIGHT_TIMEOUT = 30.0
 UNAVAILABLE = object()
 
 CAP_NS = {"cap": "urn:oasis:names:tc:emergency:cap:1.2"}
-LEVEL_EMOJI = {2: "\U0001f7e1", 3: "\U0001f7e0", 4: "\U0001f534"}
 MIN_LEVEL = 2
 
 
@@ -445,11 +443,12 @@ class _Inflight:
         self.value = None
 
 
-class MeteoalarmAlertsProvider(AlertsProvider):
+class MeteoalarmAlertsProvider(PackedAlertsMixin, AlertsProvider):
     """Europe's Meteoalarm warnings, matched to a point by country and outline."""
 
     name = "meteoalarm"
     translation_ns = "commands.wx"
+    fetch_error_key = "commands.wx.meteoalarm.error_fetching"
 
     def __init__(self, host: ProviderHost, token: Optional[str] = None,
                  session: Any = None, base_url: Optional[str] = None):
@@ -1004,6 +1003,18 @@ class MeteoalarmAlertsProvider(AlertsProvider):
             return False, True
         return geometry_contains(exact, lon, lat), False
 
+    @staticmethod
+    def _headline_area(headline: str) -> str:
+        """The area part of a CAP headline ("Gale, yellow level, Aana-Sira - Karmoey")."""
+        parts = [part.strip() for part in (headline or "").split(",")]
+        if len(parts) < 3:
+            return ""
+        return parts[-1]
+
+    def _alert_area(self, alert: dict) -> str:
+        """The area for the full list, from the CAP headline."""
+        return self._headline_area(alert.get("headline", ""))
+
     def _alerts_for(self, lat: float, lon: float) -> Optional[list]:
         """The active alerts covering a point, most severe first.
 
@@ -1079,138 +1090,3 @@ class MeteoalarmAlertsProvider(AlertsProvider):
 
     # --- formatting -------------------------------------------------------
 
-    def _summary_line(self, alert: dict) -> str:
-        """One alert for the compact summary, in the same style as the full list."""
-        emoji = LEVEL_EMOJI.get(alert["level"], "")
-        until = alert_format.format_alert_window(
-            {"expires": alert["expires"].isoformat() if alert["expires"] else ""},
-            self.host.response_translator,
-        )
-        return f"{emoji} {alert['event']} {until}".strip()
-
-    def summary(self, lat: float, lon: float, max_length: int) -> Optional[AlertSummary]:
-        """The compact alert text and count for the second message, or None."""
-        try:
-            return self._summary_for(lat, lon, max_length)
-        except Exception as error:
-            self._warn_once(
-                "summary", f"Meteoalarm summary failed: {type(error).__name__}"
-            )
-            return None
-
-    def _summary_for(self, lat: float, lon: float, max_length: int) -> Optional[AlertSummary]:
-        """The body of :meth:`summary`."""
-        alerts = self._alerts_for(lat, lon)
-        if not alerts:
-            return None
-
-        lines = [self._summary_line(alert) for alert in alerts]
-        text = ""
-        shown = 0
-        for line in lines:
-            candidate = f"{text}; {line}" if text else line
-            remaining = len(lines) - shown - 1
-            suffix = f" +{remaining}" if remaining > 0 else ""
-            if self.host._count_display_width(candidate + suffix) > max_length:
-                break
-            text = candidate
-            shown += 1
-
-        if shown == 0:
-            # The first line alone is too long: trim it and re-check the suffix.
-            return AlertSummary(
-                text=self._trim(lines[0], max_length, len(lines) - 1), count=len(alerts)
-            )
-        remaining = len(lines) - shown
-        if remaining > 0:
-            text = f"{text} +{remaining}"
-        return AlertSummary(text=text, count=len(alerts))
-
-    def _trim(self, line: str, max_length: int, remaining: int) -> str:
-        """Cut a line to the budget with an ellipsis, leaving room for " +N"."""
-        suffix = f" +{remaining}" if remaining > 0 else ""
-        budget = max_length - self.host._count_display_width(suffix)
-        trimmed = line
-        while trimmed and self.host._count_display_width(trimmed + "\u2026") > budget:
-            trimmed = trimmed[:-1]
-        return f"{trimmed}\u2026{suffix}" if trimmed else suffix.strip()
-
-    @staticmethod
-    def _headline_area(headline: str) -> str:
-        """The area part of a CAP headline ("Gale, yellow level, Aana-Sira - Karmoey")."""
-        parts = [part.strip() for part in (headline or "").split(",")]
-        if len(parts) < 3:
-            return ""
-        return parts[-1]
-
-    def _full_alert_text(self, alert: dict, index: int, max_length: int) -> str:
-        """One alert as a single line, in the shape NWS's full list uses.
-
-        ``{index}. {emoji}{event} {window} {area}``: the window comes from the
-        shared alert formatter, and the area is the last part of the headline,
-        added only when the line still fits.
-        """
-        emoji = LEVEL_EMOJI.get(alert["level"], "")
-        window = alert_format.format_alert_window(
-            {
-                "effective": alert["onset"].isoformat() if alert["onset"] else "",
-                "expires": alert["expires"].isoformat() if alert["expires"] else "",
-            },
-            self.host.response_translator,
-        )
-        parts = [f"{index}.", f"{emoji} {alert['event']}".strip()]
-        if window:
-            parts.append(window)
-        line = " ".join(parts)
-        area = self._headline_area(alert["headline"])
-        if area:
-            candidate = f"{line} {area}"
-            if self.host._count_display_width(candidate) <= max_length:
-                return candidate
-        return line
-
-    def _fit(self, text: str, max_length: int) -> str:
-        """Cut a message to the frame budget, by display width."""
-        if self.host._count_display_width(text) <= max_length:
-            return text
-        trimmed = text
-        while trimmed and self.host._count_display_width(trimmed) > max_length:
-            trimmed = trimmed[:-1]
-        return trimmed
-
-    async def send_full_list(self, message: Any, lat: float, lon: float) -> bool:
-        """Send the full alert list, packed and paced exactly as the NWS list is."""
-        alerts = await asyncio.to_thread(self._alerts_for, lat, lon)
-        if alerts is None:
-            return bool(await self.host.send_response(
-                message, self.host.translate("commands.wx.meteoalarm.error_fetching")
-            ))
-        if not alerts:
-            return bool(await self.host.send_response(message, "No weather alerts"))
-
-        max_length = self.host.get_max_message_length(message)
-        rate_limit = self.host.bot.config.getfloat("Bot", "bot_tx_rate_limit_seconds", fallback=1.0)
-        sleep_time = max(rate_limit + 1.0, 2.0)
-
-        # A count header, then whole alert lines: a new message starts when the
-        # next line would not fit, as NWS's list does.
-        current_message = f"{len(alerts)} alerts:"
-        messages = []
-        for index, alert in enumerate(alerts, 1):
-            line = self._fit(self._full_alert_text(alert, index, max_length), max_length)
-            test_message = f"{current_message}\n{line}" if current_message else line
-            if self.host._count_display_width(test_message) > max_length:
-                if current_message:
-                    messages.append(current_message)
-                current_message = line
-            else:
-                current_message = test_message
-        if current_message:
-            messages.append(current_message)
-
-        for index, text in enumerate(messages):
-            if not await self.host.send_response(message, text, skip_user_rate_limit=(index > 0)):
-                return False
-            if index < len(messages) - 1:
-                await self.host._pace_reply(message, sleep_time)
-        return True

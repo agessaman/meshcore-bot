@@ -23,6 +23,7 @@ from modules.weather_providers import (
     make_provider,
     resolve_alerts_provider_name,
 )
+from modules.weather_providers.alerts_eccc import EcccAlertsProvider
 from modules.weather_providers.alerts_meteoalarm import (
     MeteoalarmAlertsProvider,
     reset_rate_limits,
@@ -75,9 +76,10 @@ def test_the_registries_hold_the_shipped_providers():
     assert PROVIDERS["openmeteo"] is OpenMeteoProvider
     assert PROVIDERS["metno"] is MetNorwayProvider
     assert PROVIDERS["eccc"] is EcccProvider
-    assert set(ALERT_PROVIDERS) == {"meteoalarm", "nws"}
+    assert set(ALERT_PROVIDERS) == {"eccc", "meteoalarm", "nws"}
     assert ALERT_PROVIDERS["nws"] is NwsAlertsProvider
     assert ALERT_PROVIDERS["meteoalarm"] is MeteoalarmAlertsProvider
+    assert ALERT_PROVIDERS["eccc"] is EcccAlertsProvider
 
 
 def test_make_provider_binds_the_host_and_units():
@@ -1127,12 +1129,15 @@ def test_metno_answers_wx_end_to_end():
 
 
 def test_eccc_answers_wx_end_to_end():
-    from tests.unit.test_eccc_provider import NOW, _Response, _Session, _payload
+    from tests.unit.test_eccc_provider import NOW, _payload, _Response, _Session
 
     cmd = _wx({"weather_provider": "eccc"})
     assert isinstance(cmd.provider, EcccProvider)
     assert cmd.provider.location_style == "global"
     assert cmd.provider.translation_ns == "commands.gwx"
+    # auto follows the forecast provider's own declaration: eccc alerts.
+    assert cmd.alerts_provider is not None
+    assert cmd.alerts_provider.name == "eccc"
 
     cmd.provider._session = _Session(_Response(200, _payload("vancouver")))
     cmd.provider._clock = lambda: 1000.0

@@ -119,6 +119,7 @@ _PROVIDER_LABELS = {
 _ALERT_PROVIDER_LABELS = {
     "nws": "NWS (US)",
     "meteoalarm": "Meteoalarm (Europe)",
+    "eccc": "Environment Canada",
 }
 
 _P = ParamSpec("_P")

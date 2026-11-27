@@ -245,6 +245,9 @@
       "meteoalarm": {
         "attribution": "Alerts: MeteoAlarm/EUMETNET",
         "error_fetching": "Error fetching weather alerts"
+      },
+      "eccc": {
+        "error_fetching": "Error fetching weather alerts"
       }
     },
     "gwx": {

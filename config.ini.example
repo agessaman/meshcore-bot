@@ -1001,11 +1001,12 @@ prefix_best_do_not_suggest =
 weather_provider = noaa
 
 # Weather alerts provider selection, chosen separately from the forecast provider
-# Options: auto, none, nws, meteoalarm
-#   auto: nws when weather_provider = noaa, no alerts with openmeteo or metno
+# Options: auto, none, nws, meteoalarm, eccc
+#   auto: nws when weather_provider = noaa, eccc when it is eccc, no alerts otherwise
 #   none: never send weather alerts
 #   nws: Use NWS alerts (US coverage only)
 #   meteoalarm: Use Meteoalarm alerts (Europe; needs meteoalarm_token below)
+#   eccc: Use Environment Canada alerts (Canada; works with any forecast provider)
 # Default: auto
 alerts_provider = auto
 

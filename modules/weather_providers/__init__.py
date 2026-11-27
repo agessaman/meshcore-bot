@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from .alerts_eccc import EcccAlertsProvider
 from .alerts_meteoalarm import MeteoalarmAlertsProvider
 from .alerts_nws import NwsAlertsProvider
 from .base import (
@@ -47,6 +48,7 @@ PROVIDERS: dict[str, type[WeatherProvider]] = {
 }
 
 ALERT_PROVIDERS: dict[str, type[AlertsProvider]] = {
+    "eccc": EcccAlertsProvider,
     "meteoalarm": MeteoalarmAlertsProvider,
     "nws": NwsAlertsProvider,
 }
@@ -97,8 +99,7 @@ def resolve_alerts_provider_name(
 def _default_alerts_provider(forecast_name: str) -> str | None:
     """The alerts provider a forecast source declares for ``auto``, if any."""
     provider = PROVIDERS.get(forecast_name)
-    declared = getattr(provider, "default_alerts_provider", None) if provider else None
-    return declared if declared in ALERT_PROVIDERS else None
+    return getattr(provider, "default_alerts_provider", None) if provider else None
 
 
 __all__ = [
@@ -107,6 +108,7 @@ __all__ = [
     "AlertSummary",
     "AlertsProvider",
     "Capability",
+    "EcccAlertsProvider",
     "EcccProvider",
     "ForecastReply",
     "MetNorwayProvider",
