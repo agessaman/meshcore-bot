@@ -329,7 +329,10 @@
         "heavy_snow": "⚠️ Heavy snow",
         "high_winds": "⚠️ High winds ({wind_speed} {unit})"
       },
-      "pressure_unit": "hpa"
+      "pressure_unit": "hpa",
+      "metno": {
+        "error_fetching_api": "Error fetching weather data from MET Norway"
+      }
     },
     "sports": {
       "description": "Get sports scores and schedules (usage: sports [team/league])",

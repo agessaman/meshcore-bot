@@ -992,15 +992,16 @@ prefix_best_do_not_suggest =
 # NOTE: Unit settings are used by both the wx and gwx commands and Weather_Service plugin
 
 # Weather provider selection
-# Options: noaa, openmeteo
+# Options: noaa, openmeteo, metno
 #   noaa: Use NOAA API (US-focused, better for US locations, includes weather alerts)
 #   openmeteo: Use Open-Meteo API (global coverage, works worldwide)
+#   metno: Use MET Norway Locationforecast (global coverage, no alerts)
 # Default: noaa
 weather_provider = noaa
 
 # Weather alerts provider selection, chosen separately from the forecast provider
 # Options: auto, none, nws, meteoalarm
-#   auto: nws when weather_provider = noaa, no alerts when weather_provider = openmeteo
+#   auto: nws when weather_provider = noaa, no alerts with openmeteo or metno
 #   none: never send weather alerts
 #   nws: Use NWS alerts (US coverage only)
 #   meteoalarm: Use Meteoalarm alerts (Europe; needs meteoalarm_token below)
@@ -1016,6 +1017,11 @@ alerts_provider = auto
 # Leave the default for MeteoGate tokens. Direct re-user tokens from api.meteoalarm.org/register
 # need meteoalarm_api_url = https://api.meteoalarm.org/edr/v1
 #meteoalarm_api_url = https://api.meteogate.eu/warnings
+
+# MET Norway User-Agent, used only with weather_provider = metno
+# The API's terms ask for an identifying agent with contact information. Leave unset to send
+# the bot's own name and version; set it to your own contact if you run a modified bot.
+#metno_user_agent =
 
 # Open-Meteo model selection (used by gwx and Weather_Service when provider is openmeteo)
 # Leave unset to default to "best_match"

@@ -36,6 +36,7 @@ from modules.weather_providers.base import (
     WeatherProvider,
     WeatherUnits,
 )
+from modules.weather_providers.metno import MetNorwayProvider
 from modules.weather_providers.noaa import NoaaProvider
 from modules.weather_providers.openmeteo import OpenMeteoProvider
 
@@ -68,9 +69,10 @@ def _warnings(mock):
 
 
 def test_the_registries_hold_the_shipped_providers():
-    assert set(PROVIDERS) == {"noaa", "openmeteo"}
+    assert set(PROVIDERS) == {"metno", "noaa", "openmeteo"}
     assert PROVIDERS["noaa"] is NoaaProvider
     assert PROVIDERS["openmeteo"] is OpenMeteoProvider
+    assert PROVIDERS["metno"] is MetNorwayProvider
     assert set(ALERT_PROVIDERS) == {"meteoalarm", "nws"}
     assert ALERT_PROVIDERS["nws"] is NwsAlertsProvider
     assert ALERT_PROVIDERS["meteoalarm"] is MeteoalarmAlertsProvider
@@ -1085,3 +1087,38 @@ def test_gwx_with_nws_alerts_says_not_available_from_the_first_request():
     texts = [call.args[1] for call in cmd.send_response.call_args_list]
     expected = Translator("en").translate("commands.gwx.source_option_not_available")
     assert texts == [expected, expected]
+
+
+# --- MET Norway, the third forecast provider --------------------------------
+
+
+def test_metno_answers_wx_end_to_end():
+    from tests.unit.test_metno_provider import NOW, _payload, _Response, _Session
+
+    cmd = _wx({"weather_provider": "metno"})
+    assert isinstance(cmd.provider, MetNorwayProvider)
+    assert cmd.provider.location_style == "global"
+    assert cmd.provider.translation_ns == "commands.gwx"
+    # auto gives no alerts with a non-NOAA forecast provider.
+    assert cmd.alerts_provider is None
+
+    cmd.provider.session = _Session(_Response(200, _payload("tokyo")))
+    cmd.provider._clock = lambda: 1000.0
+    cmd.provider._now = lambda: NOW
+    cmd.geocode_location = Mock(return_value=(35.68, 139.7, {}, None))
+    cmd._get_custom_mqtt_weather_topic = Mock(return_value=None)
+    cmd._get_custom_wxsim_source = Mock(return_value=None)
+    cmd.record_execution = Mock()
+    cmd.send_response = AsyncMock(return_value=True)
+    cmd._pace_reply = AsyncMock()
+    cmd.get_max_message_length = Mock(return_value=150)
+
+    message = SimpleNamespace(content="wx Tokyo", sender_id="u1")
+    assert asyncio.run(cmd.execute(message)) is True
+
+    texts = [call.args[1] for call in cmd.send_response.call_args_list]
+    # The forecast, then the extreme-conditions warning as its own message.
+    assert len(texts) == 2
+    assert texts[0].startswith("Today: ")
+    assert "°F" in texts[0]
+    assert texts[1] == "⚠️ Heavy rain"

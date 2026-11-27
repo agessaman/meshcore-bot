@@ -34,10 +34,12 @@ from .base import (
     WeatherProvider,
     WeatherUnits,
 )
+from .metno import MetNorwayProvider
 from .noaa import NoaaProvider
 from .openmeteo import OpenMeteoProvider
 
 PROVIDERS: dict[str, type[WeatherProvider]] = {
+    "metno": MetNorwayProvider,
     "noaa": NoaaProvider,
     "openmeteo": OpenMeteoProvider,
 }
@@ -97,6 +99,7 @@ __all__ = [
     "AlertsProvider",
     "Capability",
     "ForecastReply",
+    "MetNorwayProvider",
     "NoaaProvider",
     "NwsAlertsProvider",
     "OpenMeteoProvider",

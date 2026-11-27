@@ -113,6 +113,7 @@ _TEMP_FORMAT_NOTES = [
 _PROVIDER_LABELS = {
     "noaa": "NOAA (US, includes alerts)",
     "openmeteo": "Open-Meteo (global)",
+    "metno": "MET Norway (global)",
 }
 _ALERT_PROVIDER_LABELS = {
     "nws": "NWS (US)",
@@ -218,6 +219,10 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
          "default": "",
          "help": "Only with alerts_provider = meteoalarm. Create one in the MeteoGate developer portal. "
                  "Shared weather setting."},
+        {"key": "metno_user_agent", "label": "MET Norway User-Agent", "type": "str", "section": "Weather",
+         "default": "",
+         "help": "Only with weather_provider = metno. Overrides the identifying User-Agent the API's terms "
+                 "ask for; leave empty to send the bot's own name and version. Shared weather setting."},
         {"key": "openmeteo_fallback", "label": "Open-Meteo outside NWS coverage", "type": "bool", "section": "Weather",
          "default": False,
          "help": "Only with the NOAA provider: answer wx from Open-Meteo for places NWS does not cover "

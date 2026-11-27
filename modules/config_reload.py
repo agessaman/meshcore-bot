@@ -20,6 +20,7 @@ class ConfigReloadMixin:
         "alerts_provider",
         "meteoalarm_api_url",
         "meteoalarm_token",
+        "metno_user_agent",
         "openmeteo_fallback",
         "weather_provider",
     })
