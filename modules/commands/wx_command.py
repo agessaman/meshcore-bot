@@ -50,6 +50,7 @@ from ..weather_providers import (
     make_provider,
     resolve_alerts_provider_name,
 )
+from ..weather_providers.alerts_meteoalarm import DEFAULT_BASE_URL as DEFAULT_METEOALARM_API_URL
 from ..weather_providers.alerts_meteoalarm import MeteoalarmAlertsProvider
 from ..weather_providers.alerts_nws import NwsAlertsProvider
 from ..weather_providers.base import AlertsProvider, ForecastReply, WeatherUnits
@@ -503,7 +504,14 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                     "alerts_provider = meteoalarm needs [Weather] meteoalarm_token; alerts are off"
                 )
                 return None
-            return make_alerts_provider(alerts_name, host=self, token=token)
+            return make_alerts_provider(
+                alerts_name,
+                host=self,
+                token=token,
+                base_url=self.bot.config.get(
+                    'Weather', 'meteoalarm_api_url', fallback=DEFAULT_METEOALARM_API_URL
+                ).strip().rstrip('/'),
+            )
         return make_alerts_provider(alerts_name, host=self, **shared)
 
     def get_help_text(self, message: MeshMessage | None = None) -> str:

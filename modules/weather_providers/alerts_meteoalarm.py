@@ -10,6 +10,10 @@ expiry live in the CAP 1.2 document the feature links to, not in the feature.
 The token is sent as a bearer header, never as a query parameter, so it stays
 out of URLs and logs. Nothing here raises into the command: a failed fetch
 logs one WARNING per failure streak and answers with no alerts.
+
+The base URL defaults to the MeteoGate gateway, which serves the same EDR API
+and is where a public token comes from. Meteoalarm Direct re-user tokens point
+``[Weather] meteoalarm_api_url`` at ``https://api.meteoalarm.org/edr/v1``.
 """
 
 from __future__ import annotations
@@ -24,9 +28,14 @@ from typing import Any, Optional
 from ..http_retry import make_retry_session
 from .base import AlertsProvider, AlertSummary, ProviderHost
 
-API_BASE = "https://api.meteoalarm.org/edr/v1"
-LOCATIONS_URL = f"{API_BASE}/collections/warnings/locations"
-COUNTRY_URL = f"{API_BASE}/collections/warnings/locations/{{country}}"
+# MeteoGate serves the same EDR API as Meteoalarm Direct and is where a public
+# token comes from. Direct re-user tokens point [Weather] meteoalarm_api_url at
+# https://api.meteoalarm.org/edr/v1 instead.
+DEFAULT_BASE_URL = "https://api.meteogate.eu/warnings"
+LOCATIONS_PATH = "/collections/warnings/locations"
+COUNTRY_PATH = "/collections/warnings/locations/{country}"
+LOCATIONS_URL = f"{DEFAULT_BASE_URL}{LOCATIONS_PATH}"
+COUNTRY_URL = f"{DEFAULT_BASE_URL}{COUNTRY_PATH}"
 
 # A short connect timeout and a longer read: the API answers from a CDN, and a
 # stalled read is worth waiting out once rather than dropping the alert.
@@ -174,14 +183,19 @@ class MeteoalarmAlertsProvider(AlertsProvider):
     translation_ns = "commands.wx"
 
     def __init__(self, host: ProviderHost, token: Optional[str] = None,
-                 session: Any = None):
+                 session: Any = None, base_url: Optional[str] = None):
         """Bind the provider to its host, its bearer token and a retry session.
 
         *token* comes from ``[Weather] meteoalarm_token``. It is never logged and
         never put in a URL: the API takes it as ``Authorization: Bearer``.
+        *base_url* comes from ``[Weather] meteoalarm_api_url`` and defaults to the
+        MeteoGate gateway.
         """
         super().__init__(host)
         self.token = (token or "").strip()
+        self.base_url = (base_url or DEFAULT_BASE_URL).strip().rstrip("/")
+        self.locations_url = f"{self.base_url}{LOCATIONS_PATH}"
+        self.country_url = f"{self.base_url}{COUNTRY_PATH}"
         self.session = session if session is not None else make_retry_session()
         # One lock for every cache. Never held across HTTP.
         self._lock = threading.Lock()
@@ -245,7 +259,7 @@ class MeteoalarmAlertsProvider(AlertsProvider):
             return cached[1]
 
         try:
-            response = self._get(LOCATIONS_URL)
+            response = self._get(self.locations_url)
             if self._rejected(response):
                 return None
             response.raise_for_status()
@@ -279,7 +293,7 @@ class MeteoalarmAlertsProvider(AlertsProvider):
         try:
             for page in range(1, MAX_PAGES + 1):
                 response = self._get(
-                    COUNTRY_URL.format(country=country),
+                    self.country_url.format(country=country),
                     params={"active": interval, "datetime": interval, "page": page},
                 )
                 if self._rejected(response):

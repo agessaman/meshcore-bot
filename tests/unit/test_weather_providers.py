@@ -477,6 +477,22 @@ def test_meteoalarm_is_selected_with_its_token():
     assert _warnings(cmd.logger) == []
 
 
+def test_meteoalarm_uses_the_meteogate_gateway_by_default():
+    cmd = _wx({"weather_provider": "noaa", "alerts_provider": "meteoalarm",
+               "meteoalarm_token": "s3cr3t-token"})
+    assert cmd.alerts_provider.base_url == "https://api.meteogate.eu/warnings"
+
+
+def test_meteoalarm_honours_a_configured_api_url():
+    cmd = _wx({"weather_provider": "noaa", "alerts_provider": "meteoalarm",
+               "meteoalarm_token": "s3cr3t-token",
+               "meteoalarm_api_url": "https://api.meteoalarm.org/edr/v1/"})
+    assert cmd.alerts_provider.base_url == "https://api.meteoalarm.org/edr/v1"
+    assert cmd.alerts_provider.locations_url == (
+        "https://api.meteoalarm.org/edr/v1/collections/warnings/locations"
+    )
+
+
 def test_meteoalarm_without_a_token_warns_once_and_turns_alerts_off():
     cmd = _wx({"weather_provider": "noaa", "alerts_provider": "meteoalarm"})
     assert cmd.alerts_provider is None

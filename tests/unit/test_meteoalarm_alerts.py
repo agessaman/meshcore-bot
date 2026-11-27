@@ -20,6 +20,7 @@ from modules.i18n import Translator
 from modules.weather_providers.alerts_meteoalarm import (
     COUNTRY_TTL,
     COUNTRY_URL,
+    DEFAULT_BASE_URL,
     LOCATIONS_TTL,
     LOCATIONS_URL,
     MeteoalarmAlertsProvider,
@@ -126,10 +127,10 @@ def _host(language="en"):
     return host
 
 
-def _provider(routes=None, token="test-token", language="en"):
+def _provider(routes=None, token="test-token", language="en", base_url=None):
     session = _Session(routes if routes is not None else _routes())
     host = _host(language)
-    provider = MeteoalarmAlertsProvider(host=host, token=token, session=session)
+    provider = MeteoalarmAlertsProvider(host=host, token=token, session=session, base_url=base_url)
     clock = _Clock()
     provider._clock = lambda: clock.monotonic
     provider._utcnow = lambda: clock.wall
@@ -411,6 +412,54 @@ def test_the_token_is_a_bearer_header_and_never_reaches_a_log():
     for level in ("debug", "info", "warning", "error", "critical"):
         for call in getattr(host.logger, level).call_args_list:
             assert "s3cr3t-token" not in str(call)
+
+
+def test_the_default_base_url_is_the_meteogate_gateway():
+    provider, session, _host_, _clock = _provider()
+    provider.summary(LAT, LON, 130)
+
+    assert DEFAULT_BASE_URL == "https://api.meteogate.eu/warnings"
+    assert provider.base_url == DEFAULT_BASE_URL
+    assert session.count("https://api.meteogate.eu/warnings/collections/warnings/locations") == 1
+    assert session.count("https://api.meteogate.eu/warnings/collections/warnings/locations/AT") == 1
+
+
+def test_a_custom_base_url_with_a_trailing_slash_is_used():
+    base = "https://api.meteoalarm.org/edr/v1/"
+    routes = {
+        "https://api.meteoalarm.org/edr/v1/collections/warnings/locations": _Response(200, _json("locations.json")),
+        "https://api.meteoalarm.org/edr/v1/collections/warnings/locations/AT": _Response(200, _json("AT_page1.json")),
+        "https://api.meteoalarm.org/edr/v1/collections/warnings/locations/DE": _Response(
+            200, {"type": "FeatureCollection", "metadata": {"total_pages": 1}, "features": []}
+        ),
+        GEOMETRY_URL.format("bbox-hit"): _Response(200, _json("bbox-hit.geojson")),
+        GEOMETRY_URL.format("bbox-miss"): _Response(200, _json("bbox-miss.geojson")),
+        CAP_URL.format("alert-exact"): _Response(200, text=_text("alert-exact.xml")),
+        CAP_URL.format("alert-bbox-hit"): _Response(200, text=_text("alert-bbox-hit.xml")),
+        CAP_URL.format("alert-bbox-miss"): _Response(200, text=_text("alert-bbox-miss.xml")),
+        CAP_URL.format("alert-superseded"): _Response(200, text=_text("alert-superseded.xml")),
+        CAP_URL.format("alert-expired"): _Response(200, text=_text("alert-expired.xml")),
+        CAP_URL.format("alert-nogeom"): _Response(200, text=_text("alert-nogeom.xml")),
+    }
+    provider, session, _host_, _clock = _provider(routes, token="s3cr3t-token", base_url=base)
+    provider.summary(LAT, LON, 130)
+
+    assert provider.base_url == "https://api.meteoalarm.org/edr/v1"
+    assert session.count("https://api.meteoalarm.org/edr/v1/collections/warnings/locations") == 1
+    assert session.count("https://api.meteoalarm.org/edr/v1/collections/warnings/locations/AT") == 1
+    assert not any("api.meteogate.eu" in call["url"] for call in session.calls)
+    for call in session.calls:
+        assert call["headers"].get("Authorization") == "Bearer s3cr3t-token"
+        assert "s3cr3t-token" not in call["url"]
+        assert "s3cr3t-token" not in json.dumps(call["params"])
+
+
+def test_the_locations_list_is_fetched_without_a_token_too():
+    provider, session, _host_, _clock = _provider(token="")
+    assert provider.covers(LAT, LON) is True
+    locations = [call for call in session.calls if call["url"] == LOCATIONS_URL]
+    assert locations
+    assert all("Authorization" not in call["headers"] for call in locations)
 
 
 def test_a_failing_fetch_never_raises_into_the_command():

@@ -1008,9 +1008,14 @@ weather_provider = noaa
 alerts_provider = auto
 
 # Meteoalarm API token, needed only with alerts_provider = meteoalarm
-# Request one through MeteoGate (meteogate.eu) or MeteoAlarm re-user access.
+# Request one from the MeteoGate developer portal (devportal.meteogate.eu): sign in, then "Create API Key".
 # The data is CC BY 4.0, provided by EUMETNET members; Norway and Andorra are not covered.
 #meteoalarm_token =
+
+# Meteoalarm API base URL, needed only with alerts_provider = meteoalarm
+# Leave the default for MeteoGate tokens. Direct re-user tokens from api.meteoalarm.org/register
+# need meteoalarm_api_url = https://api.meteoalarm.org/edr/v1
+#meteoalarm_api_url = https://api.meteogate.eu/warnings
 
 # Open-Meteo model selection (used by gwx and Weather_Service when provider is openmeteo)
 # Leave unset to default to "best_match"
