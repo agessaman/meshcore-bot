@@ -417,6 +417,11 @@ class EcccProvider(WeatherProvider):
                                if wmo is not None else "")
         return f"{emoji}{text}"
 
+    def _emoji(self, icon: Any, is_day: bool = True) -> str:
+        """Just the emoji for an icon code, for lines that carry the data's own text."""
+        wmo = _wmo_for(icon, "")
+        return weather_emoji(wmo, is_day=is_day) if wmo is not None else ""
+
     def _offset(self, lat: float, lon: float, when: datetime) -> timedelta:
         """The point's UTC offset at *when*, so a series can cross a DST change."""
         return utc_offset_at(lat, lon, when)
@@ -492,7 +497,7 @@ class EcccProvider(WeatherProvider):
         high_low = self.host._format_high_low(
             self._temperature(day["high"]), self._temperature(day["low"]), self.temp_symbol
         )
-        emoji = self._condition(day["icon"], "", True).strip()
+        emoji = self._emoji(day["icon"])
         summary = day["summary"]
         # The data's summaries are phrases, so they keep a space after the emoji.
         described = f" | {period}: {emoji} {summary} {high_low}"
@@ -512,7 +517,7 @@ class EcccProvider(WeatherProvider):
         high_low = self.host._format_high_low(
             self._temperature(day["high"]), self._temperature(day["low"]), self.temp_symbol
         )
-        emoji = self._condition(day["icon"], "", True).strip()
+        emoji = self._emoji(day["icon"])
         head = f"{period}: {emoji}"
         candidates = [
             f"{head} {day['summary']} {high_low}",
@@ -556,11 +561,11 @@ class EcccProvider(WeatherProvider):
                     summary = summary[:limit - 3] + "..."
                 elif not limit:
                     summary = ""
-                emoji = self._condition(day["icon"], "", True).strip()
+                emoji = self._emoji(day["icon"])
                 high_low = self.host._format_high_low(
                     self._temperature(day["high"]), self._temperature(day["low"]), self.temp_symbol
                 )
-                parts.append(f"{day_abbrev}: {emoji}{summary} {high_low}".replace("  ", " "))
+                parts.append(f"{day_abbrev}: {emoji} {summary} {high_low}".replace("  ", " "))
             if not parts:
                 return self.host.translate('commands.gwx.multiday_not_available', num_days=num_days)
             text = "\n".join(parts)

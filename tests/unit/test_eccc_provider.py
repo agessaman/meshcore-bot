@@ -179,6 +179,19 @@ def test_the_hourly_reply_starts_after_the_current_hour():
     assert "°" in reply.text
 
 
+def test_the_day_lines_carry_the_data_summary_once():
+    provider, _session_, _host_, _clock = _provider("vancouver")
+
+    tomorrow = provider.forecast(*VANCOUVER, "tomorrow", 7, 0, None).text
+    multiday = provider.forecast(*VANCOUVER, "multiday", 3, 0, None).text
+
+    # The emoji comes from the icon code and the words from the data, once:
+    # the catalog's own description for the code must not lead the summary.
+    assert tomorrow.startswith("Tomorrow: 🌦️ Periods of drizzle H:")
+    assert "Drizzle" not in tomorrow
+    assert multiday.splitlines()[0].startswith("Sa: 🌦️ Periods of drizzle H:")
+
+
 def test_the_reply_language_follows_the_bot_language():
     host = _Host(localization={"language": "fr"})
     provider, _session_, _host_, _clock = _provider("vancouver", host=host)
