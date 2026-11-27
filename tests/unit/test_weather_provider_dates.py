@@ -50,7 +50,10 @@ SEATTLE_EVENING = datetime(2026, 10, 1, 18, 30, tzinfo=ZoneInfo("America/Los_Ang
 def test_wx_tomorrow_is_the_day_after_the_forecasts_today_not_the_servers():
     wx = WxCommand(_bot())
     periods = SEATTLE["forecast"]["properties"]["periods"]
-    with patch("modules.commands.wx_command.datetime", _clock(SEATTLE_EVENING)):
+    with (
+        patch("modules.commands.wx_command.datetime", _clock(SEATTLE_EVENING)),
+        patch("modules.weather_providers.noaa.datetime", _clock(SEATTLE_EVENING)),
+    ):
         text = wx.format_tomorrow_forecast(periods)
     # Seattle's tomorrow is Friday 2026-10-02; the server's would be Saturday.
     assert text.startswith("Fri: ")
@@ -60,7 +63,10 @@ def test_wx_tomorrow_is_the_day_after_the_forecasts_today_not_the_servers():
 def test_wx_multiday_starts_the_day_after_the_forecasts_today():
     wx = WxCommand(_bot())
     periods = SEATTLE["forecast"]["properties"]["periods"]
-    with patch("modules.commands.wx_command.datetime", _clock(SEATTLE_EVENING)):
+    with (
+        patch("modules.commands.wx_command.datetime", _clock(SEATTLE_EVENING)),
+        patch("modules.weather_providers.noaa.datetime", _clock(SEATTLE_EVENING)),
+    ):
         lines = wx.format_multiday_forecast(periods, num_days=3).split("\n")
     assert [line.split(":")[0] for line in lines] == ["F", "Sa", "Su"]
 
@@ -71,7 +77,10 @@ def test_wx_multiday_keeps_a_holiday_named_period():
         if p["name"] == "Monday":
             p["name"] = "Columbus Day"
     wx = WxCommand(_bot())
-    with patch("modules.commands.wx_command.datetime", _clock(SEATTLE_EVENING)):
+    with (
+        patch("modules.commands.wx_command.datetime", _clock(SEATTLE_EVENING)),
+        patch("modules.weather_providers.noaa.datetime", _clock(SEATTLE_EVENING)),
+    ):
         lines = wx.format_multiday_forecast(periods, num_days=5).split("\n")
     assert [line.split(":")[0] for line in lines] == ["F", "Sa", "Su", "M", "T"]
     assert "68°F" in lines[3]  # Monday's (Columbus Day's) daytime high, not its night low
@@ -82,7 +91,10 @@ def test_wx_hourly_drops_hours_already_past_at_the_location():
     wx = WxCommand(_bot())
     hourly = MIAMI["hourly"]["properties"]["periods"]
     at = datetime(2026, 10, 1, 15, 30, tzinfo=ZoneInfo("America/Los_Angeles"))
-    with patch("modules.commands.wx_command.datetime", _clock(at)):
+    with (
+        patch("modules.commands.wx_command.datetime", _clock(at)),
+        patch("modules.weather_providers.noaa.datetime", _clock(at)),
+    ):
         text = wx.format_hourly_forecast(hourly, max_length=400)
     assert not text.startswith("6PM")
     assert text.startswith("7PM")
@@ -144,7 +156,10 @@ def test_wx_today_is_the_locations_date_even_when_the_first_period_began_yesterd
     after_midnight = datetime(2026, 10, 2, 1, 0, tzinfo=ZoneInfo("America/Los_Angeles"))
     wx = WxCommand(_bot())
     periods = SEATTLE["forecast"]["properties"]["periods"]
-    with patch("modules.commands.wx_command.datetime", _clock(after_midnight)):
+    with (
+        patch("modules.commands.wx_command.datetime", _clock(after_midnight)),
+        patch("modules.weather_providers.noaa.datetime", _clock(after_midnight)),
+    ):
         tomorrow = wx.format_tomorrow_forecast(periods)
         lines = wx.format_multiday_forecast(periods, num_days=2).split("\n")
     assert tomorrow.startswith("Sat: ")
@@ -156,7 +171,10 @@ def test_wx_an_undated_period_keeps_its_place():
     friday = next(p for p in periods if p["name"] == "Friday")
     del friday["startTime"]
     wx = WxCommand(_bot())
-    with patch("modules.commands.wx_command.datetime", _clock(SEATTLE_EVENING)):
+    with (
+        patch("modules.commands.wx_command.datetime", _clock(SEATTLE_EVENING)),
+        patch("modules.weather_providers.noaa.datetime", _clock(SEATTLE_EVENING)),
+    ):
         tomorrow = wx.format_tomorrow_forecast(periods)
         lines = wx.format_multiday_forecast(periods, num_days=2).split("\n")
     assert tomorrow.startswith("Fri: ") and "Fri Night" in tomorrow

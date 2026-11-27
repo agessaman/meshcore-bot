@@ -1,9 +1,10 @@
-"""The interface a weather provider implements, and the types it exchanges.
+"""The interfaces a weather provider implements, and the types they exchange.
 
-A provider owns one forecast source: the fetch, the formatting of the reply and
-the message catalog it speaks. The command owns the request: option parsing,
-geocoding, location labels and sending. Providers are synchronous (blocking
-HTTP); the command runs them on a worker thread.
+A forecast provider owns one forecast source: the fetch, the formatting of the
+reply and the message catalog it speaks. An alerts provider owns one alert
+source, chosen independently of the forecast source. The command owns the
+request: option parsing, geocoding, location labels and sending. Providers are
+synchronous (blocking HTTP); the command runs them on a worker thread.
 """
 
 from __future__ import annotations
@@ -19,14 +20,40 @@ class ProviderHost(Protocol):
 
     Read at call time, never cached: tests and plugins replace these on the
     command after it is constructed, and the provider must see the new value.
+
+    ``bot``, ``logger``, ``translate``, ``response_translator``,
+    ``send_response`` and ``get_max_message_length`` come from ``BaseCommand``;
+    the formatting helpers (``_count_display_width``, ``_format_high_low``,
+    ``_hour_label``, ``_without_arrow``, ``_short_hourly_description``,
+    ``_pack_hourly_lines``, ``_pace_reply``, ``_send_multiday_forecast``) come
+    from ``WeatherCommandMixin``.
     """
 
     bot: Any
     logger: Any
+    response_translator: Any
 
     def translate(self, key: str, **kwargs) -> str: ...
 
     def get_max_message_length(self, message: Any) -> int: ...
+
+    async def send_response(self, message: Any, content: str, **kwargs) -> bool: ...
+
+    def _count_display_width(self, text: str) -> int: ...
+
+    def _format_high_low(self, high: Any, low: Any, temp_symbol: str) -> str: ...
+
+    def _hour_label(self, start_time_str: str) -> str: ...
+
+    def _without_arrow(self, direction: str) -> str: ...
+
+    def _short_hourly_description(self, description: str) -> str: ...
+
+    def _pack_hourly_lines(self, hourly_lines: Any, max_length: int) -> str: ...
+
+    async def _pace_reply(self, message: Any, seconds: float) -> None: ...
+
+    async def _send_multiday_forecast(self, message: Any, forecast_text: str) -> bool: ...
 
 
 @dataclass(frozen=True)
@@ -45,7 +72,6 @@ class Capability(str, Enum):
     TOMORROW = "tomorrow"
     MULTIDAY = "multiday"
     HOURLY = "hourly"
-    ALERTS = "alerts"
 
 
 @dataclass
@@ -55,8 +81,15 @@ class ForecastReply:
     text: str                      # body, or the provider's translated error reply
     ok: bool = True                # False: text is an error reply
     no_coverage: bool = False      # provider knows it does not cover this point
-    extra: str | None = None       # second message (alert summary, extreme-conditions warning)
-    alert_count: int | None = None  # NOAA puts this in its 4-tuple; keep the tuple shapes callers see today
+    extra: str | None = None       # second message (extreme-conditions warning)
+
+
+@dataclass
+class AlertSummary:
+    """The compact alert text that rides along with a forecast reply."""
+
+    text: str
+    count: int
 
 
 class WeatherProvider(ABC):
@@ -83,15 +116,34 @@ class WeatherProvider(ABC):
         lon: float,
         forecast_type: str = "default",
         num_days: int = 7,
-        body_max_length: int = 0,
+        location_prefix_len: int = 0,
         message: Any = None,
     ) -> ForecastReply:
         """The reply for a point, without the command's location label.
 
-        *body_max_length* is the number of bytes the command reserves for its
-        location prefix; the reply body gets the rest of the message budget.
+        *location_prefix_len* is the display width of the location prefix the
+        command prepends to the body. Each provider works out its own body
+        budget from that and the frame size, so the assembled reply fits.
         """
 
-    def alert_list(self, lat: float, lon: float):
-        """The provider's alerts for a point; only when ALERTS is a capability."""
-        raise NotImplementedError
+
+class AlertsProvider(ABC):
+    """One alert source, chosen independently of the forecast source."""
+
+    name: ClassVar[str]                    # registry key, the value of [Weather] alerts_provider
+    translation_ns: ClassVar[str]          # message catalog: nws -> "commands.wx"
+
+    def __init__(self, host: ProviderHost):
+        self.host = host
+
+    def covers(self, lat: float, lon: float) -> bool:
+        """Whether this provider answers for a point (NWS: US only)."""
+        return True
+
+    @abstractmethod
+    def summary(self, lat: float, lon: float, max_length: int) -> AlertSummary | None:
+        """The compact text and count for the second message; None without active alerts."""
+
+    @abstractmethod
+    async def send_full_list(self, message: Any, lat: float, lon: float) -> bool:
+        """Send the full alert list for a point; whether every message went out."""

@@ -13,7 +13,7 @@ def _wx():
     bot.config = config
     bot.translator = None
     wx = WxCommand(bot)
-    wx.get_observation_data = Mock(return_value=None)
+    wx.provider.get_observation_data = Mock(return_value=None)
     return wx
 
 
@@ -35,7 +35,7 @@ def _reply(periods):
     points.json.return_value = {"properties": {"forecast": "https://api.weather.gov/gridpoints/SEW/1,1/forecast"}}
     forecast = Mock()
     forecast.json.return_value = {"properties": {"periods": periods}}
-    wx._noaa_fetch = Mock(side_effect=[points, forecast])
+    wx.provider._noaa_fetch = Mock(side_effect=[points, forecast])
     reply, _ = wx.get_noaa_weather(47.6, -122.3, max_length=200)
     return wx, reply
 

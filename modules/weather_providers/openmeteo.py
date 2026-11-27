@@ -89,6 +89,10 @@ def weather_emoji(code: int, is_day: Optional[bool] = True) -> str:
     return emoji_map.get(code, "🌤️")
 
 
+# Sentinel: load the model from config, as a provider built by the registry does.
+_LOAD_FROM_CONFIG = object()
+
+
 class OpenMeteoProvider(WeatherProvider):
     """Open-Meteo (api.open-meteo.com) forecasts, worldwide, in the reply's units."""
 
@@ -103,9 +107,15 @@ class OpenMeteoProvider(WeatherProvider):
     })
     max_days = GWX_MULTIDAY_MAX_DAYS
 
-    def __init__(self, host: ProviderHost, units: WeatherUnits):
+    def __init__(self, host: ProviderHost, units: WeatherUnits, weather_model: Any = _LOAD_FROM_CONFIG):
+        """Bind the provider to its host and units.
+
+        *weather_model* is the already-loaded model selection when the caller
+        loaded it itself (the command does, so its warning comes first); the
+        default loads it from config here.
+        """
         super().__init__(host, units)
-        self.weather_model = self.load_weather_model()
+        self.weather_model = self.load_weather_model() if weather_model is _LOAD_FROM_CONFIG else weather_model
 
     @property
     def metric_distance(self) -> bool:
@@ -131,31 +141,32 @@ class OpenMeteoProvider(WeatherProvider):
         lon: float,
         forecast_type: str = "default",
         num_days: int = 7,
-        body_max_length: int = 0,
+        location_prefix_len: int = 0,
         message: Any = None,
     ) -> ForecastReply:
         """The Open-Meteo reply for a point, without the command's location label.
 
-        *body_max_length* is the number of bytes the command reserves for its
-        location prefix; the reply body gets the rest of the message budget.
+        *location_prefix_len* is the display width of the location prefix the
+        command prepends; the body is formatted to what is left of the frame
+        budget.
         """
         current = {}
         if forecast_type == "tomorrow":
             text = self.get_open_meteo_weather(
-                lat, lon, forecast_type="tomorrow", message=message, location_prefix_len=body_max_length
+                lat, lon, forecast_type="tomorrow", message=message, location_prefix_len=location_prefix_len
             )
         elif forecast_type == "multiday":
             text = self.get_open_meteo_weather(
                 lat, lon, forecast_type="multiday", num_days=num_days, message=message,
-                location_prefix_len=body_max_length,
+                location_prefix_len=location_prefix_len,
             )
         elif forecast_type == "hourly":
             text = self.get_open_meteo_weather(
-                lat, lon, forecast_type="hourly", message=message, location_prefix_len=body_max_length
+                lat, lon, forecast_type="hourly", message=message, location_prefix_len=location_prefix_len
             )
         else:
             text, current = self._get_open_meteo_weather_with_conditions(
-                lat, lon, message=message, location_prefix_len=body_max_length
+                lat, lon, message=message, location_prefix_len=location_prefix_len
             )
 
         # Check if it's an error (translated error message)

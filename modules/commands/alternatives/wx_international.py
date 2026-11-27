@@ -95,17 +95,20 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
         self.wxsim_parser = WXSIMParser()
 
         # The Open-Meteo fetch and formatting live in the provider; this command
-        # keeps the request (parsing, geocoding, labels) and the sending.
-        self.provider = OpenMeteoProvider(
-            host=self,
-            units=WeatherUnits(*load_open_meteo_units(self.bot.config, self.logger)),
-        )
+        # keeps the request (parsing, geocoding, labels) and the sending. The model
+        # is loaded before the units so an invalid setting warns in the old order.
+        weather_model = load_open_meteo_model(self.bot.config, self.logger)
 
         # Get default location/state/country from config for fallback/disambiguation
         self.default_city = self.bot.config.get('Weather', 'default_city', fallback='').strip()
         self.default_state = self.bot.config.get('Weather', 'default_state', fallback='')
         self.default_country = self.bot.config.get('Weather', 'default_country', fallback='US')
         self.always_show_location = self.bot.config.getboolean('Weather', 'always_show_location', fallback=False)
+
+        # Get unit preferences from config (validated)
+        units = WeatherUnits(*load_open_meteo_units(self.bot.config, self.logger))
+
+        self.provider = OpenMeteoProvider(host=self, units=units, weather_model=weather_model)
 
         # Initialize geocoder (will use rate-limited helpers for actual calls)
         self.geolocator = get_nominatim_geocoder()

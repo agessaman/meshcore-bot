@@ -80,7 +80,10 @@ def _latlon():
 
 def _weather(cmd, si):
     cmd.noaa_session, asked = _session(si)
-    with patch("modules.commands.wx_command.datetime", _Clock):
+    with (
+        patch("modules.commands.wx_command.datetime", _Clock),
+        patch("modules.weather_providers.noaa.datetime", _Clock),
+    ):
         text, _ = cmd.get_noaa_weather(*_latlon(), max_length=400)
     return text, asked
 
@@ -142,11 +145,17 @@ def test_a_zero_degree_period_is_kept():
     friday["temperature"] = 0
     friday["detailedForecast"] = "Partly sunny."
     cmd = _wx({"temperature_unit": "celsius", "wind_speed_unit": "kmh"})
-    with patch("modules.commands.wx_command.datetime", _Clock):
+    with (
+        patch("modules.commands.wx_command.datetime", _Clock),
+        patch("modules.weather_providers.noaa.datetime", _Clock),
+    ):
         tomorrow = cmd.format_tomorrow_forecast(periods)
     assert tomorrow.startswith("Fri: ") and " 0°C" in tomorrow
     assert cmd._noaa_period_str(friday) is not None
-    with patch("modules.commands.wx_command.datetime", _Clock):
+    with (
+        patch("modules.commands.wx_command.datetime", _Clock),
+        patch("modules.weather_providers.noaa.datetime", _Clock),
+    ):
         multiday = cmd.format_multiday_forecast(periods, num_days=1)
     assert multiday.startswith("F:") and "0°" in multiday
 
@@ -189,7 +198,10 @@ def test_invalid_units_fall_back_to_imperial():
 def test_celsius_hourly_uses_si_and_converts_nothing_else():
     cmd = _wx({"temperature_unit": "celsius", "wind_speed_unit": "kmh"})
     cmd.noaa_session, asked = _session(si=True)
-    with patch("modules.commands.wx_command.datetime", _Clock):
+    with (
+        patch("modules.commands.wx_command.datetime", _Clock),
+        patch("modules.weather_providers.noaa.datetime", _Clock),
+    ):
         text, _ = cmd.get_noaa_hourly_weather(*_latlon())
     assert any("forecast/hourly" in u and "units=si" in u for u in asked)
     assert "km/h" not in text
@@ -200,7 +212,10 @@ def test_hourly_wind_keeps_its_full_direction_and_follows_the_wind_unit(units, s
     periods = copy.deepcopy(US["hourly"]["properties"]["periods"])
     for p in periods:
         p["windSpeed"], p["windDirection"] = "10 mph", "WNW"
-    with patch("modules.commands.wx_command.datetime", _Clock):
+    with (
+        patch("modules.commands.wx_command.datetime", _Clock),
+        patch("modules.weather_providers.noaa.datetime", _Clock),
+    ):
         text = _wx(units).format_hourly_forecast(periods, max_length=200)
     assert text.split("\n")[0].endswith(f" {shown}")
 
