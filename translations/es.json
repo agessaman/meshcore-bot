@@ -191,6 +191,24 @@
     "wx": {
       "description": "Tiempo en EE. UU. por código postal, ciudad o coordenadas (uso: wx 98101)",
       "usage": "Uso: wx <código_postal|ciudad|lat,lon> [tomorrow|hourly|Nd|alerts] - Ejemplo: wx 98101 o wx seattle 5d",
+      "subcommands": [
+        {
+          "name": "tomorrow",
+          "description": "Pronóstico de mañana"
+        },
+        {
+          "name": "Nd",
+          "description": "Pronóstico de N días (ej. 7d, 10d; también 7-day, 7 o 2–16)"
+        },
+        {
+          "name": "hourly",
+          "description": "Pronóstico por hora"
+        },
+        {
+          "name": "alerts",
+          "description": "Ver todos los avisos meteorológicos"
+        }
+      ],
       "error_fetching": "Error al obtener datos meteorológicos de NOAA",
       "no_location_zipcode": "No se pudo encontrar la ubicación para el código postal {location}",
       "no_location_city": "No se pudo encontrar la ciudad '{location}' en {state}",
@@ -240,6 +258,13 @@
       "tomorrow_error": "Error al formatear el pronóstico de mañana",
       "multiday_not_available": "Pronóstico de {num_days} días no disponible",
       "multiday_error": "Error al formatear el pronóstico de {num_days} días",
+      "humidity": "{value}%RH",
+      "dew_point": "💧{value}{unit}",
+      "visibility": "👁️{value}mi",
+      "visibility_km": "👁️{value}km",
+      "pressure": "📊{value}hPa",
+      "pressure_mmhg": "📊{value}mmHg",
+      "gust": "G{value}",
       "periods": {
         "today": "Hoy",
         "tonight": "Esta Noche",
@@ -304,6 +329,7 @@
       "mqtt_weather_no_subscriber": "El suscriptor meteorológico MQTT no está activo (habilite [MqttWeather] y los temas custom.mqtt_weather.*)",
       "mqtt_weather_payload_error": "Error en los datos meteorológicos MQTT: {detail}",
       "mqtt_weather_stale": "Los datos meteorológicos MQTT son demasiado antiguos",
+      "pressure_unit": "hpa",
       "metno": {
         "error_fetching_api": "Error al obtener datos meteorológicos de MET Norway"
       },
@@ -1049,6 +1075,8 @@
     "no_help_available": "No hay ayuda disponible para este comando.",
     "snr_label": "SNR: {value} dB",
     "rssi_label": "RSSI: {value} dBm",
+    "temp_high_label": "Máx",
+    "temp_low_label": "Mín",
     "date_time": {
       "day_abbreviations": {
         "Mon": "Lun",
@@ -1114,6 +1142,21 @@
       "WNW": "ONO",
       "NW": "NO",
       "NNW": "NNO"
+    },
+    "alerts": {
+      "til": "hasta",
+      "by": "de",
+      "from": "desde",
+      "am": "a. m.",
+      "pm": "p. m.",
+      "time_12h": "{hour} {meridiem}",
+      "date_12h": "{day} {month} {time}",
+      "event_types": {
+        "Warning": "Alerta",
+        "Watch": "Vig.",
+        "Advisory": "Aviso",
+        "Statement": "Com."
+      }
     }
   },
   "categories": {
@@ -1126,5 +1169,55 @@
     "analytics": "Comandos de Análisis",
     "meshcore_info": "Comandos de Info MeshCore",
     "management": "Comandos de Gestión"
+  },
+  "services": {
+    "weather_service": {
+      "daily_weather": "Clima diario",
+      "tomorrow": "Mañana",
+      "error_fetching": "Error al obtener datos meteorológicos",
+      "no_data": "No hay datos de pronóstico",
+      "near": "cerca de",
+      "est": "aprox.",
+      "steady": "continuo",
+      "rain_starting": "{emoji} Atención — {ptype} empieza en ~{minutes}min{est}{steady}{temp}{location}",
+      "rain_ending": "{emoji} Atención — {ptype} termina en ~{minutes}min{est}{temp}{location}",
+      "weather_descriptions": {
+        "0": "Despejado",
+        "1": "Mayormente Despejado",
+        "2": "Parcialmente Nublado",
+        "3": "Nublado",
+        "45": "Neblina",
+        "48": "Neblina",
+        "51": "Llovizna Ligera",
+        "53": "Llovizna",
+        "55": "Llovizna Fuerte",
+        "56": "Llovizna Helada Ligera",
+        "57": "Llovizna Helada",
+        "61": "Lluvia Ligera",
+        "63": "Lluvia",
+        "65": "Lluvia Intensa",
+        "66": "Lluvia Helada Ligera",
+        "67": "Lluvia Helada",
+        "71": "Nevada Ligera",
+        "73": "Nevada",
+        "75": "Nevada Intensa",
+        "77": "Granizo Suave",
+        "80": "Chubascos Ligeros",
+        "81": "Chubascos",
+        "82": "Chubascos Fuertes",
+        "85": "Chubascos de Nieve Ligeros",
+        "86": "Chubascos de Nieve",
+        "95": "Tormenta Eléctrica",
+        "96": "Tormenta c/Granizo",
+        "97": "Tormenta Fuerte",
+        "99": "Tormenta Severa"
+      },
+      "wind_speed_units": {
+        "ms": "m/s",
+        "mph": "mph",
+        "kmh": "km/h",
+        "kn": "kn"
+      }
+    }
   }
 }

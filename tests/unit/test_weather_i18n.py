@@ -7,10 +7,10 @@ units). A key that is missing renders as its own dotted path in a reply, so each
 way is checked here against the English catalog, which is every other locale's
 fallback.
 
-The second test freezes the keys this branch added: they must exist in every
-catalog. The older weather keys that were already missing from the other
-catalogs on dev are listed as a known gap, so a new gap fails and an old one
-does not.
+The other tests cover the catalogs: the keys this branch added must exist in
+every one, every weather key must resolve in every non-English locale through
+its own file or its base language, and every translation must keep the
+placeholders of the English string it replaces.
 """
 
 import json
@@ -73,92 +73,6 @@ BRANCH_KEYS = {
     "commands.wx.eccc.error_fetching",
     "commands.wx.meteoalarm.attribution",
     "commands.wx.meteoalarm.error_fetching",
-}
-
-# Weather keys that were already missing from at least one catalog on dev, when
-# this branch started. They are a known gap, not a regression: the test below
-# fails on a key outside this set, so new gaps are caught and these are not.
-KNOWN_GAPS = {
-    "commands.gwx.dew_point",
-    "commands.gwx.gust",
-    "commands.gwx.humidity",
-    "commands.gwx.pressure",
-    "commands.gwx.pressure_mmhg",
-    "commands.gwx.pressure_unit",
-    "commands.gwx.visibility",
-    "commands.gwx.visibility_km",
-    "commands.wx.subcommands",
-    "common.alerts.am",
-    "common.alerts.by",
-    "common.alerts.date_12h",
-    "common.alerts.event_types.Advisory",
-    "common.alerts.event_types.Statement",
-    "common.alerts.event_types.Warning",
-    "common.alerts.event_types.Watch",
-    "common.alerts.from",
-    "common.alerts.pm",
-    "common.alerts.til",
-    "common.alerts.time_12h",
-    "common.temp_high_label",
-    "common.temp_low_label",
-    "common.wind_directions.E",
-    "common.wind_directions.ENE",
-    "common.wind_directions.ESE",
-    "common.wind_directions.N",
-    "common.wind_directions.NE",
-    "common.wind_directions.NNE",
-    "common.wind_directions.NNW",
-    "common.wind_directions.NW",
-    "common.wind_directions.S",
-    "common.wind_directions.SE",
-    "common.wind_directions.SSE",
-    "common.wind_directions.SSW",
-    "common.wind_directions.SW",
-    "common.wind_directions.W",
-    "common.wind_directions.WNW",
-    "common.wind_directions.WSW",
-    "services.weather_service.daily_weather",
-    "services.weather_service.error_fetching",
-    "services.weather_service.est",
-    "services.weather_service.near",
-    "services.weather_service.no_data",
-    "services.weather_service.rain_ending",
-    "services.weather_service.rain_starting",
-    "services.weather_service.steady",
-    "services.weather_service.tomorrow",
-    "services.weather_service.weather_descriptions.0",
-    "services.weather_service.weather_descriptions.1",
-    "services.weather_service.weather_descriptions.2",
-    "services.weather_service.weather_descriptions.3",
-    "services.weather_service.weather_descriptions.45",
-    "services.weather_service.weather_descriptions.48",
-    "services.weather_service.weather_descriptions.51",
-    "services.weather_service.weather_descriptions.53",
-    "services.weather_service.weather_descriptions.55",
-    "services.weather_service.weather_descriptions.56",
-    "services.weather_service.weather_descriptions.57",
-    "services.weather_service.weather_descriptions.61",
-    "services.weather_service.weather_descriptions.63",
-    "services.weather_service.weather_descriptions.65",
-    "services.weather_service.weather_descriptions.66",
-    "services.weather_service.weather_descriptions.67",
-    "services.weather_service.weather_descriptions.71",
-    "services.weather_service.weather_descriptions.73",
-    "services.weather_service.weather_descriptions.75",
-    "services.weather_service.weather_descriptions.77",
-    "services.weather_service.weather_descriptions.80",
-    "services.weather_service.weather_descriptions.81",
-    "services.weather_service.weather_descriptions.82",
-    "services.weather_service.weather_descriptions.85",
-    "services.weather_service.weather_descriptions.86",
-    "services.weather_service.weather_descriptions.95",
-    "services.weather_service.weather_descriptions.96",
-    "services.weather_service.weather_descriptions.97",
-    "services.weather_service.weather_descriptions.99",
-    "services.weather_service.wind_speed_units.kmh",
-    "services.weather_service.wind_speed_units.kn",
-    "services.weather_service.wind_speed_units.mph",
-    "services.weather_service.wind_speed_units.ms",
 }
 
 TRANSLATE_CALL = re.compile(r"translate\(\s*(f?)(['\"])([^'\"\n]+)\2")
@@ -261,20 +175,66 @@ def test_the_branch_keys_are_in_every_catalog(english):
     assert missing == {}, f"branch keys missing from catalogs: {missing}"
 
 
-@pytest.mark.unit
-def test_no_new_weather_key_is_missing_from_a_catalog(english):
-    weather = {
+# The translator loads the base language first and lets the regional file
+# override it (modules/i18n.py), so a regional catalog may leave a key to its
+# base. en-GB is exempt: its base is English, which is the fallback anyway.
+BASE_LANGUAGE = {"fr-CA": "fr", "pt-BR": "pt"}
+ENGLISH_BASE = {"en-GB"}
+
+PLACEHOLDER = re.compile(r"\{[^{}]+\}")
+
+
+def placeholders(value):
+    """Every {placeholder} in a catalog value, lists and dicts included."""
+    if isinstance(value, str):
+        return set(PLACEHOLDER.findall(value))
+    if isinstance(value, list):
+        return set().union(*(placeholders(item) for item in value)) if value else set()
+    if isinstance(value, dict):
+        return set().union(*(placeholders(item) for item in value.values())) if value else set()
+    return set()
+
+
+def weather_keys(english):
+    """The keys of the weather namespaces, which every locale has to speak."""
+    return {
         key for key in english
         if key.startswith((
             "commands.gwx", "commands.wx", "services.weather_service",
             "common.wind_directions", "common.alerts", "common.temp_",
         ))
     }
-    gaps = set()
-    for path in NON_ENGLISH:
-        catalog = load(path)
-        gaps |= {key for key in weather if key not in catalog}
 
-    assert gaps - KNOWN_GAPS == set(), (
-        f"new weather keys missing from a catalog: {sorted(gaps - KNOWN_GAPS)}"
-    )
+
+@pytest.mark.unit
+def test_every_weather_key_resolves_without_falling_back_to_english(english):
+    keys = weather_keys(english)
+    catalogs = {path.stem: load(path) for path in NON_ENGLISH}
+    unresolved = {}
+    for language, catalog in catalogs.items():
+        if language in ENGLISH_BASE:
+            continue
+        base = catalogs.get(BASE_LANGUAGE.get(language, ""), {})
+        missing = sorted(key for key in keys if key not in catalog and key not in base)
+        if missing:
+            unresolved[language] = missing
+
+    assert unresolved == {}, f"weather keys falling back to English: {unresolved}"
+
+
+@pytest.mark.unit
+def test_every_translation_keeps_the_english_placeholders(english):
+    keys = weather_keys(english)
+    catalogs = {path.stem: load(path) for path in NON_ENGLISH}
+    catalogs["en"] = english
+    mismatched = {}
+    for language, catalog in catalogs.items():
+        for key in keys:
+            if key not in catalog:
+                continue
+            expected = placeholders(english[key])
+            found = placeholders(catalog[key])
+            if found != expected:
+                mismatched[f"{language}:{key}"] = (sorted(expected), sorted(found))
+
+    assert mismatched == {}, f"placeholders changed in translation: {mismatched}"
