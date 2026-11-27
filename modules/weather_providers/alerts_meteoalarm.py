@@ -29,6 +29,7 @@ and is where a public token comes from. Meteoalarm Direct re-user tokens point
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import threading
 import time
 import xml.etree.ElementTree as ET
@@ -72,6 +73,10 @@ MAX_PAGES = 5
 # 429 pauses everything until its Retry-After passes.
 MIN_REQUEST_INTERVAL = 1.0
 DEFAULT_RETRY_AFTER = 300.0
+# A pause is capped at an hour, and a header value above this is an epoch
+# timestamp rather than a number of seconds.
+MAX_PAUSE = 3600.0
+EPOCH_THRESHOLD = 1e9
 # The gateway reports the budget in X-RateLimit-Remaining. Near the floor,
 # refreshes stop until the reset.
 RATE_LIMIT_FLOOR = 5
@@ -144,13 +149,26 @@ def _origin(url: str) -> tuple:
     return (parsed.scheme, parsed.hostname, port)
 
 
+def _clamp_pause(seconds: float) -> float:
+    """A pause between 0 and MAX_PAUSE seconds."""
+    return min(max(seconds, 0.0), MAX_PAUSE)
+
+
 def _reset_seconds(headers: Any, fallback: float) -> float:
-    """X-RateLimit-Reset as seconds from now, or *fallback*."""
+    """X-RateLimit-Reset as seconds from now, or *fallback*.
+
+    The gateway sends seconds until the reset, but an absolute epoch timestamp
+    is accepted too, and either is clamped so a bad header cannot park the
+    provider for a day.
+    """
     raw = (headers or {}).get("X-RateLimit-Reset")
     try:
-        return max(float(str(raw).strip()), 0.0)
+        value = float(str(raw).strip())
     except (TypeError, ValueError):
-        return fallback
+        return _clamp_pause(fallback)
+    if value > EPOCH_THRESHOLD:
+        value -= time.time()
+    return _clamp_pause(value)
 
 
 def _total_pages(metadata: Any) -> int:
@@ -172,21 +190,25 @@ def _retry_after_seconds(headers: Any, now: datetime,
     """Retry-After as seconds, from a number or an HTTP date, else *fallback*."""
     raw = (headers or {}).get("Retry-After")
     if not raw:
-        return fallback
+        return _clamp_pause(fallback)
     text = str(raw).strip()
     try:
-        return max(float(text), 0.0)
+        value = float(text)
     except ValueError:
-        pass
+        value = None
+    if value is not None:
+        if value > EPOCH_THRESHOLD:
+            value -= now.timestamp()
+        return _clamp_pause(value)
     try:
         when = parsedate_to_datetime(text)
     except (TypeError, ValueError):
-        return fallback
+        return _clamp_pause(fallback)
     if when is None:
-        return fallback
+        return _clamp_pause(fallback)
     if when.tzinfo is None:
         when = when.replace(tzinfo=timezone.utc)
-    return max((when - now).total_seconds(), 0.0)
+    return _clamp_pause((when - now).total_seconds())
 
 
 def _geometry_of(body: Any) -> Optional[dict]:
@@ -208,7 +230,11 @@ def _geometry_of(body: Any) -> Optional[dict]:
 
 
 def _parse_time(value: Optional[str]) -> Optional[datetime]:
-    """A CAP timestamp as an aware UTC datetime, or None."""
+    """A CAP timestamp as an aware datetime in its own offset, or None.
+
+    Comparisons are absolute whatever the offset; keeping the offset is what
+    lets the reply show the alert's local time, as NWS alerts do.
+    """
     if not value:
         return None
     text = value.strip()
@@ -220,7 +246,7 @@ def _parse_time(value: Optional[str]) -> Optional[datetime]:
         return None
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
+    return parsed
 
 
 def _awareness_level(value: str) -> int:
@@ -253,6 +279,21 @@ def _index_info(feature: dict) -> Optional[int]:
         return None
 
 
+def _language_matches(code: str, wanted: str, primary: bool) -> bool:
+    """Whether a CAP language code answers *wanted*.
+
+    *primary* compares only the subtag before the region, so a request for
+    fr-CA is answered by an fr-FR block when no fr-CA one exists.
+    """
+    code = (code or "").lower()
+    wanted = (wanted or "").lower()
+    if not code or not wanted:
+        return False
+    if primary:
+        wanted = wanted.split("-")[0]
+    return code == wanted or code.startswith(wanted + "-")
+
+
 def _cap_info(root: ET.Element, language: str, indexes: Optional[set] = None) -> Optional[ET.Element]:
     """The info block for *language* (prefix match), else English, else the first.
 
@@ -272,8 +313,13 @@ def _cap_info(root: ET.Element, language: str, indexes: Optional[set] = None) ->
         return (info.findtext("cap:language", default="", namespaces=CAP_NS) or "").strip().lower()
 
     if language:
+        # The full tag first, so fr-CA prefers fr-CA over fr-FR, then the
+        # primary subtag, so fr-CA still matches an fr-FR block.
         for info in infos:
-            if code(info).startswith(language):
+            if _language_matches(code(info), language, primary=False):
+                return info
+        for info in infos:
+            if _language_matches(code(info), language, primary=True):
                 return info
     for info in infos:
         if code(info).startswith("en"):
@@ -386,10 +432,46 @@ def _rate_limit_for(base_url: str) -> _RateLimit:
         return state
 
 
+class _Cache:
+    """The documents one API origin and token have already fetched.
+
+    Shared by every provider instance that talks to the same origin with the
+    same token, so wx and gwx do not each fetch the same country twice. One
+    lock guards all of it and is never held across HTTP.
+    """
+
+    __slots__ = ("lock", "locations", "windows", "geometries", "caps", "streaks", "inflight")
+
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.locations: Optional[tuple] = None
+        self.windows: dict = {}
+        self.geometries: dict = {}
+        self.caps: dict = {}
+        self.streaks: set = set()
+        self.inflight: dict = {}
+
+
+_CACHES: dict[tuple, _Cache] = {}
+_CACHES_LOCK = threading.Lock()
+
+
+def _cache_for(base_url: str, token: str) -> _Cache:
+    """The shared cache for a base URL's origin and a token."""
+    key = (_origin(base_url), hashlib.sha256((token or "").encode("utf-8")).hexdigest())
+    with _CACHES_LOCK:
+        cache = _CACHES.get(key)
+        if cache is None:
+            cache = _CACHES[key] = _Cache()
+        return cache
+
+
 def reset_rate_limits() -> None:
-    """Forget every origin's pause and budget. Tests call this between cases."""
+    """Forget every origin's pause, budget and cache. Tests call this between cases."""
     with _RATE_LIMITS_LOCK:
         _RATE_LIMITS.clear()
+    with _CACHES_LOCK:
+        _CACHES.clear()
 
 
 class _Inflight:
@@ -423,16 +505,45 @@ class MeteoalarmAlertsProvider(AlertsProvider):
         self.locations_url = f"{self.base_url}{LOCATIONS_PATH}"
         self.country_url = f"{self.base_url}{COUNTRY_PATH}"
         self.session = session if session is not None else _make_session()
-        # One lock for every cache. Never held across HTTP.
-        self._lock = threading.Lock()
+        # One lock for every cache, shared with the other instances on this
+        # origin and token. Never held across HTTP.
+        self._cache = _cache_for(self.base_url, self.token)
+        self._lock = self._cache.lock
+        # requests.Session is not thread-safe, and the caches are shared.
+        self._session_lock = threading.Lock()
         self._api_origin = _origin(self.base_url)
         self._rate = _rate_limit_for(self.base_url)
-        self._locations: Optional[tuple] = None
-        self._windows: dict[tuple, tuple] = {}
-        self._geometries: dict[str, dict] = {}
-        self._caps: dict[tuple, tuple] = {}
-        self._streaks: set[str] = set()
-        self._inflight: dict[Any, _Inflight] = {}
+
+    # The caches live on the shared object; these keep the attribute names the
+    # rest of the module and the tests use.
+
+    @property
+    def _locations(self) -> Optional[tuple]:
+        return self._cache.locations
+
+    @_locations.setter
+    def _locations(self, value: Optional[tuple]) -> None:
+        self._cache.locations = value
+
+    @property
+    def _windows(self) -> dict:
+        return self._cache.windows
+
+    @property
+    def _geometries(self) -> dict:
+        return self._cache.geometries
+
+    @property
+    def _caps(self) -> dict:
+        return self._cache.caps
+
+    @property
+    def _streaks(self) -> set:
+        return self._cache.streaks
+
+    @property
+    def _inflight(self) -> dict:
+        return self._cache.inflight
 
     # --- clock ------------------------------------------------------------
 
@@ -517,21 +628,24 @@ class MeteoalarmAlertsProvider(AlertsProvider):
         never see it.
         """
         api = _origin(url) == self._api_origin
-        # The pause is the gateway's budget, not the storage host's.
-        if api and self._paused():
-            return UNAVAILABLE
-        self._pace()
-        # Recheck right before sending: the pacing sleep may have outlasted the
-        # pause, or another thread may have spent the budget meanwhile.
-        if api and self._paused():
-            return UNAVAILABLE
+        # The pause and the spacing are the gateway's budget, not the storage
+        # host's: a pre-signed document is fetched as soon as it is needed.
+        if api:
+            if self._paused():
+                return UNAVAILABLE
+            self._pace()
+            # Recheck right before sending: the pacing sleep may have outlasted
+            # the pause, or another thread may have spent the budget meanwhile.
+            if self._paused():
+                return UNAVAILABLE
         headers = {}
         if self.token and api and self._api_origin[0] == "https":
             headers["Authorization"] = f"Bearer {self.token}"
         try:
-            response = self.session.get(
-                url, params=params, headers=headers, timeout=(CONNECT_TIMEOUT, READ_TIMEOUT)
-            )
+            with self._session_lock:
+                response = self.session.get(
+                    url, params=params, headers=headers, timeout=(CONNECT_TIMEOUT, READ_TIMEOUT)
+                )
         except Exception as error:
             self._warn_once(
                 f"http:{urlparse(url).netloc}",
@@ -576,7 +690,11 @@ class MeteoalarmAlertsProvider(AlertsProvider):
     # --- shared refreshes -------------------------------------------------
 
     def _shared(self, key: Any, fetch):
-        """Run *fetch* once per key across threads; the others wait for its result."""
+        """Run *fetch* once per key across threads; the others wait for its result.
+
+        None means the refresh failed or timed out, and every caller treats it
+        as unavailable: one broken document must never cost the forecast.
+        """
         with self._lock:
             entry = self._inflight.get(key)
             owner = entry is None
@@ -587,6 +705,12 @@ class MeteoalarmAlertsProvider(AlertsProvider):
             return entry.value
         try:
             entry.value = fetch()
+        except Exception as error:
+            self._warn_once(
+                f"shared:{key[0]}",
+                f"Meteoalarm refresh failed: {type(error).__name__}",
+            )
+            entry.value = None
         finally:
             with self._lock:
                 self._inflight.pop(key, None)
@@ -623,10 +747,10 @@ class MeteoalarmAlertsProvider(AlertsProvider):
             features = []
         else:
             body = self._json(response)
-            if body is None:
+            if not isinstance(body, dict):
                 self._warn_once("locations", "Meteoalarm locations fetch returned no JSON")
                 return stale[1] if stale is not None else None
-            features = body.get("features") or []
+            features = [item for item in body.get("features") or [] if isinstance(item, dict)]
 
         countries = [
             (feature.get("id"), feature.get("geometry"))
@@ -668,9 +792,12 @@ class MeteoalarmAlertsProvider(AlertsProvider):
         cached = self._cached_window(country, day, ttl)
         if cached is not None:
             return cached, False
-        return self._shared(
+        result = self._shared(
             ("window", country, day), lambda: self._refresh_window(country, day, interval, ttl)
         )
+        if result is None:
+            return [], True
+        return result
 
     def _refresh_window(self, country: str, day, interval: str, ttl: int) -> tuple:
         cached = self._cached_window(country, day, ttl)
@@ -705,13 +832,13 @@ class MeteoalarmAlertsProvider(AlertsProvider):
             if response.status_code == 204:
                 break
             body = self._json(response)
-            if body is None:
+            if not isinstance(body, dict):
                 self._warn_once(
                     f"country:{country}",
                     f"Meteoalarm warnings fetch for {country} returned no JSON",
                 )
                 return None
-            features.extend(body.get("features") or [])
+            features.extend(item for item in body.get("features") or [] if isinstance(item, dict))
             total_pages = _total_pages(body.get("metadata"))
             if page >= total_pages:
                 break
@@ -796,7 +923,12 @@ class MeteoalarmAlertsProvider(AlertsProvider):
             cached = self._caps.get(key)
         if cached is not None and cached[0] > self._utcnow():
             return cached[1], False
-        return self._shared(("cap", key), lambda: self._fetch_cap(alert_id, features, indexes, key))
+        result = self._shared(
+            ("cap", key), lambda: self._fetch_cap(alert_id, features, indexes, key)
+        )
+        if result is None:
+            return None, True
+        return result
 
     def _fetch_cap(self, alert_id: str, features: list, indexes: set, key: tuple) -> tuple:
         with self._lock:
@@ -822,17 +954,40 @@ class MeteoalarmAlertsProvider(AlertsProvider):
         details = parse_cap(response.text, self._language(), indexes)
         if details is None or details["expires"] is None:
             return None, True
-        if details["msg_type"].lower() == "cancel":
-            return None, False
-        if not _is_active(details, self._utcnow()) or details["level"] < MIN_LEVEL:
-            return None, False
 
+        now = self._utcnow()
+        # A Cancel or an Update still names what it replaces, so the alert is
+        # kept with its references and filtered out of the list afterwards.
+        details["active"] = (
+            details["msg_type"].lower() != "cancel"
+            and _is_active(details, now)
+            and details["level"] >= MIN_LEVEL
+        )
         # Capped at the window TTL: a later Cancel or Update must not hide
-        # behind a document cached until its own expiry.
-        until = min(details["expires"], self._utcnow() + timedelta(seconds=WINDOW_TTL_TODAY))
+        # behind a document cached until its own expiry. Negative results are
+        # cached too, or a cancelled or expired document is fetched every time.
+        if details["active"]:
+            until = min(details["expires"], now + timedelta(seconds=WINDOW_TTL_TODAY))
+        else:
+            until = self._negative_until(details, now)
         with self._lock:
             self._caps[key] = (until, details)
         return details, False
+
+    @staticmethod
+    def _negative_until(details: dict, now: datetime) -> datetime:
+        """How long a CAP that yields no alert can be trusted.
+
+        A cancelled or expired document will not change, so it is kept for the
+        window TTL. One that has not started yet is rechecked when it does.
+        """
+        ttl = now + timedelta(seconds=WINDOW_TTL_TODAY)
+        if details["msg_type"].lower() == "cancel" or details["expires"] <= now:
+            return ttl
+        start = details["onset"] or details["effective"] or details["sent"]
+        if start is not None and start > now:
+            return min(start, ttl)
+        return ttl
 
     def _evict(self) -> None:
         """Drop window entries past the four days and CAP entries that expired."""
@@ -891,11 +1046,25 @@ class MeteoalarmAlertsProvider(AlertsProvider):
     def _alerts_for(self, lat: float, lon: float) -> Optional[list]:
         """The active alerts covering a point, most severe first.
 
+        None means the data could not be fetched, as opposed to no alerts, and
+        nothing raises into the command: a broken document costs the alerts,
+        never the forecast.
+        """
+        try:
+            return self._alerts_for_point(lat, lon)
+        except Exception as error:
+            self._warn_once(
+                "alerts", f"Meteoalarm alert lookup failed: {type(error).__name__}"
+            )
+            return None
+
+    def _alerts_for_point(self, lat: float, lon: float) -> Optional[list]:
+        """The body of :meth:`_alerts_for`.
+
         One alert has a feature per CAP info language and area, so features are
         grouped by alertId and the point has to fall inside any one of them.
-        None means the data could not be fetched, as opposed to no alerts: any
-        window, outline or CAP needed for a candidate that failed makes an empty
-        answer unknown rather than an all-clear.
+        Any window, outline or CAP needed for a candidate that failed makes an
+        empty answer unknown rather than an all-clear.
         """
         self._evict()
         countries = self._country_geometries()
@@ -934,7 +1103,11 @@ class MeteoalarmAlertsProvider(AlertsProvider):
             incomplete = incomplete or failed
             if details is None:
                 continue
+            # A Cancel or an Update names what it replaces whether or not it is
+            # itself shown, so the references are collected before the filter.
             superseded |= details["supersedes"]
+            if not details.get("active", True):
+                continue
             alerts.append(details)
 
         alerts = [alert for alert in alerts if alert["identifier"] not in superseded]
@@ -945,21 +1118,27 @@ class MeteoalarmAlertsProvider(AlertsProvider):
 
     # --- formatting -------------------------------------------------------
 
-    def _compact_time(self, moment: datetime) -> str:
-        """A short UTC stamp for a reply: the hour when it is today, else the day and hour."""
-        if moment.date() == self._utcnow().date():
-            return moment.strftime("%H:%M")
-        return moment.strftime("%d %b %H:%M")
-
     def _summary_line(self, alert: dict) -> str:
+        """One alert for the compact summary, in the same style as the full list."""
         emoji = LEVEL_EMOJI.get(alert["level"], "")
-        until = self.host.translate(
-            "commands.wx.meteoalarm.until", time=self._compact_time(alert["expires"])
+        until = alert_format.format_alert_window(
+            {"expires": alert["expires"].isoformat() if alert["expires"] else ""},
+            self.host.response_translator,
         )
         return f"{emoji} {alert['event']} {until}".strip()
 
     def summary(self, lat: float, lon: float, max_length: int) -> Optional[AlertSummary]:
         """The compact alert text and count for the second message, or None."""
+        try:
+            return self._summary_for(lat, lon, max_length)
+        except Exception as error:
+            self._warn_once(
+                "summary", f"Meteoalarm summary failed: {type(error).__name__}"
+            )
+            return None
+
+    def _summary_for(self, lat: float, lon: float, max_length: int) -> Optional[AlertSummary]:
+        """The body of :meth:`summary`."""
         alerts = self._alerts_for(lat, lon)
         if not alerts:
             return None
@@ -1039,7 +1218,7 @@ class MeteoalarmAlertsProvider(AlertsProvider):
         return trimmed
 
     async def send_full_list(self, message: Any, lat: float, lon: float) -> bool:
-        """Send one message per alert, most severe first, paced like the NWS list."""
+        """Send the full alert list, packed and paced exactly as the NWS list is."""
         alerts = await asyncio.to_thread(self._alerts_for, lat, lon)
         if alerts is None:
             return bool(await self.host.send_response(
@@ -1052,10 +1231,25 @@ class MeteoalarmAlertsProvider(AlertsProvider):
         rate_limit = self.host.bot.config.getfloat("Bot", "bot_tx_rate_limit_seconds", fallback=1.0)
         sleep_time = max(rate_limit + 1.0, 2.0)
 
+        # A count header, then whole alert lines: a new message starts when the
+        # next line would not fit, as NWS's list does.
+        current_message = f"{len(alerts)} alerts:"
+        messages = []
         for index, alert in enumerate(alerts, 1):
-            text = self._fit(self._full_alert_text(alert, index, max_length), max_length)
-            if not await self.host.send_response(message, text, skip_user_rate_limit=(index > 1)):
+            line = self._fit(self._full_alert_text(alert, index, max_length), max_length)
+            test_message = f"{current_message}\n{line}" if current_message else line
+            if self.host._count_display_width(test_message) > max_length:
+                if current_message:
+                    messages.append(current_message)
+                current_message = line
+            else:
+                current_message = test_message
+        if current_message:
+            messages.append(current_message)
+
+        for index, text in enumerate(messages):
+            if not await self.host.send_response(message, text, skip_user_rate_limit=(index > 0)):
                 return False
-            if index < len(alerts):
+            if index < len(messages) - 1:
                 await self.host._pace_reply(message, sleep_time)
         return True

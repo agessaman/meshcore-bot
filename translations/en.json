@@ -243,8 +243,6 @@
         "Sunday": "Su"
       },
       "meteoalarm": {
-        "until": "until {time}",
-        "from": "from {time}",
         "attribution": "Alerts: MeteoAlarm/EUMETNET",
         "error_fetching": "Error fetching weather alerts"
       }

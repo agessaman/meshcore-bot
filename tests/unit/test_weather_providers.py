@@ -23,7 +23,10 @@ from modules.weather_providers import (
     make_provider,
     resolve_alerts_provider_name,
 )
-from modules.weather_providers.alerts_meteoalarm import MeteoalarmAlertsProvider
+from modules.weather_providers.alerts_meteoalarm import (
+    MeteoalarmAlertsProvider,
+    reset_rate_limits,
+)
 from modules.weather_providers.alerts_nws import NwsAlertsProvider
 from modules.weather_providers.base import (
     AlertsProvider,
@@ -546,6 +549,8 @@ def _meteoalarm_command():
     """A NOAA command whose alerts provider is Meteoalarm on a fake session."""
     from tests.unit.test_meteoalarm_alerts import _Clock, _routes, _Session
 
+    # Meteoalarm caches are shared per origin and token, so clear them first.
+    reset_rate_limits()
     cmd = _wx({"weather_provider": "noaa", "alerts_provider": "meteoalarm",
                "meteoalarm_token": "s3cr3t-token"})
     provider = cmd.alerts_provider
@@ -572,7 +577,7 @@ def test_the_alerts_option_lists_meteoalarm_alerts():
 
     texts = [call.args[1] for call in cmd.send_response.call_args_list]
     assert len(texts) == 2
-    assert texts[0].startswith("1. \U0001f7e0 Wind from ")
+    assert texts[0].startswith("2 alerts:\n1. \U0001f7e0 Wind from ")
     assert texts[1].startswith("2. \U0001f7e1 Gale from ")
     assert not any("No weather alerts" in text for text in texts)
 
@@ -608,6 +613,40 @@ def test_the_alerts_option_replies_when_meteoalarm_cannot_fetch():
 
     texts = [call.args[1] for call in cmd.send_response.call_args_list]
     assert texts == ["Error fetching weather alerts"]
+
+
+def test_a_broken_meteoalarm_document_does_not_cost_the_gwx_forecast():
+    from tests.unit.test_meteoalarm_alerts import LOCATIONS_URL, NO_URL, _Response, _routes, _Session
+
+    reset_rate_limits()
+    cmd = GlobalWxCommand(_bot({"alerts_provider": "meteoalarm", "meteoalarm_token": "s3cr3t-token"}))
+    provider = cmd.alerts_provider
+    assert isinstance(provider, MeteoalarmAlertsProvider)
+
+    # A list where an object belongs, and a null feature: the alerts are lost,
+    # the forecast is not.
+    routes = _routes()
+    routes[LOCATIONS_URL] = _Response(200, [])
+    routes[NO_URL] = _Response(200, {"features": [None]})
+    provider.session = _Session(routes)
+    provider._wait = lambda seconds: None
+
+    cmd.geocode_location = Mock(return_value=(58.43, 5.95, {}, None))
+    cmd._get_custom_mqtt_weather_topic = Mock(return_value=None)
+    cmd._get_custom_wxsim_source = Mock(return_value=None)
+    cmd.provider.forecast = Mock(return_value=ForecastReply(text="BODY"))
+    cmd.record_execution = Mock()
+    cmd.send_response = AsyncMock(return_value=True)
+    cmd._pace_reply = AsyncMock()
+    cmd.get_max_message_length = Mock(return_value=130)
+
+    message = SimpleNamespace(content="gwx 58.43,5.95", sender_id="u1")
+    assert asyncio.run(cmd.execute(message)) is True
+
+    texts = [call.args[1] for call in cmd.send_response.call_args_list]
+    assert len(texts) == 1
+    assert "BODY" in texts[0]
+    assert "error" not in texts[0].lower()
 
 
 # --- settings schema --------------------------------------------------------

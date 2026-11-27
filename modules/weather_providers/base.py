@@ -133,7 +133,6 @@ class Coverage(str, Enum):
 
     COVERED = "covered"
     NOT_COVERED = "not_covered"
-    UNKNOWN = "unknown"
 
 
 class AlertsProvider(ABC):
@@ -146,10 +145,11 @@ class AlertsProvider(ABC):
         self.host = host
 
     def coverage_for(self, lat: float, lon: float) -> Coverage:
-        """Whether this provider answers for a point, or cannot tell right now.
+        """Whether this provider answers for a point.
 
-        A provider whose coverage lookup can fail overrides this to say UNKNOWN
-        rather than claiming the point is not covered.
+        A provider whose coverage lookup can fail overrides this to answer
+        COVERED when it cannot tell, rather than claiming the point is not
+        covered.
         """
         return Coverage.COVERED if self.covers(lat, lon) else Coverage.NOT_COVERED
 

@@ -12,7 +12,7 @@ import configparser
 import json
 import threading
 import time
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
@@ -26,6 +26,7 @@ from modules.weather_providers.alerts_meteoalarm import (
     GEOMETRY_CACHE_MAX,
     LOCATIONS_TTL,
     LOCATIONS_URL,
+    MAX_PAUSE,
     MIN_REQUEST_INTERVAL,
     PAST_DAYS,
     RATE_LIMIT_FLOOR,
@@ -33,6 +34,8 @@ from modules.weather_providers.alerts_meteoalarm import (
     WINDOW_TTL_TODAY,
     MeteoalarmAlertsProvider,
     _make_session,
+    _reset_seconds,
+    _retry_after_seconds,
     geometry_contains,
     parse_cap,
     reset_rate_limits,
@@ -502,7 +505,8 @@ def test_the_summary_orders_by_level_and_names_the_expiry():
     summary = provider.summary(LAT, LON, 130)
 
     assert summary.count == 2
-    assert summary.text == "\U0001f7e0 Wind until 28 Nov 10:00; \U0001f7e1 Gale until 28 Nov 10:00"
+    # The expiry goes through alert_format, so it reads as NWS's "until" does.
+    assert summary.text == "\U0001f7e0 Wind til Nov 28 10AM; \U0001f7e1 Gale til Nov 28 10AM"
 
 
 def test_the_summary_truncates_with_a_plus_count():
@@ -513,20 +517,21 @@ def test_the_summary_truncates_with_a_plus_count():
     assert summary.text.endswith(" +1")
 
 
-def test_the_full_list_sends_one_message_per_alert_and_paces_them():
+def test_the_full_list_packs_like_the_nws_list_and_paces_them():
     provider, _session_, host, _clock = _provider()
     message = SimpleNamespace(content="wx alerts", sender_id="u")
 
     assert asyncio.run(provider.send_full_list(message, LAT, LON)) is True
 
     texts = [call.args[1] for call in host.send_response.call_args_list]
+    # A count header, then whole alert lines: the second line does not fit
+    # beside the first within 130 columns, so it starts a new message.
     assert len(texts) == 2
-    # One line per alert, in the shape NWS's full list uses.
-    assert texts[0].startswith("1. \U0001f7e0 Wind from ")
-    assert texts[1].startswith("2. \U0001f7e1 Gale from ")
-    assert "\n" not in texts[0]
+    assert texts[0].startswith("2 alerts:\n1. \U0001f7e0 Wind from ")
     assert texts[0].endswith("Aana-Sira - Karmoey")
+    assert texts[1].startswith("2. \U0001f7e1 Gale from ")
     assert host._pace_reply.await_count == 1
+    assert host.send_response.call_args_list[1].kwargs["skip_user_rate_limit"] is True
 
 
 def test_no_alerts_sends_the_nws_text():
@@ -1239,3 +1244,178 @@ def test_a_language_the_alert_lacks_falls_back_to_english():
 
     assert summary.count == 1
     assert "Gale" in summary.text
+
+
+# --- regressions: a broken document never costs the forecast -----------------
+
+CAP_CANCEL_GALE = f"{STORAGE}/warnings/alert-cancel-gale.xml"
+
+OFFSET_CAP = """<?xml version="1.0" encoding="utf-8"?>
+<alert xmlns="urn:oasis:names:tc:emergency:cap:1.2">
+  <identifier>2.49.0.1.578.0.offset</identifier>
+  <sent>2026-11-27T08:00:00+01:00</sent>
+  <msgType>Alert</msgType>
+  <info>
+    <language>en-GB</language>
+    <event>Gale</event>
+    <onset>2026-11-26T18:00:00+01:00</onset>
+    <expires>2026-11-28T10:00:00+01:00</expires>
+    <headline>Gale, yellow level, Aana-Sira - Karmoey</headline>
+    <parameter><valueName>awareness_level</valueName><value>2; yellow; Moderate</value></parameter>
+    <parameter><valueName>awareness_type</valueName><value>1; Wind</value></parameter>
+  </info>
+</alert>
+"""
+
+REGIONAL_CAP = """<?xml version="1.0" encoding="utf-8"?>
+<alert xmlns="urn:oasis:names:tc:emergency:cap:1.2">
+  <identifier>2.49.0.1.578.0.regional</identifier>
+  <sent>2026-11-27T08:00:00+00:00</sent>
+  <msgType>Alert</msgType>
+  <info>
+    <language>fr-FR</language>
+    <event>Vent fort</event>
+    <expires>2026-11-28T10:00:00+00:00</expires>
+  </info>
+  <info>
+    <language>pt-PT</language>
+    <event>Vento forte</event>
+    <expires>2026-11-28T10:00:00+00:00</expires>
+  </info>
+</alert>
+"""
+
+
+def test_a_broken_locations_body_is_unavailable_not_a_crash():
+    routes = _routes()
+    routes[LOCATIONS_URL] = _Response(200, [])
+    routes[NO_URL] = _Response(200, {"features": [None]})
+    provider, _session_, host, _clock = _provider(routes)
+
+    # A list where an object belongs, and a null feature: no alerts, no raise.
+    assert provider.summary(LAT, LON, 130) is None
+    assert provider.coverage_for(LAT, LON) is Coverage.COVERED
+    assert _warnings(host)
+
+
+def test_a_failed_shared_refresh_is_unavailable_to_every_caller():
+    provider, _session_, host, _clock = _provider()
+
+    def boom():
+        raise RuntimeError("boom")
+
+    # The owner's exception becomes None for it and for every waiter.
+    assert provider._shared(("window", "NO", TODAY), boom) is None
+    assert _warnings(host)
+
+    # A None refresh is an incomplete window and an incomplete CAP, never a raise.
+    provider._shared = lambda key, fetch: None
+    assert provider._window_features(
+        "NO", date(2026, 11, 27), f"{TODAY}T00:00:00Z/{TODAY}T12:00:00Z", WINDOW_TTL_TODAY
+    ) == ([], True)
+    assert provider._cap_details("alert-gale", [], {1}) == (None, True)
+
+
+def test_a_warm_summary_fetches_no_documents_and_does_not_pace():
+    provider, session, _host_, _clock = _provider()
+    provider.summary(LAT, LON, 130)
+    storage_before = [url for url in session.urls() if url.startswith(STORAGE)]
+    assert storage_before
+
+    waits = []
+    provider._wait = waits.append
+    provider.summary(LAT, LON, 130)
+
+    assert [url for url in session.urls() if url.startswith(STORAGE)] == storage_before
+    assert waits == []
+
+
+def test_times_show_in_the_alerts_own_offset():
+    provider, _session_, _host_, _clock = _provider()
+    details = parse_cap(OFFSET_CAP, "en")
+    details["active"] = True
+
+    # 10:00+01:00 is 10AM where the alert is, not 9AM UTC.
+    assert provider._summary_line(details) == "\U0001f7e1 Gale til Nov 28 10AM"
+    assert provider._full_alert_text(details, 1, 130) == (
+        "1. \U0001f7e1 Gale from Nov 26 6PM til Nov 28 10AM Aana-Sira - Karmoey"
+    )
+
+
+def _cancel_routes():
+    """The usual page plus a Cancel that names the gale alert it replaces."""
+    routes = _routes()
+    page = _json("NO_page1.json")
+    page["features"].append({
+        "id": "f-cancel-gale",
+        "type": "Feature",
+        "geometry": {
+            "type": "Polygon",
+            "coordinates": [[[5.0, 58.0], [7.0, 58.0], [7.0, 59.0], [5.0, 59.0], [5.0, 58.0]]],
+        },
+        "properties": {"alertId": "alert-cancel-gale", "indexInfo": 1, "geometryType": "exact"},
+        "links": [{"rel": "xml", "href": CAP_CANCEL_GALE}],
+    })
+    routes[NO_URL] = lambda params: (
+        _Response(200, page)
+        if str(params.get("datetime", "")).startswith(TODAY)
+        else _Response(204)
+    )
+    routes[CAP_CANCEL_GALE] = _Response(200, text=_text("alert-cancel-gale.xml"))
+    return routes
+
+
+def test_a_cancel_removes_the_alert_it_references():
+    gale = "2.49.0.1.578.0.20261127070414.016"
+
+    plain, _session_, _host_, _clock = _provider()
+    assert gale in [alert["identifier"] for alert in plain._alerts_for(LAT, LON)]
+
+    provider, _session_, _host_, _clock = _provider(_cancel_routes())
+    assert gale not in [alert["identifier"] for alert in provider._alerts_for(LAT, LON)]
+
+
+def test_a_regional_language_matches_its_primary_subtag():
+    assert parse_cap(REGIONAL_CAP, "fr-ca")["event"] == "Vent fort"
+    assert parse_cap(REGIONAL_CAP, "pt-br")["event"] == "Vento forte"
+    assert parse_cap(REGIONAL_CAP, "fr-FR")["event"] == "Vent fort"
+
+
+def test_a_rate_limit_pause_is_clamped_and_epoch_values_are_absolute():
+    now = datetime(2026, 11, 27, 12, 0, tzinfo=timezone.utc)
+
+    assert _retry_after_seconds({"Retry-After": "999999"}, now) == MAX_PAUSE
+    assert _retry_after_seconds({"Retry-After": str(now.timestamp() + 120)}, now) == pytest.approx(120)
+    assert _reset_seconds({"X-RateLimit-Reset": "999999"}, 300) == MAX_PAUSE
+    assert _reset_seconds({"X-RateLimit-Reset": str(time.time() + 60)}, 300) == pytest.approx(60, abs=5)
+
+
+def test_two_providers_with_the_same_origin_and_token_share_their_caches():
+    reset_rate_limits()
+    host = _host()
+    first_session, second_session = _Session(_routes()), _Session(_routes())
+    first = MeteoalarmAlertsProvider(host=host, token="shared", session=first_session)
+    second = MeteoalarmAlertsProvider(host=host, token="shared", session=second_session)
+    other = MeteoalarmAlertsProvider(host=host, token="different", session=_Session(_routes()))
+    for provider in (first, second, other):
+        provider._wait = lambda seconds: None
+
+    assert first._cache is second._cache
+    assert other._cache is not first._cache
+    assert first._session_lock is not None
+
+    first.summary(LAT, LON, 130)
+    second.summary(LAT, LON, 130)
+
+    assert first_session.count(LOCATIONS_URL) == 1
+    assert second_session.count(LOCATIONS_URL) == 0
+
+
+def test_the_dead_coverage_state_and_translation_keys_are_gone():
+    assert not hasattr(Coverage, "UNKNOWN")
+
+    root = Path(__file__).resolve().parents[2]
+    keys = json.loads((root / "translations" / "en.json").read_text(encoding="utf-8"))
+    meteoalarm = keys["commands"]["wx"]["meteoalarm"]
+    assert "from" not in meteoalarm
+    assert "until" not in meteoalarm
