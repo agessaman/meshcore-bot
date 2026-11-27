@@ -68,6 +68,39 @@ def test_service_units_do_not_make_code_tree_writable():
     )
 
 
+def test_dockerfile_armv7_leg_installs_tzfpy_from_piwheels():
+    """requirements.txt skips tzfpy on 32-bit ARM; the armv7 leg names it."""
+    dockerfile = (REPO_ROOT / "Dockerfile").read_text(encoding="utf-8")
+    armv7 = dockerfile.split('if [ "$TARGETPLATFORM" = "linux/arm/v7" ]; then', 1)[1]
+    armv7 = armv7.split("else", 1)[0]
+
+    assert "--extra-index-url https://www.piwheels.org/simple" in armv7
+    assert '"tzfpy>=2.1"' in armv7
+    assert "-r requirements.txt" in armv7
+
+    # The other legs must not gain the extra index or the explicit pin.
+    other = dockerfile.split('if [ "$TARGETPLATFORM" = "linux/arm/v7" ]; then', 1)[1]
+    other = other.split("else", 1)[1].split("fi", 1)[0]
+    assert "piwheels" not in other
+    assert "tzfpy" not in other
+
+
+def test_installer_offers_the_time_zone_extra_through_piwheels():
+    installer = (REPO_ROOT / "install-service.sh").read_text(encoding="utf-8")
+    block = installer.split("install_optional_extras() {", 1)[1].split("\n}\n", 1)[0]
+
+    # On armv7 a plain PyPI install would try a Rust source build, so the extra
+    # has to go through the same pip arguments the main install uses.
+    tz = block.split('"Installing time zone lookup..."', 1)[1]
+    assert 'configure_armv7_pip_args "$INSTALL_DIR/requirements.txt"' in tz
+    assert '"${ARMV7_PIP_ARGS[@]}"' in tz
+    assert '"tzfpy>=2.1"' in tz
+    assert "non-fatal" in tz
+
+    # It is one of the default extras, so --no-extras skips it with the others.
+    assert block.index('"$INSTALL_EXTRAS" != true') < block.index('"tzfpy>=2.1"')
+
+
 def test_standalone_installer_separates_code_and_private_state():
     installer = (REPO_ROOT / "install-service.sh").read_text(encoding="utf-8")
     assert 'chown -R "root:$CODE_GROUP" "$INSTALL_DIR"' in installer

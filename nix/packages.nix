@@ -171,6 +171,9 @@
           requests
           requests-cache
           schedule
+          # The Nix stand-in for tzfpy, which nixpkgs does not carry: the weather
+          # time zone helper tries tzfpy first and falls back to this.
+          timezonefinder
           cryptography
           paho-mqtt
           urllib3

@@ -14,7 +14,7 @@
 #   ./install-service.sh          # Normal installation (non-destructive if already installed)
 #   ./install-service.sh --upgrade # Upgrade mode (copies new files, updates dependencies)
 #   ./install-service.sh -u        # Short form of --upgrade
-#   ./install-service.sh -u --no-extras  # upgrade without the optional packages (profanity, geocoding)
+#   ./install-service.sh -u --no-extras  # upgrade without the optional packages (profanity, geocoding, time zones)
 #   ./install-service.sh --update-venv           # Only refresh the venv, in place
 #   ./install-service.sh -u --update-venv        # Upgrade code, reuse the venv
 #
@@ -109,8 +109,8 @@ for arg in "$@"; do
             echo "                   nothing else is touched: no file sync, no service"
             echo "                   file changes. Combine with --upgrade to sync code"
             echo "                   and still skip the slow rebuild."
-            echo "  --no-extras      Skip the optional profanity filter and geocoding"
-            echo "                   packages, which are installed by default."
+            echo "  --no-extras      Skip the optional profanity filter, geocoding and"
+            echo "                   time zone packages, which are installed by default."
             echo "  --help, -h       Show this help message"
             echo ""
             echo "Examples:"
@@ -373,7 +373,7 @@ fi
 # shellcheck source=scripts/armv7_pip_args.sh
 source "$_ARMV7_PIP_HELPER"
 
-# Optional extras (profanity filter, geocoding), installed on every run unless
+# Optional extras (profanity filter, geocoding, time zone lookup), installed on every run unless
 # --no-extras is given.  A rebuilt venv starts without them; an existing one
 # already has them, so pip only confirms they are present.  With --no-extras an
 # existing venv is left as it is, so anything installed earlier stays.  Failures
@@ -384,7 +384,7 @@ install_optional_extras() {
     local venv_python="$1/bin/python"
 
     if [[ "$INSTALL_EXTRAS" != true ]]; then
-        print_info "Skipping the optional profanity filter and geocoding packages (--no-extras)"
+        print_info "Skipping the optional profanity filter, geocoding and time zone packages (--no-extras)"
         return 0
     fi
 
@@ -400,6 +400,17 @@ install_optional_extras() {
         print_success "Installed geocoding extras"
     else
         print_warning "Failed to install geocoding extras (non-fatal)"
+    fi
+
+    # requirements.txt installs tzfpy only on 64-bit machines: on 32-bit ARM a
+    # plain PyPI install would try a Rust source build.  piwheels has armv6l and
+    # armv7l wheels, so route this one through the armv7 pip arguments.
+    print_info "Installing time zone lookup..."
+    configure_armv7_pip_args "$INSTALL_DIR/requirements.txt"
+    if "$venv_python" -m pip install --quiet "${ARMV7_PIP_ARGS[@]}" "tzfpy>=2.1"; then
+        print_success "Installed time zone lookup"
+    else
+        print_warning "Failed to install time zone lookup (non-fatal)"
     fi
 }
 

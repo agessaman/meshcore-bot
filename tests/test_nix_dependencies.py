@@ -16,8 +16,9 @@ NIX_NAMES = {
 }
 
 # Declared but not needed under Nix: the standard library already provides it.
-# tzfpy is a Rust crate that nixpkgs does not carry; without it the weather time
-# zone helper falls back to the longitude estimate, so the bot still works.
+# tzfpy is a Rust crate that nixpkgs does not carry; the weather time zone helper
+# uses timezonefinder instead, which nix/packages.nix adds on its own, and falls
+# back to the longitude estimate if neither is importable.
 NOT_PACKAGED = {"configparser", "tzfpy"}
 
 
@@ -45,6 +46,11 @@ def _nix_bot_inputs() -> set[str]:
         if re.fullmatch(r"[A-Za-z0-9._-]+", line):
             names.add(line.lower())
     return names
+
+
+def test_nix_package_carries_the_time_zone_lookup() -> None:
+    """tzfpy is not in nixpkgs, so the Nix build needs its stand-in."""
+    assert "timezonefinder" in _nix_bot_inputs()
 
 
 def test_nix_package_installs_every_runtime_requirement() -> None:

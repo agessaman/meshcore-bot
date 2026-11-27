@@ -1,9 +1,10 @@
-"""Real time zones for MET Norway's local times, and the estimate without tzfpy.
+"""Real time zones for MET Norway's local times, and the estimate without a lookup.
 
-tzfpy is not installed in the test environment and must not be: every real-zone
-case stubs ``sys.modules['tzfpy']`` with a coordinate table, and the fallback
-cases make the import fail. The provider's own tests keep passing either way,
-because the estimate reproduces the old ``round(lon / 15)`` behavior exactly.
+Neither tzfpy nor timezonefinder is installed in the test environment and
+neither must be: every real-zone case stubs ``sys.modules`` with a coordinate
+table, and the fallback cases make the import fail. The provider's own tests
+keep passing either way, because the estimate reproduces the old
+``round(lon / 15)`` behavior exactly.
 """
 
 import configparser
@@ -92,6 +93,26 @@ def _payload(times):
     }
 
 
+class _FakeTimezoneFinder:
+    """A stand-in for timezonefinder: a coordinate table and a call log."""
+
+    instances = 0
+
+    def __init__(self):
+        type(self).instances += 1
+        self.calls = []
+
+    def timezone_at(self, lng, lat):
+        self.calls.append((lng, lat))
+        return _FakeTimezoneFinder.zones.get((round(lat, 2), round(lng, 2)))
+
+
+class _FakeTimezoneFinderModule:
+    """The module object ``import timezonefinder`` returns."""
+
+    TimezoneFinder = _FakeTimezoneFinder
+
+
 @pytest.fixture
 def zones(monkeypatch):
     """Stub tzfpy with three zones, and forget any earlier import attempt."""
@@ -101,6 +122,7 @@ def zones(monkeypatch):
         SEATTLE: "America/Los_Angeles",
     })
     monkeypatch.setitem(sys.modules, "tzfpy", fake)
+    monkeypatch.setitem(sys.modules, "timezonefinder", None)
     _tz._reset()
     yield fake
     _tz._reset()
@@ -108,11 +130,94 @@ def zones(monkeypatch):
 
 @pytest.fixture
 def no_tzfpy(monkeypatch):
-    """Make ``import tzfpy`` fail, as it does on armv7."""
+    """Make both lookups fail, as they do on a 32-bit install without extras."""
     monkeypatch.setitem(sys.modules, "tzfpy", None)
+    monkeypatch.setitem(sys.modules, "timezonefinder", None)
     _tz._reset()
     yield
     _tz._reset()
+
+
+@pytest.fixture
+def timezonefinder_only(monkeypatch):
+    """tzfpy missing, timezonefinder present: the Nix package's arrangement."""
+    _FakeTimezoneFinder.zones = {
+        MADRID: "Europe/Madrid",
+        TOKYO: "Asia/Tokyo",
+        SEATTLE: "America/Los_Angeles",
+    }
+    _FakeTimezoneFinder.instances = 0
+    monkeypatch.setitem(sys.modules, "tzfpy", None)
+    monkeypatch.setitem(sys.modules, "timezonefinder", _FakeTimezoneFinderModule)
+    _tz._reset()
+    yield _FakeTimezoneFinder
+    _tz._reset()
+
+
+# --- the backend chain ------------------------------------------------------
+
+
+def test_tzfpy_is_the_first_choice(zones, caplog):
+    with caplog.at_level(logging.INFO, logger="modules.weather_providers._tz"):
+        _tz.utc_offset_at(*MADRID, datetime(2026, 1, 15, 12, 0, tzinfo=UTC))
+
+    messages = [r.getMessage() for r in caplog.records if r.levelno == logging.INFO]
+    assert len(messages) == 1
+    assert "tzfpy" in messages[0]
+
+
+def test_timezonefinder_answers_when_tzfpy_is_missing(timezonefinder_only, caplog):
+    with caplog.at_level(logging.INFO, logger="modules.weather_providers._tz"):
+        winter = _tz.utc_offset_at(*MADRID, datetime(2026, 1, 15, 12, 0, tzinfo=UTC))
+        summer = _tz.utc_offset_at(*MADRID, datetime(2026, 7, 15, 12, 0, tzinfo=UTC))
+
+    # The longitude estimate would say UTC for both.
+    assert winter == timedelta(hours=1)
+    assert summer == timedelta(hours=2)
+    messages = [r.getMessage() for r in caplog.records if r.levelno == logging.INFO]
+    assert len(messages) == 1
+    assert "timezonefinder" in messages[0]
+
+
+def test_the_timezonefinder_instance_is_built_once(timezonefinder_only):
+    moment = datetime(2026, 1, 15, 12, 0, tzinfo=UTC)
+
+    _tz.utc_offset_at(*TOKYO, moment)
+    _tz.utc_offset_at(*SEATTLE, moment)
+
+    # Construction loads a large index, so it must not happen per lookup.
+    assert timezonefinder_only.instances == 1
+
+
+def test_timezonefinder_gets_longitude_and_latitude_by_keyword(timezonefinder_only):
+    _tz.utc_offset_at(*TOKYO, datetime(2026, 1, 15, 12, 0, tzinfo=UTC))
+
+    finder = _tz._finder()
+    assert finder.calls == [(139.7, 35.68)]
+
+
+def test_a_raising_timezonefinder_falls_back(timezonefinder_only, monkeypatch):
+    monkeypatch.setattr(
+        timezonefinder_only, "timezone_at", Mock(side_effect=RuntimeError("bad index"))
+    )
+
+    offset = _tz.utc_offset_at(*MADRID, datetime(2026, 1, 15, 12, 0, tzinfo=UTC))
+
+    assert offset == timedelta(0)  # round(-3.7 / 15)
+
+
+def test_a_timezonefinder_none_falls_back(timezonefinder_only):
+    offset = _tz.utc_offset_at(0.0, 30.0, datetime(2026, 1, 15, 12, 0, tzinfo=UTC))
+
+    assert offset == timedelta(hours=2)  # round(30 / 15)
+
+
+def test_the_backend_is_chosen_and_logged_once(zones, caplog):
+    with caplog.at_level(logging.INFO, logger="modules.weather_providers._tz"):
+        _tz.utc_offset_at(*TOKYO, datetime(2026, 1, 15, 12, 0, tzinfo=UTC))
+        _tz.utc_offset_at(*SEATTLE, datetime(2026, 1, 15, 12, 0, tzinfo=UTC))
+
+    assert len([r for r in caplog.records if r.levelno == logging.INFO]) == 1
 
 
 # --- the real zone ----------------------------------------------------------
@@ -175,7 +280,7 @@ def test_without_tzfpy_the_estimate_is_used_and_logged_once(no_tzfpy, caplog):
     assert second == timedelta(hours=-8)
     records = [r for r in caplog.records if r.levelno == logging.INFO]
     assert len(records) == 1
-    assert "tzfpy is not installed" in records[0].getMessage()
+    assert "longitude estimate" in records[0].getMessage()
 
 
 def test_an_unknown_point_falls_back_at_debug(zones, caplog):
@@ -183,7 +288,7 @@ def test_an_unknown_point_falls_back_at_debug(zones, caplog):
         offset = _tz.utc_offset_at(0.0, 30.0, datetime(2026, 1, 15, 12, 0, tzinfo=UTC))
 
     assert offset == timedelta(hours=2)  # round(30 / 15)
-    assert not [r for r in caplog.records if r.levelno >= logging.INFO]
+    assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
     assert [r for r in caplog.records if r.levelno == logging.DEBUG]
 
 
