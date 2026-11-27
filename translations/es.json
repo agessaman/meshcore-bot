@@ -215,6 +215,17 @@
         "Friday": "Vi",
         "Saturday": "Sá",
         "Sunday": "Do"
+      },
+      "meteoalarm": {
+        "attribution": "Alertas: MeteoAlarm/EUMETNET",
+        "error_fetching": "Error al obtener alertas meteorológicas"
+      },
+      "eccc": {
+        "error_fetching": "Error al obtener alertas meteorológicas"
+      },
+      "dwd": {
+        "attribution": "Alertas: DWD vía Bright Sky",
+        "error_fetching": "Error al obtener alertas meteorológicas"
       }
     },
     "gwx": {
@@ -285,13 +296,20 @@
         "Sunday": "Do"
       },
       "feels_like": "(sensación {value}{unit})",
+      "calm": "Calma",
       "hourly_not_available": "Pronóstico por horas no disponible",
       "source_option_not_available": "No disponible para esta fuente meteorológica",
       "mqtt_forecast_not_supported": "El pronóstico extendido no está disponible para fuentes meteorológicas MQTT",
       "mqtt_weather_no_data": "Aún no se ha recibido ningún mensaje meteorológico MQTT para este tema",
       "mqtt_weather_no_subscriber": "El suscriptor meteorológico MQTT no está activo (habilite [MqttWeather] y los temas custom.mqtt_weather.*)",
       "mqtt_weather_payload_error": "Error en los datos meteorológicos MQTT: {detail}",
-      "mqtt_weather_stale": "Los datos meteorológicos MQTT son demasiado antiguos"
+      "mqtt_weather_stale": "Los datos meteorológicos MQTT son demasiado antiguos",
+      "metno": {
+        "error_fetching_api": "Error al obtener datos meteorológicos de MET Norway"
+      },
+      "eccc": {
+        "error_fetching_api": "Error al obtener datos meteorológicos de Environment Canada"
+      }
     },
     "sports": {
       "description": "Obtener resultados y calendarios deportivos (uso: sports [equipo/liga])",

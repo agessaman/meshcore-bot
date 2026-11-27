@@ -223,6 +223,17 @@
         "Friday": "Pt",
         "Saturday": "So",
         "Sunday": "Nd"
+      },
+      "meteoalarm": {
+        "attribution": "Alerty: MeteoAlarm/EUMETNET",
+        "error_fetching": "Błąd pobierania alertów pogodowych"
+      },
+      "eccc": {
+        "error_fetching": "Błąd pobierania alertów pogodowych"
+      },
+      "dwd": {
+        "attribution": "Alerty: DWD przez Bright Sky",
+        "error_fetching": "Błąd pobierania alertów pogodowych"
       }
     },
     "gwx": {
@@ -293,13 +304,20 @@
         "Sunday": "Nd"
       },
       "feels_like": "(odczuwalnie {value}{unit})",
+      "calm": "Bezwietrznie",
       "hourly_not_available": "Prognoza godzinowa niedostępna",
       "source_option_not_available": "Niedostępne dla tego źródła pogody",
       "mqtt_forecast_not_supported": "Prognoza rozszerzona nie jest dostępna dla źródeł pogody MQTT",
       "mqtt_weather_no_data": "Nie otrzymano jeszcze żadnej wiadomości pogodowej MQTT dla tego tematu",
       "mqtt_weather_no_subscriber": "Odbiornik pogody MQTT nie jest aktywny (włącz [MqttWeather] i tematy custom.mqtt_weather.*)",
       "mqtt_weather_payload_error": "Błąd danych pogodowych MQTT: {detail}",
-      "mqtt_weather_stale": "Dane pogodowe MQTT są zbyt stare"
+      "mqtt_weather_stale": "Dane pogodowe MQTT są zbyt stare",
+      "metno": {
+        "error_fetching_api": "Błąd pobierania danych pogodowych z MET Norway"
+      },
+      "eccc": {
+        "error_fetching_api": "Błąd pobierania danych pogodowych z Environment Canada"
+      }
     },
     "sports": {
       "description": "Pobiera wyniki sportowe i harmonogram meczów (użycie: sports [drużyna/liga])",

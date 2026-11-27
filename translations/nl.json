@@ -203,6 +203,17 @@
         "Friday": "Vr",
         "Saturday": "Za",
         "Sunday": "Zo"
+      },
+      "meteoalarm": {
+        "attribution": "Waarschuwingen: MeteoAlarm/EUMETNET",
+        "error_fetching": "Fout bij ophalen weerwaarschuwingen"
+      },
+      "eccc": {
+        "error_fetching": "Fout bij ophalen weerwaarschuwingen"
+      },
+      "dwd": {
+        "attribution": "Waarschuwingen: DWD via Bright Sky",
+        "error_fetching": "Fout bij ophalen weerwaarschuwingen"
       }
     },
     "gwx": {
@@ -273,13 +284,20 @@
         "Sunday": "Zo"
       },
       "feels_like": "(voelt als {value}{unit})",
+      "calm": "Windstil",
       "hourly_not_available": "Uurverwachting niet beschikbaar",
       "source_option_not_available": "Niet beschikbaar voor deze weerbron",
       "mqtt_forecast_not_supported": "Uitgebreide verwachting is niet beschikbaar voor MQTT-weerbronnen",
       "mqtt_weather_no_data": "Nog geen MQTT-weerbericht ontvangen voor dit topic",
       "mqtt_weather_no_subscriber": "MQTT-weerontvanger is niet actief (schakel [MqttWeather] en custom.mqtt_weather.*-topics in)",
       "mqtt_weather_payload_error": "Fout in MQTT-weergegevens: {detail}",
-      "mqtt_weather_stale": "MQTT-weergegevens zijn te oud"
+      "mqtt_weather_stale": "MQTT-weergegevens zijn te oud",
+      "metno": {
+        "error_fetching_api": "Fout bij ophalen weerdata van MET Norway"
+      },
+      "eccc": {
+        "error_fetching_api": "Fout bij ophalen weerdata van Environment Canada"
+      }
     },
     "sports": {
       "description": "Sportuitslagen en -schema's (gebruik: sports [team/competitie])",

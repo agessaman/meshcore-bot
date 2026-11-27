@@ -224,6 +224,17 @@
         "Friday": "Fr",
         "Saturday": "Sa",
         "Sunday": "So"
+      },
+      "meteoalarm": {
+        "attribution": "Warnungen: MeteoAlarm/EUMETNET",
+        "error_fetching": "Fehler beim Abruf der Wetterwarnungen"
+      },
+      "eccc": {
+        "error_fetching": "Fehler beim Abruf der Wetterwarnungen"
+      },
+      "dwd": {
+        "attribution": "Warnungen: DWD über Bright Sky",
+        "error_fetching": "Fehler beim Abruf der Wetterwarnungen"
       }
     },
     "gwx": {
@@ -294,13 +305,20 @@
         "Sunday": "So"
       },
       "feels_like": "(gefühlt {value}{unit})",
+      "calm": "Windstill",
       "hourly_not_available": "Stündliche Vorhersage nicht verfügbar",
       "source_option_not_available": "Für diese Wetterquelle nicht verfügbar",
       "mqtt_forecast_not_supported": "Erweiterte Vorhersage ist für MQTT-Wetterquellen nicht verfügbar",
       "mqtt_weather_no_data": "Für dieses Topic ist noch keine MQTT-Wettermeldung eingegangen",
       "mqtt_weather_no_subscriber": "MQTT-Wetterempfang ist nicht aktiv ([MqttWeather] und custom.mqtt_weather.*-Topics aktivieren)",
       "mqtt_weather_payload_error": "MQTT-Wetterdaten fehlerhaft: {detail}",
-      "mqtt_weather_stale": "MQTT-Wetterdaten sind zu alt"
+      "mqtt_weather_stale": "MQTT-Wetterdaten sind zu alt",
+      "metno": {
+        "error_fetching_api": "Fehler beim Abruf der Wetterdaten von MET Norway"
+      },
+      "eccc": {
+        "error_fetching_api": "Fehler beim Abruf der Wetterdaten von Environment Canada"
+      }
     },
     "sports": {
       "description": "Sportergebnisse und -termine abrufen (Verwendung: sports [team/liga])",
