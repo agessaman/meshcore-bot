@@ -53,7 +53,8 @@ def test_open_meteo_hourly_uses_current_time_and_packs_whole_lines(current, firs
         text = cmd.get_open_meteo_weather(47.6, -122.3, "hourly", message=Mock(), location_prefix_len=18)
     lines = text.splitlines()
     assert lines[0].startswith(first)
-    assert "🌧️ 26% Light Rain 49° SSW5" in lines[0]  # 202.5° is exactly SSW
+    # 49.8 °F and 5.9 mph round to 50 and 6; truncating showed 49 and 5.
+    assert "🌧️ 26% Light Rain 50° SSW6" in lines[0]  # 202.5° is exactly SSW
     assert len(lines) >= 2
     assert len(text.encode()) + 18 <= 158
     next_line = lines[-1].replace(lines[-1].split(":")[0], "2PM", 1)
@@ -140,7 +141,7 @@ def test_hourly_requests_configured_units_and_translates_wind(temperature, wind)
     cmd = _command(language="ru", temperature_unit=temperature, wind_speed_unit=wind)
     with patch("requests.Session.get", return_value=_response(_data())) as get:
         text = cmd.get_open_meteo_weather(0, 0, "hourly")
-    assert "ЮЗ5" in text
+    assert "ЮЮЗ6" in text  # SSW, 5.9 mph rounded
     assert get.call_args.kwargs["params"]["temperature_unit"] == temperature
     assert get.call_args.kwargs["params"]["wind_speed_unit"] == wind
 

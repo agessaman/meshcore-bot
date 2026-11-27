@@ -26,6 +26,7 @@ from typing import Any, Optional
 from ..http_retry import make_retry_session
 from ._geo import haversine_km
 from ._tz import utc_offset_at
+from ._units import c_to_f, kmh_to, mm_to_inch, round_half_away
 from .base import Capability, ForecastReply, ProviderHost, WeatherProvider, WeatherUnits
 from .openmeteo import weather_emoji
 
@@ -372,8 +373,8 @@ class EcccProvider(WeatherProvider):
         except (TypeError, ValueError):
             return None
         if self.units.temperature == 'fahrenheit':
-            value = value * 9 / 5 + 32
-        return int(round(value))
+            value = c_to_f(value)
+        return round_half_away(value)
 
     def _is_calm(self, wind: dict) -> bool:
         """Whether the data says the wind is calm, which it writes as a word."""
@@ -388,13 +389,7 @@ class EcccProvider(WeatherProvider):
             value = float(kmh)
         except (TypeError, ValueError):
             return None
-        if self.units.wind_speed == 'mph':
-            value = value * 0.621371
-        elif self.units.wind_speed == 'ms':
-            value = value / 3.6
-        elif self.units.wind_speed == 'kn':
-            value = value / 1.852
-        return int(round(value))
+        return round_half_away(kmh_to(value, self.units.wind_speed))
 
     def _precipitation(self, millimetres: Any) -> Optional[float]:
         """A millimetre reading in the reply's precipitation unit."""
@@ -404,7 +399,7 @@ class EcccProvider(WeatherProvider):
             value = float(millimetres)
         except (TypeError, ValueError):
             return None
-        return value / 25.4 if self.units.precipitation == 'inch' else value
+        return mm_to_inch(value) if self.units.precipitation == 'inch' else value
 
     @property
     def temp_symbol(self) -> str:

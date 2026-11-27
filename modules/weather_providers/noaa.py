@@ -23,6 +23,7 @@ from ..http_retry import make_retry_session
 from ..nws_coverage import NWSNoCoverageCache
 from ..utils import format_temperature_high_low
 from ..weather_common import _ARROWS_8, _COMPASS_16
+from ._units import M_PER_MILE, c_to_f, kmh_to, ms_to, round_half_away
 from .base import Capability, ForecastReply, ProviderHost, WeatherProvider, WeatherUnits
 
 # Placeholder a failed fetch is compared against; the reply the user sees is the
@@ -1402,9 +1403,9 @@ class NoaaProvider(WeatherProvider):
             dewpoint_val = props.get('dewpoint', {}).get('value')
             if dewpoint_val is not None:
                 if temp_unit == 'celsius':
-                    dewpoint = int(round(dewpoint_val))
+                    dewpoint = round_half_away(dewpoint_val)
                 else:
-                    dewpoint = int(dewpoint_val * 9/5 + 32)  # Convert C to F
+                    dewpoint = round_half_away(c_to_f(dewpoint_val))
                 obs_data_dict['dew_point'] = str(dewpoint)
 
             visibility_val = props.get('visibility', {}).get('value')
@@ -1412,9 +1413,9 @@ class NoaaProvider(WeatherProvider):
                 visibility_val *= 1000  # NOAA normally reports meters; handle km too
             if visibility_val is not None:
                 if self._noaa_metric_distance:
-                    visibility = int(visibility_val / 1000)  # Convert m to km
+                    visibility = round_half_away(visibility_val / 1000)  # Convert m to km
                 else:
-                    visibility = int(visibility_val * 0.000621371)  # Convert m to miles
+                    visibility = round_half_away(visibility_val / M_PER_MILE)  # Convert m to miles
                 if visibility > 0:
                     obs_data_dict['visibility'] = str(visibility)
 
@@ -1422,11 +1423,10 @@ class NoaaProvider(WeatherProvider):
             if wind_gust_val is not None:
                 # NOAA observations declare their unit; station gusts are usually km/h, not m/s.
                 if 'km_h' in str(props.get('windGust', {}).get('unitCode', '')):
-                    wind_gust_val = wind_gust_val / 3.6
+                    wind_gust_val = kmh_to(wind_gust_val, 'ms')
                 # Shown only above 10 mph, whatever unit it is shown in.
-                if int(wind_gust_val * 2.237) > 10:
-                    factor = {'mph': 2.237, 'kmh': 3.6, 'ms': 1.0, 'kn': 1.944}[wind_unit]
-                    obs_data_dict['wind_gusts'] = str(int(wind_gust_val * factor))
+                if round_half_away(ms_to(wind_gust_val, 'mph')) > 10:
+                    obs_data_dict['wind_gusts'] = str(round_half_away(ms_to(wind_gust_val, wind_unit)))
 
             pressure_val = props.get('barometricPressure', {}).get('value')
             if pressure_val is not None:

@@ -37,6 +37,7 @@ from ..http_retry import make_retry_session
 from ..version_info import resolve_application_version
 from ..weather_common import _ARROWS_8, _COMPASS_16
 from ._tz import estimate_offset_hours, utc_offset_at
+from ._units import c_to_f, hpa_to_mmhg, mm_to_inch, ms_to, round_half_away
 from .base import Capability, ForecastReply, ProviderHost, WeatherProvider, WeatherUnits
 
 METNO_URL = "https://api.met.no/weatherapi/locationforecast/2.0/compact"
@@ -53,10 +54,6 @@ MAX_TTL = 6 * 60 * 60
 # A 429 without Retry-After parks the provider for this long.
 RATE_LIMIT_PAUSE = 300.0
 
-MS_TO_MPH = 2.2369362920544
-MS_TO_KMH = 3.6
-MS_TO_KN = 1.9438444924406
-MM_PER_INCH = 25.4
 
 # MET Norway's symbol codes, without the _day/_night/_polartwilight suffix,
 # mapped onto the WMO codes the shared catalog already describes and draws. One
@@ -273,27 +270,21 @@ class MetNorwayProvider(WeatherProvider):
             return None
         value = float(celsius)
         if self.units.temperature == 'fahrenheit':
-            value = value * 9 / 5 + 32
-        return int(round(value))
+            value = c_to_f(value)
+        return round_half_away(value)
 
     def _wind_speed(self, meters_per_second: Any) -> Optional[int]:
         """A m/s wind speed in the reply's unit, rounded to a whole number."""
         if meters_per_second is None:
             return None
-        factor = {
-            'mph': MS_TO_MPH,
-            'kmh': MS_TO_KMH,
-            'ms': 1.0,
-            'kn': MS_TO_KN,
-        }.get(self.units.wind_speed, MS_TO_MPH)
-        return int(round(float(meters_per_second) * factor))
+        return round_half_away(ms_to(meters_per_second, self.units.wind_speed))
 
     def _precipitation(self, millimeters: Any) -> Optional[float]:
         """A precipitation amount in the reply's unit."""
         if millimeters is None:
             return None
         value = float(millimeters)
-        return value / MM_PER_INCH if self.units.precipitation == 'inch' else value
+        return mm_to_inch(value) if self.units.precipitation == 'inch' else value
 
     @property
     def precipitation_symbol(self) -> str:
@@ -717,10 +708,10 @@ class MetNorwayProvider(WeatherProvider):
         conditions = []
         pressure = details.get("air_pressure_at_sea_level")
         if pressure is not None:
-            pressure_hpa = int(round(float(pressure)))
+            pressure_hpa = round_half_away(pressure)
             if self.host.translate('commands.gwx.pressure_unit').strip().lower() == 'mmhg':
                 conditions.append(self.host.translate(
-                    'commands.gwx.pressure_mmhg', value=round(pressure_hpa * 0.750062)
+                    'commands.gwx.pressure_mmhg', value=round_half_away(hpa_to_mmhg(pressure_hpa))
                 ))
             else:
                 conditions.append(self.host.translate('commands.gwx.pressure', value=pressure_hpa))
@@ -882,7 +873,7 @@ class MetNorwayProvider(WeatherProvider):
         if wind >= 30:
             unit = self.host.translate(f'services.weather_service.wind_speed_units.{self.units.wind_speed}')
             warnings.append(self.host.translate(
-                'commands.gwx.warnings.high_winds', wind_speed=int(wind), unit=unit
+                'commands.gwx.warnings.high_winds', wind_speed=round_half_away(wind), unit=unit
             ))
 
         return " | ".join(warnings) if warnings else None
