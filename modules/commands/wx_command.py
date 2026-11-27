@@ -9,7 +9,7 @@ import re
 import threading
 import xml.dom.minidom  # noqa: F401  re-exported
 from datetime import datetime, timedelta, timezone  # noqa: F401  re-exported
-from typing import Callable, Optional, ParamSpec, TypeVar
+from typing import Any, Callable, Optional, ParamSpec, TypeVar
 
 import requests
 
@@ -40,9 +40,17 @@ from ..utils import (
     geocode_zipcode_sync,
     get_nominatim_geocoder,
     normalize_us_state,
+    rate_limited_nominatim_reverse_sync,
 )
-from ..weather_common import WeatherCommandMixin
-from ..weather_providers.alerts_nws import NwsAlertsProvider
+from ..weather_common import WeatherCommandMixin, load_open_meteo_model, load_open_meteo_units
+from ..weather_providers import (
+    ALERT_PROVIDERS,
+    PROVIDERS,
+    make_alerts_provider,
+    make_provider,
+    resolve_alerts_provider_name,
+)
+from ..weather_providers.base import ForecastReply, WeatherUnits
 from ..weather_providers.noaa import (
     ERROR_FETCHING_DATA as _ERROR_FETCHING_DATA,
 )
@@ -53,17 +61,30 @@ from ..weather_providers.noaa import (
     NO_ALERTS as _NO_ALERTS,
 )
 from ..weather_providers.noaa import (
-    WX_MULTIDAY_MAX_DAYS,
+    WX_MULTIDAY_MAX_DAYS,  # noqa: F401  re-exported
     NoaaProvider,
     resolve_units,
 )
-from .alternatives.wx_international import GlobalWxCommand
 from .base_command import BaseCommand
 from .rain_command import nws_http_means_no_coverage  # noqa: F401  re-exported
 
 # Kept for code that checked them; these imports used to be optional.
 WX_INTERNATIONAL_AVAILABLE = True
 WXSIM_PARSER_AVAILABLE = True
+
+
+def __getattr__(name: str):
+    """``GlobalWxCommand``, imported on first use.
+
+    gwx is a subclass of this command, so importing it here at module level
+    would be a cycle. Code that reached it as
+    ``modules.commands.wx_command.GlobalWxCommand`` still can.
+    """
+    if name == "GlobalWxCommand":
+        from .alternatives.wx_international import GlobalWxCommand
+
+        return GlobalWxCommand
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 # Placeholders of the [Weather] temperature_*_format templates (utils.format_temperature_high_low).
 _TEMP_FORMAT_PLACEHOLDERS = {
@@ -78,6 +99,16 @@ _TEMP_FORMAT_NOTES = [
     "Keep {high_label}/{low_label} to follow the reply language; the preview shows English.",
 ]
 
+# Settings-schema labels for the registry keys, so a new provider needs one entry
+# in modules/weather_providers/ and one line here.
+_PROVIDER_LABELS = {
+    "noaa": "NOAA (US, includes alerts)",
+    "openmeteo": "Open-Meteo (global)",
+}
+_ALERT_PROVIDER_LABELS = {
+    "nws": "NWS (US)",
+}
+
 _P = ParamSpec("_P")
 _T = TypeVar("_T")
 
@@ -85,13 +116,16 @@ _T = TypeVar("_T")
 class WxCommand(WeatherCommandMixin, BaseCommand):
     """Handles weather commands with zipcode support"""
 
+    # The global location style's two special forms; the US style matches them inline.
+    _COORDINATES_RE = re.compile(r'^\s*-?\d+\.?\d*\s*,\s*-?\d+\.?\d*\s*$')
+    _ZIP_RE = re.compile(r'^\d{5}$')
+
     # Plugin metadata
     # Read-only informational output; safe for scheduled {cmd:...} rendering.
     render_safe = True
     name = "wx"
     translation_ns = "commands.wx"
     keywords = ['wx', 'weather', 'wxa', 'wxalert']
-    description = "Get weather information for a zip code (usage: wx 12345)"
     category = "weather"
     cooldown_seconds = 5  # 5 second cooldown per user to prevent API abuse
     # NOAA/geocoding need the network, but custom WXSIM/MQTT sources may be LAN-only; check connectivity inside execute paths.
@@ -156,11 +190,16 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             "help": "Overrides the shared wind speed unit for wx only.",
         },
         {"key": "weather_provider", "label": "Weather provider", "type": "enum", "section": "Weather",
-         "options": [
-             {"value": "noaa", "label": "NOAA (US, includes alerts)"},
-             {"value": "openmeteo", "label": "Open-Meteo (global)"},
-         ],
+         "options": [{"value": name, "label": _PROVIDER_LABELS.get(name, name)} for name in PROVIDERS],
          "default": "noaa", "help": "API used for forecasts. Shared weather setting."},
+        {"key": "alerts_provider", "label": "Weather alerts provider", "type": "enum", "section": "Weather",
+         "options": [
+             {"value": "auto", "label": "Automatic (NWS with NOAA, none with Open-Meteo)"},
+             {"value": "none", "label": "No weather alerts"},
+             *({"value": name, "label": _ALERT_PROVIDER_LABELS.get(name, name)} for name in ALERT_PROVIDERS),
+         ],
+         "default": "auto", "help": "API used for weather alerts, chosen separately from the forecast provider. "
+                                    "Shared weather setting."},
         {"key": "openmeteo_fallback", "label": "Open-Meteo outside NWS coverage", "type": "bool", "section": "Weather",
          "default": False,
          "help": "Only with the NOAA provider: answer wx from Open-Meteo for places NWS does not cover "
@@ -210,81 +249,116 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
     # formatters would turn into dropped fields).
     MIN_BODY_BUDGET = _MIN_BODY_BUDGET
 
+    # A subclass that answers from one provider whatever [Weather] weather_provider
+    # says (gwx is pinned to Open-Meteo).
+    pinned_provider: Optional[str] = None
+
+    # The config section whose `enabled` switch gates this command; None: no switch.
+    enabled_section: Optional[str] = 'Wx_Command'
+
+    # The one-line description, in the terms of the provider that answers. It is
+    # a class attribute because the settings UI reads it off the class, and
+    # __init__ replaces it on the instance when the provider is global.
+    description = "Get weather information for a zip code (usage: wx 12345)"
+
     def __init__(self, bot):
         super().__init__(bot)
-        self.wx_enabled = self.get_config_value('Wx_Command', 'enabled', fallback=True, value_type='bool')
+        self.wx_enabled = (
+            self.get_config_value(self.enabled_section, 'enabled', fallback=True, value_type='bool')
+            if self.enabled_section else True
+        )
 
         self.wxsim_parser = WXSIMParser()
 
-        # Check weather provider setting - delegate to international command if using Open-Meteo
-        weather_provider = bot.config.get('Weather', 'weather_provider', fallback='noaa').lower()
-        if weather_provider == 'openmeteo':
-            # Delegate to international weather command
-            self.delegate_command = GlobalWxCommand(bot)
-            # Use wx triggers plus any [Wx_Command] aliases loaded by BaseCommand.
-            self.delegate_command.keywords = list(self.keywords)
-            self.delegate_command.description = "Get weather information for any location (usage: wx Tokyo)"
-            self.logger.info("Weather provider set to 'openmeteo', delegating wx command to wx_international")
+        # The forecast provider comes from [Weather] weather_provider. An unknown
+        # value warns once and uses NOAA, as an unset one does.
+        if self.pinned_provider:
+            provider_name = self.pinned_provider
         else:
-            self.delegate_command = None
+            provider_name = bot.config.get('Weather', 'weather_provider', fallback='noaa').strip().lower()
+            if provider_name not in PROVIDERS:
+                self.logger.warning(
+                    f"Unknown [Weather] weather_provider '{provider_name}'; using 'noaa'. "
+                    f"Valid values: {', '.join(sorted(PROVIDERS))}"
+                )
+                provider_name = 'noaa'
+        self.provider_name = provider_name
 
         # With NOAA, places outside NWS coverage can be answered from Open-Meteo instead.
-        self._openmeteo = None
-        if self.delegate_command is None and bot.config.getboolean('Weather', 'openmeteo_fallback', fallback=False):
-            self._openmeteo = GlobalWxCommand(bot)
+        fallback_enabled = provider_name == 'noaa' and bot.config.getboolean(
+            'Weather', 'openmeteo_fallback', fallback=False
+        )
+
+        # An Open-Meteo provider loads [Weather] weather_model, and its warning
+        # comes before the unit warnings, as it did when wx built a gwx command.
+        openmeteo_model = None
+        if provider_name == 'openmeteo' or fallback_enabled:
+            openmeteo_model = load_open_meteo_model(bot.config, self.logger)
+
+        # Units are per provider: NOAA takes [Wx_Command] overrides, Open-Meteo
+        # reads [Weather] only, as gwx always has.
+        if provider_name == 'openmeteo':
+            units = WeatherUnits(*load_open_meteo_units(bot.config, self.logger))
+        else:
+            units = resolve_units(self._unit_setting)
+
+        self.url_timeout = 8  # seconds (reduced from 10 for faster failure detection)
+        self.forecast_duration = 3  # days
+        self.num_wx_alerts = 2  # number of alerts to show
+        self.use_metric = False  # Use imperial units by default
+        self.zulu_time = False  # Use local time by default
+
+        # Get default location/state/country from config for fallback/disambiguation
+        self.default_city = self.bot.config.get('Weather', 'default_city', fallback='').strip()
+        self.default_state = self.bot.config.get('Weather', 'default_state', fallback='')
+        self.default_country = self.bot.config.get('Weather', 'default_country', fallback='US')
+        self.always_show_location = self.bot.config.getboolean('Weather', 'always_show_location', fallback=False)
+
+        # Initialize geocoder (will use rate-limited helpers for actual calls)
+        # Keep geolocator for backwards compatibility, but prefer rate-limited helpers
+        self.geolocator = get_nominatim_geocoder()
+
+        # Get database manager for geocoding cache
+        self.db_manager = bot.db_manager
+
+        # requests.Session and WXSIM parser instances are shared by this command.
+        # Keep provider calls serialized as they were before moving them to worker
+        # threads. The lock is acquired inside the worker, never on the event loop.
+        self._sync_provider_lock = threading.Lock()
+
+        # The fetch and formatting live in the providers; this command keeps the
+        # request (parsing, geocoding, labels) and the sending. A NOAA command's
+        # forecast and alerts providers share one retry session, one worker lock
+        # and one coverage cache.
+        shared = {}
+        if provider_name == 'noaa':
+            self._nws_no_coverage = NWSNoCoverageCache()
+            shared = {
+                'session': self._create_retry_session(),
+                'lock': self._sync_provider_lock,
+                'coverage': self._nws_no_coverage,
+                'fallback_enabled': fallback_enabled,
+            }
+        self.provider = make_provider(provider_name, host=self, units=units, **shared)
+
+        alerts_name = resolve_alerts_provider_name(
+            bot.config.get('Weather', 'alerts_provider', fallback='auto'), provider_name, self.logger
+        )
+        self.alerts_provider = make_alerts_provider(alerts_name, host=self, **shared) if alerts_name else None
+
+        # The Open-Meteo answer for a point outside NWS coverage, in wx's units.
+        self.fallback_provider = None
+        if fallback_enabled:
+            self.fallback_provider = make_provider(
+                'openmeteo', host=self, units=units, weather_model=openmeteo_model
+            )
             self.logger.info("openmeteo_fallback enabled: wx answers places outside NWS coverage from Open-Meteo")
 
-        # Only initialize NOAA-specific attributes if not delegating
-        if self.delegate_command is None:
-            self.url_timeout = 8  # seconds (reduced from 10 for faster failure detection)
-            self.forecast_duration = 3  # days
-            self.num_wx_alerts = 2  # number of alerts to show
-            self.use_metric = False  # Use imperial units by default
-            self.zulu_time = False  # Use local time by default
+        if provider_name == 'openmeteo' and not self.pinned_provider:
+            self.logger.info("Weather provider set to 'openmeteo': wx answers from Open-Meteo")
 
-            # Get default location/state/country from config for fallback/disambiguation
-            self.default_city = self.bot.config.get('Weather', 'default_city', fallback='').strip()
-            self.default_state = self.bot.config.get('Weather', 'default_state', fallback='')
-            self.default_country = self.bot.config.get('Weather', 'default_country', fallback='US')
-            self.always_show_location = self.bot.config.getboolean('Weather', 'always_show_location', fallback=False)
-
-            # Initialize geocoder (will use rate-limited helpers for actual calls)
-            # Keep geolocator for backwards compatibility, but prefer rate-limited helpers
-            self.geolocator = get_nominatim_geocoder()
-
-            # Get database manager for geocoding cache
-            self.db_manager = bot.db_manager
-
-            # Create a retry-enabled session for NOAA API calls
-            # This makes the API more resilient to timeouts and transient errors
-            session = self._create_retry_session()
-
-            # requests.Session and WXSIM parser instances are shared by this command.
-            # Keep provider calls serialized as they were before moving them to worker
-            # threads. The lock is acquired inside the worker, never on the event loop.
-            self._sync_provider_lock = threading.Lock()
-
-            self._nws_no_coverage = NWSNoCoverageCache()
-
-            # The NOAA fetch and formatting live in the providers; this command keeps
-            # the request (parsing, geocoding, labels) and the sending. Both providers
-            # share one session, one worker lock and one coverage cache.
-            fallback_enabled = self._openmeteo is not None
-            self.provider = NoaaProvider(
-                host=self,
-                units=resolve_units(self._unit_setting),
-                session=session,
-                lock=self._sync_provider_lock,
-                coverage=self._nws_no_coverage,
-                fallback_enabled=fallback_enabled,
-            )
-            self.alerts_provider = NwsAlertsProvider(
-                host=self,
-                session=session,
-                lock=self._sync_provider_lock,
-                coverage=self._nws_no_coverage,
-                fallback_enabled=fallback_enabled,
-            )
+        if self.provider.location_style == "global":
+            self.description = "Get weather information for any location (usage: wx Tokyo)"
 
     @property
     def noaa_session(self) -> requests.Session:
@@ -294,7 +368,8 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
     @noaa_session.setter
     def noaa_session(self, session: requests.Session) -> None:
         self.provider.session = session
-        self.alerts_provider.session = session
+        if self.alerts_provider is not None:
+            self.alerts_provider.session = session
 
     def _unit_setting(self, key: str, fallback: str) -> str:
         """A unit setting: [Wx_Command] when it overrides, else the shared [Weather] one.
@@ -354,16 +429,13 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         return await asyncio.to_thread(self._run_sync_provider, operation, *args, **kwargs)
 
     def get_help_text(self, message: MeshMessage | None = None) -> str:
-        """Get help text, delegating to international command if using Open-Meteo"""
-        if self.delegate_command:
-            return self.delegate_command.get_help_text()
-        return self.translate('commands.wx.description')
+        """The help text of the provider's catalog: wx's description, or gwx's usage line."""
+        if self.provider.location_style == "global":
+            return self.translate(f'{self.provider.translation_ns}.help')
+        return self.translate(f'{self.provider.translation_ns}.description')
 
     def matches_keyword(self, message: MeshMessage) -> bool:
         """Check if message starts with a weather keyword"""
-        if self.delegate_command:
-            return self.delegate_command.matches_keyword(message)
-
         return self._cleaned_content_matches(
             message,
             lambda content_lower: any(
@@ -373,27 +445,15 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         )
 
     def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
-        """Override to delegate or use base class cooldown"""
+        """Check the wx enable switch, then the base class's channels, cooldown and ACL."""
         # Check if wx command is enabled
         if not self.wx_enabled:
             return False
 
-        if self.delegate_command:
-            # Enforce [Wx_Command] channels first; delegate uses skip_channel_check
-            # so [Wx_Command] channels override is honored when using Open-Meteo
-            if not self.is_channel_allowed(message):
-                return False
-            return self.delegate_command.can_execute(message, skip_channel_check=True)
-
-        # Use base class for cooldown and other checks
-        return super().can_execute(message)
+        return super().can_execute(message, skip_channel_check)
 
     def get_remaining_cooldown(self, user_id: Optional[str] = None) -> int:
         """Get remaining cooldown time for a specific user"""
-        if self.delegate_command:
-            return self.delegate_command.get_remaining_cooldown(user_id)
-
-        # Use base class method
         return super().get_remaining_cooldown(user_id)
 
     def _get_companion_location(self, message: MeshMessage) -> Optional[tuple[float, float]]:
@@ -624,10 +684,6 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
 
     async def execute(self, message: MeshMessage) -> bool:
         """Execute the weather command"""
-        # Delegate to international command if using Open-Meteo provider
-        if self.delegate_command:
-            return await self.delegate_command.execute(message)
-
         content = message.content.strip()
 
         # Parse the command to extract location and forecast type
@@ -639,7 +695,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         using_companion_location = False
 
         # An option alone ("wx hourly") applies to the no-location fallbacks below.
-        parts, option_word, option_type, option_days = self._split_option_only(parts, WX_MULTIDAY_MAX_DAYS)
+        parts, option_word, option_type, option_days = self._split_option_only(parts, self.provider.max_days)
 
         # If no location specified, check custom MQTT then WXSIM default sources
         if len(parts) < 2:
@@ -654,33 +710,28 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             # No custom source: the sender's position, default city, then the bot's position
             location_str, using_companion_location = await self._no_location_fallback(message)
             if location_str is None:
-                await self.send_response(message, self.translate('commands.wx.usage'))
+                await self.send_response(message, self.translate(f'{self.provider.translation_ns}.usage'))
                 return True
             parts = [parts[0], location_str]
 
         if option_word:
             parts.append(option_word)
 
-        # Check for "alerts" keyword first (special handling)
-        show_full_alerts = False
+        # "alerts" is an option, not part of the location, wherever it comes last.
         if len(parts) > 2 and parts[-1].lower() == "alerts":
-            show_full_alerts = True
-            location_parts = parts[1:-1]  # Remove "alerts" from location
+            location_parts, forecast_type, num_days = parts[1:-1], "alerts", 7
+        elif len(parts) == 2 and self._is_custom_source_name(parts[1]):
+            location_parts, forecast_type, num_days = parts[1:], "default", 7
         else:
-            location_parts = parts[1:]
-
-        forecast_type = "alerts" if show_full_alerts else "default"
-        num_days = 7  # Default for multi-day forecast
-        if not show_full_alerts and not (len(parts) == 2 and self._is_custom_source_name(parts[1])):
             location_parts, forecast_type, num_days = self._parse_forecast_suffix(
-                location_parts, WX_MULTIDAY_MAX_DAYS, allow_hourly=True
+                parts[1:], self.provider.max_days, allow_hourly=True
             )
 
         # Join remaining parts to handle "city, state" format
         location = ' '.join(location_parts).strip()
 
         if not location:
-            await self.send_response(message, self.translate('commands.wx.usage'))
+            await self.send_response(message, self.translate(f'{self.provider.translation_ns}.usage'))
             return True
 
         # Custom MQTT before WXSIM
@@ -692,8 +743,18 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         # Check for custom WXSIM source first (before checking location type)
         wxsim_source = self._get_custom_wxsim_source(location)
         if wxsim_source:
-            self.logger.info(f"Using custom WXSIM source for location '{location}': {wxsim_source}")
+            if self.provider.location_style == "us":
+                # wx has always named the source it answers from; gwx has not.
+                self.logger.info(f"Using custom WXSIM source for location '{location}': {wxsim_source}")
             return await self._reply_from_wxsim(message, wxsim_source, forecast_type, num_days, location)
+
+        if self.provider.location_style == "global":
+            return await self._execute_global(message, location, forecast_type, num_days)
+        return await self._execute_us(message, location, forecast_type, num_days, using_companion_location)
+
+    async def _execute_us(self, message: MeshMessage, location: str, forecast_type: str, num_days: int,
+                          using_companion_location: bool) -> bool:
+        """The US path: zip/city/state labels, NWS alerts, wx's error text."""
         self.logger.debug(f"No custom WXSIM source found for location '{location}', using normal weather API")
 
         # Check if it's coordinates, zipcode, or city name
@@ -712,7 +773,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             self.record_execution(message.sender_id)
 
             # Special handling for "alerts" command
-            if show_full_alerts:
+            if forecast_type == "alerts":
                 # Get alerts only (no weather forecast)
                 return await self._send_alert_list_for(message, location, location_type)
 
@@ -726,8 +787,52 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             await self.send_response(message, self.translate('commands.wx.error', error=str(e)))
             return True
 
+    async def _execute_global(self, message: MeshMessage, location: str, forecast_type: str, num_days: int) -> bool:
+        """The global path: country labels, and alerts only when one is configured."""
+        if forecast_type == "alerts" and self.alerts_provider is None:
+            await self.send_response(
+                message, self.translate(f'{self.provider.translation_ns}.source_option_not_available')
+            )
+            return True
+
+        try:
+            # Record execution for this user
+            self.record_execution(message.sender_id)
+
+            # Get weather data for the location
+            weather_data = await self._global_weather_for_location(location, forecast_type, num_days, message)
+
+            return await self._send_weather_reply(message, weather_data, forecast_type)
+
+        except Exception as e:
+            self.logger.error(f"Error in global weather command: {e}")
+            await self.send_response(
+                message, self.translate(f'{self.provider.translation_ns}.error', error=str(e))
+            )
+            return True
+
+    async def _global_weather_for_location(self, location: str, forecast_type: str, num_days: int,
+                                           message: MeshMessage) -> str:
+        """The global path's forecast call.
+
+        GlobalWxCommand keeps its own four-argument get_weather_for_location, so
+        the call goes through this hook rather than being spelled out twice.
+        """
+        return await self.get_weather_for_location(location, "city", forecast_type, num_days, message)
+
     async def _send_alert_list_for(self, message: MeshMessage, location: str, location_type: str) -> bool:
         """The "wx alerts" reply: geocode the location, then send its full alert list."""
+        if self.provider.location_style == "global":
+            lat, lon, _address_info, _geocode_result = await self._run_sync_provider_async(
+                self.geocode_location, location
+            )
+            if lat is None or lon is None:
+                await self.send_response(
+                    message, self.translate(f'{self.provider.translation_ns}.no_location', location=location)
+                )
+                return True
+            return await self._send_full_alert_list(message, lat, lon)
+
         lat, lon = None, None
         if location_type == "coordinates":
             try:
@@ -782,52 +887,429 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             message: The MeshMessage for dynamic length calculation
             using_companion_location: If True, always include location prefix even if same state
         """
+        return self._forecast_for_location(
+            location, location_type, forecast_type, num_days, message, using_companion_location
+        )
+
+    def _forecast_for_location(self, location: str, location_type: str, forecast_type: str = "default",
+                               num_days: int = 7, message: MeshMessage = None,
+                               using_companion_location: bool = False) -> str:
+        """Geocode, forecast and label one request (runs off the event loop).
+
+        The location style picks the lookup and the label; the forecast provider
+        answers, and a point it does not cover goes to the fallback provider,
+        labeled the global way.
+        """
         try:
-            # Convert location to lat/lon based on type, with the location prefix the reply carries
-            if location_type == "coordinates":
-                reply, lat, lon, location_prefix = self._locate_coordinates(location)
-            elif location_type == "zipcode":
-                reply, lat, lon, location_prefix = self._locate_zipcode(location, using_companion_location)
-            else:  # city
-                # An unrecognized type geocodes as a city but never carries the city prefix
-                reply, lat, lon, location_prefix = self._locate_city(
-                    location, using_companion_location, labeled=location_type == "city"
-                )
-            if reply is not None:
-                return reply
-
-            if self._outside_nws_coverage(lat, lon):
-                return self._openmeteo_weather(location, location_type, lat, lon, forecast_type, num_days, message)
-
-            # Get max message length dynamically
-            max_length = self.get_max_message_length(message) if message else 130
-
-            # location_prefix is prepended to the formatted body below, so it has to
-            # come out of the same frame budget. Formatting the body to the full
-            # budget and then prefixing it overruns the frame by the prefix's own
-            # length -- "Lockhart, Texas: " alone is 17 bytes, enough to push an
-            # emoji-dense forecast past the 160-byte firmware limit. The alert text
-            # goes out as its own message and keeps the full budget.
-            body_max_length = max(
-                max_length - self._count_display_width(location_prefix), self.MIN_BODY_BUDGET
+            reply, lat, lon, location_prefix = self._locate_for_forecast(
+                location, location_type, using_companion_location
             )
-
-            reply, weather = self._noaa_forecast_body(lat, lon, forecast_type, num_days, body_max_length)
             if reply is not None:
-                # NWS had no data: a point outside its coverage goes to Open-Meteo when enabled.
-                if self._outside_nws_coverage(lat, lon):
-                    return self._openmeteo_weather(location, location_type, lat, lon, forecast_type, num_days, message)
                 return reply
 
-            # Get weather alerts (only for default forecast type to avoid cluttering)
-            if forecast_type == "default":
-                return self._with_noaa_alerts(lat, lon, location_prefix, weather, max_length)
+            # A point the provider already knows it does not cover skips its request.
+            if self.fallback_provider is not None and not self.provider.covers(lat, lon):
+                return self._fallback_reply(location, location_type, lat, lon, forecast_type, num_days, message)
 
-            return f"{location_prefix}{weather}"
+            # location_prefix is prepended to the formatted body, so it has to come
+            # out of the same frame budget. Formatting the body to the full budget
+            # and then prefixing it overruns the frame by the prefix's own length --
+            # "Lockhart, Texas: " alone is 17 bytes, enough to push an emoji-dense
+            # forecast past the 160-byte firmware limit. The alert text goes out as
+            # its own message and keeps the full budget.
+            max_length = self.get_max_message_length(message) if message else 130
+            result = self.provider.forecast(
+                lat, lon, forecast_type, num_days, self._count_display_width(location_prefix), message
+            )
+            if result.no_coverage and self.fallback_provider is not None:
+                return self._fallback_reply(location, location_type, lat, lon, forecast_type, num_days, message)
+            if not result.ok:
+                return result.text
+
+            return self._labeled_reply(lat, lon, location_prefix, result, forecast_type, max_length)
 
         except Exception as e:
-            self.logger.error(f"Error getting weather for {location_type} {location}: {e}")
-            return self.translate('commands.wx.error', error=str(e))
+            # wx names the location type; gwx has only one.
+            subject = location if self.provider.location_style == "global" else f"{location_type} {location}"
+            self.logger.error(f"Error getting weather for {subject}: {e}")
+            return self.translate(f'{self.provider.translation_ns}.error', error=str(e))
+
+    def _locate_for_forecast(self, location: str, location_type: str, using_companion_location: bool) -> tuple:
+        """(error reply or None, lat, lon, location prefix) for a location, in the provider's style."""
+        if self.provider.location_style == "global":
+            return self._locate_global(location)
+        return self._locate_us(location, location_type, using_companion_location)
+
+    def _locate_us(self, location: str, location_type: str, using_companion_location: bool) -> tuple:
+        """wx's location types: coordinates, ZIP code and city, with state labels."""
+        if location_type == "coordinates":
+            return self._locate_coordinates(location)
+        if location_type == "zipcode":
+            return self._locate_zipcode(location, using_companion_location)
+        # An unrecognized type geocodes as a city but never carries the city prefix
+        return self._locate_city(location, using_companion_location, labeled=location_type == "city")
+
+    def _locate_global(self, location: str) -> tuple:
+        """gwx's single lookup: coordinates, ZIP code or city, with a country label."""
+        result = self.geocode_location(location)
+        if not result or result[0] is None or result[1] is None:
+            return self.translate(f'{self.provider.translation_ns}.no_location', location=location), None, None, ""
+        lat, lon, address_info, geocode_result = result
+        return None, lat, lon, self._global_location_prefix(location, address_info or {}, geocode_result)
+
+    def _global_location_prefix(self, location: str, address_info: dict, geocode_result: Any) -> str:
+        """The "City, CC: " label gwx puts in front of a reply, when it adds information."""
+        location_display = ""
+        if self._location_label_adds_information(location, address_info):
+            location_display = self._format_location_display(address_info, geocode_result, location)
+        self.logger.debug(f"Formatted location_display: '{location_display}' from location: '{location}'")
+        return f"{location_display}: " if location_display else ""
+
+    def _labeled_reply(self, lat: float, lon: float, location_prefix: str, result: ForecastReply,
+                       forecast_type: str, max_length: int) -> str | tuple:
+        """The reply with its location label, plus the second message when there is one."""
+        weather = f"{location_prefix}{result.text}"
+        if forecast_type != "default":
+            return weather
+
+        # The alerts provider's summary wins over the forecast's own warning; no
+        # configuration produces both today.
+        alerts = self.alerts_provider
+        if alerts is not None and alerts.covers(lat, lon):
+            summary = alerts.summary(lat, lon, max_length)
+            if summary is not None and summary.count > 0:
+                # Always send weather first, then alerts in separate message
+                self.logger.info(f"Found {summary.count} alerts - using two-message mode")
+                return ("multi_message", weather, summary.text, summary.count)
+
+        if result.extra:
+            return ("multi_message", weather, result.extra)
+        return weather
+
+    def _fallback_reply(self, location: str, location_type: str, lat: float, lon: float,
+                        forecast_type: str, num_days: int, message: Optional[MeshMessage]):
+        """The Open-Meteo reply for a point outside NWS coverage, labeled the global way."""
+        openmeteo = self.fallback_provider
+        # wx's units, [Wx_Command] overrides included, so one command never mixes unit systems.
+        temperature, wind_speed = self._noaa_units()
+        precipitation = self._unit_setting('precipitation_unit', openmeteo.units.precipitation)
+        if precipitation not in ('inch', 'mm'):
+            precipitation = openmeteo.units.precipitation
+        openmeteo.units = WeatherUnits(
+            temperature=temperature, wind_speed=wind_speed, precipitation=precipitation
+        )
+
+        # The label needs the country, which wx's own prefix leaves out. A city's
+        # lookup is answered from the geocoding cache wx's lookup just filled; a
+        # position needs gwx's reverse lookup.
+        geocode_result = None
+        if location_type == "coordinates" or location_type == "zipcode":
+            _, _, address_info, geocode_result = self.geocode_location(location)
+        else:
+            result = self.city_to_lat_lon(location)
+            address_info = result[2] if len(result) == 3 else None
+        self.logger.info(
+            "%s,%s is outside NWS coverage; answering wx from Open-Meteo", round(lat, 2), round(lon, 2)
+        )
+        location_prefix = self._global_location_prefix(location, address_info or {}, geocode_result)
+        max_length = self.get_max_message_length(message) if message else 130
+        reply = openmeteo.forecast(
+            lat, lon, forecast_type, num_days, self._count_display_width(location_prefix), message
+        )
+        return self._labeled_reply(lat, lon, location_prefix, reply, forecast_type, max_length)
+
+    def geocode_location(self, location: str) -> tuple:
+        """Convert location string to lat/lon with address details.
+
+        Handles both coordinate strings (lat,lon) and city names.
+        Uses geocode_city_sync for proper default state/country handling,
+        which prioritizes locations in the configured default state/country.
+
+        Args:
+            location: Location string (e.g., "Seattle" or "47.6,-122.3").
+
+        Returns:
+            tuple: (lat, lon, address_info, geocode_result) or (None, None, None, None) on failure.
+        """
+        try:
+            # Check if location is coordinates (decimal numbers separated by comma, with optional spaces)
+            # Handle formats like: "47.6,-122.3", "47.6, -122.3", "47.980525, -122.150649", " -47.6 , 122.3 "
+            if self._COORDINATES_RE.match(location):
+                return self._geocode_coordinates(location)
+
+            # US ZIP code (5 digits): use geocode_zipcode_sync so the query is "zip, US"
+            # and we don't get non‑US matches (e.g. "98104" -> Lithuania) from Nominatim.
+            if self._ZIP_RE.match(location.strip()):
+                return self._geocode_zipcode(location)
+
+            return self._geocode_city(location)
+
+        except Exception as e:
+            self.logger.error(f"Error geocoding location {location}: {e}")
+            return None, None, None, None
+
+    def _geocode_coordinates(self, location: str) -> tuple:
+        """geocode_location for a "lat,lon" string: validate, then reverse geocode for a label."""
+        # Parse lat,lon coordinates
+        try:
+            lat_str, lon_str = location.split(',')
+            lat = float(lat_str.strip())
+            lon = float(lon_str.strip())
+
+            # Validate coordinate ranges
+            if not (-90 <= lat <= 90):
+                self.logger.warning(f"Invalid latitude: {lat}. Must be between -90 and 90.")
+                return None, None, None, None
+            if not (-180 <= lon <= 180):
+                self.logger.warning(f"Invalid longitude: {lon}. Must be between -180 and 180.")
+                return None, None, None, None
+
+            # Get address info via reverse geocoding
+            address_info = None
+            geocode_result = None
+            try:
+                reverse_location = rate_limited_nominatim_reverse_sync(
+                    self.bot, f"{lat}, {lon}", timeout=10
+                )
+                if reverse_location:
+                    geocode_result = reverse_location
+                    address_info = reverse_location.raw.get('address', {})
+            except Exception as e:
+                self.logger.debug(f"Reverse geocoding failed for coordinates: {e}")
+                address_info = {}
+
+            return lat, lon, address_info or {}, geocode_result
+        except ValueError:
+            self.logger.warning(f"Invalid coordinates format: {location}")
+            return None, None, None, None
+
+    def _geocode_zipcode(self, location: str) -> tuple:
+        """geocode_location for a US ZIP code (never falls through to a city lookup)."""
+        lat, lon = geocode_zipcode_sync(
+            self.bot, location,
+            default_country=self.default_country,
+            timeout=10
+        )
+        if lat is not None and lon is not None:
+            # A ZIP code is not named in the reply (as in wx), so no reverse lookup,
+            # unless [Weather] always_show_location asks for every place to be named.
+            if not self.always_show_location:
+                return lat, lon, {}, None
+            try:
+                reverse_location = rate_limited_nominatim_reverse_sync(
+                    self.bot, f"{lat}, {lon}", timeout=10
+                )
+            except Exception as e:
+                self.logger.debug(f"Reverse geocoding failed for ZIP code {location}: {e}")
+                reverse_location = None
+            if reverse_location:
+                return lat, lon, reverse_location.raw.get('address', {}) or {}, reverse_location
+            return lat, lon, {}, None
+        # Invalid or unknown US ZIP; do not fall through to city (avoids foreign matches)
+        return None, None, None, None
+
+    def _geocode_city(self, location: str) -> tuple:
+        """geocode_location for a place name, preferring the default state and country."""
+        # Use the shared geocode_city_sync function which properly handles
+        # default state and country for city disambiguation
+        # This ensures "olympia" matches Olympia, WA (not Greece) when default_state=WA
+        lat, lon, address_info = geocode_city_sync(
+            self.bot, location,
+            default_state=self.default_state,
+            default_country=self.default_country,
+            include_address_info=True,
+            timeout=10
+        )
+
+        if lat is None or lon is None:
+            return None, None, None, None
+
+        # Get full geocode result for display name formatting
+        # Try reverse geocoding to get the full result object
+        geocode_result = None
+        try:
+            reverse_location = rate_limited_nominatim_reverse_sync(
+                self.bot, f"{lat}, {lon}", timeout=10
+            )
+            if reverse_location:
+                geocode_result = reverse_location
+        except Exception:
+            # If reverse geocoding fails, we still have lat/lon and address_info
+            pass
+
+        return lat, lon, address_info or {}, geocode_result
+
+    def _location_label_adds_information(self, location: str, address_info: Optional[dict]) -> bool:
+        """Whether the reply should name the place, as wx decides: only when it adds information.
+
+        Coordinates (typed, or the sender's or bot's own position) are named when a
+        place was found for them. A ZIP code is not named. A city is named when it
+        resolved to another country than [Weather] default_country or, in the US, to
+        another state than default_state (or no default_state is set).
+
+        With [Weather] always_show_location, any place a lookup found is named.
+        """
+        if not address_info:
+            return False
+        is_zip = bool(self._ZIP_RE.match(location.strip()))
+        if is_zip and not self.always_show_location:
+            return False
+        if is_zip or self._COORDINATES_RE.match(location):
+            # Without a place name the label would only repeat the ZIP code or coordinates.
+            return any(address_info.get(field) for field in ('city', 'town', 'village', 'municipality', 'city_district'))
+        if self.always_show_location:
+            return True
+        country = (address_info.get('country_code') or '').upper()
+        default_country = (self.default_country or '').strip().upper()
+        if country and default_country and country != default_country:
+            return True
+        if country != 'US':
+            return False
+        state = address_info.get('state') or ''
+        if not state or not self.default_state:
+            return bool(state)
+        return self._state_key(state) != self._state_key(self.default_state)
+
+    def _state_key(self, state: str) -> str:
+        """A US state as its abbreviation, for comparing "Washington" with "WA"."""
+        abbreviation, _ = normalize_us_state(state)
+        return (abbreviation or self._get_state_abbreviation(state.strip())).upper()
+
+    def _format_location_display(self, address_info: dict, geocode_result: Any, fallback: str) -> str:
+        """Format location name for display from address info - returns 'City, CountryCode' format.
+
+        Args:
+            address_info: Dictionary containing address details.
+            geocode_result: Full geocode result object.
+            fallback: Fallback location string if detailed info is missing.
+
+        Returns:
+            str: Formatted location string (e.g., "Seattle, US").
+        """
+        # Get country code first (prefer this over full country name)
+        country_code = ''
+        if address_info:
+            country_code = address_info.get('country_code', '').upper()
+
+        city = self._display_city(address_info, geocode_result)
+
+        # For US locations, include state abbreviation
+        if country_code == 'US':
+            state = None
+            if address_info:
+                state = address_info.get('state')
+            if city and state:
+                state_abbrev = self._get_state_abbreviation(state)
+                return f"{city}, {state_abbrev}"
+            elif city:
+                return f"{city}, US"
+
+        # For international locations, always use country code if available
+        if city:
+            if country_code:
+                return f"{city}, {country_code}"
+            elif address_info and address_info.get('country'):
+                # Fallback to country name if no code available
+                country = address_info.get('country')
+                # Shorten very long country names
+                if len(country) > 15:
+                    return f"{city}, {country[:15]}"
+                return f"{city}, {country}"
+            else:
+                return city
+
+        return self._fallback_location_label(fallback, country_code)
+
+    def _display_city(self, address_info: dict, geocode_result: Any) -> Optional[str]:
+        """The city part of _format_location_display: address fields, then display_name."""
+        # Try to get city name from address_info (this is more reliable than display_name)
+        city = None
+        if address_info:
+            # Try various address fields in order of preference
+            city = (address_info.get('city') or
+                    address_info.get('town') or
+                    address_info.get('village') or
+                    address_info.get('municipality') or
+                    address_info.get('city_district'))
+
+            # If we still don't have a city, try parsing from display_name
+            if not city and geocode_result and hasattr(geocode_result, 'raw'):
+                display_name = geocode_result.raw.get('display_name', '')
+                if display_name:
+                    # Parse display_name - usually format is "Place, City, State/Province, Country"
+                    # We want the city, not the specific place
+                    parts = [p.strip() for p in display_name.split(',')]
+                    # Skip the first part (specific location) and look for city in later parts
+                    for i, part in enumerate(parts[1:], 1):
+                        # Check if this part looks like a city (not a state/province or country)
+                        if i < len(parts) - 1:  # Not the last part (country)
+                            city = part
+                            break
+
+        # If still no city, try extracting from display_name first part (but clean it up)
+        if not city and geocode_result and hasattr(geocode_result, 'raw'):
+            display_name = geocode_result.raw.get('display_name', '')
+            if display_name:
+                parts = [p.strip() for p in display_name.split(',')]
+                if parts:
+                    # Take first part but try to extract city name
+                    first_part = parts[0]
+                    # Remove common venue/location suffixes
+                    for suffix in [' Terminal', ' Station', ' Airport', ' Hotel', ' Building',
+                                   ' Plaza', ' Center', ' Centre', ' Park', ' Square']:
+                        if suffix in first_part:
+                            first_part = first_part.replace(suffix, '').strip()
+                    city = first_part
+
+        return city
+
+    def _fallback_location_label(self, fallback: str, country_code: str) -> str:
+        """_format_location_display's label when no city was found: built from the input."""
+        # Final fallback: try to extract from input and capitalize
+        if fallback:
+            # Try to extract city name from input (before first comma if present)
+            parts = fallback.split(',')
+            city_part = parts[0].strip().title()
+            # Remove common suffixes
+            for suffix in [' Terminal', ' Station', ' Airport', ' Hotel', ' Building']:
+                if suffix in city_part:
+                    city_part = city_part.replace(suffix, '').strip()
+
+            if country_code:
+                return f"{city_part}, {country_code}"
+            elif len(parts) > 1:
+                # Try to get country from input
+                country_part = parts[-1].strip()
+                return f"{city_part}, {country_part[:10]}"  # Limit country name length
+            return city_part
+
+        return fallback.title()
+
+    def _get_state_abbreviation(self, state: str) -> str:
+        """Convert full state name to abbreviation.
+
+        Args:
+            state: Full state name (e.g., "Washington").
+
+        Returns:
+            str: Two-letter state abbreviation (e.g., "WA") or original string if not found.
+        """
+        state_map = {
+            'Washington': 'WA', 'California': 'CA', 'New York': 'NY', 'Texas': 'TX',
+            'Florida': 'FL', 'Illinois': 'IL', 'Pennsylvania': 'PA', 'Ohio': 'OH',
+            'Georgia': 'GA', 'North Carolina': 'NC', 'Michigan': 'MI', 'New Jersey': 'NJ',
+            'Virginia': 'VA', 'Tennessee': 'TN', 'Indiana': 'IN', 'Arizona': 'AZ',
+            'Massachusetts': 'MA', 'Missouri': 'MO', 'Maryland': 'MD', 'Wisconsin': 'WI',
+            'Colorado': 'CO', 'Minnesota': 'MN', 'South Carolina': 'SC', 'Alabama': 'AL',
+            'Louisiana': 'LA', 'Kentucky': 'KY', 'Oregon': 'OR', 'Oklahoma': 'OK',
+            'Connecticut': 'CT', 'Utah': 'UT', 'Iowa': 'IA', 'Nevada': 'NV',
+            'Arkansas': 'AR', 'Mississippi': 'MS', 'Kansas': 'KS', 'New Mexico': 'NM',
+            'Nebraska': 'NE', 'West Virginia': 'WV', 'Idaho': 'ID', 'Hawaii': 'HI',
+            'New Hampshire': 'NH', 'Maine': 'ME', 'Montana': 'MT', 'Rhode Island': 'RI',
+            'Delaware': 'DE', 'South Dakota': 'SD', 'North Dakota': 'ND', 'Alaska': 'AK',
+            'Vermont': 'VT', 'Wyoming': 'WY'
+        }
+        return state_map.get(state, state)
 
     def _locate_coordinates(self, location: str) -> tuple:
         """(error reply or None, lat, lon, location prefix) for a "lat,lon" location."""
@@ -941,59 +1423,6 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
     def _noaa_forecast_body(self, lat: float, lon: float, forecast_type: str, num_days: int, body_max_length: int) -> tuple:
         """(error reply or None, formatted forecast) for one forecast type."""
         return self.provider._noaa_forecast_body(lat, lon, forecast_type, num_days, body_max_length)
-
-    def _with_noaa_alerts(self, lat: float, lon: float, location_prefix: str, weather: str, max_length: int) -> str | tuple:
-        """The default forecast reply, as a two-message tuple when NOAA has active alerts."""
-        alerts_result = self.get_weather_alerts_noaa(lat, lon, return_full_data=False)
-        if alerts_result == self.ERROR_FETCHING_DATA or alerts_result == self.NO_ALERTS:
-            pass
-        else:
-            full_alert_text, abbreviated_alert_text, alert_count = alerts_result
-            if alert_count > 0:
-                # Get full alert data for prioritized formatting
-                alerts_full_result = self.get_weather_alerts_noaa(lat, lon, return_full_data=True)
-                if alerts_full_result not in [self.ERROR_FETCHING_DATA, self.NO_ALERTS]:
-                    alerts_list, _ = alerts_full_result
-                    # Format with prioritization and summary
-                    formatted_alert_text = self._format_alerts_compact_summary(alerts_list, alert_count, max_length=max_length)
-                else:
-                    # Fallback to old format
-                    formatted_alert_text = full_alert_text
-
-                # Always send weather first, then alerts in separate message
-                self.logger.info(f"Found {alert_count} alerts - using two-message mode")
-                return ("multi_message", f"{location_prefix}{weather}", formatted_alert_text, alert_count)
-
-        return f"{location_prefix}{weather}"
-
-    def _outside_nws_coverage(self, lat: float, lon: float) -> bool:
-        """Whether the Open-Meteo fallback is on and NWS is known not to cover this point."""
-        return self._openmeteo is not None and self._nws_no_coverage.is_unavailable(lat, lon)
-
-    def _openmeteo_weather(self, location: str, location_type: str, lat: float, lon: float,
-                           forecast_type: str, num_days: int, message: Optional[MeshMessage]):
-        """The Open-Meteo (gwx) reply for a point outside NWS coverage, in wx's units."""
-        openmeteo = self._openmeteo
-        # wx's units, [Wx_Command] overrides included, so one command never mixes unit systems.
-        openmeteo.temperature_unit, openmeteo.wind_speed_unit = self._noaa_units()
-        precipitation = self._unit_setting('precipitation_unit', openmeteo.precipitation_unit)
-        if precipitation in ('inch', 'mm'):
-            openmeteo.precipitation_unit = precipitation
-        # The label needs the country, which wx's own prefix leaves out. A city's
-        # lookup is answered from the geocoding cache wx's lookup just filled; a
-        # position needs gwx's reverse lookup.
-        geocode_result = None
-        if location_type == "coordinates" or location_type == "zipcode":
-            _, _, address_info, geocode_result = openmeteo.geocode_location(location)
-        else:
-            result = self.city_to_lat_lon(location)
-            address_info = result[2] if len(result) == 3 else None
-        self.logger.info(
-            "%s,%s is outside NWS coverage; answering wx from Open-Meteo", round(lat, 2), round(lon, 2)
-        )
-        return openmeteo._weather_for_point(
-            location, lat, lon, address_info or {}, geocode_result, forecast_type, num_days, message
-        )
 
     def zipcode_to_lat_lon(self, zipcode: str) -> tuple:
         """Convert zipcode to latitude and longitude"""

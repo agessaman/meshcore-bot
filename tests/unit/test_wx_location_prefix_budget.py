@@ -12,6 +12,7 @@ import configparser
 from unittest.mock import Mock, patch
 
 from modules.commands.wx_command import WxCommand
+from modules.weather_providers.alerts_nws import NwsAlertsProvider
 from modules.weather_providers.noaa import NoaaProvider
 
 # Emoji-dense body in the shape the gwx formatter produces: 112 characters but
@@ -79,7 +80,7 @@ class TestLocationPrefixIsReserved:
         ), patch.object(
             NoaaProvider, "get_noaa_weather", Mock(side_effect=fake_get_noaa_weather)
         ), patch.object(
-            WxCommand, "get_weather_alerts_noaa", Mock(return_value=WxCommand.NO_ALERTS)
+            NwsAlertsProvider, "get_weather_alerts_noaa", Mock(return_value=WxCommand.NO_ALERTS)
         ):
             result = cmd._get_weather_for_location_sync(
                 "30.8,-97.6", "coordinates", message=Mock()

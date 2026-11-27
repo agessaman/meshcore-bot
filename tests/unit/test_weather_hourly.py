@@ -149,7 +149,7 @@ def test_hourly_requests_configured_units_and_translates_wind(temperature, wind)
 @pytest.mark.parametrize("command_class,keyword", [(GlobalWxCommand, "gwx"), (WxCommand, "wx")])
 async def test_hourly_execution_geocodes_only_the_location(command_class, keyword):
     cmd = _command(command_class, provider="openmeteo")
-    actual = cmd.delegate_command if command_class is WxCommand else cmd
+    actual = cmd
     actual.send_response = cmd.send_response
     actual.geocode_location = Mock(return_value=(47.6, -122.3, {"city": "München", "country_code": "de"}, None))
     actual._format_location_display = Mock(return_value="München, DE")

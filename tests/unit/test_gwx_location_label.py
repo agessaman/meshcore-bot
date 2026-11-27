@@ -7,7 +7,7 @@ import pytest
 
 from modules.commands.alternatives.wx_international import GlobalWxCommand
 
-MODULE = "modules.commands.alternatives.wx_international"
+MODULE = "modules.commands.wx_command"
 
 
 def _gwx(default_country="US", default_state="", always=None):
@@ -24,8 +24,9 @@ def _gwx(default_country="US", default_state="", always=None):
     bot.config = config
     bot.translator.translate = Mock(side_effect=lambda key, **kwargs: key)
     cmd = GlobalWxCommand(bot)
-    cmd.get_open_meteo_weather = Mock(return_value="Clear 20°C")
-    cmd._get_open_meteo_weather_with_conditions = Mock(return_value=("Clear 20°C", {}))
+    # The fetch lives in the provider now; stub it there.
+    cmd.provider.get_open_meteo_weather = Mock(return_value="Clear 20°C")
+    cmd.provider._get_open_meteo_weather_with_conditions = Mock(return_value=("Clear 20°C", {}))
     return cmd
 
 
@@ -76,7 +77,7 @@ def test_a_zip_code_is_not_named_and_not_reverse_geocoded():
 def test_an_unnamed_reply_keeps_the_whole_budget():
     cmd = _gwx("GB")
     _reply(cmd, "London", LONDON)
-    assert cmd._get_open_meteo_weather_with_conditions.call_args.kwargs["location_prefix_len"] == 0
+    assert cmd.provider._get_open_meteo_weather_with_conditions.call_args.kwargs["location_prefix_len"] == 0
 
 
 @pytest.mark.parametrize(("location", "address", "expected"), [
@@ -117,4 +118,4 @@ def test_always_show_location_survives_a_failed_zip_reverse_lookup():
 def test_a_named_place_comes_out_of_the_budget():
     cmd = _gwx("US", "WA", always=True)
     _reply(cmd, "Seattle", SEATTLE)
-    assert cmd._get_open_meteo_weather_with_conditions.call_args.kwargs["location_prefix_len"] == len("Seattle, WA: ")
+    assert cmd.provider._get_open_meteo_weather_with_conditions.call_args.kwargs["location_prefix_len"] == len("Seattle, WA: ")

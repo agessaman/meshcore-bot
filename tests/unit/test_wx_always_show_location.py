@@ -6,6 +6,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from modules.commands.wx_command import WxCommand
+from modules.weather_providers.alerts_nws import NwsAlertsProvider
 from modules.weather_providers.noaa import NoaaProvider
 
 
@@ -23,7 +24,7 @@ def _wx(always=None):
 
 def _reply(cmd, location, location_type):
     with patch.object(NoaaProvider, "get_noaa_weather", Mock(return_value=("Today: Clear 60°F", {}))), patch.object(
-        WxCommand, "get_weather_alerts_noaa", Mock(return_value=WxCommand.NO_ALERTS)
+        NwsAlertsProvider, "get_weather_alerts_noaa", Mock(return_value=WxCommand.NO_ALERTS)
     ), patch.object(WxCommand, "zipcode_to_lat_lon", Mock(return_value=(48.0, -122.1))), patch.object(
         WxCommand, "city_to_lat_lon",
         Mock(return_value=(47.6, -122.3, {"city": "Seattle", "state": "Washington", "country_code": "us"})),

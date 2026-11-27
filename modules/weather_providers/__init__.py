@@ -8,6 +8,8 @@ entry.
 
 from __future__ import annotations
 
+from typing import Any
+
 from .alerts_nws import NwsAlertsProvider
 from .base import (
     AlertsProvider,
@@ -31,14 +33,46 @@ ALERT_PROVIDERS: dict[str, type[AlertsProvider]] = {
 }
 
 
-def make_provider(name: str, host: ProviderHost, units: WeatherUnits) -> WeatherProvider:
-    """The forecast provider registered under *name*, bound to *host* and *units*."""
-    return PROVIDERS[name](host=host, units=units)
+def make_provider(name: str, host: ProviderHost, units: WeatherUnits, **kwargs) -> WeatherProvider:
+    """The forecast provider registered under *name*, bound to *host* and *units*.
+
+    *kwargs* go to the provider's constructor, for the state a command shares
+    between its forecast and alerts providers (one session, one worker lock,
+    one coverage cache).
+    """
+    return PROVIDERS[name](host=host, units=units, **kwargs)
 
 
-def make_alerts_provider(name: str, host: ProviderHost) -> AlertsProvider:
+def make_alerts_provider(name: str, host: ProviderHost, **kwargs) -> AlertsProvider:
     """The alerts provider registered under *name*, bound to *host*."""
-    return ALERT_PROVIDERS[name](host=host)
+    return ALERT_PROVIDERS[name](host=host, **kwargs)
+
+
+def resolve_alerts_provider_name(
+    config_value: str | None,
+    forecast_name: str,
+    logger: Any = None,
+) -> str | None:
+    """The alerts provider for a ``[Weather] alerts_provider`` value, or None.
+
+    ``auto`` (the default, and an empty value) follows the forecast provider:
+    NWS alerts with NOAA, none with Open-Meteo. ``none`` asks for no alerts.
+    Any key of ``ALERT_PROVIDERS`` names that provider. An unknown value warns
+    once, when a *logger* is given, and behaves like ``auto``.
+    """
+    value = (config_value or "").strip().lower()
+    if value in ("", "auto"):
+        return "nws" if forecast_name == "noaa" else None
+    if value == "none":
+        return None
+    if value in ALERT_PROVIDERS:
+        return value
+    if logger is not None:
+        logger.warning(
+            f"Unknown [Weather] alerts_provider '{value}'; using 'auto'. "
+            f"Valid values: auto, none, {', '.join(sorted(ALERT_PROVIDERS))}"
+        )
+    return "nws" if forecast_name == "noaa" else None
 
 
 __all__ = [
@@ -56,4 +90,5 @@ __all__ = [
     "WeatherUnits",
     "make_alerts_provider",
     "make_provider",
+    "resolve_alerts_provider_name",
 ]

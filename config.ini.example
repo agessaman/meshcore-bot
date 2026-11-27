@@ -998,6 +998,14 @@ prefix_best_do_not_suggest =
 # Default: noaa
 weather_provider = noaa
 
+# Weather alerts provider selection, chosen separately from the forecast provider
+# Options: auto, none, nws
+#   auto: nws when weather_provider = noaa, no alerts when weather_provider = openmeteo
+#   none: never send weather alerts
+#   nws: Use NWS alerts (US coverage only)
+# Default: auto
+alerts_provider = auto
+
 # Open-Meteo model selection (used by gwx and Weather_Service when provider is openmeteo)
 # Leave unset to default to "best_match"
 # Supported model names: https://open-meteo.com/en/docs
