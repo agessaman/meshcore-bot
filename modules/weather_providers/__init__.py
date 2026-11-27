@@ -2,8 +2,21 @@
 
 ``PROVIDERS`` maps the value of ``[Weather] weather_provider`` to the forecast
 provider class that answers it, and ``ALERT_PROVIDERS`` does the same for
-``[Weather] alerts_provider``. Adding a provider is one module here plus one
-entry.
+``[Weather] alerts_provider``.
+
+Adding a provider:
+
+1. Write the module here: a ``WeatherProvider`` subclass for a forecast source,
+   or an ``AlertsProvider`` subclass for an alert source. It reads the command
+   through ``self.host`` at call time and never caches what it reads.
+2. Declare ``name`` (the registry key and the config value), ``translation_ns``
+   (the message catalog it speaks), and for a forecast provider also
+   ``location_style`` (``"us"`` or ``"global"``), ``capabilities`` and
+   ``max_days``.
+3. Register the class in ``PROVIDERS`` or ``ALERT_PROVIDERS`` below.
+4. Nothing else: the settings enum is built from the registry, so the new value
+   appears in the web viewer's settings page on its own.
+5. Document the value in ``config.ini.example`` under ``[Weather]``.
 """
 
 from __future__ import annotations

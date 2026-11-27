@@ -164,6 +164,8 @@ channels #general
 
 Weather from NOAA for US locations: current conditions with today's forecast, plus a separate message when weather alerts are active. With `[Weather] weather_provider = openmeteo`, `wx` answers like `gwx` instead.
 
+**Providers:** `[Weather] weather_provider` picks the forecast source: `noaa` (the default, US coverage) or `openmeteo` (global, the same source `gwx` uses). `[Weather] alerts_provider` picks the alert source separately from it: `auto` (the default) uses NWS when the forecast provider is `noaa` and no alerts when it is `openmeteo`, `none` turns alerts off, and `nws` asks for NWS alerts whatever the forecast provider is. An unknown value in either setting logs a warning and falls back to the default.
+
 **Aliases:** `weather`, `wxa`, `wxalert`
 
 **Usage:**
