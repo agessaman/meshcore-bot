@@ -32,6 +32,8 @@ VANCOUVER = (49.28, -123.12)
 OTTAWA = (45.42, -75.70)
 # A point in the Pacific, far from any city page.
 OFFSHORE = (48.0, -140.0)
+# 17:00 in Ottawa on 27 November, when the first period is already "Tonight".
+EVENING = datetime(2026, 11, 27, 22, 0, tzinfo=timezone.utc)
 
 
 def _payload(name):
@@ -98,7 +100,7 @@ class _Clock:
         self.monotonic += seconds
 
 
-def _provider(name="vancouver", units=None, response=None, host=None, clock=None):
+def _provider(name="vancouver", units=None, response=None, host=None, clock=None, now=None):
     clock = clock or _Clock()
     session = _Session(response if response is not None else _Response(200, _payload(name)))
     host = host or _Host()
@@ -107,7 +109,7 @@ def _provider(name="vancouver", units=None, response=None, host=None, clock=None
         units or WeatherUnits("fahrenheit", "mph", "inch"),
         session=session,
         clock=lambda: clock.monotonic,
-        now=lambda: NOW,
+        now=now or (lambda: NOW),
     )
     return provider, session, host, clock
 
@@ -455,3 +457,88 @@ def test_the_offset_comes_from_the_point_time_zone():
     provider, _session_, host, _clock = _provider()
 
     assert provider._offset(*VANCOUVER, NOW) == timedelta(hours=-8)
+
+
+# --- the hourly lines -------------------------------------------------------
+
+
+@pytest.mark.parametrize("name,point", [("vancouver", VANCOUVER), ("ottawa", OTTAWA)])
+def test_an_hourly_line_carries_one_description(name, point):
+    provider, _session_, host, _clock = _provider(name)
+
+    reply = provider.forecast(*point, "hourly", 7, 0, None)
+
+    # "<hour>: <emoji> <POP>% <description> <temp>° <wind>", as Open-Meteo builds it.
+    first = reply.text.splitlines()[0]
+    assert first.split(":")[0].endswith(("AM", "PM"))
+    assert "Overcast Mainly cloudy" not in first
+    assert "Rain A few showers" not in first
+
+
+@pytest.mark.parametrize("name,point", [("vancouver", VANCOUVER), ("ottawa", OTTAWA)])
+def test_the_hourly_reply_packs_as_many_hours_as_open_meteo(name, point):
+    provider, _session_, host, _clock = _provider(name)
+    host.get_max_message_length = Mock(return_value=150)
+
+    reply = provider.forecast(*point, "hourly", 7, 0, None)
+
+    # Open-Meteo fits three or four hours in the same frame.
+    assert 3 <= len(reply.text.splitlines()) <= 4
+    assert _width(host, reply.text) <= 150
+
+
+def test_the_hourly_pop_sits_where_open_meteo_puts_it():
+    provider, _session_, _host_, _clock = _provider("vancouver")
+
+    reply = provider.forecast(*VANCOUVER, "hourly", 7, 0, None)
+
+    # Emoji, then the probability, then the description.
+    assert reply.text.splitlines()[0].startswith("2PM: 🌧️ 80% A few showers ")
+
+
+# --- the evening default reply ----------------------------------------------
+
+
+def test_the_evening_default_shows_tonight_and_tomorrow():
+    provider, _session_, host, _clock = _provider(
+        "ottawa_evening", units=WeatherUnits("celsius", "kmh", "mm"), now=lambda: EVENING
+    )
+
+    reply = provider.forecast(*OTTAWA, "default", 7, 0, None)
+
+    # The first period is "Tonight", so the label follows the data, not the
+    # clock, and the pair becomes tonight's low alone.
+    assert reply.text.startswith("Tonight: ")
+    assert "| L:3°C" in reply.text
+    assert "H:" not in reply.text.split("|")[1]
+    # Then tomorrow's own period, with its high and low.
+    assert "Tomorrow: " in reply.text
+    assert "H:5°C L:0°C" in reply.text
+    assert _width(host, reply.text) <= 150
+
+
+def test_the_period_label_follows_the_period_data():
+    provider, _session_, _host_, _clock = _provider()
+
+    # A day period carries a high; a night period does not.
+    assert provider._period_key(13, has_high=True) == "today"
+    assert provider._period_key(17, has_high=False) == "tonight"
+    assert provider._period_key(3, has_high=False) == "overnight"
+
+
+# --- the budget -------------------------------------------------------------
+
+
+def test_pressure_goes_before_the_high_low_and_tomorrow():
+    provider, _session_, host, _clock = _provider(
+        "ottawa_evening", units=WeatherUnits("celsius", "kmh", "mm"), now=lambda: EVENING
+    )
+    host.get_max_message_length = Mock(return_value=45)
+
+    reply = provider.forecast(*OTTAWA, "default", 7, 0, SimpleNamespace(content="wx Ottawa"))
+
+    # Pressure is the first part to go, and the high/low stays.
+    assert _width(host, reply.text) <= 45
+    assert "hPa" not in reply.text
+    assert "97%RH" in reply.text
+    assert "| L:3°C" in reply.text

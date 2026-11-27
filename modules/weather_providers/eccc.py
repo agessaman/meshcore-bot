@@ -422,13 +422,23 @@ class EcccProvider(WeatherProvider):
         wmo = _wmo_for(icon, "")
         return weather_emoji(wmo, is_day=is_day) if wmo is not None else ""
 
+    def _icon_description(self, icon: Any) -> str:
+        """The catalog's description for an icon code, for hours with no text of their own."""
+        wmo = _wmo_for(icon, "")
+        return self.host.translate(f'commands.gwx.weather_descriptions.{wmo}') if wmo is not None else ""
+
     def _offset(self, lat: float, lon: float, when: datetime) -> timedelta:
         """The point's UTC offset at *when*, so a series can cross a DST change."""
         return utc_offset_at(lat, lon, when)
 
-    def _period_key(self, local_hour: int) -> str:
-        """The period label: today while the sun is up, overnight before noon."""
-        if 6 <= local_hour < 18:
+    def _period_key(self, local_hour: int, has_high: bool = True) -> str:
+        """The period label: today while the day's own period is still running.
+
+        A night period carries a low and no high, so the data says when the day
+        has ended even before the clock does: Ottawa at 17:00 in November is
+        already on "Tonight".
+        """
+        if has_high and 6 <= local_hour < 18:
             return 'today'
         return 'overnight' if local_hour < 12 else 'tonight'
 
@@ -456,38 +466,80 @@ class EcccProvider(WeatherProvider):
             icon = days[0]["icon"]
             description = days[0]["summary"]
         condition = self._condition(icon, description, is_day)
-        period_name = self.host.translate(f'commands.gwx.periods.{self._period_key(local_hour)}')
-        weather = f"{period_name}: {condition} {temperature}{self.temp_symbol}" if condition \
-            else f"{period_name}: {temperature}{self.temp_symbol}"
+
+        # The first period says whether the day is still running: a night
+        # period carries a low and no high.
+        first = days[0] if days else None
+        has_high = bool(first and first["high"] is not None)
+        period_name = self.host.translate(
+            f'commands.gwx.periods.{self._period_key(local_hour, has_high)}'
+        )
 
         wind = current.get("wind") or {}
         speed = self._wind_speed(self._value((wind.get("speed") or {}).get("value")))
         direction = self._text((wind.get("direction") or {}).get("value"))
-        if speed is not None and speed >= 3:
-            weather += f" {direction}{speed}"
+        wind_text = f"{direction}{speed}" if speed is not None and speed >= 3 else ""
 
         humidity = self._value((current.get("relativeHumidity") or {}).get("value"))
+        humidity_text = ""
         if humidity is not None:
             try:
-                weather += f" {self.host.translate('commands.gwx.humidity', value=int(round(float(humidity))))}"
+                humidity_text = self.host.translate(
+                    'commands.gwx.humidity', value=int(round(float(humidity)))
+                )
             except (TypeError, ValueError):
                 pass
 
         pressure = self._value((current.get("pressure") or {}).get("value"))
-        conditions = []
+        pressure_text = ""
         if pressure is not None:
             try:
-                conditions.append(self.host.translate('commands.gwx.pressure', value=int(round(float(pressure) * 10))))
+                pressure_text = self.host.translate(
+                    'commands.gwx.pressure', value=int(round(float(pressure) * 10))
+                )
             except (TypeError, ValueError):
                 pass
-        if conditions and self.host._count_display_width(weather) < max_length - 80:
-            weather += " " + " ".join(conditions)
 
-        if days and days[0]["high"] is not None and days[0]["low"] is not None:
-            weather += f" | {self.host._format_high_low(self._temperature(days[0]['high']), self._temperature(days[0]['low']), self.temp_symbol)}"
-            if len(days) > 1:
-                weather = self._tomorrow_tail(weather, days[1], max_length)
+        # Tonight's period has a low and no high, so the pair becomes the low
+        # alone; the high is shown whenever the period carries one.
+        high_low = ""
+        if first is not None and first["low"] is not None:
+            high = self._temperature(first["high"]) if first["high"] is not None else None
+            high_low = self.host._format_high_low(
+                high, self._temperature(first["low"]), self.temp_symbol
+            )
+
+        # The parts are added in priority order and the least important ones
+        # dropped in turn until the line fits: pressure, then humidity, then
+        # wind, then the condition text. The period, temperature, high/low and
+        # tomorrow always stay.
+        optional = [pressure_text, humidity_text, wind_text, condition]
+        weather = ""
+        for dropped in range(len(optional) + 1):
+            pressure_, humidity_, wind_, condition_ = optional[dropped:] + [""] * dropped
+            weather = self._current_line(
+                period_name, condition_, temperature, wind_, humidity_, pressure_, high_low
+            )
+            if self.host._count_display_width(weather) <= max_length:
+                break
+
+        if high_low and len(days) > 1:
+            weather = self._tomorrow_tail(weather, days[1], max_length)
         return weather
+
+    def _current_line(self, period_name: str, condition: str, temperature: int,
+                      wind: str, humidity: str, pressure: str, high_low: str) -> str:
+        """One current-conditions line from the parts that survived the budget."""
+        line = f"{period_name}: "
+        if condition:
+            line += f"{condition} "
+        line += f"{temperature}{self.temp_symbol}"
+        for piece in (wind, humidity, pressure):
+            if piece:
+                line += f" {piece}"
+        if high_low:
+            line += f" | {high_low}"
+        return line
 
     def _tomorrow_tail(self, weather: str, day: dict, max_length: int) -> str:
         """Append tomorrow's summary and high/low while they fit."""
@@ -598,21 +650,23 @@ class EcccProvider(WeatherProvider):
             if temperature is None:
                 break
             icon = (hour.get("iconCode") or {}).get("value")
-            description = self._text(hour.get("condition"))
+            # One description, the data's own when it has one: the icon's
+            # catalog text would otherwise repeat it.
+            description = self._text(hour.get("condition")) or self._icon_description(icon)
             is_day = 6 <= moment.hour < 18
             parts = [
                 f"{self.host._hour_label(moment.isoformat())}:",
-                self._condition(icon, "", is_day).strip(),
-                self.host._short_hourly_description(description),
-                f"{temperature}°",
+                self._emoji(icon, is_day),
             ]
             probability = self._value((hour.get("lop") or {}).get("value"))
             if probability is not None:
                 try:
                     if int(probability) > 0:
-                        parts.insert(2, f"{int(probability)}%")
+                        parts.append(f"{int(probability)}%")
                 except (TypeError, ValueError):
                     pass
+            parts.append(self.host._short_hourly_description(description))
+            parts.append(f"{temperature}°")
             wind = hour.get("wind") or {}
             speed = self._wind_speed(self._value((wind.get("speed") or {}).get("value")))
             direction = self._text((wind.get("direction") or {}).get("value"))
