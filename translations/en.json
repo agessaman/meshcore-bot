@@ -241,6 +241,11 @@
         "Friday": "F",
         "Saturday": "Sa",
         "Sunday": "Su"
+      },
+      "meteoalarm": {
+        "until": "until {time}",
+        "from": "from {time}",
+        "attribution": "Alerts: MeteoAlarm/EUMETNET"
       }
     },
     "gwx": {

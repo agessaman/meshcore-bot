@@ -1,0 +1,320 @@
+{
+  "type": "FeatureCollection",
+  "metadata": {
+    "page": 1,
+    "page_size": 100,
+    "total_count": 5,
+    "total_pages": 1
+  },
+  "features": [
+    {
+      "type": "Feature",
+      "id": "f-exact",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              16.3,
+              48.1
+            ],
+            [
+              16.5,
+              48.1
+            ],
+            [
+              16.5,
+              48.3
+            ],
+            [
+              16.3,
+              48.3
+            ],
+            [
+              16.3,
+              48.1
+            ]
+          ]
+        ]
+      },
+      "links": [
+        {
+          "href": "https://storage.meteoalarm.org/api/warnings/alert-exact.xml",
+          "rel": "canonical",
+          "type": "application/xml"
+        },
+        {
+          "href": "https://storage.meteoalarm.org/api/warnings/alert-exact.xml",
+          "rel": "xml",
+          "type": "application/xml"
+        }
+      ],
+      "properties": {
+        "OBJECTID": "f-exact",
+        "alertId": "alert-exact",
+        "countryCode": "AT",
+        "featureType": "geocode",
+        "geometryType": "exact",
+        "hubLanguage": "de-AT",
+        "indexArea": 0,
+        "indexFeature": 0,
+        "indexInfo": 0
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "f-bbox-hit",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              16.0,
+              48.0
+            ],
+            [
+              16.8,
+              48.0
+            ],
+            [
+              16.8,
+              48.4
+            ],
+            [
+              16.0,
+              48.4
+            ],
+            [
+              16.0,
+              48.0
+            ]
+          ]
+        ]
+      },
+      "links": [
+        {
+          "href": "https://storage.meteoalarm.org/api/warnings/alert-bbox-hit.xml",
+          "rel": "canonical",
+          "type": "application/xml"
+        },
+        {
+          "href": "https://storage.meteoalarm.org/api/warnings/alert-bbox-hit.xml",
+          "rel": "xml",
+          "type": "application/xml"
+        },
+        {
+          "href": "https://storage.meteoalarm.org/api/features/bbox-hit.geojson",
+          "rel": "geometry",
+          "type": "application/geo+json"
+        }
+      ],
+      "properties": {
+        "OBJECTID": "f-bbox-hit",
+        "alertId": "alert-bbox-hit",
+        "countryCode": "AT",
+        "featureType": "geocode",
+        "geometryType": "bbox",
+        "hubLanguage": "de-AT",
+        "indexArea": 0,
+        "indexFeature": 0,
+        "indexInfo": 0
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "f-bbox-miss",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              16.0,
+              48.0
+            ],
+            [
+              16.8,
+              48.0
+            ],
+            [
+              16.8,
+              48.4
+            ],
+            [
+              16.0,
+              48.4
+            ],
+            [
+              16.0,
+              48.0
+            ]
+          ]
+        ]
+      },
+      "links": [
+        {
+          "href": "https://storage.meteoalarm.org/api/warnings/alert-bbox-miss.xml",
+          "rel": "canonical",
+          "type": "application/xml"
+        },
+        {
+          "href": "https://storage.meteoalarm.org/api/warnings/alert-bbox-miss.xml",
+          "rel": "xml",
+          "type": "application/xml"
+        },
+        {
+          "href": "https://storage.meteoalarm.org/api/features/bbox-miss.geojson",
+          "rel": "geometry",
+          "type": "application/geo+json"
+        }
+      ],
+      "properties": {
+        "OBJECTID": "f-bbox-miss",
+        "alertId": "alert-bbox-miss",
+        "countryCode": "AT",
+        "featureType": "geocode",
+        "geometryType": "bbox",
+        "hubLanguage": "de-AT",
+        "indexArea": 0,
+        "indexFeature": 0,
+        "indexInfo": 0
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "f-superseded",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              16.3,
+              48.1
+            ],
+            [
+              16.5,
+              48.1
+            ],
+            [
+              16.5,
+              48.3
+            ],
+            [
+              16.3,
+              48.3
+            ],
+            [
+              16.3,
+              48.1
+            ]
+          ]
+        ]
+      },
+      "links": [
+        {
+          "href": "https://storage.meteoalarm.org/api/warnings/alert-superseded.xml",
+          "rel": "canonical",
+          "type": "application/xml"
+        },
+        {
+          "href": "https://storage.meteoalarm.org/api/warnings/alert-superseded.xml",
+          "rel": "xml",
+          "type": "application/xml"
+        }
+      ],
+      "properties": {
+        "OBJECTID": "f-superseded",
+        "alertId": "alert-superseded",
+        "countryCode": "AT",
+        "featureType": "geocode",
+        "geometryType": "exact",
+        "hubLanguage": "de-AT",
+        "indexArea": 0,
+        "indexFeature": 0,
+        "indexInfo": 0,
+        "supersededByAlertId": "alert-exact"
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "f-expired",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              16.3,
+              48.1
+            ],
+            [
+              16.5,
+              48.1
+            ],
+            [
+              16.5,
+              48.3
+            ],
+            [
+              16.3,
+              48.3
+            ],
+            [
+              16.3,
+              48.1
+            ]
+          ]
+        ]
+      },
+      "links": [
+        {
+          "href": "https://storage.meteoalarm.org/api/warnings/alert-expired.xml",
+          "rel": "canonical",
+          "type": "application/xml"
+        },
+        {
+          "href": "https://storage.meteoalarm.org/api/warnings/alert-expired.xml",
+          "rel": "xml",
+          "type": "application/xml"
+        }
+      ],
+      "properties": {
+        "OBJECTID": "f-expired",
+        "alertId": "alert-expired",
+        "countryCode": "AT",
+        "featureType": "geocode",
+        "geometryType": "exact",
+        "hubLanguage": "de-AT",
+        "indexArea": 0,
+        "indexFeature": 0,
+        "indexInfo": 0
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "f-nogeom",
+      "geometry": null,
+      "links": [
+        {
+          "href": "https://storage.meteoalarm.org/api/warnings/alert-nogeom.xml",
+          "rel": "canonical",
+          "type": "application/xml"
+        },
+        {
+          "href": "https://storage.meteoalarm.org/api/warnings/alert-nogeom.xml",
+          "rel": "xml",
+          "type": "application/xml"
+        }
+      ],
+      "properties": {
+        "OBJECTID": "f-nogeom",
+        "alertId": "alert-nogeom",
+        "countryCode": "AT",
+        "featureType": "geocode",
+        "geometryType": "no_geometry",
+        "hubLanguage": "de-AT",
+        "indexArea": 0,
+        "indexFeature": 0,
+        "indexInfo": 0
+      }
+    }
+  ]
+}

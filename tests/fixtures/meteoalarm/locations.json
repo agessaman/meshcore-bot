@@ -1,0 +1,141 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "id": "ALL",
+      "properties": {
+        "title": "All of Europe"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -25,
+              35
+            ],
+            [
+              45,
+              35
+            ],
+            [
+              45,
+              75
+            ],
+            [
+              -25,
+              75
+            ],
+            [
+              -25,
+              35
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "AT",
+      "properties": {
+        "title": "Austria"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              16.0,
+              48.0
+            ],
+            [
+              16.8,
+              48.0
+            ],
+            [
+              16.8,
+              48.4
+            ],
+            [
+              16.0,
+              48.4
+            ],
+            [
+              16.0,
+              48.0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "DE",
+      "properties": {
+        "title": "Germany"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              16.2,
+              48.1
+            ],
+            [
+              17.0,
+              48.1
+            ],
+            [
+              17.0,
+              48.5
+            ],
+            [
+              16.2,
+              48.5
+            ],
+            [
+              16.2,
+              48.1
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "FR",
+      "properties": {
+        "title": "France"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              2.0,
+              46.0
+            ],
+            [
+              3.0,
+              46.0
+            ],
+            [
+              3.0,
+              47.0
+            ],
+            [
+              2.0,
+              47.0
+            ],
+            [
+              2.0,
+              46.0
+            ]
+          ]
+        ]
+      }
+    }
+  ]
+}
