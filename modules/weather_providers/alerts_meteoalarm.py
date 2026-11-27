@@ -43,6 +43,7 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 from .. import alert_format
+from ._geo import geometry_contains
 from .base import AlertsProvider, AlertSummary, Coverage, ProviderHost
 
 # MeteoGate serves the same EDR API as Meteoalarm Direct and is where a public
@@ -95,46 +96,6 @@ UNAVAILABLE = object()
 CAP_NS = {"cap": "urn:oasis:names:tc:emergency:cap:1.2"}
 LEVEL_EMOJI = {2: "\U0001f7e1", 3: "\U0001f7e0", 4: "\U0001f534"}
 MIN_LEVEL = 2
-
-
-def _point_in_ring(lon: float, lat: float, ring: list) -> bool:
-    """Ray casting: whether (lon, lat) is inside one linear ring of [lon, lat] pairs."""
-    inside = False
-    count = len(ring)
-    if count < 3:
-        return False
-    previous = count - 1
-    for current in range(count):
-        x_current, y_current = ring[current][0], ring[current][1]
-        x_previous, y_previous = ring[previous][0], ring[previous][1]
-        if (y_current > lat) != (y_previous > lat):
-            crossing = (x_previous - x_current) * (lat - y_current) / (y_previous - y_current) + x_current
-            if lon < crossing:
-                inside = not inside
-        previous = current
-    return inside
-
-
-def _point_in_polygon(lon: float, lat: float, polygon: list) -> bool:
-    """Whether a GeoJSON Polygon's outline contains the point and no hole does."""
-    if not polygon:
-        return False
-    if not _point_in_ring(lon, lat, polygon[0]):
-        return False
-    return not any(_point_in_ring(lon, lat, hole) for hole in polygon[1:])
-
-
-def geometry_contains(geometry: Optional[dict], lon: float, lat: float) -> bool:
-    """Whether a GeoJSON Polygon or MultiPolygon contains the point."""
-    if not geometry:
-        return False
-    kind = geometry.get("type")
-    coordinates = geometry.get("coordinates") or []
-    if kind == "Polygon":
-        return _point_in_polygon(lon, lat, coordinates)
-    if kind == "MultiPolygon":
-        return any(_point_in_polygon(lon, lat, polygon) for polygon in coordinates)
-    return False
 
 
 def _stamp(moment: datetime) -> str:
