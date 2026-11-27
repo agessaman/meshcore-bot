@@ -508,6 +508,26 @@ def test_meteoalarm_with_an_empty_token_warns_once_and_turns_alerts_off():
     assert len(_warnings(cmd.logger)) == 1
 
 
+def test_a_token_with_a_percent_sign_is_read_raw():
+    # configparser interpolates '%' on get unless the read is raw, and the
+    # plugin loader would log that error instead of building the provider.
+    config = configparser.ConfigParser()
+    config.read_string(
+        "[Weather]\nweather_provider = noaa\nalerts_provider = meteoalarm\n"
+        "meteoalarm_token = tok%en\n"
+    )
+    bot = Mock()
+    bot.config = config
+    bot.translator = Translator("en")
+    bot.db_manager.get_cached_geocoding = Mock(return_value=(None, None))
+
+    cmd = WxCommand(bot)
+
+    assert isinstance(cmd.alerts_provider, MeteoalarmAlertsProvider)
+    assert cmd.alerts_provider.token == "tok%en"
+    assert _warnings(cmd.logger) == []
+
+
 def test_the_help_text_credits_meteoalarm_only_when_it_is_the_alerts_provider():
     with_credit = _wx({"weather_provider": "noaa", "alerts_provider": "meteoalarm",
                        "meteoalarm_token": "s3cr3t-token"})

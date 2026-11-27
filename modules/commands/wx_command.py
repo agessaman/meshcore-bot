@@ -507,7 +507,10 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         if not alerts_name:
             return None
         if alerts_name == "meteoalarm":
-            token = self.bot.config.get('Weather', 'meteoalarm_token', fallback='').strip()
+            # raw=True: a '%' in the token must not be read as interpolation.
+            token = self.bot.config.get(
+                'Weather', 'meteoalarm_token', fallback='', raw=True
+            ).strip()
             if not token:
                 self.logger.warning(
                     "alerts_provider = meteoalarm needs [Weather] meteoalarm_token; alerts are off"
@@ -518,7 +521,8 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                 host=self,
                 token=token,
                 base_url=self.bot.config.get(
-                    'Weather', 'meteoalarm_api_url', fallback=DEFAULT_METEOALARM_API_URL
+                    'Weather', 'meteoalarm_api_url',
+                    fallback=DEFAULT_METEOALARM_API_URL, raw=True,
                 ).strip().rstrip('/'),
             )
         return make_alerts_provider(alerts_name, host=self, **shared)

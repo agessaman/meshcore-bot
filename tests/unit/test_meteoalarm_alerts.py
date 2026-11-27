@@ -10,6 +10,8 @@ a placeholder.
 import asyncio
 import configparser
 import json
+import threading
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -21,6 +23,7 @@ import requests
 from modules.i18n import Translator
 from modules.weather_providers.alerts_meteoalarm import (
     DEFAULT_BASE_URL,
+    GEOMETRY_CACHE_MAX,
     LOCATIONS_TTL,
     LOCATIONS_URL,
     MIN_REQUEST_INTERVAL,
@@ -29,8 +32,10 @@ from modules.weather_providers.alerts_meteoalarm import (
     WINDOW_TTL_PAST,
     WINDOW_TTL_TODAY,
     MeteoalarmAlertsProvider,
+    _make_session,
     geometry_contains,
     parse_cap,
+    reset_rate_limits,
 )
 from modules.weather_providers.base import Coverage
 
@@ -157,6 +162,8 @@ def _host(language="en"):
 
 
 def _provider(routes=None, token="test-token", language="en", base_url=None):
+    # The pause and the budget are shared per origin, so each case starts clean.
+    reset_rate_limits()
     session = _Session(routes if routes is not None else _routes())
     host = _host(language)
     provider = MeteoalarmAlertsProvider(host=host, token=token, session=session, base_url=base_url)
@@ -220,7 +227,7 @@ def test_a_cold_lookup_asks_for_one_window_per_day():
     assert windows[3] == "2026-11-24T00:00:00Z/2026-11-24T23:59:59Z"
 
 
-def test_every_window_is_shorter_than_a_day_and_sends_active_now():
+def test_every_window_is_shorter_than_a_day_and_asks_by_sent_date_only():
     provider, session, _host_, _clock = _provider()
     provider.summary(LAT, LON, 130)
 
@@ -232,9 +239,8 @@ def test_every_window_is_shorter_than_a_day_and_sends_active_now():
             start.replace("Z", "+00:00")
         )
         assert timedelta(0) < span < timedelta(hours=24)
-        active = call["params"]["active"].split("/")
-        assert active[0] == active[1]
-        assert active[0].startswith(TODAY)
+        # Activity is decided from the CAP, not by the query.
+        assert "active" not in call["params"]
         assert call["params"]["page"] == 1
 
 
@@ -466,7 +472,9 @@ def test_no_alerts_returns_none():
 @pytest.mark.parametrize("language,event", [("en", "Gale"), ("no", "Kuling"), ("de", "Gale")])
 def test_the_cap_info_block_follows_the_configured_language(language, event):
     provider, _session_, _host_, _clock = _provider(language=language)
-    details = provider._cap_details("alert-gale", [_json("NO_page1.json")["features"][0]])
+    details, _incomplete = provider._cap_details(
+        "alert-gale", [_json("NO_page1.json")["features"][0]], {0, 1}
+    )
     assert details["event"] == event
 
 
@@ -893,3 +901,289 @@ def test_a_healthy_remaining_budget_keeps_refreshing():
 
     assert provider.summary(LAT, LON, 130).count == 2
     assert session.count(NO_URL) == 4
+
+
+# --- the matched area decides which warning is shown ------------------------
+
+CAP_TWO_AREAS = f"{STORAGE}/warnings/alert-two-areas.xml"
+
+
+def _feature(template, feature_id, alert_id, index_info, geometry):
+    """One warning area, cloned from a live feature and pointed at a fixture."""
+    feature = json.loads(json.dumps(template))
+    feature["id"] = feature_id
+    feature["properties"]["OBJECTID"] = feature_id
+    feature["properties"]["alertId"] = alert_id
+    feature["properties"]["indexInfo"] = index_info
+    feature["properties"]["geometryType"] = "exact"
+    feature["geometry"] = geometry
+    feature["links"] = [{"type": "application/xml", "rel": "xml", "href": CAP_TWO_AREAS}]
+    return feature
+
+
+def _square(west, south, east, north):
+    return {
+        "type": "Polygon",
+        "coordinates": [[[west, south], [east, south], [east, north], [west, north], [west, south]]],
+    }
+
+
+def _two_area_page():
+    """One alertId with two areas: only the second one contains the point."""
+    template = _json("NO_page1.json")["features"][0]
+    return {
+        "type": "FeatureCollection",
+        "features": [
+            _feature(template, "f-two-areas-0", "alert-two-areas", 0, _square(10.0, 10.0, 11.0, 11.0)),
+            _feature(template, "f-two-areas-1", "alert-two-areas", 1, _square(5.0, 58.0, 7.0, 59.0)),
+        ],
+    }
+
+
+def test_the_warning_of_the_matched_area_is_the_one_shown():
+    routes = _routes()
+    routes[NO_URL] = lambda params: (
+        _Response(200, _two_area_page()) if str(params.get("datetime", "")).startswith(TODAY)
+        else _Response(204)
+    )
+    routes[CAP_TWO_AREAS] = _Response(200, text=_text("alert-two-areas.xml"))
+    provider, _session_, _host_, _clock = _provider(routes)
+
+    summary = provider.summary(LAT, LON, 130)
+
+    # Both info blocks are English; only indexInfo 1 covers the point.
+    assert summary.count == 1
+    assert "Flash flood" in summary.text
+    assert "Wind" not in summary.text
+
+
+# --- an incomplete lookup is not an all-clear -------------------------------
+
+
+def test_a_failed_cap_for_every_candidate_is_unavailable_not_an_all_clear():
+    routes = _routes()
+    routes[CAP_GALE] = _Response(500, text="<html>Server Error</html>")
+    routes[CAP_EXACT] = _Response(500, text="<html>Server Error</html>")
+    provider, _session_, host, _clock = _provider(routes)
+
+    assert provider.summary(LAT, LON, 130) is None
+    assert asyncio.run(provider.send_full_list(SimpleNamespace(content="x", sender_id="u"), LAT, LON)) is True
+    assert host.send_response.call_args.args[1] == "Error fetching weather alerts"
+
+
+def test_a_failed_window_does_not_hide_the_alerts_another_window_confirmed():
+    routes = _routes()
+
+    def page(params):
+        if str(params.get("datetime", "")).startswith(TODAY):
+            return _Response(200, _json("NO_page1.json"))
+        return _Response(500, text="<html>Server Error</html>")
+
+    routes[NO_URL] = page
+    provider, _session_, _host_, _clock = _provider(routes)
+
+    summary = provider.summary(LAT, LON, 130)
+
+    assert summary is not None
+    assert summary.count == 2
+
+
+# --- activity is decided from the CAP, not from the query -------------------
+
+
+def _cap(identifier, event="Wind", level="2; yellow; Moderate",
+         onset="2026-11-26T18:00:00+00:00", expires="2026-11-28T10:00:00+00:00",
+         references=None, msg_type="Update"):
+    refs = f"<references>{references}</references>" if references else ""
+    return f"""<?xml version="1.0" encoding="utf-8"?>
+<alert xmlns="urn:oasis:names:tc:emergency:cap:1.2">
+  <identifier>{identifier}</identifier>
+  <sent>2026-11-27T08:00:00+00:00</sent>
+  <msgType>{msg_type}</msgType>
+  {refs}
+  <info>
+    <language>en-GB</language>
+    <event>{event}</event>
+    <onset>{onset}</onset>
+    <expires>{expires}</expires>
+    <headline>{event}</headline>
+    <parameter><valueName>awareness_level</valueName><value>{level}</value></parameter>
+    <parameter><valueName>awareness_type</valueName><value>1; Wind</value></parameter>
+  </info>
+</alert>"""
+
+
+def _page_of(*features):
+    return {"type": "FeatureCollection", "features": list(features)}
+
+
+def test_a_warning_that_is_not_active_yet_is_hidden_and_one_that_is_shown():
+    template = _json("NO_page1.json")["features"][0]
+    future = _feature(template, "f-future", "alert-future", 0, _square(5.0, 58.0, 7.0, 59.0))
+    past = _feature(template, "f-past", "alert-past", 0, _square(5.0, 58.0, 7.0, 59.0))
+    future["links"] = [{"type": "application/xml", "rel": "xml", "href": f"{STORAGE}/warnings/future.xml"}]
+    past["links"] = [{"type": "application/xml", "rel": "xml", "href": f"{STORAGE}/warnings/past.xml"}]
+
+    routes = _routes()
+    routes[NO_URL] = lambda params: (
+        _Response(200, _page_of(future, past)) if str(params.get("datetime", "")).startswith(TODAY)
+        else _Response(204)
+    )
+    routes[f"{STORAGE}/warnings/future.xml"] = _Response(
+        200, text=_cap("alert-future", event="Ice", onset="2026-11-28T06:00:00+00:00")
+    )
+    routes[f"{STORAGE}/warnings/past.xml"] = _Response(
+        200, text=_cap("alert-past", event="Gale", onset="2026-11-26T06:00:00+00:00")
+    )
+    provider, _session_, _host_, _clock = _provider(routes)
+
+    summary = provider.summary(LAT, LON, 130)
+
+    assert summary.count == 1
+    assert "Gale" in summary.text
+    assert "Ice" not in summary.text
+
+
+def test_an_alert_named_in_a_newer_references_is_dropped():
+    template = _json("NO_page1.json")["features"][0]
+    old = _feature(template, "f-old", "alert-old", 0, _square(5.0, 58.0, 7.0, 59.0))
+    new = _feature(template, "f-new", "alert-new", 0, _square(5.0, 58.0, 7.0, 59.0))
+    old["links"] = [{"type": "application/xml", "rel": "xml", "href": f"{STORAGE}/warnings/old.xml"}]
+    new["links"] = [{"type": "application/xml", "rel": "xml", "href": f"{STORAGE}/warnings/new.xml"}]
+
+    routes = _routes()
+    routes[NO_URL] = lambda params: (
+        _Response(200, _page_of(old, new)) if str(params.get("datetime", "")).startswith(TODAY)
+        else _Response(204)
+    )
+    routes[f"{STORAGE}/warnings/old.xml"] = _Response(200, text=_cap("alert-old", event="Gale"))
+    routes[f"{STORAGE}/warnings/new.xml"] = _Response(
+        200,
+        text=_cap(
+            "alert-new", event="Storm surge", level="3; orange; Severe",
+            references="meteorologi@met.no,alert-old,2026-11-27T08:00:00+00:00",
+        ),
+    )
+    provider, _session_, _host_, _clock = _provider(routes)
+
+    summary = provider.summary(LAT, LON, 130)
+
+    assert summary.count == 1
+    assert "Storm surge" in summary.text
+    assert "Gale" not in summary.text
+
+
+# --- the pause cannot be bypassed -------------------------------------------
+
+
+def test_the_gateway_session_never_retries_a_429():
+    session = _make_session()
+    retry = session.get_adapter(DEFAULT_BASE_URL).max_retries
+
+    assert 429 not in retry.status_forcelist
+    assert retry.respect_retry_after_header is False
+    assert 500 in retry.status_forcelist
+
+
+def test_the_pause_is_shared_by_every_provider_on_the_origin():
+    routes = _routes()
+    routes[NO_URL] = _Response(
+        429, text="<html>Too Many Requests</html>", headers={"Retry-After": "120"}
+    )
+    first, first_session, _host_, clock = _provider(routes)
+    first.summary(LAT, LON, 130)
+    assert first_session.count(NO_URL) == 1
+
+    # A second provider on the same origin, built without resetting the pause.
+    second_session = _Session(routes)
+    second = MeteoalarmAlertsProvider(host=_host(), token="test-token", session=second_session)
+    second._clock = lambda: clock.monotonic
+    second._utcnow = lambda: clock.wall
+    second._wait = clock.advance
+
+    assert second.summary(LAT, LON, 130) is None
+    assert second_session.calls == []
+
+
+def test_the_pause_is_rechecked_after_the_pacing_sleep():
+    provider, session, _host_, clock = _provider()
+
+    def wait(seconds):
+        # Another thread spends the budget while this one is pacing.
+        clock.advance(seconds)
+        with provider._rate.lock:
+            provider._rate.retry_until = clock.monotonic + 60
+
+    provider._wait = wait
+    provider._rate.last_request = clock.monotonic
+
+    assert provider.summary(LAT, LON, 130) is None
+    assert session.calls == []
+
+
+# --- credentials ------------------------------------------------------------
+
+
+def test_the_token_is_not_sent_over_plain_http():
+    base = "http://api.meteogate.eu/warnings"
+    routes = _routes()
+    routes[f"{base}/collections/warnings/locations"] = routes.pop(LOCATIONS_URL)
+    routes[f"{base}/collections/warnings/locations/NO"] = routes.pop(NO_URL)
+    provider, session, _host_, _clock = _provider(routes, base_url=base)
+
+    provider.summary(LAT, LON, 130)
+
+    api_calls = [call for call in session.calls if call["url"].startswith(base)]
+    assert api_calls
+    assert all("Authorization" not in call["headers"] for call in api_calls)
+
+
+# --- bounded caches and shared cold fetches ---------------------------------
+
+
+def test_two_threads_share_one_cold_locations_fetch():
+    routes = _routes()
+
+    def slow_locations(params):
+        time.sleep(0.2)
+        return _Response(200, _json("locations.json"))
+
+    routes[LOCATIONS_URL] = slow_locations
+    provider, session, _host_, _clock = _provider(routes)
+
+    results = []
+    threads = [threading.Thread(target=lambda: results.append(provider.coverage_for(LAT, LON)))
+               for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert session.count(LOCATIONS_URL) == 1
+    assert results == [Coverage.COVERED, Coverage.COVERED]
+
+
+def test_expired_caps_and_old_windows_are_evicted():
+    provider, _session_, _host_, clock = _provider()
+    provider.summary(LAT, LON, 130)
+    assert provider._windows and provider._caps
+
+    old_day = clock.wall.date() - timedelta(days=5)
+    provider._windows[("NO", old_day)] = (clock.monotonic, [])
+    provider._caps[("alert-old", ())] = (clock.wall - timedelta(minutes=1), {"identifier": "alert-old"})
+
+    provider._evict()
+
+    assert ("NO", old_day) not in provider._windows
+    assert ("alert-old", ()) not in provider._caps
+    assert provider._windows
+
+
+def test_the_geometry_cache_is_bounded():
+    provider, _session_, _host_, _clock = _provider()
+    for index in range(GEOMETRY_CACHE_MAX + 5):
+        provider._geometries[f"f-{index}"] = _square(0.0, 0.0, 1.0, 1.0)
+
+    provider._evict()
+
+    assert len(provider._geometries) == GEOMETRY_CACHE_MAX

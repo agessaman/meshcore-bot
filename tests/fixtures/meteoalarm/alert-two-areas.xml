@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<alert xmlns="urn:oasis:names:tc:emergency:cap:1.2">
+  <identifier>2.49.0.1.578.0.alert-two-areas</identifier>
+  <sender>meteorologi@met.no</sender>
+  <sent>2026-11-27T08:14:50+00:00</sent>
+  <status>Actual</status>
+  <msgType>Update</msgType>
+  <scope>Public</scope>
+  <info>
+    <language>en-GB</language>
+    <category>Met</category>
+    <event>Wind</event>
+    <severity>Moderate</severity>
+    <onset>2026-11-26T18:00:00+00:00</onset>
+    <expires>2026-11-28T10:00:00+00:00</expires>
+    <headline>Wind, yellow level, inland</headline>
+    <parameter>
+      <valueName>awareness_level</valueName>
+      <value>2; yellow; Moderate</value>
+    </parameter>
+    <parameter>
+      <valueName>awareness_type</valueName>
+      <value>1; Wind</value>
+    </parameter>
+    <area>
+      <areaDesc>Inland</areaDesc>
+    </area>
+  </info>
+  <info>
+    <language>en-GB</language>
+    <category>Met</category>
+    <event>Flash flood</event>
+    <severity>Severe</severity>
+    <onset>2026-11-26T18:00:00+00:00</onset>
+    <expires>2026-11-28T10:00:00+00:00</expires>
+    <headline>Flash flood, red level, coast</headline>
+    <parameter>
+      <valueName>awareness_level</valueName>
+      <value>4; red; Very severe</value>
+    </parameter>
+    <parameter>
+      <valueName>awareness_type</valueName>
+      <value>12; Flood</value>
+    </parameter>
+    <area>
+      <areaDesc>Coast</areaDesc>
+    </area>
+  </info>
+</alert>

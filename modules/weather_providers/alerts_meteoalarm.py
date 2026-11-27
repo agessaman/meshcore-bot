@@ -2,21 +2,24 @@
 
 The OGC EDR API only answers by country, so a point is matched in three steps:
 the country polygons from ``/collections/warnings/locations`` say which
-countries could cover it, each country's active warnings carry a bounding box
-per warning area, and a feature whose ``geometryType`` is not ``exact`` is
+countries could cover it, each country's warnings carry a bounding box per
+warning area, and a feature whose ``geometryType`` is not ``exact`` is
 confirmed against the outline in its ``rel=geometry`` link. Event, level and
 expiry live in the CAP 1.2 document the feature links to, not in the feature.
 
 The API wants a ``datetime`` range shorter than a day and still carries
 warnings sent days ago, so each country is asked for once per UTC day over the
-last four days. It throttles hard, so requests are spaced a second apart and a
-429 pauses every request until its Retry-After passes, serving cached alerts
-meanwhile. The feature links are pre-signed URLs on a storage host: they are
-fetched without the token and never logged above DEBUG.
+last four days. The query is by sent date only: whether a warning is active is
+decided from its CAP document, because a warning sent yesterday can become
+active after the window was cached. It throttles hard, so requests are spaced a
+second apart and a 429 pauses every request until its Retry-After passes,
+serving cached alerts meanwhile. The feature links are pre-signed URLs on a
+storage host: they are fetched without the token and never logged above DEBUG.
 
 The token is sent as a bearer header, never as a query parameter, so it stays
-out of URLs and logs. Nothing here raises into the command: a failed fetch
-logs one WARNING per failure streak and answers with no alerts.
+out of URLs and logs, and only to the configured API origin over HTTPS.
+Nothing here raises into the command: a failed fetch logs one WARNING per
+failure streak and answers with no alerts.
 
 The base URL defaults to the MeteoGate gateway, which serves the same EDR API
 and is where a public token comes from. Meteoalarm Direct re-user tokens point
@@ -34,7 +37,10 @@ from email.utils import parsedate_to_datetime
 from typing import Any, Optional
 from urllib.parse import urlparse
 
-from ..http_retry import make_retry_session
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
 from .base import AlertsProvider, AlertSummary, Coverage, ProviderHost
 
 # MeteoGate serves the same EDR API as Meteoalarm Direct and is where a public
@@ -55,23 +61,27 @@ LOCATIONS_TTL = 24 * 60 * 60
 # The API rejects a datetime range of 24 hours or more, so each UTC day is a
 # window of its own: today's moves and is cached briefly, past days are fixed.
 WINDOW_TTL_TODAY = 10 * 60
-WINDOW_TTL_PAST = 3 * 60 * 60
+WINDOW_TTL_PAST = 30 * 60
 PAST_DAYS = 3
 MAX_PAGES = 5
 # Cost: a cold lookup is one locations request plus four window requests per
-# country, and steady state is about seven per country per hour (today's window
-# every ten minutes, each past day every three hours). The gateway throttles at
-# roughly 25 requests in a few seconds, so requests are spaced out and a 429
-# pauses everything until its Retry-After passes.
+# country. Steady state is about twelve per country per hour (today's window
+# every ten minutes, each of the three past days every thirty), against a
+# budget of fifty per window per IP. Requests are spaced a second apart and a
+# 429 pauses everything until its Retry-After passes.
 MIN_REQUEST_INTERVAL = 1.0
 DEFAULT_RETRY_AFTER = 300.0
-# The gateway allows 50 requests per window per IP and reports the budget in
-# X-RateLimit-Remaining. Near the floor, refreshes stop until the reset.
+# The gateway reports the budget in X-RateLimit-Remaining. Near the floor,
+# refreshes stop until the reset.
 RATE_LIMIT_FLOOR = 5
 # Europe's rough extent, wide enough for the Canary Islands and Cyprus. It is
 # the ALL feature of the live locations list, widened south to 27 N.
 EUROPE_LON = (-25.0, 45.0)
 EUROPE_LAT = (27.0, 72.0)
+# A bound on the outline cache: one entry per feature id, oldest evicted first.
+GEOMETRY_CACHE_MAX = 300
+# How long a thread waits for another thread's refresh of the same key.
+INFLIGHT_TIMEOUT = 30.0
 
 # A fetch that could not be made, as opposed to one that found nothing.
 UNAVAILABLE = object()
@@ -124,6 +134,13 @@ def geometry_contains(geometry: Optional[dict], lon: float, lat: float) -> bool:
 def _stamp(moment: datetime) -> str:
     """A UTC timestamp in the ISO 8601 form the API's datetime parameter takes."""
     return moment.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _origin(url: str) -> tuple:
+    """(scheme, host, port) for a URL, with the default port filled in."""
+    parsed = urlparse(url)
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    return (parsed.scheme, parsed.hostname, port)
 
 
 def _reset_seconds(headers: Any, fallback: float) -> float:
@@ -220,11 +237,35 @@ def _awareness_type(value: str) -> str:
     return parts[1].strip() if len(parts) > 1 else ""
 
 
-def _cap_info(root: ET.Element, language: str) -> Optional[ET.Element]:
-    """The info block for *language* (prefix match), else English, else the first."""
+def _references(value: Optional[str]) -> set:
+    """The identifiers a CAP references: space-separated "sender,id,sent" triples."""
+    parts = (value or "").replace(",", " ").split()
+    return {parts[index] for index in range(1, len(parts), 3)}
+
+
+def _index_info(feature: dict) -> Optional[int]:
+    """A feature's indexInfo: which CAP info block describes its area."""
+    value = (feature.get("properties") or {}).get("indexInfo")
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _cap_info(root: ET.Element, language: str, indexes: Optional[set] = None) -> Optional[ET.Element]:
+    """The info block for *language* (prefix match), else English, else the first.
+
+    *indexes* are the ``indexInfo`` values of the features that contain the
+    point. One alert can carry several blocks in the same language for
+    different areas, so only those blocks are candidates.
+    """
     infos = root.findall("cap:info", CAP_NS)
     if not infos:
         return None
+    if indexes:
+        matched = [infos[index] for index in sorted(indexes) if 0 <= index < len(infos)]
+        if matched:
+            infos = matched
 
     def code(info: ET.Element) -> str:
         return (info.findtext("cap:language", default="", namespaces=CAP_NS) or "").strip().lower()
@@ -239,7 +280,7 @@ def _cap_info(root: ET.Element, language: str) -> Optional[ET.Element]:
     return infos[0]
 
 
-def parse_cap(text: str, language: str) -> Optional[dict]:
+def parse_cap(text: str, language: str, indexes: Optional[set] = None) -> Optional[dict]:
     """The alert details a CAP 1.2 document carries, or None when it has no info block.
 
     Parsed with ElementTree rather than defusedxml: the document comes over
@@ -250,7 +291,7 @@ def parse_cap(text: str, language: str) -> Optional[dict]:
         root = ET.fromstring(text)
     except ET.ParseError:
         return None
-    info = _cap_info(root, language)
+    info = _cap_info(root, language, indexes)
     if info is None:
         return None
 
@@ -264,15 +305,100 @@ def parse_cap(text: str, language: str) -> Optional[dict]:
         elif name == "awareness_type":
             awareness_type = _awareness_type(value)
 
+    def text_of(tag: str) -> str:
+        return (info.findtext(f"cap:{tag}", default="", namespaces=CAP_NS) or "").strip()
+
     return {
+        "identifier": (root.findtext("cap:identifier", default="", namespaces=CAP_NS) or "").strip(),
         "msg_type": (root.findtext("cap:msgType", default="", namespaces=CAP_NS) or "").strip(),
-        "event": (info.findtext("cap:event", default="", namespaces=CAP_NS) or "").strip(),
-        "headline": (info.findtext("cap:headline", default="", namespaces=CAP_NS) or "").strip(),
-        "onset": _parse_time(info.findtext("cap:onset", default="", namespaces=CAP_NS)),
-        "expires": _parse_time(info.findtext("cap:expires", default="", namespaces=CAP_NS)),
+        "event": text_of("event"),
+        "headline": text_of("headline"),
+        "onset": _parse_time(text_of("onset")),
+        "effective": _parse_time(text_of("effective")),
+        "sent": _parse_time((root.findtext("cap:sent", default="", namespaces=CAP_NS) or "").strip()),
+        "expires": _parse_time(text_of("expires")),
+        "supersedes": _references(
+            root.findtext("cap:references", default="", namespaces=CAP_NS) or ""
+        ),
         "level": level,
         "awareness_type": awareness_type,
     }
+
+
+def _is_active(details: dict, now: datetime) -> bool:
+    """Whether a CAP document describes a warning in force at *now*."""
+    expires = details["expires"]
+    if expires is None or expires <= now:
+        return False
+    start = details["onset"] or details["effective"] or details["sent"]
+    return start is None or start <= now
+
+
+def _make_session() -> requests.Session:
+    """A session that retries connection errors and 5xx, never a 429.
+
+    A 429 is the gateway's rate limit and the provider owns the pause, so the
+    session must hand the response back instead of retrying behind its back.
+    """
+    session = requests.Session()
+    retry = Retry(
+        total=2,
+        backoff_factor=0.3,
+        status_forcelist=[500, 502, 503, 504],
+        allowed_methods=["GET"],
+        raise_on_status=False,
+        respect_retry_after_header=False,
+    )
+    adapter = HTTPAdapter(max_retries=retry, pool_connections=10, pool_maxsize=20)
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+    return session
+
+
+class _RateLimit:
+    """The pause and the remaining budget for one API origin.
+
+    Shared by every provider instance that talks to the same origin, so wx, gwx
+    and the Open-Meteo fallback cannot each spend the same budget.
+    """
+
+    __slots__ = ("lock", "retry_until", "last_request", "remaining")
+
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.retry_until = 0.0
+        self.last_request = 0.0
+        self.remaining: Optional[int] = None
+
+
+_RATE_LIMITS: dict[tuple, _RateLimit] = {}
+_RATE_LIMITS_LOCK = threading.Lock()
+
+
+def _rate_limit_for(base_url: str) -> _RateLimit:
+    """The shared rate-limit state for a base URL's origin."""
+    origin = _origin(base_url)
+    with _RATE_LIMITS_LOCK:
+        state = _RATE_LIMITS.get(origin)
+        if state is None:
+            state = _RATE_LIMITS[origin] = _RateLimit()
+        return state
+
+
+def reset_rate_limits() -> None:
+    """Forget every origin's pause and budget. Tests call this between cases."""
+    with _RATE_LIMITS_LOCK:
+        _RATE_LIMITS.clear()
+
+
+class _Inflight:
+    """One in-flight refresh that other threads wait on instead of refetching."""
+
+    __slots__ = ("done", "value")
+
+    def __init__(self):
+        self.done = threading.Event()
+        self.value = None
 
 
 class MeteoalarmAlertsProvider(AlertsProvider):
@@ -295,19 +421,17 @@ class MeteoalarmAlertsProvider(AlertsProvider):
         self.base_url = (base_url or DEFAULT_BASE_URL).strip().rstrip("/")
         self.locations_url = f"{self.base_url}{LOCATIONS_PATH}"
         self.country_url = f"{self.base_url}{COUNTRY_PATH}"
-        self.session = session if session is not None else make_retry_session()
+        self.session = session if session is not None else _make_session()
         # One lock for every cache. Never held across HTTP.
         self._lock = threading.Lock()
-        self._api_host = urlparse(self.base_url).netloc
+        self._api_origin = _origin(self.base_url)
+        self._rate = _rate_limit_for(self.base_url)
         self._locations: Optional[tuple] = None
         self._windows: dict[tuple, tuple] = {}
         self._geometries: dict[str, dict] = {}
-        self._caps: dict[str, tuple] = {}
+        self._caps: dict[tuple, tuple] = {}
         self._streaks: set[str] = set()
-        # Monotonic seconds: when the next request may go out, and when a 429
-        # pause ends. Both are read and written under the lock.
-        self._last_request = 0.0
-        self._retry_until = 0.0
+        self._inflight: dict[Any, _Inflight] = {}
 
     # --- clock ------------------------------------------------------------
 
@@ -339,12 +463,18 @@ class MeteoalarmAlertsProvider(AlertsProvider):
         """Sleep between gateway requests. Tests replace this with a fake clock."""
         time.sleep(seconds)
 
+    def _paused(self) -> bool:
+        """Whether the shared pause for this origin is still running."""
+        with self._rate.lock:
+            return self._clock() < self._rate.retry_until
+
     def _pace(self) -> None:
         """Space gateway requests at least MIN_REQUEST_INTERVAL apart."""
-        with self._lock:
+        state = self._rate
+        with state.lock:
             now = self._clock()
-            wait = MIN_REQUEST_INTERVAL - (now - self._last_request) if self._last_request else 0.0
-            self._last_request = now + max(wait, 0.0)
+            wait = MIN_REQUEST_INTERVAL - (now - state.last_request) if state.last_request else 0.0
+            state.last_request = now + max(wait, 0.0)
         if wait > 0:
             self._wait(wait)
 
@@ -352,8 +482,8 @@ class MeteoalarmAlertsProvider(AlertsProvider):
         """Honor Retry-After, else X-RateLimit-Reset: no gateway requests until it passes."""
         headers = getattr(response, "headers", None) or {}
         delay = _retry_after_seconds(headers, self._utcnow(), _reset_seconds(headers, DEFAULT_RETRY_AFTER))
-        with self._lock:
-            self._retry_until = self._clock() + delay
+        with self._rate.lock:
+            self._rate.retry_until = self._clock() + delay
         self._warn_once(
             "throttled",
             f"Meteoalarm rate limited the request; pausing for {int(delay)} s",
@@ -366,11 +496,13 @@ class MeteoalarmAlertsProvider(AlertsProvider):
             remaining = int(float(str(headers.get("X-RateLimit-Remaining")).strip()))
         except (TypeError, ValueError):
             return
+        with self._rate.lock:
+            self._rate.remaining = remaining
         if remaining > RATE_LIMIT_FLOOR:
             return
         delay = _reset_seconds(headers, DEFAULT_RETRY_AFTER)
-        with self._lock:
-            self._retry_until = max(self._retry_until, self._clock() + delay)
+        with self._rate.lock:
+            self._rate.retry_until = max(self._rate.retry_until, self._clock() + delay)
         self.host.logger.debug(
             f"Meteoalarm rate limit budget is down to {remaining}; "
             f"serving cached alerts for {int(delay)} s"
@@ -379,17 +511,21 @@ class MeteoalarmAlertsProvider(AlertsProvider):
     def _get(self, url: str, params: Optional[dict] = None):
         """One GET, paced and rate-limit aware. Returns the response, or UNAVAILABLE.
 
-        The bearer token goes only to the API host. The feature links are
-        pre-signed URLs on a storage host, and those must never see it.
+        The bearer token goes only to the configured API origin over HTTPS. The
+        feature links are pre-signed URLs on a storage host, and those must
+        never see it.
         """
+        api = _origin(url) == self._api_origin
         # The pause is the gateway's budget, not the storage host's.
-        with self._lock:
-            paused = self._clock() < self._retry_until
-        if paused and urlparse(url).netloc == self._api_host:
+        if api and self._paused():
             return UNAVAILABLE
         self._pace()
+        # Recheck right before sending: the pacing sleep may have outlasted the
+        # pause, or another thread may have spent the budget meanwhile.
+        if api and self._paused():
+            return UNAVAILABLE
         headers = {}
-        if self.token and urlparse(url).netloc == self._api_host:
+        if self.token and api and self._api_origin[0] == "https":
             headers["Authorization"] = f"Bearer {self.token}"
         try:
             response = self.session.get(
@@ -414,7 +550,8 @@ class MeteoalarmAlertsProvider(AlertsProvider):
         self._clear_streak("throttled")
         self._clear_streak("auth")
         self._clear_streak(f"http:{urlparse(url).netloc}")
-        self._note_rate_limit(response)
+        if api:
+            self._note_rate_limit(response)
         return response
 
     def _json(self, response):
@@ -435,26 +572,59 @@ class MeteoalarmAlertsProvider(AlertsProvider):
         )
         return True
 
+    # --- shared refreshes -------------------------------------------------
+
+    def _shared(self, key: Any, fetch):
+        """Run *fetch* once per key across threads; the others wait for its result."""
+        with self._lock:
+            entry = self._inflight.get(key)
+            owner = entry is None
+            if owner:
+                entry = self._inflight[key] = _Inflight()
+        if not owner:
+            entry.done.wait(INFLIGHT_TIMEOUT)
+            return entry.value
+        try:
+            entry.value = fetch()
+        finally:
+            with self._lock:
+                self._inflight.pop(key, None)
+            entry.done.set()
+        return entry.value
+
     # --- caches -----------------------------------------------------------
 
-    def _country_geometries(self) -> Optional[list]:
-        """[(country code, geometry)] for every country, cached for a day."""
+    def _cached_locations(self) -> Optional[list]:
         with self._lock:
             cached = self._locations
         if cached is not None and self._clock() - cached[0] < LOCATIONS_TTL:
             return cached[1]
+        return None
 
+    def _country_geometries(self) -> Optional[list]:
+        """[(country code, geometry)] for every country, cached for a day."""
+        cached = self._cached_locations()
+        if cached is not None:
+            return cached
+        return self._shared(("locations",), self._fetch_locations)
+
+    def _fetch_locations(self) -> Optional[list]:
+        cached = self._cached_locations()
+        if cached is not None:
+            return cached
+        with self._lock:
+            stale = self._locations
         response = self._get(self.locations_url)
         if response is UNAVAILABLE:
             # A stale list still says which countries could cover the point.
-            return cached[1] if cached is not None else None
+            return stale[1] if stale is not None else None
         if response.status_code == 204:
             features = []
         else:
             body = self._json(response)
             if body is None:
                 self._warn_once("locations", "Meteoalarm locations fetch returned no JSON")
-                return cached[1] if cached is not None else None
+                return stale[1] if stale is not None else None
             features = body.get("features") or []
 
         countries = [
@@ -485,15 +655,49 @@ class MeteoalarmAlertsProvider(AlertsProvider):
             specs.append((day, f"{_stamp(start)}/{_stamp(last)}", WINDOW_TTL_PAST))
         return specs
 
+    def _cached_window(self, country: str, day, ttl: int) -> Optional[list]:
+        with self._lock:
+            cached = self._windows.get((country, day))
+        if cached is not None and self._clock() - cached[0] < ttl:
+            return cached[1]
+        return None
+
+    def _window_features(self, country: str, day, interval: str, ttl: int) -> tuple:
+        """(features, incomplete) for one country and one day window."""
+        cached = self._cached_window(country, day, ttl)
+        if cached is not None:
+            return cached, False
+        return self._shared(
+            ("window", country, day), lambda: self._refresh_window(country, day, interval, ttl)
+        )
+
+    def _refresh_window(self, country: str, day, interval: str, ttl: int) -> tuple:
+        cached = self._cached_window(country, day, ttl)
+        if cached is not None:
+            return cached, False
+        with self._lock:
+            stale = self._windows.get((country, day))
+        features = self._fetch_window(country, interval)
+        if features is None:
+            # A failed window serves whatever is cached, stale included.
+            return (stale[1] if stale is not None else []), True
+        with self._lock:
+            self._windows[(country, day)] = (self._clock(), features)
+        return features, False
+
     def _fetch_window(self, country: str, interval: str) -> Optional[list]:
-        """One country's warnings for one window, following pagination."""
-        moment = _stamp(self._utcnow())
+        """One country's warnings for one window, following pagination.
+
+        The query is by sent date only: whether a warning is active is decided
+        from its CAP document, so a warning that became active after the window
+        was cached is not hidden.
+        """
         features: list = []
         total_pages = 1
         for page in range(1, MAX_PAGES + 1):
             response = self._get(
                 self.country_url.format(country=country),
-                params={"active": f"{moment}/{moment}", "datetime": interval, "page": page},
+                params={"datetime": interval, "page": page},
             )
             if response is UNAVAILABLE:
                 return None
@@ -518,34 +722,16 @@ class MeteoalarmAlertsProvider(AlertsProvider):
         self._clear_streak(f"country:{country}")
         return features
 
-    def _country_features(self, country: str) -> Optional[list]:
-        """Every active warning for one country, merged over the day windows.
-
-        None means a window could not be fetched and nothing was cached, so the
-        answer is unknown rather than empty.
-        """
+    def _country_features(self, country: str) -> tuple:
+        """(features, incomplete) for one country, merged over the day windows."""
         merged: dict[Any, dict] = {}
-        unavailable = False
+        incomplete = False
         for day, interval, ttl in self._window_specs():
-            key = (country, day)
-            with self._lock:
-                cached = self._windows.get(key)
-            if cached is not None and self._clock() - cached[0] < ttl:
-                features = cached[1]
-            else:
-                features = self._fetch_window(country, interval)
-                if features is None:
-                    # A failed window serves whatever is cached, stale included.
-                    unavailable = True
-                    features = cached[1] if cached is not None else []
-                else:
-                    with self._lock:
-                        self._windows[key] = (self._clock(), features)
+            features, failed = self._window_features(country, day, interval, ttl)
+            incomplete = incomplete or failed
             for feature in features:
                 merged[feature.get("id") or id(feature)] = feature
-        if unavailable and not merged:
-            return None
-        return list(merged.values())
+        return list(merged.values()), incomplete
 
     def _exact_geometry(self, feature: dict) -> Optional[dict]:
         """The outline behind a bbox feature, cached by feature id.
@@ -561,7 +747,13 @@ class MeteoalarmAlertsProvider(AlertsProvider):
             cached = self._geometries.get(key)
         if cached is not None:
             return cached
+        return self._shared(("geometry", key), lambda: self._fetch_geometry(key, feature))
 
+    def _fetch_geometry(self, key: str, feature: dict) -> Optional[dict]:
+        with self._lock:
+            cached = self._geometries.get(key)
+        if cached is not None:
+            return cached
         url = next(
             (link.get("href") for link in feature.get("links") or [] if link.get("rel") == "geometry"),
             None,
@@ -586,16 +778,24 @@ class MeteoalarmAlertsProvider(AlertsProvider):
         except Exception:
             return "en"
 
-    def _cap_details(self, alert_id: str, features: list) -> Optional[dict]:
-        """One alert's CAP details, cached by alertId until it expires.
+    def _cap_details(self, alert_id: str, features: list, indexes: set) -> tuple:
+        """(details, incomplete) for one alert, cached by alertId and area.
 
-        Every feature of an alertId links to the same document, so the first
-        one that carries an xml link is enough.
+        Every feature of an alertId links to the same document, so the first one
+        that carries an xml link is enough.
         """
+        key = (alert_id, tuple(sorted(indexes)))
         with self._lock:
-            cached = self._caps.get(alert_id)
+            cached = self._caps.get(key)
         if cached is not None and cached[0] > self._utcnow():
-            return cached[1]
+            return cached[1], False
+        return self._shared(("cap", key), lambda: self._fetch_cap(alert_id, features, indexes, key))
+
+    def _fetch_cap(self, alert_id: str, features: list, indexes: set, key: tuple) -> tuple:
+        with self._lock:
+            cached = self._caps.get(key)
+        if cached is not None and cached[0] > self._utcnow():
+            return cached[1], False
 
         url = None
         for feature in features:
@@ -607,25 +807,37 @@ class MeteoalarmAlertsProvider(AlertsProvider):
             if url:
                 break
         if not url:
-            return None
+            return None, True
 
         response = self._get(url)
         if response is UNAVAILABLE or response.status_code == 204:
-            return None
-        details = parse_cap(response.text, self._language())
+            return None, True
+        details = parse_cap(response.text, self._language(), indexes)
         if details is None or details["expires"] is None:
-            return None
+            return None, True
         if details["msg_type"].lower() == "cancel":
-            return None
-        if details["expires"] <= self._utcnow() or details["level"] < MIN_LEVEL:
-            return None
+            return None, False
+        if not _is_active(details, self._utcnow()) or details["level"] < MIN_LEVEL:
+            return None, False
 
         # Capped at the window TTL: a later Cancel or Update must not hide
         # behind a document cached until its own expiry.
         until = min(details["expires"], self._utcnow() + timedelta(seconds=WINDOW_TTL_TODAY))
         with self._lock:
-            self._caps[alert_id] = (until, details)
-        return details
+            self._caps[key] = (until, details)
+        return details, False
+
+    def _evict(self) -> None:
+        """Drop window entries past the four days and CAP entries that expired."""
+        now = self._utcnow()
+        oldest = now.date() - timedelta(days=PAST_DAYS)
+        with self._lock:
+            for key in [key for key in self._windows if key[1] < oldest]:
+                del self._windows[key]
+            for key in [key for key, value in self._caps.items() if value[0] <= now]:
+                del self._caps[key]
+            while len(self._geometries) > GEOMETRY_CACHE_MAX:
+                self._geometries.pop(next(iter(self._geometries)))
 
     # --- matching ---------------------------------------------------------
 
@@ -647,48 +859,49 @@ class MeteoalarmAlertsProvider(AlertsProvider):
             return Coverage.COVERED
         return Coverage.NOT_COVERED
 
-    def _feature_covers(self, feature: dict, lon: float, lat: float) -> bool:
-        """Whether one warning area contains the point, confirmed against its outline."""
+    def _feature_covers(self, feature: dict, lon: float, lat: float) -> tuple:
+        """(matched, incomplete) for one warning area, confirmed against its outline."""
         properties = feature.get("properties") or {}
         geometry_type = properties.get("geometryType")
         if geometry_type == "no_geometry":
             self.host.logger.debug(
                 f"Meteoalarm feature {feature.get('id')} has no geometry; skipped"
             )
-            return False
+            return False, False
         if not geometry_contains(feature.get("geometry"), lon, lat):
-            return False
+            return False, False
         if geometry_type == "exact":
-            return True
+            return True, False
         exact = self._exact_geometry(feature)
         if exact is None:
             # A bbox is not proof that the point is inside the warning area.
             self.host.logger.debug(
                 f"Meteoalarm outline for {feature.get('id')} is unavailable; feature skipped"
             )
-            return False
-        return geometry_contains(exact, lon, lat)
+            return False, True
+        return geometry_contains(exact, lon, lat), False
 
     def _alerts_for(self, lat: float, lon: float) -> Optional[list]:
         """The active alerts covering a point, most severe first.
 
         One alert has a feature per CAP info language and area, so features are
         grouped by alertId and the point has to fall inside any one of them.
-        None means the data could not be fetched, as opposed to no alerts.
+        None means the data could not be fetched, as opposed to no alerts: any
+        window, outline or CAP needed for a candidate that failed makes an empty
+        answer unknown rather than an all-clear.
         """
+        self._evict()
         countries = self._country_geometries()
         if countries is None:
             return None
 
         grouped: dict[str, list] = {}
-        unavailable = False
+        incomplete = False
         for country, geometry in countries:
             if not geometry_contains(geometry, lon, lat):
                 continue
-            features = self._country_features(country)
-            if features is None:
-                unavailable = True
-                continue
+            features, failed = self._country_features(country)
+            incomplete = incomplete or failed
             for feature in features:
                 properties = feature.get("properties") or {}
                 if properties.get("supersededByAlertId"):
@@ -698,14 +911,28 @@ class MeteoalarmAlertsProvider(AlertsProvider):
                     grouped.setdefault(alert_id, []).append(feature)
 
         alerts = []
+        superseded: set = set()
         for alert_id, features in grouped.items():
-            if not any(self._feature_covers(feature, lon, lat) for feature in features):
+            matched = []
+            for feature in features:
+                covers, failed = self._feature_covers(feature, lon, lat)
+                incomplete = incomplete or failed
+                if covers:
+                    matched.append(feature)
+            if not matched:
                 continue
-            details = self._cap_details(alert_id, features)
-            if details is not None:
-                alerts.append(details)
+            indexes = {index for index in (_index_info(feature) for feature in matched)
+                       if index is not None}
+            details, failed = self._cap_details(alert_id, matched, indexes)
+            incomplete = incomplete or failed
+            if details is None:
+                continue
+            superseded |= details["supersedes"]
+            alerts.append(details)
+
+        alerts = [alert for alert in alerts if alert["identifier"] not in superseded]
         alerts.sort(key=lambda alert: (-alert["level"], alert["expires"]))
-        if unavailable and not alerts:
+        if incomplete and not alerts:
             return None
         return alerts
 
