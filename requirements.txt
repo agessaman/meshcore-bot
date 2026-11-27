@@ -11,7 +11,10 @@ urllib3>=2.0.0
 pyephem>=4.1.4
 geopy>=2.3.0
 maidenhead>=1.4.0
-pytz>=2023.3
+# 2026.2+ carries tz 2026b, which models British Columbia's permanent UTC-7.
+# Older releases give PST -08:00 for Vancouver winters, so [Bot] timezone and
+# the weather providers' local times would be an hour off.
+pytz>=2026.2
 # Real time zones for MET Norway's local times. Wheels exist for 64-bit x86 and
 # ARM only; on armv7 the import fails and the provider falls back to the
 # longitude estimate, so the marker keeps the Docker build working.

@@ -31,7 +31,8 @@ dependencies = [
     "pyephem>=4.1.4",
     "geopy>=2.3.0",
     "maidenhead>=1.4.0",
-    "pytz>=2023.3",
+    # 2026.2+ carries tz 2026b, which models British Columbia's permanent UTC-7.
+    "pytz>=2026.2",
     # Real time zones for MET Norway; no armv7 wheel, so the marker keeps the
     # armv7 Docker build working (the provider falls back to the longitude estimate).
     "tzfpy>=2.1; platform_machine in \"x86_64 AMD64 aarch64 arm64\"",

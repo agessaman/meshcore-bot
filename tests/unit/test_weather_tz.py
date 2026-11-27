@@ -14,6 +14,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
+import pytz
 
 from modules.i18n import Translator
 from modules.weather_common import WeatherCommandMixin
@@ -25,6 +26,15 @@ UTC = timezone.utc
 MADRID = (40.42, -3.70)
 TOKYO = (35.68, 139.70)
 SEATTLE = (47.61, -122.33)
+VANCOUVER = (49.28, -123.12)
+
+# British Columbia moved to permanent UTC-7 in 2026; tz 2026b, shipped in pytz
+# 2026.2, is the first release that models it.
+PYTZ_HAS_BC_PERMANENT_UTC7 = tuple(int(part) for part in pytz.__version__.split(".")) >= (2026, 2)
+needs_bc_tzdata = pytest.mark.skipif(
+    not PYTZ_HAS_BC_PERMANENT_UTC7,
+    reason="pytz older than 2026.2 predates BC's permanent UTC-7",
+)
 
 
 class _FakeTzfpy:
@@ -244,3 +254,23 @@ def test_the_hourly_labels_use_the_real_zone(zones):
 
     # 13:00Z is 2PM in Madrid, not 1PM as the estimate would say.
     assert text.startswith("2PM:")
+
+
+# --- British Columbia's permanent UTC-7 -------------------------------------
+
+
+@needs_bc_tzdata
+def test_vancouver_stays_at_minus_seven_all_year(monkeypatch):
+    """Real pytz, not a stub: the zone data itself has to carry BC's change."""
+    monkeypatch.setitem(sys.modules, "tzfpy", _FakeTzfpy({VANCOUVER: "America/Vancouver"}))
+    _tz._reset()
+    try:
+        for moment in (
+            datetime(2026, 7, 1, 12, 0, tzinfo=UTC),
+            datetime(2026, 11, 27, 12, 0, tzinfo=UTC),
+            datetime(2027, 1, 15, 12, 0, tzinfo=UTC),
+            datetime(2027, 7, 1, 12, 0, tzinfo=UTC),
+        ):
+            assert _tz.utc_offset_at(*VANCOUVER, moment) == timedelta(hours=-7), moment
+    finally:
+        _tz._reset()
