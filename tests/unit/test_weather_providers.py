@@ -572,8 +572,8 @@ def test_the_alerts_option_lists_meteoalarm_alerts():
 
     texts = [call.args[1] for call in cmd.send_response.call_args_list]
     assert len(texts) == 2
-    assert texts[0].startswith("1/2 \U0001f7e0 Wind")
-    assert texts[1].startswith("2/2 \U0001f7e1 Gale")
+    assert texts[0].startswith("1. \U0001f7e0 Wind from ")
+    assert texts[1].startswith("2. \U0001f7e1 Gale from ")
     assert not any("No weather alerts" in text for text in texts)
 
 

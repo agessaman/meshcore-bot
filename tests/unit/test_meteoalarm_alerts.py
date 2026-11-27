@@ -154,6 +154,7 @@ def _host(language="en"):
     host.bot = SimpleNamespace(config=config)
     host.translator = Translator("en")
     host.translate = host.translator.translate
+    host.response_translator = host.translator
     host._count_display_width = lambda text: len(text.encode("utf-8"))
     host.get_max_message_length = Mock(return_value=130)
     host.send_response = AsyncMock(return_value=True)
@@ -520,8 +521,11 @@ def test_the_full_list_sends_one_message_per_alert_and_paces_them():
 
     texts = [call.args[1] for call in host.send_response.call_args_list]
     assert len(texts) == 2
-    assert texts[0].startswith("1/2 \U0001f7e0 Wind")
-    assert texts[1].startswith("2/2 \U0001f7e1 Gale")
+    # One line per alert, in the shape NWS's full list uses.
+    assert texts[0].startswith("1. \U0001f7e0 Wind from ")
+    assert texts[1].startswith("2. \U0001f7e1 Gale from ")
+    assert "\n" not in texts[0]
+    assert texts[0].endswith("Aana-Sira - Karmoey")
     assert host._pace_reply.await_count == 1
 
 
@@ -1187,3 +1191,51 @@ def test_the_geometry_cache_is_bounded():
     provider._evict()
 
     assert len(provider._geometries) == GEOMETRY_CACHE_MAX
+
+
+# --- the configured language picks its own info block -----------------------
+
+TWO_LANGUAGES_URL = f"{STORAGE}/warnings/alert-two-languages.xml"
+GEOM_TWO_LANGUAGES = f"{STORAGE}/features/f-two-languages.geojson"
+
+
+def _two_language_routes():
+    """One alert with a Norwegian and an English feature, same id and outline."""
+    routes = _routes()
+    routes[NO_URL] = lambda params: (
+        _Response(200, _json("NO_two_languages.json"))
+        if str(params.get("datetime", "")).startswith(TODAY)
+        else _Response(204)
+    )
+    routes[TWO_LANGUAGES_URL] = _Response(200, text=_text("alert-two-languages.xml"))
+    routes[GEOM_TWO_LANGUAGES] = _Response(200, _json("f-exact.geojson"))
+    return routes
+
+
+def test_the_configured_language_picks_its_own_info_block():
+    provider, _session_, _host_, _clock = _provider(_two_language_routes(), language="en")
+
+    summary = provider.summary(LAT, LON, 130)
+
+    assert summary.count == 1
+    assert "Gale" in summary.text
+    assert "Kuling" not in summary.text
+
+
+def test_the_norwegian_language_picks_the_norwegian_block():
+    provider, _session_, _host_, _clock = _provider(_two_language_routes(), language="no")
+
+    summary = provider.summary(LAT, LON, 130)
+
+    assert summary.count == 1
+    assert "Kuling" in summary.text
+    assert "Gale" not in summary.text
+
+
+def test_a_language_the_alert_lacks_falls_back_to_english():
+    provider, _session_, _host_, _clock = _provider(_two_language_routes(), language="de")
+
+    summary = provider.summary(LAT, LON, 130)
+
+    assert summary.count == 1
+    assert "Gale" in summary.text

@@ -41,6 +41,7 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
+from .. import alert_format
 from .base import AlertsProvider, AlertSummary, Coverage, ProviderHost
 
 # MeteoGate serves the same EDR API as Meteoalarm Direct and is where a public
@@ -723,14 +724,20 @@ class MeteoalarmAlertsProvider(AlertsProvider):
         return features
 
     def _country_features(self, country: str) -> tuple:
-        """(features, incomplete) for one country, merged over the day windows."""
+        """(features, incomplete) for one country, merged over the day windows.
+
+        One alert has a feature per CAP info block, and the sibling languages
+        share the feature id and the outline, so the id alone is not a key: the
+        indexInfo has to be part of it or every language but the last is lost.
+        """
         merged: dict[Any, dict] = {}
         incomplete = False
         for day, interval, ttl in self._window_specs():
             features, failed = self._window_features(country, day, interval, ttl)
             incomplete = incomplete or failed
             for feature in features:
-                merged[feature.get("id") or id(feature)] = feature
+                key = (feature.get("id") or id(feature), _index_info(feature))
+                merged[key] = feature
         return list(merged.values()), incomplete
 
     def _exact_geometry(self, feature: dict) -> Optional[dict]:
@@ -988,25 +995,39 @@ class MeteoalarmAlertsProvider(AlertsProvider):
             trimmed = trimmed[:-1]
         return f"{trimmed}\u2026{suffix}" if trimmed else suffix.strip()
 
-    def _full_alert_text(self, alert: dict, index: int, total: int) -> str:
+    @staticmethod
+    def _headline_area(headline: str) -> str:
+        """The area part of a CAP headline ("Gale, yellow level, Aana-Sira - Karmoey")."""
+        parts = [part.strip() for part in (headline or "").split(",")]
+        if len(parts) < 3:
+            return ""
+        return parts[-1]
+
+    def _full_alert_text(self, alert: dict, index: int, max_length: int) -> str:
+        """One alert as a single line, in the shape NWS's full list uses.
+
+        ``{index}. {emoji}{event} {window} {area}``: the window comes from the
+        shared alert formatter, and the area is the last part of the headline,
+        added only when the line still fits.
+        """
         emoji = LEVEL_EMOJI.get(alert["level"], "")
-        lines = [f"{index}/{total} {emoji} {alert['event']}".strip()]
-        if alert["headline"]:
-            lines.append(alert["headline"])
-        if alert["onset"]:
-            lines.append(
-                self.host.translate(
-                    "commands.wx.meteoalarm.from", time=self._compact_time(alert["onset"])
-                )
-            )
-        lines.append(
-            self.host.translate(
-                "commands.wx.meteoalarm.until", time=self._compact_time(alert["expires"])
-            )
+        window = alert_format.format_alert_window(
+            {
+                "effective": alert["onset"].isoformat() if alert["onset"] else "",
+                "expires": alert["expires"].isoformat() if alert["expires"] else "",
+            },
+            self.host.response_translator,
         )
-        if alert["awareness_type"]:
-            lines.append(alert["awareness_type"])
-        return "\n".join(lines)
+        parts = [f"{index}.", f"{emoji} {alert['event']}".strip()]
+        if window:
+            parts.append(window)
+        line = " ".join(parts)
+        area = self._headline_area(alert["headline"])
+        if area:
+            candidate = f"{line} {area}"
+            if self.host._count_display_width(candidate) <= max_length:
+                return candidate
+        return line
 
     def _fit(self, text: str, max_length: int) -> str:
         """Cut a message to the frame budget, by display width."""
@@ -1032,7 +1053,7 @@ class MeteoalarmAlertsProvider(AlertsProvider):
         sleep_time = max(rate_limit + 1.0, 2.0)
 
         for index, alert in enumerate(alerts, 1):
-            text = self._fit(self._full_alert_text(alert, index, len(alerts)), max_length)
+            text = self._fit(self._full_alert_text(alert, index, max_length), max_length)
             if not await self.host.send_response(message, text, skip_user_rate_limit=(index > 1)):
                 return False
             if index < len(alerts):
