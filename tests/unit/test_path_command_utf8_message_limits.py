@@ -87,6 +87,39 @@ class TestPathCommandSendPathResponseByteSplitting:
         assert path_cmd.send_response.await_count >= 2
 
     @pytest.mark.asyncio
+    async def test_continuation_marker_counts_against_budget(self, path_cmd):
+        """The end marker must fit in its chunk, or the send layer re-splits it.
+
+        Seven repeater lines behind a mention prefix: the first five lines plus
+        prefix filled the 142-byte channel budget exactly, and the appended "\\n..."
+        tipped it over, so one path reply went out as three RF messages.
+        """
+        path_cmd.translate = lambda key, **kw: {
+            "commands.path.continuation_end": "\n...",
+            "commands.path.continuation_start": f"...\n{kw.get('line', '')}",
+        }.get(key, key)
+        path_cmd.path_reply_prefix = "@[Nutcrack-TD+]"
+        budget = 142
+        path_cmd.get_max_message_length = lambda _msg: budget
+        msg = MeshMessage(content="p", channel="general", is_dm=False, sender_id="Nutcrack-TD+")
+        response = "\n".join([
+            "757575: Powerline Trail",
+            "DF2B0C: Anthology_Apts",
+            "E03DA8: WYR ISS Newport way",
+            "B1FA1E: PicoW Repeater",
+            "9FDC10: River City Repeater",
+            "7E7662: WW7STR/PugetMesh Cougar",
+            "9E6EC8: N7JMV-EVERETT-RP",
+        ])
+        with patch("modules.commands.path_command.asyncio.sleep", new_callable=AsyncMock):
+            await path_cmd._send_path_response(msg, response)
+        sent = [c[0][1] for c in path_cmd.send_response.call_args_list]
+        assert len(sent) == 2
+        assert all(len(s.encode("utf-8")) <= budget for s in sent)
+        assert sent[0].startswith("@[Nutcrack-TD+]\n") and sent[0].endswith("\n...")
+        assert sent[1].startswith("...\n")
+
+    @pytest.mark.asyncio
     async def test_single_send_when_under_byte_budget(self, path_cmd):
         path_cmd.get_max_message_length = lambda _msg: 100
         msg = MeshMessage(content="path", channel="general", is_dm=False)
