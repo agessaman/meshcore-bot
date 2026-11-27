@@ -395,7 +395,9 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         # Open-Meteo speaks commands.gwx as gwx always has.
         self.translation_ns = self.provider.translation_ns
 
-        if self.provider.location_style == "global":
+        # An unpinned wx on Open-Meteo answers like gwx, so it says so. A pinned
+        # command keeps its own class description.
+        if self.provider.location_style == "global" and not self.pinned_provider:
             self.description = "Get weather information for any location (usage: wx Tokyo)"
 
     @property
@@ -450,8 +452,10 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
     @noaa_session.setter
     def noaa_session(self, session: requests.Session) -> None:
         self._shared_session = session
+        # Only the providers that share the NOAA session: an alerts provider
+        # with its own transport keeps it.
         for provider in (self.provider, self.alerts_provider, self._noaa_compat, self._nws_compat):
-            if provider is not None and hasattr(provider, 'session'):
+            if isinstance(provider, (NoaaProvider, NwsAlertsProvider)):
                 provider.session = session
 
     def _unit_setting(self, key: str, fallback: str) -> str:
@@ -469,20 +473,20 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
 
     def _noaa_units(self) -> tuple[str, str]:
         """Configured (temperature_unit, wind_speed_unit) for NOAA replies."""
-        return self.provider._noaa_units()
+        return self._noaa._noaa_units()
 
     @property
     def _noaa_metric_distance(self) -> bool:
         """Kilometers instead of miles, following the temperature unit as gwx does."""
-        return self.provider._noaa_metric_distance
+        return self._noaa._noaa_metric_distance
 
     def _noaa_units_url(self, url: str) -> str:
         """A NOAA forecast URL asking for SI units (°C, km/h, also in the forecast text) when Celsius is configured."""
-        return self.provider._noaa_units_url(url)
+        return self._noaa._noaa_units_url(url)
 
     def _noaa_wind_convert(self, number: str, wind_speed_text: str) -> str:
         """A NOAA wind number in the configured wind_speed_unit (NOAA sends mph, or km/h in SI mode)."""
-        return self.provider._noaa_wind_convert(number, wind_speed_text)
+        return self._noaa._noaa_wind_convert(number, wind_speed_text)
 
     @staticmethod
     def _noaa_period_temp_symbol(period: dict) -> str:
@@ -538,6 +542,17 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                     fallback=DEFAULT_METEOALARM_API_URL, raw=True,
                 ).strip().rstrip('/'),
             )
+        if alerts_name == 'nws' and self.provider_name != 'noaa':
+            # NWS alerts are not the only source when the forecast comes from
+            # elsewhere: a point outside NWS coverage reads as "not available",
+            # in the forecast provider's catalog, from the first request on.
+            shared = {
+                **shared,
+                'fallback_enabled': True,
+                'no_coverage_key': (
+                    f'{PROVIDERS[self.provider_name].translation_ns}.source_option_not_available'
+                ),
+            }
         return make_alerts_provider(alerts_name, host=self, **shared)
 
     def get_help_text(self, message: MeshMessage | None = None) -> str:
@@ -606,7 +621,9 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
 
             # Look for keys matching custom.wxsim.<location> pattern
             prefix = 'custom.wxsim.'
-            for key, value in self.bot.config.items(section):
+            # raw=True: a '%' in another [Weather] value, such as the Meteoalarm
+            # token, must not be read as interpolation.
+            for key, value in self.bot.config.items(section, raw=True):
                 if key.startswith(prefix):
                     # Extract the location name from the key (e.g., "custom.wxsim.lethbridge" -> "lethbridge")
                     key_location = key[len(prefix):].strip()
@@ -619,7 +636,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             # Check for default source: custom.wxsim.default
             default_key = 'custom.wxsim.default'
             if self.bot.config.has_option(section, default_key):
-                url = self.bot.config.get(section, default_key)
+                url = self.bot.config.get(section, default_key, raw=True)
                 self.logger.debug(f"Found default WXSIM source: {url}")
                 return url
             self.logger.debug("No default WXSIM source configured")
@@ -991,13 +1008,21 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         if lat is None:
             return True
 
-        # Coverage can do HTTP and sleep, so it runs on a worker thread.
-        coverage = await self._run_sync_provider_async(self.alerts_provider.coverage_for, lat, lon)
+        # Coverage can do HTTP and sleep, so it runs on a worker thread. Only
+        # NWS shares the NOAA session and its lock; an independent source must
+        # not hold it while it waits on its own API.
+        coverage = await self._alerts_coverage_async(lat, lon)
         if coverage is not Coverage.COVERED:
             await self.send_response(message, self.translate(self._alerts_unavailable_key()))
             return True
 
         return await self._send_full_alert_list(message, lat, lon)
+
+    async def _alerts_coverage_async(self, lat: float, lon: float) -> Coverage:
+        """The alerts provider's coverage for a point, off the event loop."""
+        if isinstance(self.alerts_provider, NwsAlertsProvider):
+            return await self._run_sync_provider_async(self.alerts_provider.coverage_for, lat, lon)
+        return await asyncio.to_thread(self.alerts_provider.coverage_for, lat, lon)
 
     def _alerts_unavailable_key(self) -> str:
         """The reply for an alerts request the provider cannot answer.

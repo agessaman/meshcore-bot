@@ -959,3 +959,129 @@ def test_the_alert_lookup_runs_outside_the_noaa_lock():
     cmd._forecast_for_location("47.6,-122.3", "city", "default", 7, None, False)
 
     assert probes == {"forecast": False, "summary": True}
+
+
+# --- regressions: the command side ------------------------------------------
+
+
+def test_gwx_keeps_its_own_description():
+    cmd = GlobalWxCommand(_bot())
+    assert cmd.get_metadata()["description"] == (
+        "Get weather information for any global location (usage: gwx Tokyo)"
+    )
+
+    # An unpinned wx on Open-Meteo answers like gwx, so it says so.
+    assert _wx({"weather_provider": "openmeteo"}).description == (
+        "Get weather information for any location (usage: wx Tokyo)"
+    )
+
+
+def test_the_noaa_named_helpers_answer_on_openmeteo():
+    openmeteo = _wx({"weather_provider": "openmeteo"})
+    noaa = _wx({"weather_provider": "noaa"})
+
+    assert openmeteo._noaa_units() == noaa._noaa_units()
+    assert openmeteo._noaa_metric_distance == noaa._noaa_metric_distance
+    url = "https://api.weather.gov/gridpoints/SEW/125,68/forecast"
+    assert openmeteo._noaa_units_url(url) == noaa._noaa_units_url(url)
+    assert openmeteo._noaa_wind_convert("10", "mph") == noaa._noaa_wind_convert("10", "mph")
+
+
+def test_a_percent_in_a_weather_value_does_not_break_wx():
+    config = configparser.ConfigParser()
+    config.read_string(
+        "[Weather]\n"
+        "weather_provider = noaa\n"
+        "alerts_provider = meteoalarm\n"
+        "meteoalarm_token = ab%cd\n"
+        "custom.wxsim.seattle = https://example.invalid/plaintext.txt\n"
+    )
+    bot = Mock()
+    bot.config = config
+    bot.translator = Translator("en")
+    bot.db_manager.get_cached_geocoding = Mock(return_value=(None, None))
+
+    cmd = WxCommand(bot)
+
+    assert cmd._get_custom_wxsim_source("seattle") == "https://example.invalid/plaintext.txt"
+    assert cmd._get_custom_wxsim_source("paris") is None
+    assert cmd._get_custom_wxsim_source(None) is None
+
+
+def _meteoalarm_alerts_command():
+    """A wx command whose alerts provider is Meteoalarm on a fake session."""
+    from tests.unit.test_meteoalarm_alerts import _Clock, _routes, _Session
+
+    reset_rate_limits()
+    cmd = _wx({"weather_provider": "noaa", "alerts_provider": "meteoalarm",
+               "meteoalarm_token": "s3cr3t-token"})
+    provider = cmd.alerts_provider
+    provider.session = _Session(_routes())
+    clock = _Clock()
+    provider._clock = lambda: clock.monotonic
+    provider._utcnow = lambda: clock.wall
+    provider._wait = clock.advance
+
+    cmd.record_execution = Mock()
+    cmd.send_response = AsyncMock(return_value=True)
+    cmd._pace_reply = AsyncMock()
+    cmd.get_max_message_length = Mock(return_value=130)
+    return cmd, provider
+
+
+def test_meteoalarm_coverage_does_not_take_the_noaa_lock():
+    import threading
+
+    cmd, provider = _meteoalarm_alerts_command()
+    # The NOAA worker lock is what _run_sync_provider_async takes; an
+    # independent alert source must not go through it.
+    cmd._run_sync_provider_async = Mock(side_effect=AssertionError("NOAA lock taken"))
+    threads = []
+    real = provider.coverage_for
+
+    def coverage_for(lat, lon):
+        threads.append(threading.current_thread())
+        return real(lat, lon)
+
+    provider.coverage_for = coverage_for
+    message = SimpleNamespace(content="wx 58.43,5.95 alerts", sender_id="u1")
+
+    assert asyncio.run(cmd.execute(message)) is True
+
+    assert cmd._run_sync_provider_async.call_count == 0
+    assert threads and threads[0] is not threading.main_thread()
+    texts = [call.args[1] for call in cmd.send_response.call_args_list]
+    assert texts and "alerts:" in texts[0]
+
+
+def test_the_noaa_session_setter_leaves_meteoalarm_alone():
+    cmd, provider = _meteoalarm_alerts_command()
+    meteoalarm_session = provider.session
+    session = Mock()
+
+    cmd.noaa_session = session
+
+    assert cmd.provider.session is session
+    assert provider.session is meteoalarm_session
+
+
+def test_gwx_with_nws_alerts_says_not_available_from_the_first_request():
+    cmd = GlobalWxCommand(_bot({"alerts_provider": "nws"}))
+    assert isinstance(cmd.alerts_provider, NwsAlertsProvider)
+    # A point outside NWS coverage: /alerts answers 404.
+    cmd.alerts_provider.session = Mock(
+        get=Mock(return_value=Mock(ok=False, status_code=404))
+    )
+    cmd.geocode_location = Mock(return_value=(48.85, 2.35, {}, None))
+    cmd.record_execution = Mock()
+    cmd.send_response = AsyncMock(return_value=True)
+    cmd._pace_reply = AsyncMock()
+    cmd.get_max_message_length = Mock(return_value=130)
+    message = SimpleNamespace(content="gwx 48.85,2.35 alerts", sender_id="u1")
+
+    assert asyncio.run(cmd.execute(message)) is True
+    assert asyncio.run(cmd.execute(message)) is True
+
+    texts = [call.args[1] for call in cmd.send_response.call_args_list]
+    expected = Translator("en").translate("commands.gwx.source_option_not_available")
+    assert texts == [expected, expected]

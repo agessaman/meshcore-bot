@@ -39,6 +39,7 @@ class NwsAlertsProvider(AlertsProvider):
         lock: Optional[threading.Lock] = None,
         coverage: Optional[NWSNoCoverageCache] = None,
         fallback_enabled: bool = False,
+        no_coverage_key: str = 'commands.wx.source_option_not_available',
     ):
         """Bind the provider to its host and the command's shared NOAA state.
 
@@ -47,12 +48,15 @@ class NwsAlertsProvider(AlertsProvider):
         coverage cache serve both. *fallback_enabled* says the command can
         answer points outside NWS coverage from another provider, which is what
         turns a failed fetch into "not available here" rather than an error.
+        *no_coverage_key* is the catalog key that reply uses, so a command whose
+        forecast provider speaks another catalog says so in its own words.
         """
         super().__init__(host)
         self.session = session if session is not None else make_retry_session()
         self.lock = lock if lock is not None else threading.Lock()
         self.coverage = coverage if coverage is not None else NWSNoCoverageCache()
         self.fallback_enabled = fallback_enabled
+        self.no_coverage_key = no_coverage_key
         self.url_timeout = NOAA_TIMEOUT
 
     def covers(self, lat: float, lon: float) -> bool:
@@ -536,8 +540,9 @@ class NwsAlertsProvider(AlertsProvider):
         )
         if alerts_result == ERROR_FETCHING_DATA:
             if self.fallback_enabled and self.coverage.is_unavailable(lat, lon):
-                # NWS alerts are the only alert source; Open-Meteo has none to offer.
-                return bool(await self.host.send_response(message, self.host.translate('commands.wx.source_option_not_available')))
+                # NWS alerts are not the only source here, so a point outside
+                # coverage reads as "not available" from the first request on.
+                return bool(await self.host.send_response(message, self.host.translate(self.no_coverage_key)))
             return bool(await self.host.send_response(message, self.host.translate('commands.wx.error_fetching')))
         elif alerts_result == NO_ALERTS:
             return bool(await self.host.send_response(message, "No weather alerts"))
