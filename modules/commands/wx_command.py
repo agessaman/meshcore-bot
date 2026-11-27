@@ -50,8 +50,9 @@ from ..weather_providers import (
     make_provider,
     resolve_alerts_provider_name,
 )
+from ..weather_providers.alerts_meteoalarm import MeteoalarmAlertsProvider
 from ..weather_providers.alerts_nws import NwsAlertsProvider
-from ..weather_providers.base import ForecastReply, WeatherUnits
+from ..weather_providers.base import AlertsProvider, ForecastReply, WeatherUnits
 from ..weather_providers.noaa import (
     ERROR_FETCHING_DATA as _ERROR_FETCHING_DATA,
 )
@@ -349,7 +350,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         alerts_name = resolve_alerts_provider_name(
             bot.config.get('Weather', 'alerts_provider', fallback='auto'), provider_name, self.logger
         )
-        self.alerts_provider = make_alerts_provider(alerts_name, host=self, **shared) if alerts_name else None
+        self.alerts_provider = self._build_alerts_provider(alerts_name, shared)
 
         # The NOAA and NWS methods this command still exposes answer from these
         # when the configured providers are something else.
@@ -487,11 +488,33 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         """Move blocking provider work off-loop without concurrent Session use."""
         return await asyncio.to_thread(self._run_sync_provider, operation, *args, **kwargs)
 
+    def _build_alerts_provider(self, alerts_name: Optional[str], shared: dict) -> Optional[AlertsProvider]:
+        """The configured alerts provider, or None.
+
+        Meteoalarm needs its own token and takes no NOAA state, so it is built
+        apart from the providers that share the command's session and lock.
+        """
+        if not alerts_name:
+            return None
+        if alerts_name == "meteoalarm":
+            token = self.bot.config.get('Weather', 'meteoalarm_token', fallback='').strip()
+            if not token:
+                self.logger.warning(
+                    "alerts_provider = meteoalarm needs [Weather] meteoalarm_token; alerts are off"
+                )
+                return None
+            return make_alerts_provider(alerts_name, host=self, token=token)
+        return make_alerts_provider(alerts_name, host=self, **shared)
+
     def get_help_text(self, message: MeshMessage | None = None) -> str:
-        """The help text of the provider's catalog: wx's description, or gwx's usage line."""
+        """The help text of the provider's catalog, with the alert credit when one is owed."""
         if self.provider.location_style == "global":
-            return self.translate(f'{self.provider.translation_ns}.help')
-        return self.translate(f'{self.provider.translation_ns}.description')
+            text = self.translate(f'{self.provider.translation_ns}.help')
+        else:
+            text = self.translate(f'{self.provider.translation_ns}.description')
+        if isinstance(self.alerts_provider, MeteoalarmAlertsProvider):
+            text = f"{text} {self.translate('commands.wx.meteoalarm.attribution')}"
+        return text
 
     def matches_keyword(self, message: MeshMessage) -> bool:
         """Check if message starts with a weather keyword"""

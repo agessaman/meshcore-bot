@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from .alerts_meteoalarm import MeteoalarmAlertsProvider
 from .alerts_nws import NwsAlertsProvider
 from .base import (
     AlertsProvider,
@@ -42,6 +43,7 @@ PROVIDERS: dict[str, type[WeatherProvider]] = {
 }
 
 ALERT_PROVIDERS: dict[str, type[AlertsProvider]] = {
+    "meteoalarm": MeteoalarmAlertsProvider,
     "nws": NwsAlertsProvider,
 }
 

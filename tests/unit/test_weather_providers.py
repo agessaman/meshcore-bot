@@ -23,6 +23,7 @@ from modules.weather_providers import (
     make_provider,
     resolve_alerts_provider_name,
 )
+from modules.weather_providers.alerts_meteoalarm import MeteoalarmAlertsProvider
 from modules.weather_providers.alerts_nws import NwsAlertsProvider
 from modules.weather_providers.base import (
     AlertsProvider,
@@ -67,8 +68,9 @@ def test_the_registries_hold_the_shipped_providers():
     assert set(PROVIDERS) == {"noaa", "openmeteo"}
     assert PROVIDERS["noaa"] is NoaaProvider
     assert PROVIDERS["openmeteo"] is OpenMeteoProvider
-    assert set(ALERT_PROVIDERS) == {"nws"}
+    assert set(ALERT_PROVIDERS) == {"meteoalarm", "nws"}
     assert ALERT_PROVIDERS["nws"] is NwsAlertsProvider
+    assert ALERT_PROVIDERS["meteoalarm"] is MeteoalarmAlertsProvider
 
 
 def test_make_provider_binds_the_host_and_units():
@@ -462,3 +464,38 @@ def test_an_invalid_wx_precipitation_unit_keeps_openmeteos_validated_one():
     cmd.get_max_message_length = Mock(return_value=130)
     cmd._fallback_reply("47.6,-122.3", "coordinates", 47.6, -122.3, "default", 7, None)
     assert cmd.fallback_provider.units.precipitation == "mm"
+
+
+# --- Meteoalarm -------------------------------------------------------------
+
+
+def test_meteoalarm_is_selected_with_its_token():
+    cmd = _wx({"weather_provider": "noaa", "alerts_provider": "meteoalarm",
+               "meteoalarm_token": "s3cr3t-token"})
+    assert isinstance(cmd.alerts_provider, MeteoalarmAlertsProvider)
+    assert cmd.alerts_provider.token == "s3cr3t-token"
+    assert _warnings(cmd.logger) == []
+
+
+def test_meteoalarm_without_a_token_warns_once_and_turns_alerts_off():
+    cmd = _wx({"weather_provider": "noaa", "alerts_provider": "meteoalarm"})
+    assert cmd.alerts_provider is None
+    warnings = _warnings(cmd.logger)
+    assert len(warnings) == 1
+    assert "meteoalarm_token" in warnings[0]
+
+
+def test_meteoalarm_with_an_empty_token_warns_once_and_turns_alerts_off():
+    cmd = _wx({"weather_provider": "noaa", "alerts_provider": "meteoalarm",
+               "meteoalarm_token": "   "})
+    assert cmd.alerts_provider is None
+    assert len(_warnings(cmd.logger)) == 1
+
+
+def test_the_help_text_credits_meteoalarm_only_when_it_is_the_alerts_provider():
+    with_credit = _wx({"weather_provider": "noaa", "alerts_provider": "meteoalarm",
+                       "meteoalarm_token": "s3cr3t-token"})
+    assert with_credit.get_help_text().endswith("Alerts: MeteoAlarm/EUMETNET")
+
+    without = _wx({"weather_provider": "noaa"})
+    assert "MeteoAlarm" not in without.get_help_text()
