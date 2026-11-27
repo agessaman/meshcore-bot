@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from .alerts_dwd import DwdAlertsProvider
 from .alerts_eccc import EcccAlertsProvider
 from .alerts_meteoalarm import MeteoalarmAlertsProvider
 from .alerts_nws import NwsAlertsProvider
@@ -48,6 +49,7 @@ PROVIDERS: dict[str, type[WeatherProvider]] = {
 }
 
 ALERT_PROVIDERS: dict[str, type[AlertsProvider]] = {
+    "dwd": DwdAlertsProvider,
     "eccc": EcccAlertsProvider,
     "meteoalarm": MeteoalarmAlertsProvider,
     "nws": NwsAlertsProvider,
@@ -108,6 +110,7 @@ __all__ = [
     "AlertSummary",
     "AlertsProvider",
     "Capability",
+    "DwdAlertsProvider",
     "EcccAlertsProvider",
     "EcccProvider",
     "ForecastReply",

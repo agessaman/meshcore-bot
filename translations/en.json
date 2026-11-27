@@ -248,6 +248,10 @@
       },
       "eccc": {
         "error_fetching": "Error fetching weather alerts"
+      },
+      "dwd": {
+        "attribution": "Alerts: DWD via Bright Sky",
+        "error_fetching": "Error fetching weather alerts"
       }
     },
     "gwx": {

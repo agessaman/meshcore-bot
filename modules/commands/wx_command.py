@@ -50,6 +50,7 @@ from ..weather_providers import (
     make_provider,
     resolve_alerts_provider_name,
 )
+from ..weather_providers.alerts_dwd import DwdAlertsProvider
 from ..weather_providers.alerts_meteoalarm import DEFAULT_BASE_URL as DEFAULT_METEOALARM_API_URL
 from ..weather_providers.alerts_meteoalarm import MeteoalarmAlertsProvider
 from ..weather_providers.alerts_nws import NwsAlertsProvider
@@ -120,6 +121,7 @@ _ALERT_PROVIDER_LABELS = {
     "nws": "NWS (US)",
     "meteoalarm": "Meteoalarm (Europe)",
     "eccc": "Environment Canada",
+    "dwd": "Germany (DWD)",
 }
 
 _P = ParamSpec("_P")
@@ -570,6 +572,8 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             text = self.translate(f'{self.provider.translation_ns}.description')
         if isinstance(self.alerts_provider, MeteoalarmAlertsProvider):
             text = f"{text} {self.translate('commands.wx.meteoalarm.attribution')}"
+        if isinstance(self.alerts_provider, DwdAlertsProvider):
+            text = f"{text} {self.translate('commands.wx.dwd.attribution')}"
         return text
 
     def matches_keyword(self, message: MeshMessage) -> bool:

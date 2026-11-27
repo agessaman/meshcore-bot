@@ -23,6 +23,7 @@ from modules.weather_providers import (
     make_provider,
     resolve_alerts_provider_name,
 )
+from modules.weather_providers.alerts_dwd import DwdAlertsProvider
 from modules.weather_providers.alerts_eccc import EcccAlertsProvider
 from modules.weather_providers.alerts_meteoalarm import (
     MeteoalarmAlertsProvider,
@@ -76,10 +77,11 @@ def test_the_registries_hold_the_shipped_providers():
     assert PROVIDERS["openmeteo"] is OpenMeteoProvider
     assert PROVIDERS["metno"] is MetNorwayProvider
     assert PROVIDERS["eccc"] is EcccProvider
-    assert set(ALERT_PROVIDERS) == {"eccc", "meteoalarm", "nws"}
+    assert set(ALERT_PROVIDERS) == {"dwd", "eccc", "meteoalarm", "nws"}
     assert ALERT_PROVIDERS["nws"] is NwsAlertsProvider
     assert ALERT_PROVIDERS["meteoalarm"] is MeteoalarmAlertsProvider
     assert ALERT_PROVIDERS["eccc"] is EcccAlertsProvider
+    assert ALERT_PROVIDERS["dwd"] is DwdAlertsProvider
 
 
 def test_make_provider_binds_the_host_and_units():

@@ -18,8 +18,10 @@ from typing import Any, ClassVar, Optional
 from .. import alert_format
 from .base import AlertSummary
 
-# Level 1 is a statement or an advisory with no colour of its own.
-LEVEL_EMOJI = {1: "\u2139\ufe0f", 2: "\U0001f7e1", 3: "\U0001f7e0", 4: "\U0001f534"}
+# Level 1 is a statement or an advisory with no colour of its own. Level 5 is
+# DWD's violet, the top of its own four-step scale.
+LEVEL_EMOJI = {1: "\u2139\ufe0f", 2: "\U0001f7e1", 3: "\U0001f7e0", 4: "\U0001f534",
+               5: "\U0001f7e3"}
 
 
 class PackedAlertsMixin:

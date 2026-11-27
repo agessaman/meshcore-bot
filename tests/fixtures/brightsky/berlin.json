@@ -1,0 +1,34 @@
+{
+ "alerts": [
+  {
+   "id": 3071790,
+   "alert_id": "2.49.0.0.276.0.DWD.PVW.1795779720000.9a197706-2474-4e0b-9b2c-51f06a3e712a",
+   "effective": "2026-11-27T11:42:00+00:00",
+   "onset": "2026-11-27T15:00:00+00:00",
+   "expires": "2026-11-28T11:00:00+00:00",
+   "category": "met",
+   "response_type": "prepare",
+   "urgency": "immediate",
+   "severity": "minor",
+   "certainty": "likely",
+   "event_code": 22,
+   "event_en": "frost",
+   "event_de": "FROST",
+   "headline_en": "Official WARNING of FROST",
+   "headline_de": "Amtliche WARNUNG vor FROST",
+   "description_en": "There is a risk of frost (level 1 of 2).\nMinimum temperature: -3 - -6 °C",
+   "description_de": "Es tritt mäßiger Frost zwischen -3 °C und -6 °C auf.",
+   "instruction_en": "Hazard(s) to expect: possible frost damage. \nRecommendations for what to do: \nIf necessary, take precautions against frost.",
+   "instruction_de": "Hinweis auf: mögliche Frostschäden. \nHandlungsempfehlungen: \nggf. Frostschutzmaßnahmen ergreifen",
+   "status": "actual"
+  }
+ ],
+ "location": {
+  "warn_cell_id": 711000101,
+  "name": "Berl. - Mitte",
+  "name_short": "B.-Mitte",
+  "district": "Berlin",
+  "state": "Berlin",
+  "state_short": "BE"
+ }
+}
