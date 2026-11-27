@@ -12,7 +12,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, ClassVar, Protocol
+from typing import Any, ClassVar, Optional, Protocol
 
 
 class ProviderHost(Protocol):
@@ -49,7 +49,8 @@ class ProviderHost(Protocol):
 
     def _short_hourly_description(self, description: str) -> str: ...
 
-    def _pack_hourly_lines(self, hourly_lines: Any, max_length: int) -> str: ...
+    def _pack_hourly_lines(self, hourly_lines: Any, max_length: int,
+                           namespace: Optional[str] = None) -> str: ...
 
     async def _pace_reply(self, message: Any, seconds: float) -> None: ...
 

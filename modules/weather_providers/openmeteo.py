@@ -305,7 +305,7 @@ class OpenMeteoProvider(WeatherProvider):
             if speed is not None and direction is not None:
                 parts.append(f"{self.host._without_arrow(self._degrees_to_direction(direction))}{int(speed)}")
             lines.append(" ".join(parts))
-        return self.host._pack_hourly_lines(lines, max_length)
+        return self.host._pack_hourly_lines(lines, max_length, self.translation_ns)
 
     def _open_meteo_current(self, data: dict, max_length: int, temp_symbol: str) -> Optional[str]:
         """Current conditions for the default gwx reply, with extra conditions when they fit.

@@ -53,7 +53,13 @@ from ..weather_providers import (
 from ..weather_providers.alerts_meteoalarm import DEFAULT_BASE_URL as DEFAULT_METEOALARM_API_URL
 from ..weather_providers.alerts_meteoalarm import MeteoalarmAlertsProvider
 from ..weather_providers.alerts_nws import NwsAlertsProvider
-from ..weather_providers.base import AlertsProvider, Coverage, ForecastReply, WeatherUnits
+from ..weather_providers.base import (
+    AlertsProvider,
+    AlertSummary,
+    Coverage,
+    ForecastReply,
+    WeatherUnits,
+)
 from ..weather_providers.noaa import (
     ERROR_FETCHING_DATA as _ERROR_FETCHING_DATA,
 )
@@ -338,7 +344,9 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         # requests.Session and WXSIM parser instances are shared by this command.
         # Keep provider calls serialized as they were before moving them to worker
         # threads. The lock is acquired inside the worker, never on the event loop.
-        self._sync_provider_lock = threading.Lock()
+        # It is re-entrant so an NWS fetch can take it while a worker already
+        # holds it for the forecast that asked for the alerts.
+        self._sync_provider_lock = threading.RLock()
 
         # The fetch and formatting live in the providers; this command keeps the
         # request (parsing, geocoding, labels) and the sending. A NOAA command's
@@ -355,7 +363,12 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                 'coverage': self._coverage_cache,
                 'fallback_enabled': fallback_enabled,
             }
-        self.provider = make_provider(provider_name, host=self, units=units, **shared)
+        provider_kwargs = dict(shared)
+        if provider_name == 'openmeteo':
+            # The model was loaded above, before the unit warnings; handing it to
+            # the provider keeps an invalid value from being reported twice.
+            provider_kwargs['weather_model'] = openmeteo_model
+        self.provider = make_provider(provider_name, host=self, units=units, **provider_kwargs)
 
         alerts_name = resolve_alerts_provider_name(
             bot.config.get('Weather', 'alerts_provider', fallback='auto'), provider_name, self.logger
@@ -632,9 +645,16 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         if forecast_type in ("hourly", "alerts"):
             return self.translate(f'{self.translation_ns}.source_option_not_available')
 
+        # gwx gave a WXSIM source ten seconds and its own error keys; wx has
+        # always used a shorter timeout and the generic error text.
+        global_style = self.provider.location_style == "global"
+        timeout = 10 if global_style else self.url_timeout
+
         # Fetch WXSIM data
-        text = self.wxsim_parser.fetch_from_url(source_url, timeout=self.url_timeout)
+        text = self.wxsim_parser.fetch_from_url(source_url, timeout=timeout)
         if not text:
+            if global_style:
+                return self.translate('commands.gwx.error_fetching')
             return self.translate(f'{self.translation_ns}.error', error="Failed to fetch WXSIM data")
 
         # Parse the data
@@ -649,8 +669,13 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
 
         # Get unit preferences from config. Canonical section is [Wx_Command];
         # get_config_value falls back to legacy [Weather] for existing setups.
-        temp_unit = self._unit_setting('temperature_unit', 'fahrenheit')
-        wind_unit = self._unit_setting('wind_speed_unit', 'mph')
+        # gwx read [Weather] alone.
+        if global_style:
+            temp_unit = self.bot.config.get('Weather', 'temperature_unit', fallback='fahrenheit').lower()
+            wind_unit = self.bot.config.get('Weather', 'wind_speed_unit', fallback='mph').lower()
+        else:
+            temp_unit = self._unit_setting('temperature_unit', 'fahrenheit')
+            wind_unit = self._unit_setting('wind_speed_unit', 'mph')
 
         # Format based on forecast type
         if forecast_type == "tomorrow":
@@ -673,6 +698,8 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                     return f"{location_name}: {result}"
                 return result
             else:
+                if global_style:
+                    return self.translate('commands.gwx.tomorrow_not_available')
                 return self.translate(f'{self.translation_ns}.error', error="Tomorrow forecast not available")
 
         elif forecast_type == "multiday":
@@ -721,6 +748,13 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         )
 
     async def _fallback_place_name(self, lat: float, lon: float) -> Optional[str]:
+        """A name for the no-location log line; the global style logs coordinates.
+
+        gwx never spent a reverse lookup on the log line, and the reply's label
+        comes from the one lookup the forecast itself makes.
+        """
+        if self.provider.location_style == "global":
+            return None
         return await self._coordinates_to_location_string_async(lat, lon)
 
     async def _get_wxsim_weather_async(
@@ -960,12 +994,25 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         # Coverage can do HTTP and sleep, so it runs on a worker thread.
         coverage = await self._run_sync_provider_async(self.alerts_provider.coverage_for, lat, lon)
         if coverage is not Coverage.COVERED:
-            await self.send_response(
-                message, self.translate(f'{self.provider.translation_ns}.source_option_not_available')
-            )
+            await self.send_response(message, self.translate(self._alerts_unavailable_key()))
             return True
 
         return await self._send_full_alert_list(message, lat, lon)
+
+    def _alerts_unavailable_key(self) -> str:
+        """The reply for an alerts request the provider cannot answer.
+
+        NOAA with the Open-Meteo fallback off has always reported a failed
+        fetch, because NWS alerts are the only source it has. Every other
+        combination says the source does not cover the place.
+        """
+        if (
+            self.provider_name == 'noaa'
+            and self.fallback_provider is None
+            and isinstance(self.alerts_provider, NwsAlertsProvider)
+        ):
+            return f'{self.provider.translation_ns}.error_fetching'
+        return f'{self.provider.translation_ns}.source_option_not_available'
 
     async def _alert_coordinates(self, message: MeshMessage, location: str,
                                  location_type: str) -> tuple[Optional[float], Optional[float]]:
@@ -1010,8 +1057,12 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         return lat, lon
 
     async def get_weather_for_location(self, location: str, location_type: str, forecast_type: str = "default", num_days: int = 7, message: MeshMessage = None, using_companion_location: bool = False) -> str:
-        """Run the ordered synchronous geocode/NOAA workflow off the event loop."""
-        return await self._run_sync_provider_async(
+        """Run the ordered synchronous geocode/NOAA workflow off the event loop.
+
+        The worker lock is taken inside, around the provider call alone, so an
+        independent alert source is never queried while it is held.
+        """
+        return await asyncio.to_thread(
             self._get_weather_for_location_sync,
             location,
             location_type,
@@ -1063,13 +1114,24 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             # forecast past the 160-byte firmware limit. The alert text goes out as
             # its own message and keeps the full budget.
             max_length = self.get_max_message_length(message) if message else 130
-            result = self.provider.forecast(
-                lat, lon, forecast_type, num_days, self._count_display_width(location_prefix), message
-            )
+            # The shared session is the provider's, so only its own call is
+            # serialized; geocoding and the alert lookup run outside the lock.
+            with self._sync_provider_lock:
+                result = self.provider.forecast(
+                    lat, lon, forecast_type, num_days, self._count_display_width(location_prefix), message
+                )
             if result.no_coverage and self.fallback_provider is not None:
                 return self._fallback_reply(location, location_type, lat, lon, forecast_type, num_days, message)
             if not result.ok:
-                return result.text
+                # The error goes out unlabeled, as it always has. NWS alerts come
+                # from the same service, so a failure there is the whole answer;
+                # any other alert source is independent and still gets its say.
+                if forecast_type != "default" or isinstance(self.alerts_provider, NwsAlertsProvider):
+                    return result.text
+                summary = self._alert_summary(lat, lon, max_length)
+                if summary is None:
+                    return result.text
+                return ("multi_message", result.text, summary.text, summary.count)
 
             return self._labeled_reply(lat, lon, location_prefix, result, forecast_type, max_length)
 
@@ -1119,17 +1181,25 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
 
         # The alerts provider's summary wins over the forecast's own warning; no
         # configuration produces both today.
-        alerts = self.alerts_provider
-        if alerts is not None and alerts.covers(lat, lon):
-            summary = alerts.summary(lat, lon, max_length)
-            if summary is not None and summary.count > 0:
-                # Always send weather first, then alerts in separate message
-                self.logger.info(f"Found {summary.count} alerts - using two-message mode")
-                return ("multi_message", weather, summary.text, summary.count)
+        summary = self._alert_summary(lat, lon, max_length)
+        if summary is not None:
+            # Always send weather first, then alerts in separate message
+            self.logger.info(f"Found {summary.count} alerts - using two-message mode")
+            return ("multi_message", weather, summary.text, summary.count)
 
         if result.extra:
             return ("multi_message", weather, result.extra)
         return weather
+
+    def _alert_summary(self, lat: float, lon: float, max_length: int) -> Optional[AlertSummary]:
+        """The alerts provider's confirmed summary for a point, or None."""
+        alerts = self.alerts_provider
+        if alerts is None or not alerts.covers(lat, lon):
+            return None
+        summary = alerts.summary(lat, lon, max_length)
+        if summary is None or summary.count <= 0:
+            return None
+        return summary
 
     def _fallback_reply(self, location: str, location_type: str, lat: float, lon: float,
                         forecast_type: str, num_days: int, message: Optional[MeshMessage]):
@@ -1161,6 +1231,9 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         reply = openmeteo.forecast(
             lat, lon, forecast_type, num_days, self._count_display_width(location_prefix), message
         )
+        if not reply.ok:
+            # The base sent the error on its own, without the location label.
+            return reply.text
         return self._labeled_reply(lat, lon, location_prefix, reply, forecast_type, max_length)
 
     def geocode_location(self, location: str) -> tuple:

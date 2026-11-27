@@ -60,7 +60,16 @@ class NwsAlertsProvider(AlertsProvider):
         return not self.coverage.is_unavailable(lat, lon)
 
     def summary(self, lat: float, lon: float, max_length: int) -> Optional[AlertSummary]:
-        """The compact alert text and count for the second message, or None."""
+        """The compact alert text and count for the second message, or None.
+
+        The fetch shares the command's requests.Session with the forecast
+        provider, so it takes the same worker lock. The lock is re-entrant, so
+        a caller that already holds it for the forecast is not deadlocked.
+        """
+        return self._run_sync(self._summary_locked, lat, lon, max_length)
+
+    def _summary_locked(self, lat: float, lon: float, max_length: int) -> Optional[AlertSummary]:
+        """The body of :meth:`summary`, run under the worker lock."""
         alerts_result = self.get_weather_alerts_noaa(lat, lon, return_full_data=False)
         if alerts_result == ERROR_FETCHING_DATA or alerts_result == NO_ALERTS:
             return None
