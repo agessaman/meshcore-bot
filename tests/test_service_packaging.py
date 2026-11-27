@@ -90,8 +90,18 @@ def test_standalone_installer_separates_code_and_private_state():
         'harden_venv_permissions "$venv"'
     )
     assert "Restored the previous virtualenv after shebang rewrite failure" in installer
-    assert '"$VENV_PYTHON" -m pip install --quiet "better-profanity' in installer
-    assert '"$VENV_PYTHON" -m pip install --quiet "pycountry' in installer
+    assert '"$venv_python" -m pip install --quiet "better-profanity' in installer
+    assert '"$venv_python" -m pip install --quiet "pycountry' in installer
+    # Optional extras install by default without prompting; --no-extras opts out.
+    assert "ask_yes_no" not in installer
+    assert "read -p" not in installer
+    assert "INSTALL_EXTRAS=true\nfor arg" in installer
+    assert "--no-extras)\n            INSTALL_EXTRAS=false" in installer
+    # The in-place path installs extras before hardening so they get venv permissions.
+    assert installer.index('install_optional_extras "$venv"') < installer.index(
+        'harden_venv_permissions "$venv"'
+    )
+    assert 'install_optional_extras "$INSTALL_DIR/venv"' in installer
     assert '"$INSTALL_DIR/venv/bin/pip"' not in installer
     assert 'scripts/armv7_pip_args.sh' in installer
     assert "configure_armv7_pip_args" in installer
