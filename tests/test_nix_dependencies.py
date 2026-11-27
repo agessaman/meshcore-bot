@@ -16,7 +16,9 @@ NIX_NAMES = {
 }
 
 # Declared but not needed under Nix: the standard library already provides it.
-NOT_PACKAGED = {"configparser"}
+# tzfpy is a Rust crate that nixpkgs does not carry; without it the weather time
+# zone helper falls back to the longitude estimate, so the bot still works.
+NOT_PACKAGED = {"configparser", "tzfpy"}
 
 
 def _requirement_names() -> set[str]:

@@ -171,7 +171,6 @@
           requests
           requests-cache
           schedule
-          tzfpy
           cryptography
           paho-mqtt
           urllib3
