@@ -50,6 +50,7 @@ from ..weather_providers import (
     make_provider,
     resolve_alerts_provider_name,
 )
+from ..weather_providers.alerts_nws import NwsAlertsProvider
 from ..weather_providers.base import ForecastReply, WeatherUnits
 from ..weather_providers.noaa import (
     ERROR_FETCHING_DATA as _ERROR_FETCHING_DATA,
@@ -296,11 +297,13 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             openmeteo_model = load_open_meteo_model(bot.config, self.logger)
 
         # Units are per provider: NOAA takes [Wx_Command] overrides, Open-Meteo
-        # reads [Weather] only, as gwx always has.
-        if provider_name == 'openmeteo':
-            units = WeatherUnits(*load_open_meteo_units(bot.config, self.logger))
-        else:
-            units = resolve_units(self._unit_setting)
+        # reads [Weather] only, as gwx always has. The fallback provider is an
+        # Open-Meteo provider, so it validates and warns about its own units even
+        # though wx's units are overlaid on it per request.
+        openmeteo_units = None
+        if provider_name == 'openmeteo' or fallback_enabled:
+            openmeteo_units = WeatherUnits(*load_open_meteo_units(bot.config, self.logger))
+        units = openmeteo_units if provider_name == 'openmeteo' else resolve_units(self._unit_setting)
 
         self.url_timeout = 8  # seconds (reduced from 10 for faster failure detection)
         self.forecast_duration = 3  # days
@@ -330,13 +333,15 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         # request (parsing, geocoding, labels) and the sending. A NOAA command's
         # forecast and alerts providers share one retry session, one worker lock
         # and one coverage cache.
+        self._coverage_cache = NWSNoCoverageCache()
+        self._shared_session: Optional[requests.Session] = None
         shared = {}
         if provider_name == 'noaa':
-            self._nws_no_coverage = NWSNoCoverageCache()
+            self._shared_session = self._create_retry_session()
             shared = {
-                'session': self._create_retry_session(),
+                'session': self._shared_session,
                 'lock': self._sync_provider_lock,
-                'coverage': self._nws_no_coverage,
+                'coverage': self._coverage_cache,
                 'fallback_enabled': fallback_enabled,
             }
         self.provider = make_provider(provider_name, host=self, units=units, **shared)
@@ -346,30 +351,84 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         )
         self.alerts_provider = make_alerts_provider(alerts_name, host=self, **shared) if alerts_name else None
 
+        # The NOAA and NWS methods this command still exposes answer from these
+        # when the configured providers are something else.
+        self._noaa_compat: Optional[NoaaProvider] = None
+        self._nws_compat: Optional[NwsAlertsProvider] = None
+
         # The Open-Meteo answer for a point outside NWS coverage, in wx's units.
         self.fallback_provider = None
         if fallback_enabled:
             self.fallback_provider = make_provider(
-                'openmeteo', host=self, units=units, weather_model=openmeteo_model
+                'openmeteo', host=self, units=openmeteo_units, weather_model=openmeteo_model
             )
             self.logger.info("openmeteo_fallback enabled: wx answers places outside NWS coverage from Open-Meteo")
 
         if provider_name == 'openmeteo' and not self.pinned_provider:
             self.logger.info("Weather provider set to 'openmeteo': wx answers from Open-Meteo")
 
+        # The message catalog follows the provider that answers, so wx on
+        # Open-Meteo speaks commands.gwx as gwx always has.
+        self.translation_ns = self.provider.translation_ns
+
         if self.provider.location_style == "global":
             self.description = "Get weather information for any location (usage: wx Tokyo)"
 
     @property
+    def _noaa(self) -> NoaaProvider:
+        """The NOAA provider the NOAA-named methods answer from, whatever is configured."""
+        provider = self.provider
+        if isinstance(provider, NoaaProvider):
+            return provider
+        if self._noaa_compat is None:
+            self._noaa_compat = NoaaProvider(
+                host=self,
+                units=provider.units,
+                session=self._compat_session(),
+                lock=self._sync_provider_lock,
+                coverage=self._coverage_cache,
+                fallback_enabled=False,
+            )
+        return self._noaa_compat
+
+    @property
+    def _nws(self) -> NwsAlertsProvider:
+        """The NWS provider the alert methods answer from, whatever is configured."""
+        provider = self.alerts_provider
+        if isinstance(provider, NwsAlertsProvider):
+            return provider
+        if self._nws_compat is None:
+            self._nws_compat = NwsAlertsProvider(
+                host=self,
+                session=self._compat_session(),
+                lock=self._sync_provider_lock,
+                coverage=self._coverage_cache,
+                fallback_enabled=False,
+            )
+        return self._nws_compat
+
+    def _compat_session(self) -> requests.Session:
+        """The retry session a compatibility provider shares with the configured ones."""
+        if self._shared_session is None:
+            self._shared_session = self._create_retry_session()
+        return self._shared_session
+
+    @property
+    def _nws_no_coverage(self) -> NWSNoCoverageCache:
+        """The coverage cache the NOAA and NWS providers share."""
+        return self._nws.coverage
+
+    @property
     def noaa_session(self) -> requests.Session:
         """The retry session the NOAA providers share."""
-        return self.provider.session
+        return self._noaa.session
 
     @noaa_session.setter
     def noaa_session(self, session: requests.Session) -> None:
-        self.provider.session = session
-        if self.alerts_provider is not None:
-            self.alerts_provider.session = session
+        self._shared_session = session
+        for provider in (self.provider, self.alerts_provider, self._noaa_compat, self._nws_compat):
+            if provider is not None and hasattr(provider, 'session'):
+                provider.session = session
 
     def _unit_setting(self, key: str, fallback: str) -> str:
         """A unit setting: [Wx_Command] when it overrides, else the shared [Weather] one.
@@ -527,12 +586,12 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         """
 
         if forecast_type in ("hourly", "alerts"):
-            return self.translate("commands.wx.source_option_not_available")
+            return self.translate(f'{self.translation_ns}.source_option_not_available')
 
         # Fetch WXSIM data
         text = self.wxsim_parser.fetch_from_url(source_url, timeout=self.url_timeout)
         if not text:
-            return self.translate('commands.wx.error', error="Failed to fetch WXSIM data")
+            return self.translate(f'{self.translation_ns}.error', error="Failed to fetch WXSIM data")
 
         # Parse the data
         forecast = self.wxsim_parser.parse(text)
@@ -570,7 +629,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                     return f"{location_name}: {result}"
                 return result
             else:
-                return self.translate('commands.wx.error', error="Tomorrow forecast not available")
+                return self.translate(f'{self.translation_ns}.error', error="Tomorrow forecast not available")
 
         elif forecast_type == "multiday":
             # Format multiday forecast
@@ -784,7 +843,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
 
         except Exception as e:
             self.logger.error(f"Error in weather command: {e}")
-            await self.send_response(message, self.translate('commands.wx.error', error=str(e)))
+            await self.send_response(message, self.translate(f'{self.translation_ns}.error', error=str(e)))
             return True
 
     async def _execute_global(self, message: MeshMessage, location: str, forecast_type: str, num_days: int) -> bool:
@@ -798,6 +857,9 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         try:
             # Record execution for this user
             self.record_execution(message.sender_id)
+
+            if forecast_type == "alerts":
+                return await self._send_alert_list_for(message, location, "city")
 
             # Get weather data for the location
             weather_data = await self._global_weather_for_location(location, forecast_type, num_days, message)
@@ -821,7 +883,33 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         return await self.get_weather_for_location(location, "city", forecast_type, num_days, message)
 
     async def _send_alert_list_for(self, message: MeshMessage, location: str, location_type: str) -> bool:
-        """The "wx alerts" reply: geocode the location, then send its full alert list."""
+        """The "alerts" option: the configured alerts provider's full list, or a refusal.
+
+        Both location styles come through here, so "alerts" never reaches a
+        forecast provider and a command without an alerts provider says so
+        instead of failing.
+        """
+        if self.alerts_provider is None:
+            await self.send_response(
+                message, self.translate(f'{self.provider.translation_ns}.source_option_not_available')
+            )
+            return True
+
+        lat, lon = await self._alert_coordinates(message, location, location_type)
+        if lat is None:
+            return True
+
+        if not self.alerts_provider.covers(lat, lon):
+            await self.send_response(
+                message, self.translate(f'{self.provider.translation_ns}.source_option_not_available')
+            )
+            return True
+
+        return await self._send_full_alert_list(message, lat, lon)
+
+    async def _alert_coordinates(self, message: MeshMessage, location: str,
+                                 location_type: str) -> tuple[Optional[float], Optional[float]]:
+        """Geocode an "alerts" location in the provider's style, replying on failure."""
         if self.provider.location_style == "global":
             lat, lon, _address_info, _geocode_result = await self._run_sync_provider_async(
                 self.geocode_location, location
@@ -830,39 +918,36 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                 await self.send_response(
                     message, self.translate(f'{self.provider.translation_ns}.no_location', location=location)
                 )
-                return True
-            return await self._send_full_alert_list(message, lat, lon)
+            return lat, lon
 
-        lat, lon = None, None
         if location_type == "coordinates":
             try:
                 lat_str, lon_str = location.split(',')
                 lat = float(lat_str.strip())
                 lon = float(lon_str.strip())
                 if not (-90 <= lat <= 90) or not (-180 <= lon <= 180):
-                    await self.send_response(message, self.translate('commands.wx.error', error="Invalid coordinates"))
-                    return True
+                    await self.send_response(message, self.translate(f'{self.translation_ns}.error', error="Invalid coordinates"))
+                    return None, None
+                return lat, lon
             except ValueError:
-                await self.send_response(message, self.translate('commands.wx.error', error=f"Invalid coordinates format: {location}"))
-                return True
-        elif location_type == "zipcode":
+                await self.send_response(message, self.translate(f'{self.translation_ns}.error', error=f"Invalid coordinates format: {location}"))
+                return None, None
+
+        if location_type == "zipcode":
             lat, lon = await self._zipcode_to_lat_lon_async(location)
             if lat is None or lon is None:
-                await self.send_response(message, self.translate('commands.wx.no_location_zipcode', location=location))
-                return True
-        else:  # city
-            result = await self._city_to_lat_lon_async(location)
-            if len(result) == 3:
-                lat, lon, address_info = result
-            else:
-                lat, lon = result
-            if lat is None or lon is None:
-                region = self.default_state or self.default_country
-                await self.send_response(message, self.translate('commands.wx.no_location_city', location=location, state=region))
-                return True
+                await self.send_response(message, self.translate(f'{self.translation_ns}.no_location_zipcode', location=location))
+            return lat, lon
 
-        # Get and display full alert list
-        return await self._send_full_alert_list(message, lat, lon)
+        result = await self._city_to_lat_lon_async(location)
+        if len(result) == 3:
+            lat, lon, _address_info = result
+        else:
+            lat, lon = result
+        if lat is None or lon is None:
+            region = self.default_state or self.default_country
+            await self.send_response(message, self.translate(f'{self.translation_ns}.no_location_city', location=location, state=region))
+        return lat, lon
 
     async def get_weather_for_location(self, location: str, location_type: str, forecast_type: str = "default", num_days: int = 7, message: MeshMessage = None, using_companion_location: bool = False) -> str:
         """Run the ordered synchronous geocode/NOAA workflow off the event loop."""
@@ -1321,9 +1406,9 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
 
             # Validate coordinate ranges
             if not (-90 <= lat <= 90):
-                return self.translate('commands.wx.error', error=f"Invalid latitude: {lat}"), None, None, ""
+                return self.translate(f'{self.translation_ns}.error', error=f"Invalid latitude: {lat}"), None, None, ""
             if not (-180 <= lon <= 180):
-                return self.translate('commands.wx.error', error=f"Invalid longitude: {lon}"), None, None, ""
+                return self.translate(f'{self.translation_ns}.error', error=f"Invalid longitude: {lon}"), None, None, ""
 
             # Get address_info for location display via reverse geocoding
             location_str = self._coordinates_to_location_string(lat, lon)
@@ -1339,7 +1424,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             else:
                 address_info = {}
         except ValueError:
-            return self.translate('commands.wx.error', error=f"Invalid coordinates format: {location}"), None, None, ""
+            return self.translate(f'{self.translation_ns}.error', error=f"Invalid coordinates format: {location}"), None, None, ""
 
         location_prefix = ""
         if address_info:
@@ -1360,7 +1445,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         """(error reply or None, lat, lon, location prefix) for a zipcode location."""
         lat, lon = self.zipcode_to_lat_lon(location)
         if lat is None or lon is None:
-            return self.translate('commands.wx.no_location_zipcode', location=location), None, None, ""
+            return self.translate(f'{self.translation_ns}.no_location_zipcode', location=location), None, None, ""
 
         location_prefix = ""
         if using_companion_location or self.always_show_location:
@@ -1381,7 +1466,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
 
         if lat is None or lon is None:
             region = self.default_state or self.default_country
-            return self.translate('commands.wx.no_location_city', location=location, state=region), None, None, ""
+            return self.translate(f'{self.translation_ns}.no_location_city', location=location, state=region), None, None, ""
 
         # Check if the found city is in a different state than default
         actual_city = location
@@ -1422,7 +1507,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
 
     def _noaa_forecast_body(self, lat: float, lon: float, forecast_type: str, num_days: int, body_max_length: int) -> tuple:
         """(error reply or None, formatted forecast) for one forecast type."""
-        return self.provider._noaa_forecast_body(lat, lon, forecast_type, num_days, body_max_length)
+        return self._noaa._noaa_forecast_body(lat, lon, forecast_type, num_days, body_max_length)
 
     def zipcode_to_lat_lon(self, zipcode: str) -> tuple:
         """Convert zipcode to latitude and longitude"""
@@ -1466,7 +1551,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         With the Open-Meteo fallback on, a *point* request also records whether
         NWS covers that point.
         """
-        return self.provider._noaa_fetch(url, what, point)
+        return self._noaa._noaa_fetch(url, what, point)
 
     def get_noaa_weather(self, lat: float, lon: float, return_periods: bool = False, max_length: int = 130) -> tuple:
         """Get weather forecast from NOAA and return both weather string and points data
@@ -1480,15 +1565,15 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         Returns:
             Tuple of (weather_string_or_periods, points_data)
         """
-        return self.provider.get_noaa_weather(lat, lon, return_periods, max_length)
+        return self._noaa.get_noaa_weather(lat, lon, return_periods, max_length)
 
     def _noaa_current_summary(self, current: dict, weather_json: dict, max_length: int) -> str:
         """The current period's line: name, sky, temperature, wind and as many details as fit."""
-        return self.provider._noaa_current_summary(current, weather_json, max_length)
+        return self._noaa._noaa_current_summary(current, weather_json, max_length)
 
     def _append_noaa_tomorrow(self, weather: str, period: dict, is_current_tonight: bool, is_current_night: bool, max_length: int) -> str:
         """``weather`` with the Tomorrow period appended when it fits; a night reply shortens its text and is more lenient."""
-        return self.provider._append_noaa_tomorrow(weather, period, is_current_tonight, is_current_night, max_length)
+        return self._noaa._append_noaa_tomorrow(weather, period, is_current_tonight, is_current_night, max_length)
 
     def _append_noaa_period(self, weather: str, period: dict, max_length: int) -> str:
         """``weather`` with a Today or Tonight period appended when it fits.
@@ -1496,12 +1581,12 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         The period gets wind and details only while the reply so far leaves room,
         so the current period keeps its full details first.
         """
-        return self.provider._append_noaa_period(weather, period, max_length)
+        return self._noaa._append_noaa_period(weather, period, max_length)
 
     def _noaa_followup_periods(self, forecast: list, current: dict) -> tuple:
         """The ``(index, period)`` pairs for Today, Tonight and Tomorrow after ``current``, and whether
         ``current`` is Tonight or any night period: ``(today, tonight, tomorrow, is_tonight, is_night)``."""
-        return self.provider._noaa_followup_periods(forecast, current)
+        return self._noaa._noaa_followup_periods(forecast, current)
 
     def _noaa_period_str(self, period: dict, forecast_text: Optional[str] = None) -> Optional[str]:
         """``" | Name: <emoji><forecast> <high/low or temp°>"`` for a forecast period.
@@ -1510,12 +1595,12 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         ``forecast_text`` replaces the short forecast in the text (the emoji
         still comes from the short forecast).
         """
-        return self.provider._noaa_period_str(period, forecast_text)
+        return self._noaa._noaa_period_str(period, forecast_text)
 
     def _noaa_period_wind(self, weather: str, period_str: str, period: dict, threshold: int, max_length: int) -> str:
         """Append the period's wind to ``period_str`` when ``weather + period_str`` is under ``threshold``
         display columns and the result still fits ``max_length``."""
-        return self.provider._noaa_period_wind(weather, period_str, period, threshold, max_length)
+        return self._noaa._noaa_period_wind(weather, period_str, period, threshold, max_length)
 
     @staticmethod
     def _abbreviate_noaa_forecast(period_short: str) -> str:
@@ -1532,7 +1617,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         Returns:
             Tuple of (hourly_periods_list, points_data)
         """
-        return self.provider.get_noaa_hourly_weather(lat, lon)
+        return self._noaa.get_noaa_hourly_weather(lat, lon)
 
     def format_hourly_forecast(self, hourly_periods: list, max_length: int = 130) -> str:
         """Format hourly forecast to fit as many hours as possible in max_length bytes
@@ -1544,7 +1629,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         Returns:
             Formatted string with one hour per line
         """
-        return self.provider.format_hourly_forecast(hourly_periods, max_length)
+        return self._noaa.format_hourly_forecast(hourly_periods, max_length)
 
     @staticmethod
     def _parse_noaa_start_time(start_time_str: str) -> datetime:
@@ -1559,11 +1644,11 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         with the bot's, which kept past hours or dropped future ones whenever
         the two were in different time zones.
         """
-        return self.provider._future_hourly_periods(hourly_periods)
+        return self._noaa._future_hourly_periods(hourly_periods)
 
     def _hourly_line(self, period: dict) -> str:
         """One hour as "10AM: 🌦️ 26% Chance Light Rain 49° SSW5"."""
-        return self.provider._hourly_line(period)
+        return self._noaa._hourly_line(period)
 
     @staticmethod
     def _period_date(period: dict):
@@ -1581,7 +1666,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         its period times. The first period's own date is not enough: at 1 AM the
         first period can still be the night that started yesterday evening.
         """
-        return self.provider._forecast_today(forecast)
+        return self._noaa._forecast_today(forecast)
 
     def _period_dates(self, forecast: list) -> list:
         """Each period's local date: its startTime date, or inferred from its neighbors when it has none.
@@ -1589,18 +1674,18 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         NOAA periods alternate day and night in order, so an undated period is the
         same date as a preceding daytime period when it is a night, else the day after.
         """
-        return self.provider._period_dates(forecast)
+        return self._noaa._period_dates(forecast)
 
     def _find_tomorrow_periods(self, forecast: list) -> list:
         """Tomorrow's NOAA periods: those dated the day after today at the location;
         without dates, those named "Tomorrow", else named for tomorrow's weekday, else the
         (up to two) periods after today's.
         """
-        return self.provider._find_tomorrow_periods(forecast)
+        return self._noaa._find_tomorrow_periods(forecast)
 
     def format_tomorrow_forecast(self, forecast: list, max_length: int = 130) -> str:
         """Format a detailed forecast for tomorrow"""
-        return self.provider.format_tomorrow_forecast(forecast, max_length)
+        return self._noaa.format_tomorrow_forecast(forecast, max_length)
 
     def _fit_tomorrow_parts(self, parts: list[tuple[str, str]], max_length: int) -> str:
         """Join tomorrow's periods within *max_length* UTF-8 bytes.
@@ -1610,11 +1695,11 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         even the first period alone does not fit, it is sent anyway (the send
         path splits it) rather than leaving the reply empty.
         """
-        return self.provider._fit_tomorrow_parts(parts, max_length)
+        return self._noaa._fit_tomorrow_parts(parts, max_length)
 
     def format_multiday_forecast(self, forecast: list, num_days: int = 7, max_length: int = 130) -> str:
         """Format a less detailed multi-day forecast summary"""
-        return self.provider.format_multiday_forecast(forecast, num_days, max_length)
+        return self._noaa.format_multiday_forecast(forecast, num_days, max_length)
 
     def _multiday_lines_by_date(self, forecast: list, num_days: int) -> list[str]:
         """One line per local date after today at the location, up to *num_days*.
@@ -1624,11 +1709,11 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         on the bot sharing the location's time zone. A daytime period wins over
         that date's night period.
         """
-        return self.provider._multiday_lines_by_date(forecast, num_days)
+        return self._noaa._multiday_lines_by_date(forecast, num_days)
 
     def _day_abbrev(self, weekday: int) -> str:
         """The multi-day label for a weekday (0 = Monday), translated (English "M", "Th", "Sa")."""
-        return self.provider._day_abbrev(weekday)
+        return self._noaa._day_abbrev(weekday)
 
     @staticmethod
     def _multiday_day_name(period_name_lower: str) -> str | None:
@@ -1652,7 +1737,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         Returns:
             Updated period string with additional details if space allows
         """
-        return self.provider._add_period_details(period_str, detailed_forecast, current_weather_length, max_length, observation_data)
+        return self._noaa._add_period_details(period_str, detailed_forecast, current_weather_length, max_length, observation_data)
 
     def get_weather_alerts_noaa(self, lat: float, lon: float, return_full_data: bool = False) -> tuple:
         """Get weather alerts from NOAA with full metadata extraction and prioritization
@@ -1666,7 +1751,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             If return_full_data=False: (full_first_alert_text, abbreviated_first_alert_text, alert_count)
             If return_full_data=True: (list of alert dicts, alert_count)
         """
-        return self.alerts_provider.get_weather_alerts_noaa(lat, lon, return_full_data)
+        return self._nws.get_weather_alerts_noaa(lat, lon, return_full_data)
 
     async def _get_weather_alerts_noaa_async(
         self, lat: float, lon: float, return_full_data: bool = False
@@ -1688,7 +1773,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         Returns:
             List of alerts with differentiated event names for duplicate statements
         """
-        return self.alerts_provider._differentiate_duplicate_statements(alerts)
+        return self._nws._differentiate_duplicate_statements(alerts)
 
     def _prioritize_alerts(self, alerts: list) -> list:
         """Prioritize alerts using hybrid scoring system
@@ -1701,7 +1786,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
 
         Returns sorted list (highest priority first)
         """
-        return self.alerts_provider._prioritize_alerts(alerts)
+        return self._nws._prioritize_alerts(alerts)
 
     def _format_alert_compact(self, alert: dict, include_details: bool = True) -> str:
         """Format a single alert compactly
@@ -1716,7 +1801,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         Returns:
             Formatted alert string, e.g. "🟠High Wind Warn til 6AM by NWS SEA"
         """
-        return self.alerts_provider._format_alert_compact(alert, include_details)
+        return self._nws._format_alert_compact(alert, include_details)
 
     def _format_alerts_compact_summary(self, alerts: list, alert_count: int, max_length: int = 130) -> str:
         """Format multiple alerts with prioritized first alert and summary of others
@@ -1729,11 +1814,11 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         Returns:
             Compact formatted string: "4 alerts: 🟠High Wind Warn til 6AM | +3: 🌊Flood Watch, ❄️Freeze Adv, 🌫️Dense Fog Adv"
         """
-        return self.alerts_provider._format_alerts_compact_summary(alerts, alert_count, max_length)
+        return self._nws._format_alerts_compact_summary(alerts, alert_count, max_length)
 
     def _get_event_emoji(self, event: str, event_type: str) -> str:
         """Get emoji for event type"""
-        return self.alerts_provider._get_event_emoji(event, event_type)
+        return self._nws._get_event_emoji(event, event_type)
 
     def _format_alert_full(self, alert: dict, index: int = None) -> str:
         """Format a single alert with full details for multi-message display
@@ -1745,14 +1830,14 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         Returns:
             Formatted alert string with start/stop times
         """
-        return self.alerts_provider._format_alert_full(alert, index)
+        return self._nws._format_alert_full(alert, index)
 
     async def _send_full_alert_list(self, message: MeshMessage, lat: float, lon: float) -> bool:
         """Send full list of alerts with details, splitting across multiple messages if needed.
 
         Returns whether every message was sent; a refused first message ends the list.
         """
-        return await self.alerts_provider.send_full_list(message, lat, lon)
+        return await self._nws.send_full_list(message, lat, lon)
 
     def abbreviate_city_name(self, city: str) -> str:
         """Abbreviate city names for compact display (e.g., Seattle -> SEA)"""
@@ -1761,55 +1846,55 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
     def compact_time(self, time_str: str) -> str:
         """Compact time format: '6:00AM' -> '6AM', 'December 16 at 3:12PM' -> 'Dec 16 3:12PM'
         Also handles ISO format: '2025-12-17T01:00:00-08:00' -> 'Dec 17 1AM'"""
-        return self.provider.compact_time(time_str)
+        return self._noaa.compact_time(time_str)
 
     def abbreviate_wind_direction(self, direction: str) -> str:
         """Abbreviate wind direction to emoji + 2-3 characters"""
-        return self.provider.abbreviate_wind_direction(direction)
+        return self._noaa.abbreviate_wind_direction(direction)
 
     def _wind_letters(self, point: str) -> str:
         """A 16-point compass abbreviation in the reply's language ("NE" is "NO" in German), as gwx shows it."""
-        return self.provider._wind_letters(point)
+        return self._noaa._wind_letters(point)
 
     def extract_humidity(self, text: str) -> str:
         """Extract humidity percentage from forecast text"""
-        return self.provider.extract_humidity(text)
+        return self._noaa.extract_humidity(text)
 
     def extract_precip_chance(self, text: str) -> str:
         """Extract precipitation chance from forecast text"""
-        return self.provider.extract_precip_chance(text)
+        return self._noaa.extract_precip_chance(text)
 
     def extract_high_low(self, text: str, units_str: str = "°F") -> str:
         """Extract high/low temperatures from forecast text; format via [Weather] templates."""
-        return self.provider.extract_high_low(text, units_str)
+        return self._noaa.extract_high_low(text, units_str)
 
     def extract_uv_index(self, text: str) -> str:
         """Extract UV index from forecast text"""
-        return self.provider.extract_uv_index(text)
+        return self._noaa.extract_uv_index(text)
 
     def extract_dew_point(self, text: str) -> str:
         """Extract dew point temperature from forecast text"""
-        return self.provider.extract_dew_point(text)
+        return self._noaa.extract_dew_point(text)
 
     def extract_visibility(self, text: str) -> str:
         """Extract visibility from forecast text"""
-        return self.provider.extract_visibility(text)
+        return self._noaa.extract_visibility(text)
 
     def extract_precip_probability(self, text: str) -> str:
         """Extract precipitation probability from forecast text"""
-        return self.provider.extract_precip_probability(text)
+        return self._noaa.extract_precip_probability(text)
 
     def extract_wind_gusts(self, text: str) -> str:
         """Extract wind gusts from forecast text"""
-        return self.provider.extract_wind_gusts(text)
+        return self._noaa.extract_wind_gusts(text)
 
     def _forecast_text_gusts(self, text: str) -> str:
         """Gusts from the forecast text ("gusts up to 30 mph" or "48 km/h") in the configured unit."""
-        return self.provider._forecast_text_gusts(text)
+        return self._noaa._forecast_text_gusts(text)
 
     def extract_pressure(self, text: str) -> str:
         """Extract barometric pressure from forecast text"""
-        return self.provider.extract_pressure(text)
+        return self._noaa.extract_pressure(text)
 
     def get_observation_data(self, points_data: dict) -> dict:
         """Get observation station data from NOAA and return as a dict
@@ -1818,22 +1903,22 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             Dict with keys: humidity, dew_point, visibility, wind_gusts, pressure
             Values are strings ready for display, or None if not available
         """
-        return self.provider.get_observation_data(points_data)
+        return self._noaa.get_observation_data(points_data)
 
     def get_weather_emoji(self, condition: str) -> str:
         """Get emoji for weather condition"""
-        return self.provider.get_weather_emoji(condition)
+        return self._noaa.get_weather_emoji(condition)
 
     # NOAA sometimes names forecast periods after federal holidays (e.g. "Washington's Birthday")
     # instead of the weekday. Match these so we can resolve to weekday via startTime.
 
     def _noaa_period_display_name(self, period: dict) -> str:
         """Return display label for a NOAA forecast period. Resolves holiday names to weekday."""
-        return self.provider._noaa_period_display_name(period)
+        return self._noaa._noaa_period_display_name(period)
 
     def abbreviate_noaa(self, text: str) -> str:
         """Replace long strings with shorter ones for display"""
-        return self.provider.abbreviate_noaa(text)
+        return self._noaa.abbreviate_noaa(text)
 
     async def get_weather_for_zipcode(self, zipcode: str) -> str:
         """Get weather data for a specific zipcode (legacy method)"""
@@ -1841,8 +1926,8 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
 
     def abbreviate_alert_title(self, title: str) -> str:
         """Abbreviate alert title for brevity"""
-        return self.alerts_provider.abbreviate_alert_title(title)
+        return self._nws.abbreviate_alert_title(title)
 
     def get_current_conditions(self, points_data: dict) -> str:
         """Get additional current conditions data from NOAA using existing points data (legacy method)"""
-        return self.provider.get_current_conditions(points_data)
+        return self._noaa.get_current_conditions(points_data)

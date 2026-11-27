@@ -318,3 +318,147 @@ def test_a_registered_third_provider_answers_wx_end_to_end(monkeypatch):
 def test_the_fake_provider_is_gone_after_the_test():
     assert "fake" not in PROVIDERS
     assert "fakealerts" not in ALERT_PROVIDERS
+
+
+# --- the "alerts" option ----------------------------------------------------
+
+
+def _alerts_command(weather, wx_section=None):
+    cmd = _wx(weather, wx_section)
+    cmd.record_execution = Mock()
+    cmd.send_response = AsyncMock(return_value=True)
+    cmd._send_full_alert_list = AsyncMock(return_value=True)
+    cmd._zipcode_to_lat_lon_async = AsyncMock(return_value=(47.6, -122.3))
+    cmd._city_to_lat_lon_async = AsyncMock(return_value=(47.6, -122.3, {"city": "Seattle"}))
+    cmd.geocode_location = Mock(
+        return_value=(47.6, -122.3, {"city": "Portland", "country_code": "us"}, None)
+    )
+    cmd._format_location_display = Mock(return_value="Portland, US")
+    cmd.provider.forecast = Mock(return_value=ForecastReply(text="BODY"))
+    return cmd
+
+
+def test_alerts_without_an_alerts_provider_replies_instead_of_crashing():
+    cmd = _alerts_command({"weather_provider": "noaa", "alerts_provider": "none"})
+    message = SimpleNamespace(content="wx 98101 alerts", sender_id="u1")
+    assert asyncio.run(cmd.execute(message)) is True
+    cmd.send_response.assert_awaited_once_with(
+        message, cmd.translate("commands.wx.source_option_not_available")
+    )
+    cmd._send_full_alert_list.assert_not_awaited()
+    cmd.provider.forecast.assert_not_called()
+
+
+def test_alerts_on_the_global_path_sends_the_alert_list_not_a_forecast():
+    cmd = _alerts_command({"weather_provider": "openmeteo", "alerts_provider": "nws"})
+    message = SimpleNamespace(content="wx 98101 alerts", sender_id="u1")
+    assert asyncio.run(cmd.execute(message)) is True
+    cmd._send_full_alert_list.assert_awaited_once_with(message, 47.6, -122.3)
+    cmd.provider.forecast.assert_not_called()
+    cmd.send_response.assert_not_awaited()
+
+
+def test_alerts_outside_the_alerts_provider_coverage_replies_not_available():
+    cmd = _alerts_command({"weather_provider": "openmeteo", "alerts_provider": "nws"})
+    cmd.alerts_provider.covers = Mock(return_value=False)
+    message = SimpleNamespace(content="wx 98101 alerts", sender_id="u1")
+    assert asyncio.run(cmd.execute(message)) is True
+    cmd.send_response.assert_awaited_once_with(
+        message, cmd.translate("commands.gwx.source_option_not_available")
+    )
+    cmd._send_full_alert_list.assert_not_awaited()
+
+
+def test_alerts_keeps_the_us_call_sequence():
+    cmd = _alerts_command({"weather_provider": "noaa"})
+    message = SimpleNamespace(content="wx 98101 alerts", sender_id="u1")
+    assert asyncio.run(cmd.execute(message)) is True
+    cmd.record_execution.assert_called_once_with("u1")
+    cmd._zipcode_to_lat_lon_async.assert_awaited_once_with("98101")
+    cmd._send_full_alert_list.assert_awaited_once_with(message, 47.6, -122.3)
+
+
+# --- NOAA and NWS methods on a non-NOAA command -----------------------------
+
+
+def test_noaa_named_methods_answer_on_an_openmeteo_command(monkeypatch):
+    cmd = _wx({"weather_provider": "openmeteo"})
+    assert isinstance(cmd._noaa, NoaaProvider)
+    assert cmd._noaa is cmd._noaa  # built once
+    monkeypatch.setattr(NoaaProvider, "get_noaa_weather", lambda self, *a, **k: ("NOAA BODY", {}))
+    assert cmd.get_noaa_weather(47.6, -122.3) == ("NOAA BODY", {})
+
+
+def test_nws_named_methods_answer_without_an_alerts_provider(monkeypatch):
+    cmd = _wx({"weather_provider": "openmeteo", "alerts_provider": "none"})
+    assert cmd.alerts_provider is None
+    assert isinstance(cmd._nws, NwsAlertsProvider)
+    monkeypatch.setattr(
+        NwsAlertsProvider, "get_weather_alerts_noaa", lambda self, *a, **k: ("ALERT", "A", 1)
+    )
+    assert cmd.get_weather_alerts_noaa(47.6, -122.3) == ("ALERT", "A", 1)
+
+
+def test_noaa_session_and_coverage_forward_to_the_compatibility_providers():
+    cmd = _wx({"weather_provider": "openmeteo"})
+    session = Mock()
+    cmd.noaa_session = session
+    assert cmd.noaa_session is session
+    assert cmd._noaa.session is session
+    assert cmd._nws.session is session
+    assert cmd._nws_no_coverage is cmd._nws.coverage
+
+
+# --- the message catalog ----------------------------------------------------
+
+
+def test_wx_on_openmeteo_speaks_the_gwx_catalog():
+    cmd = _wx({"weather_provider": "openmeteo"})
+    assert cmd.translation_ns == "commands.gwx"
+    cmd.wxsim_parser = Mock()
+    cmd.wxsim_parser.fetch_from_url = Mock(return_value=None)
+    assert cmd._get_wxsim_weather("https://w.test/cabin") == cmd.translate(
+        "commands.gwx.error", error="Failed to fetch WXSIM data"
+    )
+
+
+def test_wx_on_noaa_keeps_the_wx_catalog():
+    cmd = _wx({"weather_provider": "noaa"})
+    assert cmd.translation_ns == "commands.wx"
+    cmd.wxsim_parser = Mock()
+    cmd.wxsim_parser.fetch_from_url = Mock(return_value=None)
+    assert cmd._get_wxsim_weather("https://w.test/cabin") == cmd.translate(
+        "commands.wx.error", error="Failed to fetch WXSIM data"
+    )
+
+
+# --- fallback units ---------------------------------------------------------
+
+
+def test_the_fallback_provider_validates_its_own_units():
+    cmd = _wx({"weather_provider": "noaa", "openmeteo_fallback": "true",
+               "temperature_unit": "kelvin", "precipitation_unit": "mm"})
+    assert cmd.fallback_provider.units == WeatherUnits("fahrenheit", "mph", "mm")
+    assert any("temperature_unit" in w for w in _warnings(cmd.logger))
+
+
+def test_the_model_warning_comes_before_the_unit_warnings():
+    cmd = _wx({"weather_provider": "noaa", "openmeteo_fallback": "true",
+               "weather_model": "bad model!", "temperature_unit": "kelvin"})
+    warnings = _warnings(cmd.logger)
+    assert "weather_model" in warnings[0]
+    assert any("temperature_unit" in w for w in warnings[1:])
+
+
+def test_an_invalid_wx_precipitation_unit_keeps_openmeteos_validated_one():
+    cmd = _wx({"weather_provider": "noaa", "openmeteo_fallback": "true",
+               "precipitation_unit": "mm"},
+              wx_section={"precipitation_unit": "furlongs"})
+    cmd.fallback_provider.forecast = Mock(return_value=ForecastReply(text="BODY"))
+    cmd.geocode_location = Mock(
+        return_value=(47.6, -122.3, {"city": "Portland", "country_code": "us"}, None)
+    )
+    cmd._format_location_display = Mock(return_value="Portland, US")
+    cmd.get_max_message_length = Mock(return_value=130)
+    cmd._fallback_reply("47.6,-122.3", "coordinates", 47.6, -122.3, "default", 7, None)
+    assert cmd.fallback_provider.units.precipitation == "mm"
