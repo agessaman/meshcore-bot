@@ -8,6 +8,7 @@ the period label can be walked forward.
 
 import configparser
 import json
+import math
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -24,6 +25,8 @@ from modules.weather_providers.eccc import (
     COMPASS_DEGREES,
     ECCC_BASE_URL,
     EcccProvider,
+    _search_box,
+    _search_boxes,
     _wmo_for,
 )
 
@@ -242,13 +245,13 @@ def test_the_nearest_city_page_wins():
     assert session.count() == 1
     assert session.calls[0]["url"] == f"{ECCC_BASE_URL}/collections/{CITYPAGE_COLLECTION}/items"
     # A 150 km box, widened in longitude for the latitude.
-    assert session.calls[0]["params"]["bbox"] == "-125.1915,47.9286,-121.0485,50.6314"
+    assert session.calls[0]["params"]["bbox"] == "-125.1855,47.9325,-121.0545,50.6275"
 
 
 def test_the_search_box_widens_until_a_city_page_answers():
     empty = _Response(200, {"type": "FeatureCollection", "features": []})
     full = _Response(200, _payload("vancouver"))
-    session = _Session(lambda call: empty if call["params"]["bbox"].startswith("-125.19") else full)
+    session = _Session(lambda call: empty if call["params"]["bbox"].startswith("-125.18") else full)
     provider = EcccProvider(
         _Host(), WeatherUnits("fahrenheit", "mph", "inch"),
         session=session, clock=lambda: 1000.0, now=lambda: NOW,
@@ -260,7 +263,7 @@ def test_the_search_box_widens_until_a_city_page_answers():
     assert feature["properties"]["name"]["en"] == "Vancouver"
     assert session.count() == 2
     # The second box is twice as wide, for a sparse area.
-    assert session.calls[1]["params"]["bbox"] == "-127.2629,46.5773,-118.9771,51.9827"
+    assert session.calls[1]["params"]["bbox"] == "-127.2510,46.5851,-118.9890,51.9749"
 
 
 def test_a_point_past_150_km_has_no_coverage():
@@ -874,3 +877,120 @@ def test_the_pressure_is_rounded_once_after_the_unit_is_chosen():
     reply = provider.forecast(*VANCOUVER, "default", 7, 0, MESSAGE)
 
     assert host.translate('commands.gwx.pressure_mmhg', value=750) in reply.text
+
+
+# --- the search box at high latitude ----------------------------------------
+
+
+def _page_at(lat, lon, label="Near"):
+    """A city page feature at a point, carrying a real fixture's properties."""
+    properties = json.loads(json.dumps(_payload("ottawa")["features"][0]["properties"]))
+    properties["name"] = {"en": label, "fr": label}
+    return {
+        "type": "Feature",
+        "geometry": {"type": "Point", "coordinates": [lon, lat]},
+        "properties": properties,
+    }
+
+
+def _lon_for_km(lat, kilometres):
+    """The longitude offset that puts a point *kilometres* east at *lat*."""
+    return math.degrees(2 * math.asin(math.sin(kilometres / (2 * 6371.0)) / math.cos(math.radians(lat))))
+
+
+def test_the_search_box_is_the_exact_parallel_arc():
+    delta_lat, delta_lon = _search_box(83.0, 1.0)
+
+    assert delta_lat == pytest.approx(150.0 / 111.32)
+    assert delta_lon == pytest.approx(150.0 / (111.32 * math.cos(math.radians(83.0))))
+
+
+def test_the_nearer_of_two_pages_just_inside_the_radius_wins():
+    """Both pages are within 150 km at 83N, where a square box would miss them."""
+    near = _page_at(83.0, -80.0 + _lon_for_km(83.0, 149.49), label="Near")
+    far = _page_at(83.0, -80.0 + _lon_for_km(83.0, 149.89), label="Far")
+    provider, _session_, _host_, _clock = _provider(
+        response=_Response(200, {"type": "FeatureCollection", "features": [far, near]})
+    )
+
+    feature, failed = provider._lookup(83.0, -80.0)
+
+    assert failed is False
+    assert feature["properties"]["name"]["en"] == "Near"
+
+
+def test_the_box_covers_the_whole_longitude_range_near_the_pole():
+    """At 89.9N the 150 km circle spans every longitude, so the box must too."""
+    page = _page_at(89.9, 170.0)
+    provider, session, _host_, _clock = _provider(
+        response=_Response(200, {"type": "FeatureCollection", "features": [page]})
+    )
+
+    feature, failed = provider._lookup(89.9, 10.0)
+
+    assert failed is False
+    assert feature is not None
+    assert session.calls[0]["params"]["bbox"] == "-180.0000,88.5525,180.0000,91.2475"
+
+
+def test_a_box_across_the_dateline_is_split_in_two():
+    boxes = _search_boxes(0.0, 179.0, 1.0)
+
+    assert len(boxes) == 2
+    assert boxes[0].startswith("177.6525,") and boxes[0].endswith(",180.0000,1.3475")
+    assert boxes[1].startswith("-180.0000,") and boxes[1].endswith(",-179.6525,1.3475")
+
+
+# --- pagination -------------------------------------------------------------
+
+
+def test_the_next_page_is_followed_for_the_nearest_city():
+    """A wide box can hold more than one page, and the right city can be on page 2."""
+    target = _page_at(*VANCOUVER, label="Vancouver")
+    far = [_page_at(0.0, 0.0, label="Far") for _ in range(50)]
+    next_href = (
+        f"{ECCC_BASE_URL}/collections/{CITYPAGE_COLLECTION}/items"
+        "?offset=50&bbox=-125.1855,47.9325,-121.0545,50.6275&limit=50&lang=en"
+    )
+    pages = {
+        None: {"type": "FeatureCollection", "features": far,
+               "links": [{"rel": "next", "href": next_href}]},
+        next_href: {"type": "FeatureCollection", "features": [target]},
+    }
+
+    class _PagedSession:
+        def __init__(self):
+            self.calls = []
+
+        def get(self, url, params=None, headers=None, timeout=None):
+            self.calls.append({"url": url, "params": dict(params or {})})
+            return _Response(200, pages[url if params is None else None])
+
+    session = _PagedSession()
+    provider = EcccProvider(
+        _Host(), WeatherUnits("fahrenheit", "mph", "inch"),
+        session=session, clock=lambda: 1000.0, now=lambda: NOW,
+    )
+
+    feature, failed = provider._lookup(*VANCOUVER)
+
+    assert failed is False
+    assert feature["properties"]["name"]["en"] == "Vancouver"
+    assert len(session.calls) == 2
+
+
+# --- a malformed body -------------------------------------------------------
+
+
+def test_a_malformed_geometry_is_a_failure_not_a_crash():
+    payload = _payload("vancouver")
+    for feature in payload["features"]:
+        feature["geometry"] = "invalid"
+    provider, _session_, _host_, _clock = _provider(response=_Response(200, payload))
+
+    reply = provider.forecast(*VANCOUVER, "default", 7, 0, MESSAGE)
+
+    # No city page could be read, so the point reads as uncovered rather than
+    # raising out of the provider.
+    assert reply.ok is False
+    assert reply.no_coverage is True

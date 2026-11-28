@@ -1187,8 +1187,9 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             # and a provider with its own session does not take it at all.
             lock = self._sync_provider_lock if self.provider.uses_command_session else nullcontext()
             with lock:
-                result = self.provider.forecast(
-                    lat, lon, forecast_type, num_days, self._count_display_width(location_prefix), message
+                result = self._forecast_or_error(
+                    self.provider, lat, lon, forecast_type, num_days,
+                    self._count_display_width(location_prefix), message,
                 )
             if result.no_coverage and self.fallback_provider is not None:
                 return self._fallback_reply(location, location_type, lat, lon, forecast_type, num_days, message)
@@ -1202,6 +1203,27 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             subject = location if self.provider.location_style == "global" else f"{location_type} {location}"
             self.logger.error(f"Error getting weather for {subject}: {e}")
             return self.translate(f'{self.provider.translation_ns}.error', error=str(e))
+
+    def _forecast_or_error(self, provider: Any, lat: float, lon: float, forecast_type: str,
+                           num_days: int, location_prefix_len: int,
+                           message: Optional[MeshMessage]) -> ForecastReply:
+        """One provider's forecast, with an exception turned into a failed reply.
+
+        A provider that raises must cost the forecast and nothing else: the
+        failure path then still attaches an independent alert summary, and the
+        reply carries the provider's own fetch-error key rather than a traceback.
+        """
+        try:
+            return provider.forecast(
+                lat, lon, forecast_type, num_days, location_prefix_len, message
+            )
+        except Exception as error:
+            self.logger.warning(
+                f"{provider.name} forecast failed: {type(error).__name__}: {error}"
+            )
+            return ForecastReply(
+                text=self.translate(f'{provider.translation_ns}.error_fetching'), ok=False
+            )
 
     def _locate_for_forecast(self, location: str, location_type: str, using_companion_location: bool) -> tuple:
         """(error reply or None, lat, lon, location prefix) for a location, in the provider's style."""
@@ -1328,8 +1350,9 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         )
         location_prefix = self._global_location_prefix(location, address_info or {}, geocode_result)
         max_length = self.get_max_message_length(message) if message else 130
-        reply = openmeteo.forecast(
-            lat, lon, forecast_type, num_days, self._count_display_width(location_prefix), message
+        reply = self._forecast_or_error(
+            openmeteo, lat, lon, forecast_type, num_days,
+            self._count_display_width(location_prefix), message,
         )
         if not reply.ok:
             # The base sent the error on its own, without the location label.

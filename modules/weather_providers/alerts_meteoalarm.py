@@ -60,6 +60,9 @@ CONNECT_TIMEOUT = 5
 READ_TIMEOUT = 10
 
 LOCATIONS_TTL = 24 * 60 * 60
+# A failed fetch, or a document that did not parse, is retried soon: caching it
+# as long as a success would hide a recovered endpoint for the whole TTL.
+FAILURE_TTL = 60
 # The API rejects a datetime range of 24 hours or more, so each UTC day is a
 # window of its own: today's moves and is cached briefly, past days are fixed.
 WINDOW_TTL_TODAY = 10 * 60
@@ -94,6 +97,11 @@ UNAVAILABLE = object()
 
 CAP_NS = {"cap": "urn:oasis:names:tc:emergency:cap:1.2"}
 MIN_LEVEL = 2
+
+
+def _raw_key(alert_id: str, indexes: set) -> tuple:
+    """The cache key for an alert's raw CAP text, by alertId and area."""
+    return ("raw", alert_id, tuple(sorted(indexes)))
 
 
 def _stamp(moment: datetime) -> str:
@@ -697,9 +705,19 @@ class MeteoalarmAlertsProvider(PackedAlertsMixin, AlertsProvider):
     def _cached_locations(self) -> Optional[list]:
         with self._lock:
             cached = self._locations
-        if cached is not None and self._clock() - cached[0] < LOCATIONS_TTL:
+        if cached is not None and self._clock() - cached[0] < cached[2]:
             return cached[1]
         return None
+
+    def _skipped_countries(self) -> tuple:
+        """The countries whose polygon could not be read, so coverage is a guess."""
+        with self._lock:
+            cached = self._locations
+        return tuple(cached[3]) if cached is not None else ()
+
+    def _locations_incomplete(self) -> bool:
+        """Whether the cached list is missing a country whose polygon was unusable."""
+        return bool(self._skipped_countries())
 
     def _country_geometries(self) -> Optional[list]:
         """[(country code, geometry)] for every country, cached for a day."""
@@ -727,20 +745,26 @@ class MeteoalarmAlertsProvider(PackedAlertsMixin, AlertsProvider):
         features = [item for item in body["features"] if isinstance(item, dict)]
 
         countries = []
+        skipped: list = []
         for feature in features:
             code = feature.get("id")
             geometry = feature.get("geometry")
             if not code or code == "ALL" or not geometry:
                 continue
             if not valid_geometry(geometry):
-                # A malformed ring would raise in covers(); skip the country.
+                # A malformed ring would raise in covers(); skip the country,
+                # but remember that the list is not the whole picture.
                 self.host.logger.debug(
                     f"Meteoalarm country {code} has an unusable geometry; skipped"
                 )
+                skipped.append(code)
                 continue
             countries.append((code, geometry))
+        # A list with a country missing is retried soon: the next fetch may
+        # carry a usable polygon, and until then coverage is only a guess.
+        ttl = FAILURE_TTL if skipped else LOCATIONS_TTL
         with self._lock:
-            self._locations = (self._clock(), countries)
+            self._locations = (self._clock(), countries, ttl, tuple(skipped))
         self._clear_streak("locations")
         return countries
 
@@ -922,8 +946,10 @@ class MeteoalarmAlertsProvider(PackedAlertsMixin, AlertsProvider):
 
         The text is cached rather than the parsed details, so a change of the
         configured language re-reads the same document instead of refetching it.
+        Only a document that parsed is cached for the window TTL: an HTML error
+        page must not hide the alert for ten minutes.
         """
-        raw_key = ("raw", alert_id, tuple(sorted(indexes)))
+        raw_key = _raw_key(alert_id, indexes)
         with self._lock:
             cached = self._caps.get(raw_key)
         if cached is not None and cached[0] > self._utcnow():
@@ -944,12 +970,14 @@ class MeteoalarmAlertsProvider(PackedAlertsMixin, AlertsProvider):
         response = self._get(url)
         if response is UNAVAILABLE or response.status_code == 204:
             return None
-        text = response.text
+        return response.text
+
+    def _cache_raw(self, alert_id: str, indexes: set, text: str, seconds: float) -> None:
+        """Keep a CAP document's text for *seconds*, once it has been judged."""
         with self._lock:
-            self._caps[raw_key] = (
-                self._utcnow() + timedelta(seconds=WINDOW_TTL_TODAY), text
+            self._caps[_raw_key(alert_id, indexes)] = (
+                self._utcnow() + timedelta(seconds=seconds), text
             )
-        return text
 
     def _fetch_cap(self, alert_id: str, features: list, indexes: set, key: tuple,
                    language: str) -> tuple:
@@ -963,7 +991,11 @@ class MeteoalarmAlertsProvider(PackedAlertsMixin, AlertsProvider):
             return None, True
         details = parse_cap(text, language, indexes)
         if details is None or details["expires"] is None:
+            # An unparseable document is a failure, not an answer: keep it only
+            # briefly, so the alert reappears when the endpoint recovers.
+            self._cache_raw(alert_id, indexes, text, FAILURE_TTL)
             return None, True
+        self._cache_raw(alert_id, indexes, text, WINDOW_TTL_TODAY)
 
         now = self._utcnow()
         # A Cancel or an Update still names what it replaces, so the alert is
@@ -1028,6 +1060,11 @@ class MeteoalarmAlertsProvider(PackedAlertsMixin, AlertsProvider):
         if countries is None:
             return Coverage.COVERED if _in_europe(lat, lon) else Coverage.NOT_COVERED
         if any(geometry_contains(geometry, lon, lat) for _code, geometry in countries):
+            return Coverage.COVERED
+        if self._locations_incomplete() and _in_europe(lat, lon):
+            # A country whose polygon could not be read may be the one covering
+            # the point, so the warnings query still runs and a failure there
+            # surfaces as a fetch error rather than "not available".
             return Coverage.COVERED
         return Coverage.NOT_COVERED
 
@@ -1095,9 +1132,9 @@ class MeteoalarmAlertsProvider(PackedAlertsMixin, AlertsProvider):
 
         grouped: dict[str, list] = {}
         incomplete = False
-        for country, geometry in countries:
-            if not geometry_contains(geometry, lon, lat):
-                continue
+
+        def collect(country: str) -> None:
+            nonlocal incomplete
             features, failed = self._country_features(country)
             incomplete = incomplete or failed
             for feature in features:
@@ -1107,6 +1144,20 @@ class MeteoalarmAlertsProvider(PackedAlertsMixin, AlertsProvider):
                 alert_id = properties.get("alertId")
                 if alert_id:
                     grouped.setdefault(alert_id, []).append(feature)
+
+        queried: set = set()
+        for country, geometry in countries:
+            if not geometry_contains(geometry, lon, lat):
+                continue
+            queried.add(country)
+            collect(country)
+        # A country whose polygon could not be read may be the one covering the
+        # point, so its warnings are queried rather than reporting an all-clear.
+        if _in_europe(lat, lon):
+            for country in self._skipped_countries():
+                if country not in queried:
+                    queried.add(country)
+                    collect(country)
 
         alerts = []
         superseded: set = set()

@@ -23,6 +23,7 @@ import requests
 from modules.i18n import Translator
 from modules.weather_providers.alerts_meteoalarm import (
     DEFAULT_BASE_URL,
+    FAILURE_TTL,
     GEOMETRY_CACHE_MAX,
     LOCATIONS_TTL,
     LOCATIONS_URL,
@@ -1513,3 +1514,61 @@ def test_the_dead_coverage_state_and_translation_keys_are_gone():
     meteoalarm = keys["commands"]["wx"]["meteoalarm"]
     assert "from" not in meteoalarm
     assert "until" not in meteoalarm
+
+
+# --- a CAP document that does not parse -------------------------------------
+
+
+def test_an_html_cap_is_retried_after_a_minute():
+    """An HTML 200 must not be cached for the window TTL and hide the alert."""
+    routes = _routes()
+    routes[CAP_GALE] = _Response(200, text="<html>Bad Gateway</html>")
+    provider, session, _host_, clock = _provider(routes)
+
+    first = provider.summary(LAT, LON, 130)
+    assert session.count(CAP_GALE) == 1
+    # The gale alert is lost, the other one still answers.
+    assert first is not None and first.count == 1
+
+    clock.advance(FAILURE_TTL + 1)
+    routes[CAP_GALE] = _Response(200, text=_text("alert-gale.xml"))
+    second = provider.summary(LAT, LON, 130)
+
+    assert session.count(CAP_GALE) == 2
+    assert second is not None and second.count == 2
+
+
+# --- a country polygon that does not parse ----------------------------------
+
+
+def test_a_malformed_country_polygon_is_retried_after_a_minute():
+    """A list with a country missing is cached briefly, not for a day."""
+    locations = _json("locations.json")
+    for feature in locations["features"]:
+        if feature.get("id") == "NO":
+            feature["geometry"] = {"type": "Polygon", "coordinates": [[[0, 0], [1]]]}
+    routes = _routes()
+    routes[LOCATIONS_URL] = _Response(200, locations)
+    provider, session, _host_, clock = _provider(routes)
+
+    assert provider.coverage_for(LAT, LON) is Coverage.COVERED
+    assert session.count(LOCATIONS_URL) == 1
+
+    clock.advance(FAILURE_TTL + 1)
+    assert provider.coverage_for(LAT, LON) is Coverage.COVERED
+    assert session.count(LOCATIONS_URL) == 2
+
+
+def test_a_point_outside_every_valid_polygon_is_possibly_covered_in_europe():
+    """Norway's polygon is unreadable, so the point cannot be ruled out."""
+    locations = _json("locations.json")
+    for feature in locations["features"]:
+        if feature.get("id") == "NO":
+            feature["geometry"] = {"type": "Polygon", "coordinates": [[[0, 0], [1]]]}
+    routes = _routes()
+    routes[LOCATIONS_URL] = _Response(200, locations)
+    provider, _session_, _host_, _clock = _provider(routes)
+
+    assert provider.coverage_for(LAT, LON) is Coverage.COVERED
+    # Outside Europe the missing polygon changes nothing.
+    assert provider.coverage_for(FAR_LAT, FAR_LON) is Coverage.NOT_COVERED

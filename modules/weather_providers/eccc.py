@@ -23,6 +23,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from typing import Any, Optional
+from urllib.parse import urljoin
 
 from ..http_retry import make_retry_session
 from ..weather_common import _ARROWS_8, _COMPASS_16
@@ -40,12 +41,17 @@ CITY_CACHE_SECONDS = 600
 # recovered service for the whole TTL.
 FAILURE_CACHE_SECONDS = 60
 CITY_PAGE_LIMIT = 50  # the API's own page size; a 150 km box holds far fewer
+# A wide box can hold more than one page, and the right city can sit on the
+# second, so the next links are followed up to this many pages per box.
+CITY_PAGE_MAX_PAGES = 5
 MAX_CITY_DISTANCE_KM = 150.0
 # The box is sized to the coverage radius, then widened once for a sparse area
 # whose only city page sits just outside it.
 CITY_SEARCH_SCALES = (1.0, 2.0)
-KM_PER_DEGREE_LAT = 111.0
-MAX_LON_HALF_WIDTH = 60.0  # near the poles the box would otherwise wrap the globe
+KM_PER_DEGREE_LAT = 111.32
+# Near the poles the longitude half-width reaches the whole range; the box is
+# then the full -180..180 span rather than a wrap-around one.
+MAX_LON_HALF_WIDTH = 180.0
 ECCC_MULTIDAY_MAX_DAYS = 6
 
 # Roughly Canada: the city-page network's own extent, used for coverage so the
@@ -99,6 +105,16 @@ KEYWORD_WMO = (
 )
 
 
+def _dict(value: Any) -> dict:
+    """A JSON object, or an empty one: a malformed body must never raise."""
+    return value if isinstance(value, dict) else {}
+
+
+def _list(value: Any) -> list:
+    """A JSON array, or an empty one."""
+    return value if isinstance(value, list) else []
+
+
 def _wmo_for(icon_code: Any, description: str) -> Optional[int]:
     """The WMO code for an ECCC icon code, else from the description's words."""
     try:
@@ -119,8 +135,9 @@ def _search_box(lat: float, scale: float) -> tuple[float, float]:
 
     A degree of longitude shrinks with the cosine of the latitude, so a square
     box misses a city page a hundred kilometres east at high latitude: at 70°N
-    two degrees of longitude are only 76 km. The longitude half-width is widened
-    to match, and capped near the poles where the box would wrap the globe.
+    two degrees of longitude are only 76 km. The longitude half-width is the
+    exact parallel arc for the radius, so the box contains the whole circle, and
+    it is clamped to the full range near the poles.
     """
     delta_lat = MAX_CITY_DISTANCE_KM * scale / KM_PER_DEGREE_LAT
     cosine = max(math.cos(math.radians(lat)), 1e-6)
@@ -128,6 +145,30 @@ def _search_box(lat: float, scale: float) -> tuple[float, float]:
         MAX_CITY_DISTANCE_KM * scale / (KM_PER_DEGREE_LAT * cosine), MAX_LON_HALF_WIDTH
     )
     return delta_lat, delta_lon
+
+
+def _search_boxes(lat: float, lon: float, scale: float) -> list:
+    """The bbox strings covering ``scale`` × 150 km around a point.
+
+    One box normally, two when it crosses the dateline, since a bbox cannot
+    wrap, and the full longitude range when the half-width reaches it.
+    """
+    delta_lat, delta_lon = _search_box(lat, scale)
+    south, north = lat - delta_lat, lat + delta_lat
+    if delta_lon >= MAX_LON_HALF_WIDTH:
+        return [f"-180.0000,{south:.4f},180.0000,{north:.4f}"]
+    west, east = lon - delta_lon, lon + delta_lon
+    if west < -180.0:
+        return [
+            f"-180.0000,{south:.4f},{east:.4f},{north:.4f}",
+            f"{west + 360.0:.4f},{south:.4f},180.0000,{north:.4f}",
+        ]
+    if east > 180.0:
+        return [
+            f"{west:.4f},{south:.4f},180.0000,{north:.4f}",
+            f"-180.0000,{south:.4f},{east - 360.0:.4f},{north:.4f}",
+        ]
+    return [f"{west:.4f},{south:.4f},{east:.4f},{north:.4f}"]
 
 
 def _parse_time(value: Any) -> Optional[datetime]:
@@ -202,19 +243,18 @@ class EcccProvider(WeatherProvider):
         max_length = self.host.get_max_message_length(message) if message else 130
         max_length = max_length - location_prefix_len
 
-        feature, failed = self._lookup(lat, lon)
-        if failed:
-            return ForecastReply(
-                text=self.host.translate('commands.gwx.eccc.error_fetching_api'), ok=False
-            )
-        if feature is None:
-            return ForecastReply(
-                text=self.host.translate('commands.gwx.eccc.error_fetching_api'),
-                ok=False,
-                no_coverage=True,
-            )
-
         try:
+            feature, failed = self._lookup(lat, lon)
+            if failed:
+                return ForecastReply(
+                    text=self.host.translate('commands.gwx.eccc.error_fetching_api'), ok=False
+                )
+            if feature is None:
+                return ForecastReply(
+                    text=self.host.translate('commands.gwx.eccc.error_fetching_api'),
+                    ok=False,
+                    no_coverage=True,
+                )
             if forecast_type == "tomorrow":
                 return ForecastReply(text=self._tomorrow(feature, lat, lon, max_length))
             if forecast_type == "multiday":
@@ -263,50 +303,75 @@ class EcccProvider(WeatherProvider):
         """Query the city pages around a point, widening the box until one answers."""
         language = self._language()
         for scale in CITY_SEARCH_SCALES:
-            delta_lat, delta_lon = _search_box(lat, scale)
-            params = {
-                "f": "json",
-                "lang": language,
-                "limit": CITY_PAGE_LIMIT,
-                "bbox": (
-                    f"{lon - delta_lon:.4f},{lat - delta_lat:.4f},"
-                    f"{lon + delta_lon:.4f},{lat + delta_lat:.4f}"
-                ),
-            }
+            features: list = []
+            first = None
+            for bbox in _search_boxes(lat, lon, scale):
+                params = {
+                    "f": "json",
+                    "lang": language,
+                    "limit": CITY_PAGE_LIMIT,
+                    "bbox": bbox,
+                }
+                page, response = self._collect_features(params)
+                if page is None:
+                    return None, True, FAILURE_CACHE_SECONDS
+                if first is None:
+                    first = response
+                features.extend(page)
+            nearest = self._nearest(features, lat, lon)
+            if nearest is not None:
+                return nearest, False, self._ttl(first)
+        return None, False, CITY_CACHE_SECONDS
+
+    def _collect_features(self, params: Optional[dict]) -> tuple[Optional[list], Any]:
+        """Every feature of one bbox query, following the next links.
+
+        A wide box can hold more than one page, and the nearest city can sit on
+        the second, so the ``next`` links are followed up to a bounded number of
+        pages. ``(None, None)`` is a failed request or body; the response is the
+        first page's, for its ``Expires``.
+        """
+        url = f"{ECCC_BASE_URL}/collections/{CITYPAGE_COLLECTION}/items"
+        features: list = []
+        first = None
+        for _page in range(CITY_PAGE_MAX_PAGES):
             try:
-                response = self._get(f"{ECCC_BASE_URL}/collections/{CITYPAGE_COLLECTION}/items", params)
+                response = self._get(url, params)
             except Exception as error:
                 self.host.logger.warning(f"Error fetching Environment Canada city pages: {error}")
-                return None, True, FAILURE_CACHE_SECONDS
+                return None, None
             if response is None:
-                return None, True, FAILURE_CACHE_SECONDS
+                return None, None
             if not getattr(response, "ok", False):
                 self.host.logger.warning(
                     "Error fetching weather from Environment Canada: "
                     f"{getattr(response, 'status_code', '?')}"
                 )
-                return None, True, FAILURE_CACHE_SECONDS
-
-            features = self._features(response)
-            if features is None:
+                return None, None
+            body = self._features(response)
+            if body is None:
                 self.host.logger.warning(
                     "Environment Canada city pages returned an unexpected body"
                 )
-                return None, True, FAILURE_CACHE_SECONDS
-            nearest = self._nearest(features, lat, lon)
-            if nearest is not None:
-                return nearest, False, self._ttl(response)
-        return None, False, CITY_CACHE_SECONDS
+                return None, None
+            page, next_url = body
+            if first is None:
+                first = response
+            features.extend(page)
+            if not next_url:
+                break
+            url, params = next_url, None
+        return features, first
 
-    def _get(self, url: str, params: dict):
+    def _get(self, url: str, params: Optional[dict]):
         """One GET, with the provider's own session or a fresh one."""
         if self._session is not None:
             return self._session.get(url, params=params, timeout=ECCC_TIMEOUT)
         with make_retry_session() as session:
             return session.get(url, params=params, timeout=ECCC_TIMEOUT)
 
-    def _features(self, response) -> Optional[list]:
-        """The GeoJSON features of a successful response, or None when it is not GeoJSON.
+    def _features(self, response) -> Optional[tuple]:
+        """``(features, next href)`` for a successful response, or None.
 
         None is a failure, not an empty answer: a body that is not a feature
         collection says nothing about whether a city page is near the point.
@@ -315,17 +380,28 @@ class EcccProvider(WeatherProvider):
             body = response.json()
         except Exception:
             return None
-        features = body.get("features") if isinstance(body, dict) else None
+        if not isinstance(body, dict):
+            return None
+        features = body.get("features")
         if not isinstance(features, list):
             return None
-        return [feature for feature in features if isinstance(feature, dict)]
+        next_url = None
+        for link in _list(body.get("links")):
+            if isinstance(link, dict) and link.get("rel") == "next" and link.get("href"):
+                next_url = urljoin(ECCC_BASE_URL, str(link["href"]))
+                break
+        return [feature for feature in features if isinstance(feature, dict)], next_url
 
     def _nearest(self, features: list, lat: float, lon: float) -> Optional[dict]:
         """The city page closest to the point, if one is within reach."""
         best = None
         best_distance = None
         for feature in features:
-            point = (feature.get("geometry") or {}).get("coordinates") or []
+            geometry = feature.get("geometry")
+            if not isinstance(geometry, dict):
+                # A malformed geometry is not a city page: skip it, never raise.
+                continue
+            point = _list(geometry.get("coordinates"))
             if len(point) < 2:
                 continue
             try:
@@ -382,16 +458,16 @@ class EcccProvider(WeatherProvider):
         return node
 
     def _properties(self, feature: dict) -> dict:
-        return feature.get("properties") or {}
+        return _dict(feature.get("properties"))
 
     def _days(self, feature: dict) -> list:
         """The forecast periods paired into days: high, low, summary and icon."""
-        forecasts = ((self._properties(feature).get("forecastGroup") or {}).get("forecasts")) or []
+        forecasts = _list(_dict(self._properties(feature).get("forecastGroup")).get("forecasts"))
         days: list = []
         for period in forecasts:
             if not isinstance(period, dict):
                 continue
-            temperatures = ((period.get("temperatures") or {}).get("temperature")) or []
+            temperatures = _list(_dict(period.get("temperatures")).get("temperature"))
             high = low = None
             for entry in temperatures:
                 if not isinstance(entry, dict):
@@ -402,10 +478,10 @@ class EcccProvider(WeatherProvider):
                     high = value
                 elif kind == "low":
                     low = value
-            abbreviated = period.get("abbreviatedForecast") or {}
+            abbreviated = _dict(period.get("abbreviatedForecast"))
             summary = self._text(abbreviated.get("textSummary"))
-            icon = (abbreviated.get("icon") or {}).get("value")
-            name = self._text((period.get("period") or {}).get("textForecastName"))
+            icon = _dict(abbreviated.get("icon")).get("value")
+            name = self._text(_dict(period.get("period")).get("textForecastName"))
             if high is not None:
                 days.append({"high": high, "low": None, "summary": summary, "icon": icon, "name": name})
             elif low is not None:
@@ -430,11 +506,11 @@ class EcccProvider(WeatherProvider):
     def _compass(self, wind: dict) -> str:
         """The wind direction as the nearest compass point with its arrow."""
         value = None
-        bearing = self._value((wind.get("bearing") or {}).get("value"))
+        bearing = self._value(_dict(wind.get("bearing")).get("value"))
         try:
             value = float(bearing)
         except (TypeError, ValueError):
-            text = self._text((wind.get("direction") or {}).get("value")).strip().upper()
+            text = self._text(_dict(wind.get("direction")).get("value")).strip().upper()
             value = COMPASS_DEGREES.get(text)
         if value is None:
             return ""
@@ -445,7 +521,7 @@ class EcccProvider(WeatherProvider):
 
     def _is_calm(self, wind: dict) -> bool:
         """Whether the data says the wind is calm, which it writes as a word."""
-        raw = self._value((wind.get("speed") or {}).get("value"))
+        raw = self._value(_dict(wind.get("speed")).get("value"))
         return isinstance(raw, str) and raw.strip().lower() in ("calm", "calme")
 
     def _wind_speed(self, kmh: Any) -> Optional[int]:
@@ -538,8 +614,8 @@ class EcccProvider(WeatherProvider):
     def _current(self, feature: dict, lat: float, lon: float, max_length: int) -> Optional[str]:
         """Current conditions, today's high and low, then tomorrow while it fits."""
         properties = self._properties(feature)
-        current = properties.get("currentConditions") or {}
-        temperature = self._temperature(self._value((current.get("temperature") or {}).get("value")))
+        current = _dict(properties.get("currentConditions"))
+        temperature = self._temperature(self._value(_dict(current.get("temperature")).get("value")))
         if temperature is None:
             self.host.logger.warning("Environment Canada response has no current temperature")
             return None
@@ -549,7 +625,7 @@ class EcccProvider(WeatherProvider):
         local_hour = (now + self._offset(lat, lon, now)).hour
         is_day = 6 <= local_hour < 18
 
-        icon = (current.get("iconCode") or {}).get("value")
+        icon = _dict(current.get("iconCode")).get("value")
         description = ""
         if icon is None and days:
             # The current icon is sometimes only a format; the first period's
@@ -566,15 +642,15 @@ class EcccProvider(WeatherProvider):
                or self._period_key(local_hour, has_high))
         period_name = self.host.translate(f'commands.gwx.periods.{key}')
 
-        wind = current.get("wind") or {}
-        speed = self._wind_speed(self._value((wind.get("speed") or {}).get("value")))
+        wind = _dict(current.get("wind"))
+        speed = self._wind_speed(self._value(_dict(wind.get("speed")).get("value")))
         if self._is_calm(wind):
             wind_text = self.host.translate('commands.gwx.calm')
         else:
             direction = self._compass(wind)
             wind_text = f"{direction}{speed}" if speed is not None and speed >= 3 else ""
 
-        humidity = self._value((current.get("relativeHumidity") or {}).get("value"))
+        humidity = self._value(_dict(current.get("relativeHumidity")).get("value"))
         humidity_text = ""
         if humidity is not None:
             try:
@@ -584,7 +660,7 @@ class EcccProvider(WeatherProvider):
             except (TypeError, ValueError):
                 pass
 
-        pressure = self._value((current.get("pressure") or {}).get("value"))
+        pressure = self._value(_dict(current.get("pressure")).get("value"))
         pressure_text = ""
         if pressure is not None:
             try:
@@ -737,7 +813,7 @@ class EcccProvider(WeatherProvider):
     def _hourly(self, feature: dict, lat: float, lon: float, max_length: int) -> str:
         """The hours after the current one, packed into one reply."""
         properties = self._properties(feature)
-        hours = ((properties.get("hourlyForecastGroup") or {}).get("hourlyForecasts")) or []
+        hours = _list(_dict(properties.get("hourlyForecastGroup")).get("hourlyForecasts"))
         if not hours:
             return self.host.translate('commands.gwx.hourly_not_available')
 
@@ -759,10 +835,10 @@ class EcccProvider(WeatherProvider):
             if when <= cutoff:
                 continue
             moment = when + self._offset(lat, lon, when)
-            temperature = self._temperature(self._value((hour.get("temperature") or {}).get("value")))
+            temperature = self._temperature(self._value(_dict(hour.get("temperature")).get("value")))
             if temperature is None:
                 break
-            icon = (hour.get("iconCode") or {}).get("value")
+            icon = _dict(hour.get("iconCode")).get("value")
             # One description, the data's own when it has one: the icon's
             # catalog text would otherwise repeat it.
             description = self._text(hour.get("condition")) or self._icon_description(icon)
@@ -771,7 +847,7 @@ class EcccProvider(WeatherProvider):
                 f"{self.host._hour_label(moment.isoformat())}:",
                 self._emoji(icon, is_day),
             ]
-            probability = self._value((hour.get("lop") or {}).get("value"))
+            probability = self._value(_dict(hour.get("lop")).get("value"))
             if probability is not None:
                 try:
                     if int(probability) > 0:
@@ -780,8 +856,8 @@ class EcccProvider(WeatherProvider):
                     pass
             parts.append(self.host._short_hourly_description(description))
             parts.append(f"{temperature}°")
-            wind = hour.get("wind") or {}
-            speed = self._wind_speed(self._value((wind.get("speed") or {}).get("value")))
+            wind = _dict(hour.get("wind"))
+            speed = self._wind_speed(self._value(_dict(wind.get("speed")).get("value")))
             if self._is_calm(wind):
                 parts.append(self.host.translate('commands.gwx.calm'))
             elif speed is not None:

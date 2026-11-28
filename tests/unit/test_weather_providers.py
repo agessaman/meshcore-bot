@@ -292,9 +292,12 @@ class _FakeAlerts(AlertsProvider):
         return True
 
 
-def _forecast_reply(cmd, extra=None, alerts=None, ok=True, text="BODY"):
+def _forecast_reply(cmd, extra=None, alerts=None, ok=True, text="BODY", raises=None):
     """Drive one default forecast through the command with the network stubbed."""
-    cmd.provider.forecast = Mock(return_value=ForecastReply(text=text, extra=extra, ok=ok))
+    if raises is not None:
+        cmd.provider.forecast = Mock(side_effect=raises)
+    else:
+        cmd.provider.forecast = Mock(return_value=ForecastReply(text=text, extra=extra, ok=ok))
     if alerts is not None:
         cmd.alerts_provider = alerts
     cmd.geocode_location = Mock(
@@ -683,6 +686,27 @@ def test_the_alerts_option_replies_when_meteoalarm_cannot_fetch():
     assert texts == ["Error fetching weather alerts"]
 
 
+def test_a_malformed_country_polygon_still_queries_its_warnings():
+    """Norway's polygon unreadable must not read as "not available"."""
+    from tests.unit.test_meteoalarm_alerts import LOCATIONS_URL, NO_URL, _json, _Response
+
+    cmd, provider = _meteoalarm_command()
+    locations = _json("locations.json")
+    for feature in locations["features"]:
+        if feature.get("id") == "NO":
+            feature["geometry"] = {"type": "Polygon", "coordinates": [[[0, 0], [1]]]}
+    provider.session.routes[LOCATIONS_URL] = _Response(200, locations)
+    message = SimpleNamespace(content="wx 58.4,6.0 alerts", sender_id="u1")
+
+    assert asyncio.run(cmd.execute(message)) is True
+
+    # The point is inside Europe, so the warnings query still runs.
+    assert provider.session.count(NO_URL) > 0
+    texts = [call.args[1] for call in cmd.send_response.call_args_list]
+    assert texts
+    assert not any("not available" in text.lower() for text in texts)
+
+
 def test_a_broken_meteoalarm_document_does_not_cost_the_gwx_forecast():
     from tests.unit.test_meteoalarm_alerts import LOCATIONS_URL, NO_URL, _Response, _routes, _Session
 
@@ -1054,6 +1078,47 @@ def test_a_failed_noaa_fallback_does_not_append_nws_alerts():
     reply = cmd._fallback_reply("Paris", "city", 48.85, 2.35, "default", 7, None)
 
     assert reply == "Error fetching weather data"
+
+
+def test_a_raising_forecast_still_carries_an_independent_alert_summary():
+    """A provider that raises must cost the forecast, not the alerts.
+
+    ECCC + explicit NWS: a malformed body used to raise out of the lookup, and
+    the command sent only the error with no alert summary at all.
+    """
+    cmd = _wx({"weather_provider": "eccc", "alerts_provider": "nws"})
+    cmd.alerts_provider.summary = Mock(return_value=AlertSummary(text="ALERTS", count=1))
+    cmd._locate_for_forecast = Mock(return_value=(None, 47.6, -122.3, "Portland, US: "))
+
+    assert _forecast_reply(cmd, raises=RuntimeError("invalid geometry")) == (
+        "multi_message", cmd.translate("commands.gwx.error_fetching"), "ALERTS", 1
+    )
+    assert any("forecast failed" in line for line in _warnings(cmd.logger))
+
+
+def test_a_raising_fallback_forecast_still_carries_independent_alerts():
+    cmd = _wx({"weather_provider": "noaa", "alerts_provider": "dwd",
+               "openmeteo_fallback": "true"})
+    cmd.alerts_provider.summary = Mock(return_value=AlertSummary(text="ALERTS", count=1))
+    cmd.provider.covers = Mock(return_value=True)
+    cmd.provider.forecast = Mock(
+        return_value=ForecastReply(text="", ok=False, no_coverage=True)
+    )
+    cmd.fallback_provider.forecast = Mock(side_effect=RuntimeError("boom"))
+    cmd.geocode_location = Mock(
+        return_value=(52.52, 13.40, {"city": "Berlin", "country_code": "de"}, None)
+    )
+    cmd.city_to_lat_lon = Mock(
+        return_value=(52.52, 13.40, {"city": "Berlin", "country_code": "de"})
+    )
+    cmd._format_location_display = Mock(return_value="Berlin, DE")
+    cmd.get_max_message_length = Mock(return_value=130)
+
+    reply = cmd._fallback_reply("Berlin", "city", 52.52, 13.40, "default", 7, None)
+
+    assert reply == (
+        "multi_message", cmd.translate("commands.gwx.error_fetching"), "ALERTS", 1
+    )
 
 
 # --- an alerts provider that raises costs the alerts, never the forecast ----
