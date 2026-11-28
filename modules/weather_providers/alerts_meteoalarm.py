@@ -42,7 +42,7 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 from ._alerts_common import PackedAlertsMixin
-from ._geo import geometry_contains
+from ._geo import geometry_contains, valid_geometry
 from .base import AlertsProvider, Coverage, ProviderHost
 
 # MeteoGate serves the same EDR API as Meteoalarm Direct and is where a public
@@ -466,13 +466,16 @@ class MeteoalarmAlertsProvider(PackedAlertsMixin, AlertsProvider):
         self.base_url = (base_url or DEFAULT_BASE_URL).strip().rstrip("/")
         self.locations_url = f"{self.base_url}{LOCATIONS_PATH}"
         self.country_url = f"{self.base_url}{COUNTRY_PATH}"
-        self.session = session if session is not None else _make_session()
+        # An injected session (tests, or a caller's own) is used as it is; with
+        # none, each worker thread gets its own. requests.Session is not
+        # thread-safe, and a lock held across a request would serialize every
+        # alert lookup in the process.
+        self.session = session
+        self._local = threading.local()
         # One lock for every cache, shared with the other instances on this
         # origin and token. Never held across HTTP.
         self._cache = _cache_for(self.base_url, self.token)
         self._lock = self._cache.lock
-        # requests.Session is not thread-safe, and the caches are shared.
-        self._session_lock = threading.Lock()
         self._api_origin = _origin(self.base_url)
         self._rate = _rate_limit_for(self.base_url)
 
@@ -604,10 +607,9 @@ class MeteoalarmAlertsProvider(PackedAlertsMixin, AlertsProvider):
         if self.token and api and self._api_origin[0] == "https":
             headers["Authorization"] = f"Bearer {self.token}"
         try:
-            with self._session_lock:
-                response = self.session.get(
-                    url, params=params, headers=headers, timeout=(CONNECT_TIMEOUT, READ_TIMEOUT)
-                )
+            response = self._session_for_thread().get(
+                url, params=params, headers=headers, timeout=(CONNECT_TIMEOUT, READ_TIMEOUT)
+            )
         except Exception as error:
             self._warn_once(
                 f"http:{urlparse(url).netloc}",
@@ -630,6 +632,15 @@ class MeteoalarmAlertsProvider(PackedAlertsMixin, AlertsProvider):
         if api:
             self._note_rate_limit(response)
         return response
+
+    def _session_for_thread(self) -> requests.Session:
+        """This thread's session: an injected one is used as it is."""
+        if self.session is not None:
+            return self.session
+        session = getattr(self._local, "session", None)
+        if session is None:
+            session = self._local.session = _make_session()
+        return session
 
     def _json(self, response):
         """The JSON body, or None when the body is empty or not JSON."""
@@ -707,20 +718,27 @@ class MeteoalarmAlertsProvider(PackedAlertsMixin, AlertsProvider):
         if response is UNAVAILABLE:
             # A stale list still says which countries could cover the point.
             return stale[1] if stale is not None else None
-        if response.status_code == 204:
-            features = []
-        else:
-            body = self._json(response)
-            if not isinstance(body, dict):
-                self._warn_once("locations", "Meteoalarm locations fetch returned no JSON")
-                return stale[1] if stale is not None else None
-            features = [item for item in body.get("features") or [] if isinstance(item, dict)]
+        body = self._json(response)
+        if not isinstance(body, dict) or not isinstance(body.get("features"), list):
+            # An empty or shapeless body is not a list of countries: without
+            # one, every point would read as uncovered.
+            self._warn_once("locations", "Meteoalarm locations fetch returned no feature list")
+            return stale[1] if stale is not None else None
+        features = [item for item in body["features"] if isinstance(item, dict)]
 
-        countries = [
-            (feature.get("id"), feature.get("geometry"))
-            for feature in features
-            if feature.get("id") and feature.get("id") != "ALL" and feature.get("geometry")
-        ]
+        countries = []
+        for feature in features:
+            code = feature.get("id")
+            geometry = feature.get("geometry")
+            if not code or code == "ALL" or not geometry:
+                continue
+            if not valid_geometry(geometry):
+                # A malformed ring would raise in covers(); skip the country.
+                self.host.logger.debug(
+                    f"Meteoalarm country {code} has an unusable geometry; skipped"
+                )
+                continue
+            countries.append((code, geometry))
         with self._lock:
             self._locations = (self._clock(), countries)
         self._clear_streak("locations")
@@ -796,13 +814,15 @@ class MeteoalarmAlertsProvider(PackedAlertsMixin, AlertsProvider):
             if response.status_code == 204:
                 break
             body = self._json(response)
-            if not isinstance(body, dict):
+            if not isinstance(body, dict) or not isinstance(body.get("features"), list):
+                # No feature list is not an empty list: an all-clear has to be
+                # explicit, or a broken page reads as "no warnings".
                 self._warn_once(
                     f"country:{country}",
-                    f"Meteoalarm warnings fetch for {country} returned no JSON",
+                    f"Meteoalarm warnings fetch for {country} returned no feature list",
                 )
                 return None
-            features.extend(item for item in body.get("features") or [] if isinstance(item, dict))
+            features.extend(item for item in body["features"] if isinstance(item, dict))
             total_pages = _total_pages(body.get("metadata"))
             if page >= total_pages:
                 break
@@ -862,7 +882,7 @@ class MeteoalarmAlertsProvider(PackedAlertsMixin, AlertsProvider):
         if response is UNAVAILABLE or response.status_code == 204:
             return None
         geometry = _geometry_of(self._json(response))
-        if geometry is None:
+        if not valid_geometry(geometry):
             self._warn_once(f"geometry:{key}", "Meteoalarm geometry fetch returned no geometry")
             return None
         with self._lock:
@@ -877,28 +897,37 @@ class MeteoalarmAlertsProvider(PackedAlertsMixin, AlertsProvider):
             return "en"
 
     def _cap_details(self, alert_id: str, features: list, indexes: set) -> tuple:
-        """(details, incomplete) for one alert, cached by alertId and area.
+        """(details, incomplete) for one alert, cached by alertId, area and language.
 
         Every feature of an alertId links to the same document, so the first one
-        that carries an xml link is enough.
+        that carries an xml link is enough. The language is part of the key
+        because the parsed details are the block it selected: a cache filled in
+        one language must not answer for another.
         """
-        key = (alert_id, tuple(sorted(indexes)))
+        language = self._language()
+        key = (alert_id, tuple(sorted(indexes)), language)
         with self._lock:
             cached = self._caps.get(key)
         if cached is not None and cached[0] > self._utcnow():
             return cached[1], False
         result = self._shared(
-            ("cap", key), lambda: self._fetch_cap(alert_id, features, indexes, key)
+            ("cap", key), lambda: self._fetch_cap(alert_id, features, indexes, key, language)
         )
         if result is None:
             return None, True
         return result
 
-    def _fetch_cap(self, alert_id: str, features: list, indexes: set, key: tuple) -> tuple:
+    def _cap_text(self, alert_id: str, features: list, indexes: set) -> Optional[str]:
+        """The CAP document for an alert, cached by alertId and area.
+
+        The text is cached rather than the parsed details, so a change of the
+        configured language re-reads the same document instead of refetching it.
+        """
+        raw_key = ("raw", alert_id, tuple(sorted(indexes)))
         with self._lock:
-            cached = self._caps.get(key)
+            cached = self._caps.get(raw_key)
         if cached is not None and cached[0] > self._utcnow():
-            return cached[1], False
+            return cached[1]
 
         url = None
         for feature in features:
@@ -910,12 +939,29 @@ class MeteoalarmAlertsProvider(PackedAlertsMixin, AlertsProvider):
             if url:
                 break
         if not url:
-            return None, True
+            return None
 
         response = self._get(url)
         if response is UNAVAILABLE or response.status_code == 204:
+            return None
+        text = response.text
+        with self._lock:
+            self._caps[raw_key] = (
+                self._utcnow() + timedelta(seconds=WINDOW_TTL_TODAY), text
+            )
+        return text
+
+    def _fetch_cap(self, alert_id: str, features: list, indexes: set, key: tuple,
+                   language: str) -> tuple:
+        with self._lock:
+            cached = self._caps.get(key)
+        if cached is not None and cached[0] > self._utcnow():
+            return cached[1], False
+
+        text = self._cap_text(alert_id, features, indexes)
+        if text is None:
             return None, True
-        details = parse_cap(response.text, self._language(), indexes)
+        details = parse_cap(text, language, indexes)
         if details is None or details["expires"] is None:
             return None, True
 

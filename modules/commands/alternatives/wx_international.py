@@ -22,6 +22,7 @@ from ...clients.wxsim_parser import WXSIMParser  # noqa: F401  re-exported
 from ...location import get_bot_lat_lon, get_companion_lat_lon  # noqa: F401  re-exported
 from ...models import MeshMessage
 from ...utils import (  # noqa: F401  re-exported
+    config_value,
     format_temperature_high_low,
     geocode_city_sync,
     geocode_zipcode_sync,
@@ -216,19 +217,25 @@ class GlobalWxCommand(WxCommand):
             location = location.strip()
             location_lower = location.lower()
 
-            # Look for keys matching custom.wxsim.<location> pattern
+            # Look for keys matching custom.wxsim.<location> pattern. Names
+            # only: reading every value would interpolate the whole section,
+            # and a literal '%' in another value (the Meteoalarm token, say)
+            # would raise here. The matched value is interpolated on its own,
+            # so "%(base)s/plaintext.txt" still resolves.
             prefix = 'custom.wxsim.'
-            for key, value in self.bot.config.items(section):
-                if key.startswith(prefix):
-                    # Extract the location name from the key (e.g., "custom.wxsim.lethbridge" -> "lethbridge")
-                    key_location = key[len(prefix):].strip()
-                    if key_location.lower() == location_lower:
-                        return value
+            for name in self.bot.config.options(section):
+                if not name.startswith(prefix):
+                    continue
+                # Extract the location name from the key (e.g., "custom.wxsim.lethbridge" -> "lethbridge")
+                key_location = name[len(prefix):].strip()
+                if key_location.lower() != location_lower:
+                    continue
+                return config_value(self.bot.config, section, name, self.logger)
         else:
             # Check for default source: custom.wxsim.default
             default_key = 'custom.wxsim.default'
             if self.bot.config.has_option(section, default_key):
-                return self.bot.config.get(section, default_key)
+                return config_value(self.bot.config, section, default_key, self.logger)
 
         return None
 

@@ -216,6 +216,26 @@ def test_the_locations_list_skips_the_all_feature():
     assert [code for code, _geometry in countries] == ["NO", "AT", "DE"]
 
 
+def test_a_malformed_country_polygon_is_skipped_rather_than_raised():
+    routes = _routes()
+    locations = _json("locations.json")
+    broken = {
+        "type": "Feature",
+        "id": "XX",
+        "properties": {"name": "Broken"},
+        "geometry": {"type": "Polygon", "coordinates": [[[0, 0], "not a position"]]},
+    }
+    locations["features"] = [broken, *locations["features"]]
+    routes[LOCATIONS_URL] = _Response(200, locations)
+    provider, _session_, host, _clock = _provider(routes)
+
+    # covers() reads every cached polygon, so a bad ring must never reach it.
+    assert provider.covers(LAT, LON) is True
+    assert provider.covers(FAR_LAT, FAR_LON) is False
+    assert [code for code, _geometry in provider._country_geometries()] == ["NO", "AT", "DE"]
+    assert any("unusable geometry" in call.args[0] for call in host.logger.debug.call_args_list)
+
+
 # --- windows ----------------------------------------------------------------
 
 
@@ -273,6 +293,32 @@ def test_a_204_means_no_warnings_and_is_never_parsed_as_json():
 
     assert provider.summary(LAT, LON, 130) is None
     assert _warnings(host) == []
+
+
+def test_a_locations_body_without_a_feature_list_is_unavailable():
+    routes = _routes()
+    routes[LOCATIONS_URL] = _Response(200, {})
+    provider, _session_, host, _clock = _provider(routes)
+
+    # No list is not an empty list: the point is possibly covered, and the
+    # lookup reports a fetch failure rather than an all-clear.
+    assert provider._country_geometries() is None
+    assert provider.coverage_for(LAT, LON) is Coverage.COVERED
+    assert provider.summary(LAT, LON, 130) is None
+    assert any("no feature list" in message for message in _warnings(host))
+
+
+def test_a_country_body_without_a_feature_list_is_unavailable():
+    routes = _routes()
+    routes[NO_URL] = lambda params: (
+        _Response(200, {"type": "FeatureCollection"})
+        if str(params.get("datetime", "")).startswith(TODAY)
+        else _Response(204)
+    )
+    provider, _session_, host, _clock = _provider(routes)
+
+    assert provider.summary(LAT, LON, 130) is None
+    assert any("no feature list" in message for message in _warnings(host))
 
 
 def test_pagination_follows_total_pages():
@@ -1227,6 +1273,20 @@ def test_the_configured_language_picks_its_own_info_block():
     assert "Kuling" not in summary.text
 
 
+def test_switching_language_on_a_warm_cache_picks_the_new_block():
+    provider, session, host, _clock = _provider(_two_language_routes(), language="en")
+    assert "Gale" in provider.summary(LAT, LON, 130).text
+
+    # The same provider, the same caches, a different configured language.
+    host.bot.config.set("Localization", "language", "no")
+    summary = provider.summary(LAT, LON, 130)
+
+    assert "Kuling" in summary.text
+    assert "Gale" not in summary.text
+    # The CAP document itself is not refetched: only the parse is per language.
+    assert session.count(TWO_LANGUAGES_URL) == 1
+
+
 def test_the_norwegian_language_picks_the_norwegian_block():
     provider, _session_, _host_, _clock = _provider(_two_language_routes(), language="no")
 
@@ -1402,13 +1462,47 @@ def test_two_providers_with_the_same_origin_and_token_share_their_caches():
 
     assert first._cache is second._cache
     assert other._cache is not first._cache
-    assert first._session_lock is not None
+    # The session is per thread, not shared behind a lock.
+    assert not hasattr(first, "_session_lock")
 
     first.summary(LAT, LON, 130)
     second.summary(LAT, LON, 130)
 
     assert first_session.count(LOCATIONS_URL) == 1
     assert second_session.count(LOCATIONS_URL) == 0
+
+
+def test_each_thread_gets_its_own_session_and_no_lock_is_held_during_http():
+    reset_rate_limits()
+    host = _host()
+    provider = MeteoalarmAlertsProvider(host=host, token="shared")
+    provider._wait = lambda seconds: None
+    seen = []
+    in_flight = threading.Event()
+    release = threading.Event()
+
+    class _SlowSession:
+        def get(self, url, params=None, headers=None, timeout=None):
+            # The cache lock must be free while a request is in flight.
+            assert provider._lock.acquire(blocking=False) is True
+            provider._lock.release()
+            seen.append(threading.current_thread().name)
+            in_flight.set()
+            release.wait(5)
+            return _Response(200, _json("locations.json"))
+
+    provider._session_for_thread = lambda: _SlowSession()
+
+    worker = threading.Thread(target=provider._country_geometries, name="worker")
+    worker.start()
+    assert in_flight.wait(5) is True
+    # The main thread is not blocked by the worker's request.
+    assert provider._lock.acquire(blocking=False) is True
+    provider._lock.release()
+    release.set()
+    worker.join(5)
+
+    assert seen == ["worker"]
 
 
 def test_the_dead_coverage_state_and_translation_keys_are_gone():

@@ -356,6 +356,32 @@ def test_no_alerts_says_so():
     host.send_response.assert_awaited_once_with(None, "No weather alerts")
 
 
+def test_a_200_without_an_alert_list_is_a_fetch_error():
+    # An empty body is not an empty list: an all-clear has to be explicit.
+    provider, _session_, host, _clock = _provider(response=_Response(200, {"location": {}}))
+
+    assert provider._alerts_for(*MUNICH) is None
+    assert provider.summary(*MUNICH, 150) is None
+    assert asyncio.run(provider.send_full_list(None, *MUNICH)) is True
+    host.send_response.assert_awaited_once_with(
+        None, host.translate("commands.wx.dwd.error_fetching")
+    )
+
+
+def test_a_404_with_an_undocumented_body_is_a_fetch_error():
+    # Only Bright Sky's own out-of-coverage body means "not covered".
+    provider, _session_, host, _clock = _provider(
+        response=_Response(404, {"detail": "Not Found"})
+    )
+
+    assert provider._alerts_for(*PARIS) is None
+    assert provider.summary(*PARIS, 150) is None
+    assert asyncio.run(provider.send_full_list(None, *PARIS)) is True
+    host.send_response.assert_awaited_once_with(
+        None, host.translate("commands.wx.dwd.error_fetching")
+    )
+
+
 def test_a_malformed_body_does_not_raise():
     provider, _session_, host, _clock = _provider(response=_Response(200, ["not", "a", "dict"]))
 
@@ -386,6 +412,18 @@ def test_the_cache_answers_within_its_ttl():
     clock.advance(2)
     provider._alerts_for(*MUNICH)
     assert session.count() == 2
+
+
+def test_the_cache_key_is_the_coordinates_sent():
+    # Two points that agree at two decimals but not at four are two requests.
+    provider, session, _host_, _clock = _provider("munich")
+
+    provider._alerts_for(48.1401, 11.5801)
+    provider._alerts_for(48.1402, 11.5802)
+
+    assert session.count() == 2
+    assert session.calls[0]["params"] == {"lat": "48.1401", "lon": "11.5801"}
+    assert session.calls[1]["params"] == {"lat": "48.1402", "lon": "11.5802"}
 
 
 # --- the command ------------------------------------------------------------
@@ -428,6 +466,25 @@ def test_wx_alerts_uses_the_dwd_provider_end_to_end():
     texts = [call.args[1] for call in cmd.send_response.call_args_list]
     assert texts[0].startswith("1 alerts:\n1. 🟡 Frost from ")
     assert session.calls[0]["params"] == {"lat": "52.5200", "lon": "13.4000"}
+
+
+def test_wx_alerts_with_a_shapeless_body_replies_the_fetch_error():
+    cmd = _command({"weather_provider": "metno", "alerts_provider": "dwd"})
+    cmd.alerts_provider._session = _Session(_Response(200, {}))
+    cmd.alerts_provider._now = lambda: NOW
+    cmd.record_execution = Mock()
+    cmd.send_response = AsyncMock(return_value=True)
+    cmd._pace_reply = AsyncMock()
+    cmd.get_max_message_length = Mock(return_value=150)
+    cmd.geocode_location = Mock(return_value=(52.52, 13.40, {"city": "Berlin"}, None))
+    cmd._format_location_display = Mock(return_value="Berlin, DE")
+
+    message = SimpleNamespace(content="wx 52.52,13.40 alerts", sender_id="u1")
+    assert asyncio.run(cmd.execute(message)) is True
+
+    cmd.send_response.assert_awaited_once_with(
+        message, cmd.translate("commands.wx.dwd.error_fetching")
+    )
 
 
 def test_wx_alerts_outside_germany_replies_not_available():

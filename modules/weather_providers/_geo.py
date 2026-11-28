@@ -8,7 +8,7 @@ dependency for one function.
 from __future__ import annotations
 
 import math
-from typing import Optional
+from typing import Any, Optional
 
 EARTH_RADIUS_KM = 6371.0088
 
@@ -38,6 +38,38 @@ def point_in_polygon(lon: float, lat: float, polygon: list) -> bool:
     if not point_in_ring(lon, lat, polygon[0]):
         return False
     return not any(point_in_ring(lon, lat, hole) for hole in polygon[1:])
+
+
+def valid_geometry(geometry: Any) -> bool:
+    """Whether a GeoJSON Polygon or MultiPolygon has rings ray casting can read.
+
+    A malformed ring would raise inside :func:`point_in_ring`, so a geometry is
+    checked once, before it is cached, rather than on every lookup.
+    """
+    if not isinstance(geometry, dict):
+        return False
+    kind = geometry.get("type")
+    coordinates = geometry.get("coordinates")
+    if not isinstance(coordinates, list):
+        return False
+    if kind == "Polygon":
+        polygons = [coordinates]
+    elif kind == "MultiPolygon":
+        polygons = coordinates
+    else:
+        return False
+    for polygon in polygons:
+        if not isinstance(polygon, list) or not polygon:
+            return False
+        for ring in polygon:
+            if not isinstance(ring, list) or len(ring) < 3:
+                return False
+            for position in ring:
+                if not isinstance(position, (list, tuple)) or len(position) < 2:
+                    return False
+                if not all(isinstance(value, (int, float)) for value in position[:2]):
+                    return False
+    return True
 
 
 def geometry_contains(geometry: Optional[dict], lon: float, lat: float) -> bool:

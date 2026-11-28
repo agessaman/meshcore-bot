@@ -36,6 +36,7 @@ from ..nws_alerts import (  # noqa: F401  re-exported
 from ..nws_coverage import NWSNoCoverageCache
 from ..template_reference import template_spec
 from ..utils import (
+    config_value,
     format_temperature_high_low,  # noqa: F401  re-exported
     geocode_city_sync,
     geocode_zipcode_sync,
@@ -645,24 +646,29 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             location_lower = location.lower()
             self.logger.debug(f"Checking for WXSIM source for location: '{location}' (normalized: '{location_lower}')")
 
-            # Look for keys matching custom.wxsim.<location> pattern
+            # Look for keys matching custom.wxsim.<location> pattern. Names
+            # only: reading every value would interpolate the whole section,
+            # and a literal '%' in another value (the Meteoalarm token, say)
+            # would raise here. The matched value is interpolated on its own,
+            # so "%(base)s/plaintext.txt" still resolves.
             prefix = 'custom.wxsim.'
-            # raw=True: a '%' in another [Weather] value, such as the Meteoalarm
-            # token, must not be read as interpolation.
-            for key, value in self.bot.config.items(section, raw=True):
-                if key.startswith(prefix):
-                    # Extract the location name from the key (e.g., "custom.wxsim.lethbridge" -> "lethbridge")
-                    key_location = key[len(prefix):].strip()
-                    if key_location.lower() == location_lower:
-                        self.logger.debug(f"Found WXSIM source: {key} = {value}")
-                        return value
+            for name in self.bot.config.options(section):
+                if not name.startswith(prefix):
+                    continue
+                # Extract the location name from the key (e.g., "custom.wxsim.lethbridge" -> "lethbridge")
+                key_location = name[len(prefix):].strip()
+                if key_location.lower() != location_lower:
+                    continue
+                value = config_value(self.bot.config, section, name, self.logger)
+                self.logger.debug(f"Found WXSIM source: {name} = {value}")
+                return value
 
             self.logger.debug(f"No WXSIM source found for location '{location}'")
         else:
             # Check for default source: custom.wxsim.default
             default_key = 'custom.wxsim.default'
             if self.bot.config.has_option(section, default_key):
-                url = self.bot.config.get(section, default_key, raw=True)
+                url = config_value(self.bot.config, section, default_key, self.logger)
                 self.logger.debug(f"Found default WXSIM source: {url}")
                 return url
             self.logger.debug("No default WXSIM source configured")
@@ -1045,10 +1051,21 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         return await self._send_full_alert_list(message, lat, lon)
 
     async def _alerts_coverage_async(self, lat: float, lon: float) -> Coverage:
-        """The alerts provider's coverage for a point, off the event loop."""
-        if isinstance(self.alerts_provider, NwsAlertsProvider):
-            return await self._run_sync_provider_async(self.alerts_provider.coverage_for, lat, lon)
-        return await asyncio.to_thread(self.alerts_provider.coverage_for, lat, lon)
+        """The alerts provider's coverage for a point, off the event loop.
+
+        A provider that raises here costs the alert part only: the point is
+        treated as possibly covered, so the list request reports its own fetch
+        error instead of the command failing.
+        """
+        try:
+            if isinstance(self.alerts_provider, NwsAlertsProvider):
+                return await self._run_sync_provider_async(self.alerts_provider.coverage_for, lat, lon)
+            return await asyncio.to_thread(self.alerts_provider.coverage_for, lat, lon)
+        except Exception as error:
+            self.logger.warning(
+                f"Alert coverage lookup failed: {type(error).__name__}: {error}"
+            )
+            return Coverage.COVERED
 
     def _alerts_unavailable_key(self) -> str:
         """The reply for an alerts request the provider cannot answer.
@@ -1176,15 +1193,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             if result.no_coverage and self.fallback_provider is not None:
                 return self._fallback_reply(location, location_type, lat, lon, forecast_type, num_days, message)
             if not result.ok:
-                # The error goes out unlabeled, as it always has. NWS alerts come
-                # from the same service, so a failure there is the whole answer;
-                # any other alert source is independent and still gets its say.
-                if forecast_type != "default" or isinstance(self.alerts_provider, NwsAlertsProvider):
-                    return result.text
-                summary = self._alert_summary(lat, lon, max_length)
-                if summary is None:
-                    return result.text
-                return ("multi_message", result.text, summary.text, summary.count)
+                return self._failed_reply(result.text, lat, lon, forecast_type, max_length)
 
             return self._labeled_reply(lat, lon, location_prefix, result, forecast_type, max_length)
 
@@ -1244,12 +1253,48 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             return ("multi_message", weather, result.extra)
         return weather
 
+    def _alerts_share_the_forecast_service(self) -> bool:
+        """Whether the alerts come from the same service as the forecast.
+
+        NWS alerts are NOAA's own, so a NOAA failure is the whole answer there.
+        Every other alert source is independent of the forecast.
+        """
+        return self.provider_name == 'noaa' and isinstance(self.alerts_provider, NwsAlertsProvider)
+
+    def _failed_reply(self, text: str, lat: float, lon: float, forecast_type: str,
+                      max_length: int) -> str | tuple:
+        """A failed forecast, with a confirmed alert summary when one is independent.
+
+        The error text stays the first message, unlabeled, as it always has; the
+        alerts ride along as the second one. A non-default forecast type never
+        carries alerts, and neither does the NOAA + NWS pairing.
+        """
+        if forecast_type != "default" or self._alerts_share_the_forecast_service():
+            return text
+        summary = self._alert_summary(lat, lon, max_length)
+        if summary is None:
+            return text
+        return ("multi_message", text, summary.text, summary.count)
+
     def _alert_summary(self, lat: float, lon: float, max_length: int) -> Optional[AlertSummary]:
-        """The alerts provider's confirmed summary for a point, or None."""
+        """The alerts provider's confirmed summary for a point, or None.
+
+        Every alerts provider is wrapped here, so a provider that raises costs
+        the alert part of the reply and nothing else: the forecast still goes
+        out, and the failure is logged once as a warning.
+        """
         alerts = self.alerts_provider
-        if alerts is None or not alerts.covers(lat, lon):
+        if alerts is None:
             return None
-        summary = alerts.summary(lat, lon, max_length)
+        try:
+            if not alerts.covers(lat, lon):
+                return None
+            summary = alerts.summary(lat, lon, max_length)
+        except Exception as error:
+            self.logger.warning(
+                f"Alert summary failed: {type(error).__name__}: {error}"
+            )
+            return None
         if summary is None or summary.count <= 0:
             return None
         return summary
@@ -1288,7 +1333,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         )
         if not reply.ok:
             # The base sent the error on its own, without the location label.
-            return reply.text
+            return self._failed_reply(reply.text, lat, lon, forecast_type, max_length)
         return self._labeled_reply(lat, lon, location_prefix, reply, forecast_type, max_length)
 
     def geocode_location(self, location: str) -> tuple:

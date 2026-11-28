@@ -92,6 +92,11 @@ def _title_case(text: str, language: str = "en") -> str:
     return " ".join(out)
 
 
+# Bright Sky's documented answer for a point outside its warning cells. Any
+# other 404 body is a failure, not an all-clear.
+OUT_OF_COVERAGE_DETAIL = "Requested position is not covered by the DWD"
+
+
 class DwdAlertsProvider(PackedAlertsMixin, AlertsProvider):
     """Deutscher Wetterdienst's warnings, from Bright Sky."""
 
@@ -168,7 +173,7 @@ class DwdAlertsProvider(PackedAlertsMixin, AlertsProvider):
         location = raw_location if isinstance(raw_location, dict) else {}
         area = str(location.get("name") or "").strip()
         alerts = []
-        for raw in body.get("alerts") or []:
+        for raw in body["alerts"]:
             if not isinstance(raw, dict):
                 continue
             alert = self._normalize(raw, area, lat, lon, now)
@@ -183,7 +188,9 @@ class DwdAlertsProvider(PackedAlertsMixin, AlertsProvider):
         ``(None, False)`` is a 404, which means the point is not covered; a 5xx,
         a timeout or a malformed body is ``(None, True)``.
         """
-        key = (round(lat, 2), round(lon, 2))
+        # Keyed by exactly the coordinates sent, so two points that round to
+        # the same hundredth cannot answer for each other.
+        key = (f"{lat:.4f}", f"{lon:.4f}")
         now = self._clock()
         with self._lock:
             cached = self._cache.get(key)
@@ -219,10 +226,14 @@ class DwdAlertsProvider(PackedAlertsMixin, AlertsProvider):
         if status == 404:
             # Bright Sky answers 404 for a point outside its warning cells, and
             # those cells do not follow the border: Prague, Zurich and
-            # Strasbourg are all inside the bbox and outside the service. A 404
-            # is therefore "not covered" wherever the point is.
-            self._clear_streak("http")
-            return None, False
+            # Strasbourg are all inside the bbox and outside the service. Only
+            # its documented body means "not covered"; any other 404 is a
+            # failure, because an all-clear is the one answer that must be sure.
+            if self._out_of_coverage(response):
+                self._clear_streak("http")
+                return None, False
+            self._warn_once("http", "Error fetching DWD alerts: HTTP 404")
+            return None, True
         if not getattr(response, "ok", False):
             self._warn_once("http", f"Error fetching DWD alerts: {status or '?'}")
             return None, True
@@ -233,10 +244,20 @@ class DwdAlertsProvider(PackedAlertsMixin, AlertsProvider):
         except Exception:
             self._warn_once("json", "DWD alerts returned no JSON")
             return None, True
-        if not isinstance(body, dict):
-            self._warn_once("json", "DWD alerts returned an unexpected body")
+        if not isinstance(body, dict) or not isinstance(body.get("alerts"), list):
+            self._warn_once("json", "DWD alerts returned no alert list")
             return None, True
         return body, False
+
+    def _out_of_coverage(self, response) -> bool:
+        """Whether a 404 carries Bright Sky's documented out-of-coverage body."""
+        try:
+            body = response.json()
+        except Exception:
+            return False
+        if not isinstance(body, dict):
+            return False
+        return str(body.get("detail") or "").strip() == OUT_OF_COVERAGE_DETAIL
 
     def _user_agent(self) -> str:
         """The identifying User-Agent, the same one MET Norway's terms ask for."""
