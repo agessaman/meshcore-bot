@@ -1055,10 +1055,22 @@ use_bot_location_when_no_location = false
 # Only with weather_provider = noaa or eccc: when a place is outside the provider's coverage
 # (outside the US for NWS, or more than 150 km from a Canadian city page for Environment
 # Canada), answer wx from Open-Meteo (as gwx would) instead of replying with an error.
-# Provider timeouts and server errors still reply with an error. Ignored with
+# Provider timeouts and server errors are failover_provider's job (below). Ignored with
 # weather_provider = openmeteo or metno, which already cover the whole world.
 # Default: false
 openmeteo_fallback = false
+
+# Failover forecast provider for wx and gwx: when the weather provider fails (a timeout, a
+# server error, an unreadable answer), the request is answered from this provider instead of
+# replying with an error. The reply keeps the weather provider's units and location label.
+# A place outside the weather provider's coverage is not a failure; openmeteo_fallback covers that.
+# If the failover fails too, the reply is the weather provider's own error.
+# With weather_provider = noaa, NWS alerts are not added to a failover reply, since they come
+# from the service that just failed. The weather service plugin does not use this setting.
+# Options: none, noaa, openmeteo, metno, eccc (the same values as weather_provider)
+# Example: weather_provider = openmeteo with failover_provider = metno
+# Default: none
+failover_provider = none
 
 # When true, wx and gwx name the place in every reply a place is found for ("Lake Stevens, WA: ...").
 # When false, they name it only when it adds information: a city outside default_state or
