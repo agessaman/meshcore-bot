@@ -980,15 +980,26 @@ class MeteoalarmAlertsProvider(PackedAlertsMixin, AlertsProvider):
                 self._utcnow() + timedelta(seconds=seconds), text
             )
 
-    def _shorten_raw(self, alert_id: str, indexes: set, text: str, seconds: float) -> None:
-        """Cache *text* for at most *seconds* from now, never past an earlier deadline."""
-        deadline = self._utcnow() + timedelta(seconds=seconds)
+    def _shorten_raw(self, alert_id: str, indexes: set, text: str, seconds: float, fresh: bool) -> None:
+        """Keep a document that failed to parse for at most *seconds* from now.
+
+        A fresh fetch is cached for the failure TTL. A cached copy is only ever
+        shortened, and only while it is still the copy that failed: another
+        request may have replaced it with a repaired document in the meantime,
+        and that must not be overwritten by the older text.
+        """
+        now = self._utcnow()
+        deadline = now + timedelta(seconds=seconds)
         raw_key = _raw_key(alert_id, indexes)
         with self._lock:
             current = self._caps.get(raw_key)
-            if current is not None and current[0] < deadline:
-                deadline = current[0]
-            self._caps[raw_key] = (deadline, text)
+            if fresh:
+                self._caps[raw_key] = (deadline, text)
+                return
+            if current is None or current[1] != text or current[0] <= now:
+                return
+            if deadline < current[0]:
+                self._caps[raw_key] = (deadline, text)
 
     def _fetch_cap(self, alert_id: str, features: list, indexes: set, key: tuple,
                    language: str) -> tuple:
@@ -1008,7 +1019,7 @@ class MeteoalarmAlertsProvider(PackedAlertsMixin, AlertsProvider):
             # renewing it on every hit would hide the alert for as long as
             # requests keep coming, and a copy cached as good in another
             # language must not keep its ten minutes now that it fails here.
-            self._shorten_raw(alert_id, indexes, text, FAILURE_TTL)
+            self._shorten_raw(alert_id, indexes, text, FAILURE_TTL, fresh)
             return None, True
         if fresh:
             self._cache_raw(alert_id, indexes, text, WINDOW_TTL_TODAY)

@@ -35,6 +35,7 @@ from modules.weather_providers.alerts_meteoalarm import (
     WINDOW_TTL_TODAY,
     MeteoalarmAlertsProvider,
     _make_session,
+    _raw_key,
     _reset_seconds,
     _retry_after_seconds,
     geometry_contains,
@@ -1317,6 +1318,34 @@ def test_a_document_failing_in_the_new_language_is_retried_after_a_minute():
 
     assert session.count(TWO_LANGUAGES_URL) == 2
     assert summary is not None and "Kuling" in summary.text
+
+
+def test_a_late_failed_check_does_not_overwrite_a_repaired_copy():
+    """A Norwegian check of the old text must not put it back over a newer document."""
+    provider, _session_, _host_, clock = _provider(_two_language_routes(), language="en")
+    alert_id, indexes = "a-two-languages", {0}
+    provider._cache_raw(alert_id, indexes, "<html>old</html>", 60)
+    repaired = _text("alert-two-languages.xml")
+    provider._cache_raw(alert_id, indexes, repaired, 600)
+
+    provider._shorten_raw(alert_id, indexes, "<html>old</html>", 60, fresh=False)
+
+    deadline, text = provider._caps[_raw_key(alert_id, indexes)]
+    assert text == repaired
+    assert deadline > provider._utcnow() + timedelta(seconds=500)
+
+
+def test_a_fresh_failure_gets_its_own_failure_window():
+    provider, _session_, _host_, clock = _provider(_two_language_routes(), language="en")
+    alert_id, indexes = "a-two-languages", {0}
+    provider._cache_raw(alert_id, indexes, "<html>old</html>", 1)
+    clock.advance(2)
+
+    provider._shorten_raw(alert_id, indexes, "<html>new</html>", 60, fresh=True)
+
+    deadline, text = provider._caps[_raw_key(alert_id, indexes)]
+    assert text == "<html>new</html>"
+    assert deadline >= provider._utcnow() + timedelta(seconds=59)
 
 
 def test_the_norwegian_language_picks_the_norwegian_block():
