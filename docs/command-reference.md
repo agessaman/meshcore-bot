@@ -184,18 +184,18 @@ wx
 ```
 
 **Options:**
-- `tomorrow`: tomorrow's day and night.
+- `tomorrow`: tomorrow's forecast. NOAA gives its day and night periods; the other providers give one summary of the day.
 - `hourly`: the coming hours, as many as fit in one message.
-- `Nd` (or a bare number, or `7day`): one line per day for N days starting tomorrow, 2 to 16. The forecast stops where the provider's does: about 7 days for NOAA, 9 for MET Norway, 6 for Environment Canada and 15 for Open-Meteo.
+- `Nd` (or a bare number, or `7day`): one line per day for N days starting tomorrow, 2 to 16, with any provider. The reply stops where the provider's forecast does: about 7 days for NOAA, 9 for MET Norway, 6 for Environment Canada and 15 for Open-Meteo.
 - `alerts`: every active alert for the place, from the alerts provider.
 
 **Providers:** `[Weather] weather_provider` sets the forecast source (`noaa`, `openmeteo`, `metno` or `eccc`; the default is `noaa`), and `[Wx_Command] weather_provider` overrides it for `wx` alone. `[Weather] alerts_provider` sets the alerts source separately. `openmeteo_fallback` covers places outside the forecast provider's coverage, and `failover_provider` covers the provider failing. [Weather Providers](weather-providers.md) explains each one.
 
 **With no location** (an option alone, such as `wx hourly`, is fine), `wx` uses, in order: a `custom.wxsim.default` or `custom.mqtt_weather.default` source, the sender's last advertised position, `[Weather] default_city`, and the bot's own position when `[Wx_Command] use_bot_location_when_no_location = true`.
 
-**Units** come from `[Weather] temperature_unit`, `wind_speed_unit` and `precipitation_unit`; the same keys in `[Wx_Command]` override them for `wx`. The default is °F, mph and inches.
+**Units** come from `[Weather] temperature_unit`, `wind_speed_unit` and `precipitation_unit`; the same keys in `[Wx_Command]` override them for `wx`, whatever the provider, WXSIM stations included. The default is °F, mph and inches.
 
-**The place is named** only when it adds information: a position (the sender's, the bot's or typed coordinates) when a place is found for it, and a city in another state than `[Weather] default_state` (or another country than `default_country`). ZIP codes and cities in your own state are not named. With `[Weather] always_show_location = true`, every place a lookup finds is named, including ZIP codes; the name uses part of the message's length, and a ZIP code costs one extra lookup.
+**The place is named** only when it adds information. A position (the sender's, the bot's or typed coordinates) is named when a place is found for it. With NOAA, a city is named when it is in another state than `[Weather] default_state`. With the other providers, a city is named when it is in another country than `default_country` (in the US, another state than `default_state`), and a place answered from Open-Meteo through `openmeteo_fallback` is named the same way. ZIP codes and cities in your own state (outside the US, your own country) are not named. With `[Weather] always_show_location = true`, every place a lookup finds is named, including ZIP codes; the name uses part of the message's length, and a ZIP code costs one extra lookup.
 
 **Custom sources:** a `custom.wxsim.<name>` or `custom.mqtt_weather.<name>` key in `[Weather]` answers `wx <name>` and `gwx <name>` from that station. WXSIM sources answer current conditions, `tomorrow` and `Nd`; MQTT sources answer current conditions only. `hourly` and `alerts` reply that they are not available for these sources.
 
@@ -230,7 +230,7 @@ gwx Reykjavik 10d
 
 **Units** come from `[Weather]`, and the same keys in `[Gwx_Command]` override them for `gwx`.
 
-**The place is named** as for `wx`, except that a city is named when it is in another country than `[Weather] default_country` (in the US, another state than `default_state`).
+**The place is named** as for `wx`, by the rules of whichever provider answers.
 
 **Enabling:** `[Gwx_Command] enabled = false` turns `gwx` off, as for any other command.
 

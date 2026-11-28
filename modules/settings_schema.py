@@ -550,7 +550,9 @@ def _assemble_entry(
     for legacy_section, legacy_key in _ENABLED_LEGACY_ALIASES.get(section, []):
         if legacy_section == section:
             skip_keys.add(legacy_key.lower())
-    schema_keys = {f["key"].lower() for f in fields}
+    # Only fields stored in this section: a [Weather] field of the same name
+    # must not hide this section's own value.
+    schema_keys = {f["key"].lower() for f in fields if (f.get("section") or section) == section}
 
     # Raw values for the fallback editor: every other key in the section.
     # raw=True so '%' in values doesn't trip configparser interpolation.

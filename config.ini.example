@@ -546,11 +546,11 @@ admin_commands = repeater,webviewer,reload,channelpause,neighbors
 # The alternative_file_name should be the name of a Python file (without .py extension)
 # in the modules/commands/alternatives/ directory
 #
-# Example: To use an alternative weather plugin for international users:
-# wx = wx_international
+# Example: ping = my_ping replaces the ping command with the plugin from
+# modules/commands/alternatives/my_ping.py
 #
-# This will replace the default wx command with the plugin from
-# modules/commands/alternatives/wx_international.py
+# wx = wx_international is deprecated: set [Weather] weather_provider = openmeteo
+# instead (see docs/weather-providers.md).
 #
 # Note: The alternative plugin must have the same 'name' metadata as the command
 # it's replacing, or the override will use the alternative plugin's name instead.
@@ -1802,11 +1802,12 @@ enabled = true
 # Options: noaa, openmeteo, metno, eccc
 # weather_provider = noaa
 
-# Units come from [Weather] temperature_unit / wind_speed_unit. Set these
-# only to give wx (NOAA and WXSIM) different units from the other weather
-# commands; when set, they win for wx.
+# Units come from [Weather] temperature_unit / wind_speed_unit /
+# precipitation_unit. Set these only to give wx different units from the other
+# weather commands; when set, they win for wx, whatever the provider.
 # temperature_unit = fahrenheit
 # wind_speed_unit = mph
+# precipitation_unit = inch
 # channels =
 # aliases = comma-separated additional trigger words, e.g.: aliases = weather, w
 
@@ -1817,6 +1818,11 @@ enabled = true
 # (openmeteo), then [Weather] weather_provider.
 # Options: noaa, openmeteo, metno, eccc
 # weather_provider = openmeteo
+
+# Units come from [Weather], as for wx. Set these only to give gwx its own.
+# temperature_unit = celsius
+# wind_speed_unit = kmh
+# precipitation_unit = mm
 # channels =
 # aliases = comma-separated additional trigger words, e.g.: aliases = globalweather, gwxa
 

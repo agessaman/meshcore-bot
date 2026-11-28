@@ -263,20 +263,25 @@ class TestLocalPlugins:
         assert any("already loaded" in str(c) and "ping" in str(c) for c in warning_calls)
 
 
-class TestRetiredWxInternationalOverride:
-    """`[Plugin_Overrides] wx = wx_international` is the provider setting now."""
+class TestDeprecatedWxInternationalOverride:
+    """`[Plugin_Overrides] wx = wx_international` works as it did on dev, with a warning."""
 
-    def _loader(self, loader_bot, overrides):
+    def _loader(self, loader_bot, overrides, extra=None):
         loader_bot.config.add_section("Plugin_Overrides")
         for key, value in overrides.items():
             loader_bot.config.set("Plugin_Overrides", key, value)
-        return PluginLoader(loader_bot)
+        for section, values in (extra or {}).items():
+            if not loader_bot.config.has_section(section):
+                loader_bot.config.add_section(section)
+            for key, value in values.items():
+                loader_bot.config.set(section, key, value)
+        return PluginLoader(loader_bot, local_commands_dir=str(Path("/nonexistent")))
 
-    def test_the_override_warns_once_and_sets_the_provider(self, loader_bot):
+    def test_the_override_warns_once_and_leaves_the_config_alone(self, loader_bot):
         loader = self._loader(loader_bot, {"wx": "wx_international"})
 
-        assert loader.plugin_overrides == {}
-        assert loader_bot.config.get("Weather", "weather_provider") == "openmeteo"
+        assert loader.plugin_overrides == {"wx": "wx_international"}
+        assert not loader_bot.config.has_option("Weather", "weather_provider")
         warnings = [str(c) for c in loader_bot.logger.warning.call_args_list]
         assert len(warnings) == 1
         assert "wx = wx_international is deprecated" in warnings[0]
@@ -285,24 +290,40 @@ class TestRetiredWxInternationalOverride:
     def test_the_override_accepts_the_py_suffix(self, loader_bot):
         loader = self._loader(loader_bot, {"wx": "wx_international.py"})
 
-        assert loader.plugin_overrides == {}
-        assert loader_bot.config.get("Weather", "weather_provider") == "openmeteo"
+        assert loader.plugin_overrides == {"wx": "wx_international"}
 
-    def test_the_override_creates_the_weather_section_when_missing(self, loader_bot):
-        loader_bot.config.remove_section("Weather")
-        loader = self._loader(loader_bot, {"wx": "wx_international"})
+    def test_wx_is_an_enabled_open_meteo_command_with_gwx_triggers(self, loader_bot):
+        loader = self._loader(
+            loader_bot, {"wx": "wx_international"}, {"Wx_Command": {"enabled": "false"}}
+        )
 
-        assert loader.plugin_overrides == {}
-        assert loader_bot.config.get("Weather", "weather_provider") == "openmeteo"
+        loaded = loader.load_all_plugins()
+
+        wx = loaded["wx"]
+        assert wx.__class__.__name__ == "GlobalWxCommand"
+        assert wx.provider_name == "openmeteo"
+        assert wx.wx_enabled is True
+        assert "gwx" in wx.keywords
+        assert loaded["gwx"].__class__.__name__ == "GwxCommand"
+        assert "wx_international" not in loader.get_failed_plugins()
+
+    def test_another_name_loads_beside_wx(self, loader_bot):
+        loader = self._loader(loader_bot, {"otherwx": "wx_international"})
+
+        loaded = loader.load_all_plugins()
+
+        assert loaded["otherwx"].provider_name == "openmeteo"
+        assert loaded["wx"].__class__.__name__ == "WxCommand"
+        assert loaded["wx"].provider_name == "noaa"
 
     def test_other_overrides_still_load(self, loader_bot):
         loader = self._loader(loader_bot, {"wx": "wx_international", "ping": "ping_alt"})
 
-        assert loader.plugin_overrides == {"ping": "ping_alt"}
+        assert loader.plugin_overrides == {"wx": "wx_international", "ping": "ping_alt"}
 
 
 class TestCompatibilityAlternatives:
-    """A compatibility module defines no command class, so it is not a plugin."""
+    """Discovery skips a compatibility module, so its command is not registered twice."""
 
     def test_the_compat_module_is_not_discovered(self, loader_bot):
         loader = PluginLoader(loader_bot)
@@ -317,3 +338,18 @@ class TestCompatibilityAlternatives:
         assert "wx_international" not in loader.get_failed_plugins()
         assert "gwx" in loaded
         assert loaded["gwx"].__class__.__name__ == "GwxCommand"
+
+    def test_loading_it_by_name_finds_its_class(self, loader_bot):
+        loader = PluginLoader(loader_bot)
+
+        instance = loader.load_plugin("wx_international", from_alternatives=True)
+
+        assert instance is not None
+        assert instance.__class__.__name__ == "GlobalWxCommand"
+        assert "wx_international" not in loader.get_failed_plugins()
+
+    def test_the_old_import_path_still_works(self):
+        from modules.commands import wx_command
+        from modules.commands.alternatives.wx_international import GlobalWxCommand
+
+        assert wx_command.GlobalWxCommand is GlobalWxCommand

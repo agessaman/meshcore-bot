@@ -82,11 +82,11 @@ def test_rain_keeps_its_quiet_companion_lookup():
     rain.logger.debug.assert_not_called()
 
 
-def test_the_old_class_name_is_the_new_class():
+def test_the_old_class_name_is_gwx():
     from modules.commands.gwx_command import GwxCommand
 
-    assert GlobalWxCommand is GwxCommand
-    assert wx_international.GlobalWxCommand is GwxCommand
+    assert GlobalWxCommand is wx_international.GlobalWxCommand
+    assert issubclass(GlobalWxCommand, GwxCommand)
 
 
 def test_the_compat_module_keeps_the_names_code_imported():

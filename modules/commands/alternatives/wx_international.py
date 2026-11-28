@@ -4,9 +4,9 @@
 The global weather command is ``modules.commands.gwx_command.GwxCommand`` now,
 and ``wx`` answers from Open-Meteo when ``[Weather] weather_provider`` says so.
 This module keeps the names code and plugins imported from here, so an old
-import or a ``[Plugin_Overrides] wx = wx_international`` line still resolves.
-It defines no command class of its own, so the plugin loader does not register
-it a second time.
+import or a ``[Plugin_Overrides] wx = wx_international`` line still works as it
+did. Plugin discovery skips it, so ``gwx`` is not registered twice; it loads
+only when an override names it.
 """
 
 import asyncio  # noqa: F401  re-exported
@@ -53,5 +53,16 @@ from ..gwx_command import GwxCommand
 # Kept for code that checked them; these imports used to be optional.
 WXSIM_PARSER_AVAILABLE = True
 
-# The class this module used to define.
-GlobalWxCommand = GwxCommand
+
+class GlobalWxCommand(GwxCommand):
+    """The class this module used to define, for old imports and overrides.
+
+    It is ``gwx`` with one difference kept from before gwx was a normal command:
+    it is always enabled. A ``[Plugin_Overrides] wx = wx_international`` line
+    registers it as ``wx`` with gwx's triggers and channels, and ``[Wx_Command]
+    enabled`` never switched that off.
+    """
+
+    def __init__(self, bot):
+        super().__init__(bot)
+        self.wx_enabled = True

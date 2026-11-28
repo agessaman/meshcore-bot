@@ -6,7 +6,7 @@ selects, and defaults to Open-Meteo, which covers the whole world.
 """
 
 from ..weather_providers.compat import OpenMeteoCompatMixin
-from .wx_command import WxCommand
+from .wx_command import WxCommand, command_override_fields
 
 
 class GwxCommand(OpenMeteoCompatMixin, WxCommand):
@@ -43,7 +43,8 @@ class GwxCommand(OpenMeteoCompatMixin, WxCommand):
     # gwx answers from Open-Meteo unless its own section or [Weather] says otherwise.
     default_weather_provider = "openmeteo"
 
-    # The shared [Weather] settings, without wx's per-command unit overrides:
-    # gwx reads its units from [Weather] alone, so offering a [Gwx_Command]
-    # override would write a key nothing reads.
-    settings_schema = [field for field in WxCommand.settings_schema if field.get("section")]
+    # The shared [Weather] settings, then gwx's own overrides of them.
+    settings_schema = [
+        *(field for field in WxCommand.settings_schema if field.get("section")),
+        *command_override_fields("gwx", default_weather_provider),
+    ]
