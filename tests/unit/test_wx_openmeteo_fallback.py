@@ -24,9 +24,9 @@ def _wx(fallback=True, provider="noaa", weather=None, wx_section=None):
     bot.config = config
     bot.translator.translate = Mock(side_effect=lambda key, **kwargs: key)
     wx = WxCommand(bot)
-    if wx._openmeteo is not None:
-        wx._openmeteo.get_open_meteo_weather = Mock(return_value="Clear 20°C")
-        wx._openmeteo._get_open_meteo_weather_with_conditions = Mock(return_value=("Clear 20°C", {}))
+    if wx.fallback_provider is not None:
+        wx.fallback_provider.get_open_meteo_weather = Mock(return_value="Clear 20°C")
+        wx.fallback_provider._get_open_meteo_weather_with_conditions = Mock(return_value=("Clear 20°C", {}))
     return wx
 
 
@@ -50,7 +50,7 @@ def test_off_by_default_and_unchanged():
     bot.config = config
     bot.translator.translate = Mock(side_effect=lambda key, **kwargs: key)
     wx = WxCommand(bot)
-    assert wx._openmeteo is None
+    assert wx.fallback_provider is None
 
     _nws(wx, 404)
     assert _tokyo(wx) == "commands.wx.error_fetching"
@@ -59,8 +59,8 @@ def test_off_by_default_and_unchanged():
 
 def test_ignored_with_the_openmeteo_provider():
     wx = _wx(provider="openmeteo")
-    assert wx._openmeteo is None
-    assert wx.delegate_command is not None
+    assert wx.fallback_provider is None
+    assert wx.provider.name == "openmeteo"
 
 
 def test_no_coverage_answers_from_open_meteo_and_remembers_the_point():
@@ -80,8 +80,8 @@ def test_nws_errors_do_not_fall_back(status):
     _nws(wx, status)
     assert _tokyo(wx) == "commands.wx.error_fetching"
     assert not wx._nws_no_coverage.is_unavailable(*TOKYO)
-    wx._openmeteo.get_open_meteo_weather.assert_not_called()
-    wx._openmeteo._get_open_meteo_weather_with_conditions.assert_not_called()
+    wx.fallback_provider.get_open_meteo_weather.assert_not_called()
+    wx.fallback_provider._get_open_meteo_weather_with_conditions.assert_not_called()
 
 
 def test_a_covered_point_is_marked_available():
@@ -97,13 +97,13 @@ def test_forecast_options_fall_back_too(forecast_type):
     wx = _wx()
     _nws(wx, 404)
     assert _tokyo(wx, forecast_type) == "Tokyo, JP: Clear 20°C"
-    assert wx._openmeteo.get_open_meteo_weather.call_args.kwargs["forecast_type"] == forecast_type
+    assert wx.fallback_provider.get_open_meteo_weather.call_args.kwargs["forecast_type"] == forecast_type
 
 
 def test_extreme_conditions_go_out_as_a_second_message():
     wx = _wx()
     _nws(wx, 404)
-    wx._openmeteo._check_extreme_conditions = Mock(return_value="Extreme heat")
+    wx.fallback_provider._check_extreme_conditions = Mock(return_value="Extreme heat")
     assert _tokyo(wx) == ("multi_message", "Tokyo, JP: Clear 20°C", "Extreme heat")
 
 
@@ -112,15 +112,15 @@ def test_fallback_uses_wx_units():
              wx_section={"temperature_unit": "celsius", "wind_speed_unit": "kmh", "precipitation_unit": "mm"})
     _nws(wx, 404)
     _tokyo(wx)
-    om = wx._openmeteo
-    assert (om.temperature_unit, om.wind_speed_unit, om.precipitation_unit) == ("celsius", "kmh", "mm")
+    om = wx.fallback_provider
+    assert (om.units.temperature, om.units.wind_speed, om.units.precipitation) == ("celsius", "kmh", "mm")
 
 
 def test_coordinates_are_labeled_with_the_country():
     wx = _wx()
     _nws(wx, 404)
     wx._coordinates_to_location_string = Mock(return_value="Tokyo")
-    wx._openmeteo.geocode_location = Mock(return_value=(*TOKYO, TOKYO_ADDRESS, None))
+    wx.geocode_location = Mock(return_value=(*TOKYO, TOKYO_ADDRESS, None))
     reply = wx._get_weather_for_location_sync("35.6812,139.7671", "coordinates")
     assert reply == "Tokyo, JP: Clear 20°C"
 

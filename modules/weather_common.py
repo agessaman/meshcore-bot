@@ -232,14 +232,17 @@ class WeatherCommandMixin:
             return ' '.join(words[:3]) if len(words) > 3 else description[:18]
         return description
 
-    def _pack_hourly_lines(self, hourly_lines: Iterable[str], max_length: int) -> str:
+    def _pack_hourly_lines(self, hourly_lines: Iterable[str], max_length: int,
+                           namespace: Optional[str] = None) -> str:
         """Pack consecutive whole hours into one UTF-8 byte budget."""
         lines: list[str] = []
         for line in hourly_lines:
             if self._count_display_width("\n".join(lines + [line])) > max_length:
                 break
             lines.append(line)
-        return "\n".join(lines) or self.translate(f'{self.translation_ns}.hourly_not_available')
+        return "\n".join(lines) or self.translate(
+            f'{namespace or self.translation_ns}.hourly_not_available'
+        )
 
     @staticmethod
     async def _pace_reply(message: Any, seconds: float) -> None:

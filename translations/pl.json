@@ -199,6 +199,24 @@
     "wx": {
       "description": "Pogoda w USA dla kodu pocztowego, miasta lub współrzędnych (użycie: wx 98101)",
       "usage": "Użycie: wx <kod|miasto|lat,lon> [tomorrow|hourly|Nd|alerts] - Przykład: wx 98101 lub wx seattle 5d",
+      "subcommands": [
+        {
+          "name": "tomorrow",
+          "description": "Prognoza na jutro"
+        },
+        {
+          "name": "Nd",
+          "description": "Prognoza na N dni (np. 7d, 10d; też 7-day, 7 lub 2–16)"
+        },
+        {
+          "name": "hourly",
+          "description": "Prognoza godzinowa"
+        },
+        {
+          "name": "alerts",
+          "description": "Pokaż wszystkie ostrzeżenia pogodowe"
+        }
+      ],
       "error_fetching": "Błąd pobrania danych pogodowych z NOAA",
       "no_location_zipcode": "Nie udało się znaleźć lokalizacji dla podanego kodu pocztowego {location}",
       "no_location_city": "Nie udało się znaleźć miasta '{location}' w stanie {state}",
@@ -223,6 +241,17 @@
         "Friday": "Pt",
         "Saturday": "So",
         "Sunday": "Nd"
+      },
+      "meteoalarm": {
+        "attribution": "Alerty: MeteoAlarm/EUMETNET",
+        "error_fetching": "Błąd pobierania alertów pogodowych"
+      },
+      "eccc": {
+        "error_fetching": "Błąd pobierania alertów pogodowych"
+      },
+      "dwd": {
+        "attribution": "Alerty: DWD przez Bright Sky",
+        "error_fetching": "Błąd pobierania alertów pogodowych"
       }
     },
     "gwx": {
@@ -237,6 +266,13 @@
       "tomorrow_error": "Błąd formatowania prognozy na jutro",
       "multiday_not_available": "{num_days}-dniowa prognoza niedostępna",
       "multiday_error": "Błąd formatowania {num_days}-dniowej prognozy",
+      "humidity": "{value}%RH",
+      "dew_point": "💧{value}{unit}",
+      "visibility": "👁️{value}mi",
+      "visibility_km": "👁️{value}km",
+      "pressure": "📊{value}hPa",
+      "pressure_mmhg": "📊{value}mmHg",
+      "gust": "G{value}",
       "periods": {
         "today": "Dzisiaj",
         "tonight": "Dzisiaj wieczorem",
@@ -293,13 +329,21 @@
         "Sunday": "Nd"
       },
       "feels_like": "(odczuwalnie {value}{unit})",
+      "calm": "Bezwietrznie",
       "hourly_not_available": "Prognoza godzinowa niedostępna",
       "source_option_not_available": "Niedostępne dla tego źródła pogody",
       "mqtt_forecast_not_supported": "Prognoza rozszerzona nie jest dostępna dla źródeł pogody MQTT",
       "mqtt_weather_no_data": "Nie otrzymano jeszcze żadnej wiadomości pogodowej MQTT dla tego tematu",
       "mqtt_weather_no_subscriber": "Odbiornik pogody MQTT nie jest aktywny (włącz [MqttWeather] i tematy custom.mqtt_weather.*)",
       "mqtt_weather_payload_error": "Błąd danych pogodowych MQTT: {detail}",
-      "mqtt_weather_stale": "Dane pogodowe MQTT są zbyt stare"
+      "mqtt_weather_stale": "Dane pogodowe MQTT są zbyt stare",
+      "pressure_unit": "hpa",
+      "metno": {
+        "error_fetching_api": "Błąd pobierania danych pogodowych z MET Norway"
+      },
+      "eccc": {
+        "error_fetching_api": "Błąd pobierania danych pogodowych z Environment Canada"
+      }
     },
     "sports": {
       "description": "Pobiera wyniki sportowe i harmonogram meczów (użycie: sports [drużyna/liga])",
@@ -1252,6 +1296,8 @@
     "no_help_available": "Brak dostępnej pomocy dla tej komendy.",
     "snr_label": "SNR: {value} dB",
     "rssi_label": "RSSI: {value} dBm",
+    "temp_high_label": "Maks",
+    "temp_low_label": "Min",
     "date_time": {
       "day_abbreviations": {
         "Mon": "Pon",
@@ -1299,6 +1345,39 @@
         "November": "Listopad",
         "December": "Grudzień"
       }
+    },
+    "alerts": {
+      "til": "do",
+      "by": "od",
+      "from": "od",
+      "am": "AM",
+      "pm": "PM",
+      "time_12h": "{hour} {meridiem}",
+      "date_12h": "{day} {month} {time}",
+      "event_types": {
+        "Warning": "Ostrz.",
+        "Watch": "Obs.",
+        "Advisory": "Dor.",
+        "Statement": "Kom."
+      }
+    },
+    "wind_directions": {
+      "N": "N",
+      "NNE": "NNE",
+      "NE": "NE",
+      "ENE": "ENE",
+      "E": "E",
+      "ESE": "ESE",
+      "SE": "SE",
+      "SSE": "SSE",
+      "S": "S",
+      "SSW": "SSW",
+      "SW": "SW",
+      "WSW": "WSW",
+      "W": "W",
+      "WNW": "WNW",
+      "NW": "NW",
+      "NNW": "NNW"
     }
   },
   "categories": {
@@ -1311,5 +1390,55 @@
     "analytics": "Komendy analityczne",
     "meshcore_info": "Komendy informacyjne MeshCore",
     "management": "Komendy zarządzające"
+  },
+  "services": {
+    "weather_service": {
+      "daily_weather": "Pogoda dzienna",
+      "tomorrow": "Jutro",
+      "error_fetching": "Błąd pobierania danych pogodowych",
+      "no_data": "Brak danych prognozy",
+      "near": "w pobliżu",
+      "est": "ok.",
+      "steady": "ciągły",
+      "rain_starting": "{emoji} Uwaga — {ptype} zaczyna się za ~{minutes}min{est}{steady}{temp}{location}",
+      "rain_ending": "{emoji} Uwaga — {ptype} kończy się za ~{minutes}min{est}{temp}{location}",
+      "weather_descriptions": {
+        "0": "Bezchmurnie",
+        "1": "Przeważnie bezchmurnie",
+        "2": "Częściowe zachmurzenie",
+        "3": "Pochmurno",
+        "45": "Mgła",
+        "48": "Mgła",
+        "51": "Lekka mżawka",
+        "53": "Mżawka",
+        "55": "Umiarkowana mżawka",
+        "56": "Lekka marznąca mżawka",
+        "57": "Marznąca mżawka",
+        "61": "Lekki deszcz",
+        "63": "Deszcz",
+        "65": "Ulewny deszcz",
+        "66": "Lekki marznący deszcz",
+        "67": "Marznący deszcz",
+        "71": "Lekki śnieg",
+        "73": "Śnieg",
+        "75": "Umiarkowany śnieg",
+        "77": "Śnieg Ziarna",
+        "80": "Lekkie opady deszczu",
+        "81": "Przelotne opady deszczu",
+        "82": "Ulewne opady deszczu",
+        "85": "Lekkie opady śniegu",
+        "86": "Przelotne opady śniegu",
+        "95": "Burza",
+        "96": "Burza z gradem",
+        "97": "Silna burza",
+        "99": "Silna burza z gradem"
+      },
+      "wind_speed_units": {
+        "ms": "m/s",
+        "mph": "mph",
+        "kmh": "km/h",
+        "kn": "kn"
+      }
+    }
   }
 }

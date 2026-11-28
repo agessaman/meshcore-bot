@@ -284,8 +284,8 @@ class TestReloadConfigMerge:
         assert success is True
         wx_command = bot.command_manager.commands["wx"]
         assert wx_command.bot is bot
-        assert wx_command.delegate_command is not None
-        assert wx_command.delegate_command.bot is bot
+        assert wx_command.provider.name == "openmeteo"
+        assert wx_command.provider.host.bot is bot
 
     def test_concurrent_reader_observes_only_complete_snapshots(self, tmp_path):
         db_path = tmp_path / "bot.db"

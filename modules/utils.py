@@ -5,6 +5,7 @@ Shared helper functions used across multiple modules
 """
 
 import asyncio
+import configparser
 import hashlib  # noqa: F401  importable from this module on dev
 import re  # noqa: F401  importable from this module on dev
 import socket
@@ -59,6 +60,25 @@ def is_valid_timezone(tz_str: str) -> bool:
         return True
     except Exception:
         return False
+
+
+def config_value(config: Any, section: str, name: str, logger: Optional[Any] = None) -> str:
+    """One config value, interpolated, falling back to raw when a '%' is not a reference.
+
+    ConfigParser interpolates every value it reads, so a literal '%' in one
+    value of a section (a Meteoalarm token, say) makes reading any other value
+    of that section raise. A caller that wants one value reads it here: it is
+    interpolated as it always was, and a bad reference logs a warning naming the
+    key and returns the text as written instead of raising.
+    """
+    try:
+        return config.get(section, name)
+    except configparser.InterpolationError as error:
+        if logger is not None:
+            logger.warning(
+                f"[{section}] {name} has an unusable '%' reference ({error}); using it as written"
+            )
+        return config.get(section, name, raw=True)
 
 
 def get_config_timezone(config: Any, logger: Optional[Any] = None) -> tuple[Any, str]:

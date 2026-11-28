@@ -1,0 +1,33 @@
+{
+ "geometry": {
+  "type": "Polygon",
+  "coordinates": [
+   [
+    [
+     0.0,
+     0.0
+    ],
+    [
+     0.1,
+     0.0
+    ],
+    [
+     0.1,
+     0.1
+    ],
+    [
+     0.0,
+     0.1
+    ],
+    [
+     0.0,
+     0.0
+    ]
+   ]
+  ]
+ },
+ "properties": {
+  "uuid": "f-bbox-miss"
+ },
+ "type": "Feature"
+}

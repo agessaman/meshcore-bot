@@ -85,7 +85,10 @@ def test_noaa_forecast_text(name):
     data = _load(name)
     lat, lon = _latlon(data)
     results = {}
-    with patch("modules.commands.wx_command.datetime", _FrozenDateTime):
+    with (
+        patch("modules.commands.wx_command.datetime", _FrozenDateTime),
+        patch("modules.weather_providers.noaa.datetime", _FrozenDateTime),
+    ):
         for drop in (0, 1, 2, 3):
             for with_obs in (True, False):
                 for max_length in (130, 200):
@@ -110,7 +113,10 @@ def test_noaa_forecast_text(name):
 def test_noaa_hourly_text(name):
     data = _load(name)
     periods = data["hourly"]["properties"]["periods"]
-    with patch("modules.commands.wx_command.datetime", _FrozenDateTime):
+    with (
+        patch("modules.commands.wx_command.datetime", _FrozenDateTime),
+        patch("modules.weather_providers.noaa.datetime", _FrozenDateTime),
+    ):
         cmd = _wx()
         results = {f"len{n}": cmd.format_hourly_forecast(periods, max_length=n) for n in (130, 200)}
     assert_golden(f"noaa_wx_hourly_{name}", results)
@@ -132,7 +138,10 @@ def test_noaa_forecast_text_with_long_forecasts(name):
         period["shortForecast"] = LONG_FORECASTS[i % len(LONG_FORECASTS)]
     lat, lon = _latlon(data)
     results = {}
-    with patch("modules.commands.wx_command.datetime", _FrozenDateTime):
+    with (
+        patch("modules.commands.wx_command.datetime", _FrozenDateTime),
+        patch("modules.weather_providers.noaa.datetime", _FrozenDateTime),
+    ):
         for drop in (0, 1, 2, 3):
             for max_length in (130, 160, 200):
                 cmd = _wx()
@@ -178,7 +187,10 @@ def test_a_tomorrow_period_without_forecast_text_is_skipped_not_fatal():
         period["temperature"] = None
         period["shortForecast"] = None
     lat, lon = _latlon(data)
-    with patch("modules.commands.wx_command.datetime", _FrozenDateTime):
+    with (
+        patch("modules.commands.wx_command.datetime", _FrozenDateTime),
+        patch("modules.weather_providers.noaa.datetime", _FrozenDateTime),
+    ):
         cmd = _wx()
         cmd.noaa_session, _ = _session(data)
         weather, points = cmd.get_noaa_weather(lat, lon)

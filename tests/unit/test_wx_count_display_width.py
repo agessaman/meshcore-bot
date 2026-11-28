@@ -77,7 +77,7 @@ def test_wx_and_gwx_count_display_width_agree_on_same_string(wx_cmd, gwx_cmd):
 
 @pytest.mark.unit
 def test_openmeteo_delegation_preserves_wx_command_aliases(openmeteo_wx_cmd):
-    assert openmeteo_wx_cmd.delegate_command is not None
-    assert "wetter" in openmeteo_wx_cmd.delegate_command.keywords
+    assert openmeteo_wx_cmd.provider.name == "openmeteo"
+    assert "wetter" in openmeteo_wx_cmd.keywords
     assert openmeteo_wx_cmd.matches_keyword(MeshMessage(content="!wetter Berlin"))
     assert openmeteo_wx_cmd.matches_keyword(MeshMessage(content="!wx Berlin"))

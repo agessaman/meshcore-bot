@@ -241,6 +241,17 @@
         "Friday": "Пт",
         "Saturday": "Сб",
         "Sunday": "Вс"
+      },
+      "meteoalarm": {
+        "attribution": "Оповещения: MeteoAlarm/EUMETNET",
+        "error_fetching": "Ошибка получения погодных оповещений"
+      },
+      "eccc": {
+        "error_fetching": "Ошибка получения погодных оповещений"
+      },
+      "dwd": {
+        "attribution": "Оповещения: DWD через Bright Sky",
+        "error_fetching": "Ошибка получения погодных оповещений"
       }
     },
     "gwx": {
@@ -262,6 +273,7 @@
       "mqtt_weather_payload_error": "Ошибка полезной нагрузки MQTT: {detail}",
       "feels_like": "(ощущ. {value}{unit})",
       "humidity": "{value}%",
+      "calm": "Штиль",
       "dew_point": "💧{value}{unit}",
       "visibility": "👁️{value} миль",
       "visibility_km": "👁️{value}км",
@@ -325,7 +337,13 @@
       },
       "pressure_unit": "mmhg",
       "hourly_not_available": "Почасовой прогноз недоступен",
-      "source_option_not_available": "Недоступно для этого источника погоды"
+      "source_option_not_available": "Недоступно для этого источника погоды",
+      "metno": {
+        "error_fetching_api": "Ошибка получения данных погоды из MET Norway"
+      },
+      "eccc": {
+        "error_fetching_api": "Ошибка получения данных погоды из Environment Canada"
+      }
     },
     "sports": {
       "description": "Получить спортивные результаты (использование: sports [команда/лига])",

@@ -202,6 +202,17 @@
         "Friday": "F",
         "Saturday": "Sa",
         "Sunday": "Su"
+      },
+      "meteoalarm": {
+        "attribution": "Alerts: MeteoAlarm/EUMETNET",
+        "error_fetching": "Error fetching weather alerts"
+      },
+      "eccc": {
+        "error_fetching": "Error fetching weather alerts"
+      },
+      "dwd": {
+        "attribution": "Alerts: DWD via Bright Sky",
+        "error_fetching": "Error fetching weather alerts"
       }
     },
     "gwx": {
@@ -278,7 +289,14 @@
       "mqtt_weather_no_subscriber": "MQTT weather subscriber is not active (enable [MqttWeather] and custom.mqtt_weather.* topics)",
       "mqtt_weather_payload_error": "MQTT weather payload error: {detail}",
       "mqtt_weather_stale": "MQTT weather data is too old",
-      "feels_like": "(feels {value}{unit})"
+      "feels_like": "(feels {value}{unit})",
+      "calm": "Calm",
+      "metno": {
+        "error_fetching_api": "Error fetching weather data from MET Norway"
+      },
+      "eccc": {
+        "error_fetching_api": "Error fetching weather data from Environment Canada"
+      }
     },
     "sports": {
       "description": "Get sports scores and schedules (usage: sports [team/league])",

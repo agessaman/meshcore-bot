@@ -73,7 +73,10 @@ def _tomorrow(budget):
 
     wx = _wx()
     wx.bot.translator = Translator("en")
-    with patch("modules.commands.wx_command.datetime", _Clock):
+    with (
+        patch("modules.commands.wx_command.datetime", _Clock),
+        patch("modules.weather_providers.noaa.datetime", _Clock),
+    ):
         return wx.format_tomorrow_forecast(copy.deepcopy(miami["forecast"]["properties"]["periods"]), max_length=budget)
 
 

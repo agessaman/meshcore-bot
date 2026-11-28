@@ -122,8 +122,8 @@ def test_a_custom_source_named_like_an_option_is_that_source(cls):
 
 def test_a_refused_first_alert_message_ends_the_list():
     cmd = _cmd(WxCommand)
-    cmd._get_weather_alerts_noaa_async = AsyncMock(return_value=([{"x": 1}] * 3, 3))
-    cmd._format_alert_full = Mock(side_effect=lambda alert, index: "x" * 100)
+    cmd.alerts_provider._get_weather_alerts_noaa_async = AsyncMock(return_value=([{"x": 1}] * 3, 3))
+    cmd.alerts_provider._format_alert_full = Mock(side_effect=lambda alert, index: "x" * 100)
     cmd.get_max_message_length = Mock(return_value=130)
     cmd.send_response = AsyncMock(return_value=False)
     message = SimpleNamespace(content="wx", sender_id="u", sender_pubkey="pk", channel="general", is_dm=False)

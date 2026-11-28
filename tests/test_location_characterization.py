@@ -399,13 +399,13 @@ class TestWxLocationClassification:
         assert _wx_classify(" 98101 ") == "zipcode"
 
     def test_wx_execute_accepts_zip_with_whitespace(self, wx_cmd):
-        """Live WxCommand.execute type-detect must treat ' 98101 ' as zipcode."""
+        """Live WxCommand type-detect must treat ' 98101 ' as zipcode."""
         import inspect
         import re
 
         from modules.commands.wx_command import WxCommand
 
-        source = inspect.getsource(WxCommand.execute)
+        source = inspect.getsource(WxCommand._prepare_us_request)
         assert r"^\s*\d{5}\s*$" in source
         assert re.match(r"^\s*\d{5}\s*$", " 98101 ")
 

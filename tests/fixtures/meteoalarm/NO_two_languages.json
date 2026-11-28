@@ -1,0 +1,147 @@
+{
+ "type": "FeatureCollection",
+ "features": [
+  {
+   "id": "8e5e67e1-6117-4e84-8226-1cf8a206f430",
+   "links": [
+    {
+     "type": "application/xml",
+     "rel": "canonical",
+     "href": "https://storage.example.invalid/warnings/alert-two-languages.xml"
+    },
+    {
+     "type": "application/xml",
+     "rel": "xml",
+     "href": "https://storage.example.invalid/warnings/alert-two-languages.xml"
+    },
+    {
+     "type": "application/geo+json",
+     "rel": "geometry",
+     "href": "https://storage.example.invalid/features/f-two-languages.geojson"
+    }
+   ],
+   "type": "Feature",
+   "properties": {
+    "supersededByAlertId": null,
+    "supersededAt": null,
+    "supersedeType": null,
+    "geometryDescription": "geometry is bbox only, link (member of the feature's links array) with type application/geo+json points to geojson describing the exact shape",
+    "geometryType": "bbox",
+    "OBJECTID": "8e5e67e1-6117-4e84-8226-1cf8a206f430",
+    "alertId": "5faea2f4-247d-4cf9-9164-60b2c06d03ae",
+    "countryCode": "NO",
+    "featureType": "polygon",
+    "hubLanguage": "no",
+    "indexArea": 0,
+    "indexFeature": 0,
+    "indexInfo": 0,
+    "hubTime": "2026-11-27T08:25:30Z",
+    "hubLink": "https://storage.example.invalid/warnings/alert-two-languages.xml"
+   },
+   "geometry": {
+    "coordinates": [
+     [
+      [
+       5.5248,
+       58.2
+      ],
+      [
+       5.5248,
+       58.6587
+      ],
+      [
+       6.4088,
+       58.6587
+      ],
+      [
+       6.4088,
+       58.2
+      ],
+      [
+       5.5248,
+       58.2
+      ]
+     ]
+    ],
+    "crs": {
+     "properties": {
+      "name": "EPSG:4326"
+     },
+     "type": "name"
+    },
+    "type": "Polygon"
+   }
+  },
+  {
+   "id": "8e5e67e1-6117-4e84-8226-1cf8a206f430",
+   "links": [
+    {
+     "type": "application/xml",
+     "rel": "canonical",
+     "href": "https://storage.example.invalid/warnings/alert-two-languages.xml"
+    },
+    {
+     "type": "application/xml",
+     "rel": "xml",
+     "href": "https://storage.example.invalid/warnings/alert-two-languages.xml"
+    },
+    {
+     "type": "application/geo+json",
+     "rel": "geometry",
+     "href": "https://storage.example.invalid/features/f-two-languages.geojson"
+    }
+   ],
+   "type": "Feature",
+   "properties": {
+    "supersededByAlertId": null,
+    "supersededAt": null,
+    "supersedeType": null,
+    "geometryDescription": "geometry is bbox only, link (member of the feature's links array) with type application/geo+json points to geojson describing the exact shape",
+    "geometryType": "bbox",
+    "OBJECTID": "8e5e67e1-6117-4e84-8226-1cf8a206f430",
+    "alertId": "5faea2f4-247d-4cf9-9164-60b2c06d03ae",
+    "countryCode": "NO",
+    "featureType": "polygon",
+    "hubLanguage": "en-GB",
+    "indexArea": 0,
+    "indexFeature": 0,
+    "indexInfo": 1,
+    "hubTime": "2026-11-27T08:25:30Z",
+    "hubLink": "https://storage.example.invalid/warnings/alert-two-languages.xml"
+   },
+   "geometry": {
+    "coordinates": [
+     [
+      [
+       5.5248,
+       58.2
+      ],
+      [
+       5.5248,
+       58.6587
+      ],
+      [
+       6.4088,
+       58.6587
+      ],
+      [
+       6.4088,
+       58.2
+      ],
+      [
+       5.5248,
+       58.2
+      ]
+     ]
+    ],
+    "crs": {
+     "properties": {
+      "name": "EPSG:4326"
+     },
+     "type": "name"
+    },
+    "type": "Polygon"
+   }
+  }
+ ]
+}

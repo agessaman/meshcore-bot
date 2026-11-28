@@ -1,10 +1,12 @@
 """Tests for modules.utils."""
 
 import configparser
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
+import pytz
 
 from modules.utils import (
     abbreviate_location,
@@ -384,6 +386,11 @@ class TestExtractPathNodeIdsFromMessage:
         assert extract_path_node_ids_from_message(m) == ["28667C", "E0EED9"]
 
 
+# British Columbia moved to permanent UTC-7 in 2026; tz 2026b, shipped in pytz
+# 2026.2, is the first release that models it.
+PYTZ_HAS_BC_PERMANENT_UTC7 = tuple(int(part) for part in pytz.__version__.split(".")) >= (2026, 2)
+
+
 # ---------------------------------------------------------------------------
 # is_valid_timezone
 # ---------------------------------------------------------------------------
@@ -453,6 +460,18 @@ class TestGetConfigTimezone:
         cfg = self._config("Bad/Zone")
         _, iana = get_config_timezone(cfg, None)
         assert iana == "UTC"
+
+    @pytest.mark.skipif(
+        not PYTZ_HAS_BC_PERMANENT_UTC7,
+        reason="pytz older than 2026.2 predates BC's permanent UTC-7",
+    )
+    def test_vancouver_follows_british_columbias_permanent_utc_minus_7(self):
+        cfg = self._config("America/Vancouver")
+        tz, iana = get_config_timezone(cfg)
+
+        assert iana == "America/Vancouver"
+        winter = datetime(2027, 1, 15, 12, 0, tzinfo=timezone.utc)
+        assert winter.astimezone(tz).utcoffset() == timedelta(hours=-7)
 
 
 # ---------------------------------------------------------------------------

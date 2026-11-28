@@ -28,6 +28,9 @@ UNITS = {
 DAY = datetime(2026, 10, 1, 10, 15, 0)
 NIGHT = datetime(2026, 10, 1, 21, 45, 0)
 MODULE = "modules.commands.alternatives.wx_international"
+# The formatting reads the clock in the provider; the command keeps the name for
+# code that patches it there.
+PROVIDER_MODULE = "modules.weather_providers.openmeteo"
 
 
 def _frozen(now):
@@ -80,7 +83,9 @@ def _run(cmd, data, now, budget=None, **kwargs):
         cmd.get_max_message_length = Mock(return_value=budget)
         kwargs["message"] = Mock()
     get = Mock(return_value=_response(data))
-    with patch(f"{MODULE}.datetime", _frozen(now)), patch("requests.Session.get", get):
+    with patch(f"{MODULE}.datetime", _frozen(now)), patch(
+        f"{PROVIDER_MODULE}.datetime", _frozen(now)
+    ), patch("requests.Session.get", get):
         text = cmd.get_open_meteo_weather(data["latitude"], data["longitude"], **kwargs)
     params = get.call_args.kwargs["params"] if get.call_args else None
     logs = [(c[0], c[1][0]) for c in cmd.logger.method_calls if c[0] in ("info", "warning", "error")]

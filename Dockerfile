@@ -31,6 +31,13 @@ COPY requirements.txt pyproject.toml constraints-armv7.txt ./
 # supplies prebuilt armv7 wheels; constraints-armv7.txt closes the last two version-skew
 # gaps so the leg resolves entirely to wheels. See constraints-armv7.txt for measurements.
 #
+# tzfpy is installed explicitly on every leg, never from requirements.txt. It is a Rust
+# extension, and a 32-bit Raspberry Pi OS boots a 64-bit kernel: platform_machine says
+# aarch64 while Python is 32-bit, so a PEP 508 marker cannot pick the armv7l wheel and pip
+# would attempt a source build and abort the whole install. Naming it here keeps the
+# choice with the platform that knows the answer. PyPI has wheels for amd64 and arm64;
+# piwheels publishes cp310-abi3 wheels for linux_armv7l.
+#
 # Scoped to linux/arm/v7 deliberately: amd64 and arm64 keep resolving from PyPI alone, so
 # neither the extra index nor the two held-back versions touch those images.
 RUN --mount=type=cache,target=/root/.cache/pip,id=pip-$TARGETARCH \
@@ -38,9 +45,10 @@ RUN --mount=type=cache,target=/root/.cache/pip,id=pip-$TARGETARCH \
         pip install --user \
             --extra-index-url https://www.piwheels.org/simple \
             -c constraints-armv7.txt \
+            "tzfpy>=2.1" \
             -r requirements.txt; \
     else \
-        pip install --user -r requirements.txt; \
+        pip install --user "tzfpy>=2.1" -r requirements.txt; \
     fi
 
 # ── runtime stage ──────────────────────────────────────────────────────────

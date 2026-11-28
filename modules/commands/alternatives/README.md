@@ -11,6 +11,10 @@ Some default plugins may not work well in all contexts. For example:
 
 Alternative plugins allow you to swap out default plugins without modifying the core codebase.
 
+## Weather Sources Are Not Alternative Plugins
+
+`wx_international.py` is no longer a separate implementation: `GlobalWxCommand` is a subclass of `wx` pinned to Open-Meteo, so `gwx` and `wx` share one request path and differ only in the provider that answers. A new weather source belongs in `modules/weather_providers/`, registered in `PROVIDERS` or `ALERT_PROVIDERS` and selected with `[Weather] weather_provider` or `alerts_provider`, not in this directory.
+
 ## How It Works
 
 ### Automatic Replacement by Name

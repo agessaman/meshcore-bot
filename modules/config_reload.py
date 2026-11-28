@@ -13,6 +13,18 @@ class ConfigReloadMixin:
 
     _COMMAND_CONFIG_STATE: Any
 
+    # [Weather] keys only the weather commands read. A reload rebuilds the
+    # commands, so changing one of these does not need a restart even when the
+    # WeatherService is loaded and caches the rest of the section.
+    _COMMAND_ONLY_WEATHER_KEYS = frozenset({
+        "alerts_provider",
+        "meteoalarm_api_url",
+        "meteoalarm_token",
+        "metno_user_agent",
+        "openmeteo_fallback",
+        "weather_provider",
+    })
+
     @staticmethod
     def _config_section_values(
         config: configparser.ConfigParser, section: str
@@ -71,9 +83,13 @@ class ConfigReloadMixin:
                 startup_sections.add("Weather")
 
         for section in sorted(startup_sections):
-            if self._config_section_values(old_config, section) != self._config_section_values(
-                new_config, section
-            ):
+            old_values = self._config_section_values(old_config, section)
+            new_values = self._config_section_values(new_config, section)
+            if section == "Weather":
+                for key in self._COMMAND_ONLY_WEATHER_KEYS:
+                    old_values.pop(key, None)
+                    new_values.pop(key, None)
+            if old_values != new_values:
                 changed.append(f"[{section}]")
 
         for key in ("db_path", "local_dir_path", "prefix_bytes"):

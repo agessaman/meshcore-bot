@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<alert xmlns="urn:oasis:names:tc:emergency:cap:1.2">
+  <identifier>2.49.0.1.578.0.alert-expired</identifier>
+  <sender>meteorologi@met.no</sender>
+  <sent>2026-11-27T08:14:50+00:00</sent>
+  <status>Actual</status>
+  <msgType>Update</msgType>
+  <scope>Public</scope>
+  <code>MCP:v2.0</code>
+  <info>
+    <language>en-GB</language>
+    <category>Met</category>
+    <event>Flood</event>
+    <responseType>Monitor</responseType>
+    <urgency>Future</urgency>
+    <severity>Moderate</severity>
+    <certainty>Likely</certainty>
+    <onset>2026-11-26T18:00:00+00:00</onset>
+    <expires>2020-01-01T00:00:00+00:00</expires>
+    <senderName>Meteorologisk Institutt</senderName>
+    <headline>Gale, yellow level, Aana-Sira - Karmoey</headline>
+    <description>From Friday morning, south-east near gale 15 m/s, occasionally strong gale 20.</description>
+    <parameter>
+      <valueName>awareness_level</valueName>
+      <value>2; yellow; Moderate</value>
+    </parameter>
+    <parameter>
+      <valueName>awareness_type</valueName>
+      <value>1; Wind</value>
+    </parameter>
+    <area>
+      <areaDesc>Ana-Sira - Karmoy</areaDesc>
+    </area>
+  </info>
+</alert>

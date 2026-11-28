@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<alert xmlns="urn:oasis:names:tc:emergency:cap:1.2">
+  <identifier>2.49.0.1.578.0.20261127070414.016</identifier>
+  <sender>meteorologi@met.no</sender>
+  <sent>2026-11-27T08:14:50+00:00</sent>
+  <status>Actual</status>
+  <msgType>Update</msgType>
+  <scope>Public</scope>
+  <info>
+    <language>no</language>
+    <category>Met</category>
+    <event>Kuling</event>
+    <severity>Moderate</severity>
+    <onset>2026-11-26T18:00:00+00:00</onset>
+    <expires>2026-11-28T10:00:00+00:00</expires>
+    <headline>Kuling, gult nivå, Åna-Sira - Karmøy</headline>
+    <parameter>
+      <valueName>awareness_level</valueName>
+      <value>2; yellow; Moderate</value>
+    </parameter>
+    <parameter>
+      <valueName>awareness_type</valueName>
+      <value>1; Wind</value>
+    </parameter>
+    <area>
+      <areaDesc>Åna-Sira - Karmøy</areaDesc>
+    </area>
+  </info>
+  <info>
+    <language>en-GB</language>
+    <category>Met</category>
+    <event>Gale</event>
+    <severity>Moderate</severity>
+    <onset>2026-11-26T18:00:00+00:00</onset>
+    <expires>2026-11-28T10:00:00+00:00</expires>
+    <headline>Gale, yellow level, Aana-Sira - Karmoey</headline>
+    <parameter>
+      <valueName>awareness_level</valueName>
+      <value>2; yellow; Moderate</value>
+    </parameter>
+    <parameter>
+      <valueName>awareness_type</valueName>
+      <value>1; Wind</value>
+    </parameter>
+    <area>
+      <areaDesc>Aana-Sira - Karmoey</areaDesc>
+    </area>
+  </info>
+</alert>
