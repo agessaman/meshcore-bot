@@ -81,6 +81,11 @@ from ..weather_providers.noaa import (
 from .base_command import BaseCommand
 from .rain_command import nws_http_means_no_coverage  # noqa: F401  re-exported
 
+# The longest "Nd" request either command accepts, whatever the provider. Each
+# provider answers as many of those days as it has, so "wx Oslo 12d" on MET
+# Norway gets nine days rather than a lookup of a place called "Oslo 12d".
+MULTIDAY_REQUEST_MAX_DAYS = 16
+
 # Kept for code that checked them; these imports used to be optional.
 WX_INTERNATIONAL_AVAILABLE = True
 WXSIM_PARSER_AVAILABLE = True
@@ -89,9 +94,9 @@ WXSIM_PARSER_AVAILABLE = True
 def __getattr__(name: str):
     """``GlobalWxCommand``, imported on first use.
 
-    gwx is a subclass of this command, so importing it here at module level
-    would be a cycle. Code that reached it as
-    ``modules.commands.wx_command.GlobalWxCommand`` still can.
+    It subclasses this command, so importing it here at module level would be a
+    cycle. Code that reached it as ``modules.commands.wx_command.GlobalWxCommand``
+    still can.
     """
     if name == "GlobalWxCommand":
         from .alternatives.wx_international import GlobalWxCommand
@@ -129,6 +134,69 @@ _ALERT_PROVIDER_LABELS = {
 
 _P = ParamSpec("_P")
 _T = TypeVar("_T")
+
+
+def command_override_fields(command: str, default_provider: Optional[str] = None) -> list[dict[str, Any]]:
+    """Settings fields for one weather command's own overrides of [Weather].
+
+    "" (each field's default) means no override; the save endpoint removes the
+    key rather than writing it blank.
+    """
+    if default_provider:
+        provider_default = f"Default for {command}: {_PROVIDER_LABELS.get(default_provider, default_provider)}"
+    else:
+        provider_default = "Same as [Weather]"
+    return [
+        {
+            "key": "weather_provider",
+            "label": f"{command}-only weather provider",
+            "type": "enum",
+            "options": [
+                {"value": "", "label": provider_default},
+                *({"value": name, "label": _PROVIDER_LABELS.get(name, name)} for name in PROVIDERS),
+            ],
+            "default": "",
+            "help": f"Overrides the forecast provider for {command} only.",
+        },
+        {
+            "key": "temperature_unit",
+            "label": f"{command}-only temperature unit",
+            "type": "enum",
+            "options": [
+                {"value": "", "label": "Same as [Weather]"},
+                {"value": "fahrenheit", "label": "Fahrenheit (°F)"},
+                {"value": "celsius", "label": "Celsius (°C)"},
+            ],
+            "default": "",
+            "help": f"Overrides the shared temperature unit for {command} only.",
+        },
+        {
+            "key": "wind_speed_unit",
+            "label": f"{command}-only wind speed unit",
+            "type": "enum",
+            "options": [
+                {"value": "", "label": "Same as [Weather]"},
+                {"value": "mph", "label": "Miles per hour (mph)"},
+                {"value": "kmh", "label": "Kilometers per hour (km/h)"},
+                {"value": "ms", "label": "Meters per second (m/s)"},
+                {"value": "kn", "label": "Knots (kn)"},
+            ],
+            "default": "",
+            "help": f"Overrides the shared wind speed unit for {command} only.",
+        },
+        {
+            "key": "precipitation_unit",
+            "label": f"{command}-only precipitation unit",
+            "type": "enum",
+            "options": [
+                {"value": "", "label": "Same as [Weather]"},
+                {"value": "inch", "label": "Inches"},
+                {"value": "mm", "label": "Millimeters"},
+            ],
+            "default": "",
+            "help": f"Overrides the shared precipitation unit for {command} only.",
+        },
+    ]
 
 
 class WxCommand(WeatherCommandMixin, BaseCommand):
@@ -179,40 +247,16 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         {"key": "precipitation_unit", "label": "Precipitation unit", "type": "enum", "section": "Weather",
          "options": [{"value": "inch", "label": "Inches"}, {"value": "mm", "label": "Millimeters"}],
          "default": "inch", "help": "For wx, gwx and the weather service. Shared weather setting."},
-        # [Wx_Command] overrides of the shared units. "" (the default) means no
-        # override; the save endpoint removes the key rather than writing it blank.
-        {
-            "key": "temperature_unit",
-            "label": "wx-only temperature unit",
-            "type": "enum",
-            "options": [
-                {"value": "", "label": "Same as [Weather]"},
-                {"value": "fahrenheit", "label": "Fahrenheit (°F)"},
-                {"value": "celsius", "label": "Celsius (°C)"},
-            ],
-            "default": "",
-            "help": "Overrides the shared temperature unit for wx only.",
-        },
-        {
-            "key": "wind_speed_unit",
-            "label": "wx-only wind speed unit",
-            "type": "enum",
-            "options": [
-                {"value": "", "label": "Same as [Weather]"},
-                {"value": "mph", "label": "Miles per hour (mph)"},
-                {"value": "kmh", "label": "Kilometers per hour (km/h)"},
-                {"value": "ms", "label": "Meters per second (m/s)"},
-                {"value": "kn", "label": "Knots (kn)"},
-            ],
-            "default": "",
-            "help": "Overrides the shared wind speed unit for wx only.",
-        },
+        # [Wx_Command] overrides of the shared settings.
+        *command_override_fields("wx"),
         {"key": "weather_provider", "label": "Weather provider", "type": "enum", "section": "Weather",
          "options": [{"value": name, "label": _PROVIDER_LABELS.get(name, name)} for name in PROVIDERS],
-         "default": "noaa", "help": "API used for forecasts. Shared weather setting."},
+         "default": "noaa",
+         "help": "Forecast source for wx, unless [Wx_Command] sets its own. gwx uses Open-Meteo unless "
+                 "[Gwx_Command] sets one. Shared weather setting."},
         {"key": "alerts_provider", "label": "Weather alerts provider", "type": "enum", "section": "Weather",
          "options": [
-             {"value": "auto", "label": "Automatic (NWS with NOAA, none with Open-Meteo)"},
+             {"value": "auto", "label": "Automatic (NWS with NOAA, Environment Canada with ECCC, none otherwise)"},
              {"value": "none", "label": "No weather alerts"},
              *({"value": name, "label": _ALERT_PROVIDER_LABELS.get(name, name)} for name in ALERT_PROVIDERS),
          ],
@@ -289,43 +333,31 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
     # formatters would turn into dropped fields).
     MIN_BODY_BUDGET = _MIN_BODY_BUDGET
 
-    # A subclass that answers from one provider whatever [Weather] weather_provider
-    # says (gwx is pinned to Open-Meteo).
-    pinned_provider: Optional[str] = None
-
-    # The config section whose `enabled` switch gates this command; None: no switch.
-    enabled_section: Optional[str] = 'Wx_Command'
+    # The provider this command answers from when neither its own section nor
+    # [Weather] names one; None: [Weather] weather_provider, then noaa.
+    default_weather_provider: Optional[str] = None
 
     # The provider that answers when the configured one fails ([Weather]
     # failover_provider), or None. Set per instance in __init__.
     failover_provider: Optional[WeatherProvider] = None
 
-    # The one-line description, in the terms of the provider that answers. It is
-    # a class attribute because the settings UI reads it off the class, and
-    # __init__ replaces it on the instance when the provider is global.
+    # The one-line description, in the terms of the provider that answers. Both
+    # are class attributes because the settings UI reads them off the class;
+    # __init__ picks the one the provider's location style calls for.
     description = "Get weather information for a zip code (usage: wx 12345)"
+    global_description = "Get weather information for any location (usage: wx Tokyo)"
 
     def __init__(self, bot):
         super().__init__(bot)
-        self.wx_enabled = (
-            self.get_config_value(self.enabled_section, 'enabled', fallback=True, value_type='bool')
-            if self.enabled_section else True
+        self.wx_enabled = self.get_config_value(
+            self._derive_config_section_name(), 'enabled', fallback=True, value_type='bool'
         )
 
         self.wxsim_parser = WXSIMParser()
 
-        # The forecast provider comes from [Weather] weather_provider. An unknown
-        # value warns once and uses NOAA, as an unset one does.
-        if self.pinned_provider:
-            provider_name = self.pinned_provider
-        else:
-            provider_name = bot.config.get('Weather', 'weather_provider', fallback='noaa').strip().lower()
-            if provider_name not in PROVIDERS:
-                self.logger.warning(
-                    f"Unknown [Weather] weather_provider '{provider_name}'; using 'noaa'. "
-                    f"Valid values: {', '.join(sorted(PROVIDERS))}"
-                )
-                provider_name = 'noaa'
+        # The forecast provider: this command's own section, then its class
+        # default, then [Weather], then noaa.
+        provider_name = self._forecast_provider_name()
         self.provider_name = provider_name
         failover_name = self._failover_provider_name(provider_name)
 
@@ -341,14 +373,14 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         if provider_name == 'openmeteo' or fallback_enabled or failover_name == 'openmeteo':
             openmeteo_model = load_open_meteo_model(bot.config, self.logger)
 
-        # Units are per provider: NOAA takes [Wx_Command] overrides, Open-Meteo
-        # reads [Weather] only, as gwx always has. The fallback provider is an
-        # Open-Meteo provider, so it validates and warns about its own units even
-        # though wx's units are overlaid on it per request.
+        # Units follow one rule for every command and provider: the command's own
+        # section ([Wx_Command], [Gwx_Command]) when it sets a unit, else [Weather].
+        # An Open-Meteo provider still validates [Weather] itself, so an invalid
+        # shared unit warns as it always has; the resolved units are the same.
         openmeteo_units = None
         if provider_name == 'openmeteo' or fallback_enabled:
             openmeteo_units = WeatherUnits(*load_open_meteo_units(bot.config, self.logger))
-        units = openmeteo_units if provider_name == 'openmeteo' else resolve_units(self._unit_setting)
+        units = resolve_units(self._unit_setting)
 
         self.url_timeout = 8  # seconds (reduced from 10 for faster failure detection)
         self.forecast_duration = 3  # days
@@ -437,17 +469,80 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                 f"{failover_name} when {provider_name} fails"
             )
 
-        if provider_name == 'openmeteo' and not self.pinned_provider:
+        # A command that answers from Open-Meteo because of config says so; one
+        # whose class default is Open-Meteo has nothing to report.
+        if provider_name == 'openmeteo' and self.default_weather_provider != 'openmeteo':
             self.logger.info("Weather provider set to 'openmeteo': wx answers from Open-Meteo")
 
         # The message catalog follows the provider that answers, so wx on
         # Open-Meteo speaks commands.gwx as gwx always has.
         self.translation_ns = self.provider.translation_ns
 
-        # An unpinned wx on Open-Meteo answers like gwx, so it says so. A pinned
-        # command keeps its own class description.
-        if self.provider.location_style == "global" and not self.pinned_provider:
-            self.description = "Get weather information for any location (usage: wx Tokyo)"
+        # A command whose provider is global answers like gwx, so it says so.
+        if self.provider.location_style == "global":
+            self.description = self.global_description
+
+    def _forecast_provider_name(self) -> str:
+        """The forecast provider this command answers from.
+
+        ``[<own section>] weather_provider``, then the class's
+        ``default_weather_provider``, then ``[Weather] weather_provider``, then
+        ``noaa``. An unknown value warns once and falls through to the next
+        source.
+        """
+        own_section = self._derive_config_section_name()
+        # Each source is read only when the ones before it give nothing usable, so
+        # a broken lower-priority value can't stop a command that doesn't need it.
+        sources: list[tuple[str, Callable[[], str]]] = [
+            (f"[{own_section}] weather_provider", lambda: self._section_provider_setting(own_section)),
+            (f"{type(self).__name__}.default_weather_provider", lambda: self.default_weather_provider or ''),
+            ("[Weather] weather_provider",
+             lambda: self.bot.config.get('Weather', 'weather_provider', fallback='').strip().lower()),
+        ]
+        unknown: list[tuple[str, str]] = []
+        for where, read in sources:
+            value = read()
+            if not value:
+                continue
+            if value in PROVIDERS:
+                for bad_where, bad_value in unknown:
+                    self.logger.warning(
+                        f"Unknown {bad_where} '{bad_value}'; using '{value}'. "
+                        f"Valid values: {', '.join(sorted(PROVIDERS))}"
+                    )
+                return value
+            unknown.append((where, value))
+        for bad_where, bad_value in unknown:
+            self.logger.warning(
+                f"Unknown {bad_where} '{bad_value}'; using 'noaa'. "
+                f"Valid values: {', '.join(sorted(PROVIDERS))}"
+            )
+        return 'noaa'
+
+    def _section_provider_setting(self, section: str) -> str:
+        """``[<section>] weather_provider``, or '' when the section does not set it.
+
+        Read directly rather than through get_config_value, whose [Weather]
+        fallback would make the shared setting look like this command's own.
+        """
+        if not self._section_sets(section, 'weather_provider'):
+            return ''
+        return self.bot.config.get(section, 'weather_provider').strip().lower()
+
+    def _section_sets(self, section: str, key: str) -> bool:
+        """True when ``[<section>]`` itself sets ``key``.
+
+        A value inherited from ``[DEFAULT]`` is not the section's own, so it
+        doesn't count as a per-command override.
+        """
+        config = self.bot.config
+        if not config.has_section(section) or not config.has_option(section, key):
+            return False
+        if key not in config.defaults():
+            return True
+        # ConfigParser keeps a section's own values apart from [DEFAULT]'s.
+        own = getattr(config, '_sections', {}).get(section, {})
+        return config.optionxform(key) in own
 
     @property
     def _noaa(self) -> NoaaProvider:
@@ -509,16 +604,18 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                 provider.session = session
 
     def _unit_setting(self, key: str, fallback: str) -> str:
-        """A unit setting: [Wx_Command] when it overrides, else the shared [Weather] one.
+        """A unit setting: the command's own section when it overrides, else [Weather].
 
         Read directly rather than through get_config_value, whose [Weather] fallback
-        logs a notice to move the setting into [Wx_Command]; for units, [Weather] is
-        where they belong.
+        logs a notice to move the setting into the command's section; for units,
+        [Weather] is where they belong.
         """
         config = self.bot.config
-        for section in ('Wx_Command', 'Weather'):
-            if config.has_section(section) and config.has_option(section, key):
-                return str(config.get(section, key)).strip().lower()
+        own_section = self._derive_config_section_name()
+        if self._section_sets(own_section, key):
+            return str(config.get(own_section, key)).strip().lower()
+        if config.has_option('Weather', key):
+            return str(config.get('Weather', key)).strip().lower()
         return fallback
 
     def _noaa_units(self) -> tuple[str, str]:
@@ -570,9 +667,9 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
 
         ``none`` (the default) and an empty value turn failover off. An unknown
         value warns and turns it off. A failover that is the command's own
-        provider is off too; that warns only for an unpinned command, since gwx
-        is pinned to Open-Meteo and ``failover_provider = openmeteo`` is a normal
-        setting for a NOAA wx.
+        provider is off too; that warns only when the value is not the command's
+        own default, since a shared ``failover_provider = openmeteo`` is a normal
+        setting for a NOAA wx and gwx answers from Open-Meteo anyway.
         """
         value = self.bot.config.get('Weather', 'failover_provider', fallback='none').strip().lower()
         if value in ('', 'none'):
@@ -584,7 +681,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             )
             return None
         if value == provider_name:
-            if not self.pinned_provider:
+            if value != self.default_weather_provider:
                 self.logger.warning(
                     f"[Weather] failover_provider '{value}' is the weather provider itself; failover is off"
                 )
@@ -734,7 +831,8 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                 if key_location.lower() != location_lower:
                     continue
                 value = config_value(self.bot.config, section, name, self.logger)
-                self.logger.debug(f"Found WXSIM source: {name} = {value}")
+                # The name only: a station URL can carry an access token.
+                self.logger.debug(f"Found WXSIM source: {name}")
                 return value
 
             self.logger.debug(f"No WXSIM source found for location '{location}'")
@@ -743,7 +841,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             default_key = 'custom.wxsim.default'
             if self.bot.config.has_option(section, default_key):
                 url = config_value(self.bot.config, section, default_key, self.logger)
-                self.logger.debug(f"Found default WXSIM source: {url}")
+                self.logger.debug(f"Found default WXSIM source: {default_key}")
                 return url
             self.logger.debug("No default WXSIM source configured")
 
@@ -790,15 +888,10 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             # Still return the forecast, but log the warning
             # Optionally, we could return an error message here instead
 
-        # Get unit preferences from config. Canonical section is [Wx_Command];
-        # get_config_value falls back to legacy [Weather] for existing setups.
-        # gwx read [Weather] alone.
-        if global_style:
-            temp_unit = self.bot.config.get('Weather', 'temperature_unit', fallback='fahrenheit').lower()
-            wind_unit = self.bot.config.get('Weather', 'wind_speed_unit', fallback='mph').lower()
-        else:
-            temp_unit = self._unit_setting('temperature_unit', 'fahrenheit')
-            wind_unit = self._unit_setting('wind_speed_unit', 'mph')
+        # The same unit rule as the forecast providers: the command's own
+        # section, then [Weather].
+        temp_unit = self._unit_setting('temperature_unit', 'fahrenheit')
+        wind_unit = self._unit_setting('wind_speed_unit', 'mph')
 
         # Format based on forecast type
         if forecast_type == "tomorrow":
@@ -888,6 +981,11 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         message: MeshMessage = None,
         location_name: Optional[str] = None,
     ) -> str:
+        """Format a WXSIM source off the event loop, naming the place when there is one."""
+        if location_name is None:
+            return await self._run_sync_provider_async(
+                self._get_wxsim_weather, source_url, forecast_type, num_days, message
+            )
         return await self._run_sync_provider_async(
             self._get_wxsim_weather,
             source_url,
@@ -955,7 +1053,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         using_companion_location = False
 
         # An option alone ("wx hourly") applies to the no-location fallbacks below.
-        parts, option_word, option_type, option_days = self._split_option_only(parts, self.provider.max_days)
+        parts, option_word, option_type, option_days = self._split_option_only(parts, MULTIDAY_REQUEST_MAX_DAYS)
 
         # If no location specified, check custom MQTT then WXSIM default sources
         if len(parts) < 2:
@@ -984,7 +1082,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             location_parts, forecast_type, num_days = parts[1:], "default", 7
         else:
             location_parts, forecast_type, num_days = self._parse_forecast_suffix(
-                parts[1:], self.provider.max_days, allow_hourly=True
+                parts[1:], MULTIDAY_REQUEST_MAX_DAYS, allow_hourly=True
             )
 
         # Join remaining parts to handle "city, state" format
@@ -1005,29 +1103,30 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         if wxsim_source:
             if self.provider.location_style == "us":
                 # wx has always named the source it answers from; gwx has not.
-                self.logger.info(f"Using custom WXSIM source for location '{location}': {wxsim_source}")
+                # The name only: a station URL can carry an access token.
+                self.logger.info(f"Using custom WXSIM source for location '{location}'")
             return await self._reply_from_wxsim(message, wxsim_source, forecast_type, num_days, location)
 
         return await self._execute_request(
             message, location, forecast_type, num_days, using_companion_location
         )
 
-    # Per location style: the pre-dispatch step, the forecast call, and the
-    # subject the error log names. Everything else in a request is shared.
+    # Per location style: the pre-dispatch step and the subject the error log
+    # names. Everything else in a request is shared.
     _STYLE_HOOKS = {
-        "us": ("_prepare_us_request", "_us_weather_for_location", "weather command"),
-        "global": ("_prepare_global_request", "_global_weather_for_location", "global weather command"),
+        "us": ("_prepare_us_request", "weather command"),
+        "global": ("_prepare_global_request", "global weather command"),
     }
 
     def _style_hooks(self) -> tuple:
-        """(prepare, forecast, error subject) for the provider's location style."""
-        prepare, forecast, subject = self._STYLE_HOOKS[self.provider.location_style]
-        return getattr(self, prepare), getattr(self, forecast), subject
+        """(prepare, error subject) for the provider's location style."""
+        prepare, subject = self._STYLE_HOOKS[self.provider.location_style]
+        return getattr(self, prepare), subject
 
     async def _execute_request(self, message: MeshMessage, location: str, forecast_type: str,
                                num_days: int, using_companion_location: bool) -> bool:
         """One weather request: the style's pre-dispatch step, then the forecast or the alert list."""
-        prepare, forecast, subject = self._style_hooks()
+        prepare, subject = self._style_hooks()
         location_type = await prepare(message, location, forecast_type)
         if location_type is None:
             # The pre-dispatch step already replied.
@@ -1043,8 +1142,9 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                 return await self._send_alert_list_for(message, location, location_type)
 
             # Get weather data for the location
-            weather_data = await forecast(
-                location, location_type, forecast_type, num_days, message, using_companion_location
+            weather_data = await self.get_weather_for_location(
+                location, location_type, forecast_type, num_days, message,
+                using_companion_location=using_companion_location,
             )
 
             return await self._send_weather_reply(message, weather_data, forecast_type)
@@ -1077,25 +1177,6 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             )
             return None
         return "city"
-
-    async def _us_weather_for_location(self, location: str, location_type: str, forecast_type: str,
-                                       num_days: int, message: MeshMessage,
-                                       using_companion_location: bool) -> str:
-        """wx's forecast call: the six-argument get_weather_for_location."""
-        return await self.get_weather_for_location(
-            location, location_type, forecast_type, num_days, message,
-            using_companion_location=using_companion_location,
-        )
-
-    async def _global_weather_for_location(self, location: str, location_type: str, forecast_type: str,
-                                           num_days: int, message: MeshMessage,
-                                           using_companion_location: bool) -> str:
-        """The global path's forecast call.
-
-        GlobalWxCommand keeps its own four-argument get_weather_for_location, so
-        the call goes through this hook rather than being spelled inline.
-        """
-        return await self.get_weather_for_location(location, "city", forecast_type, num_days, message)
 
     async def _send_alert_list_for(self, message: MeshMessage, location: str, location_type: str) -> bool:
         """The "alerts" option: the configured alerts provider's full list, or a refusal.
@@ -1247,7 +1328,8 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
 
             # A point the provider already knows it does not cover skips its request.
             if self.fallback_provider is not None and not self.provider.covers(lat, lon):
-                return self._fallback_reply(location, location_type, lat, lon, forecast_type, num_days, message)
+                return self._fallback_reply(location, location_type, lat, lon, forecast_type, num_days, message,
+                                            location_prefix)
 
             # location_prefix is prepended to the formatted body, so it has to come
             # out of the same frame budget. Formatting the body to the full budget
@@ -1266,7 +1348,8 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                     self._count_display_width(location_prefix), message,
                 )
             if result.no_coverage and self.fallback_provider is not None:
-                return self._fallback_reply(location, location_type, lat, lon, forecast_type, num_days, message)
+                return self._fallback_reply(location, location_type, lat, lon, forecast_type, num_days, message,
+                                            location_prefix)
             if (
                 self.failover_provider is not None
                 and not result.no_coverage
@@ -1302,7 +1385,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         """
         try:
             return provider.forecast(
-                lat, lon, forecast_type, num_days, location_prefix_len, message
+                lat, lon, forecast_type, min(num_days, provider.max_days), location_prefix_len, message
             )
         except Exception as error:
             self.logger.warning(
@@ -1325,6 +1408,8 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         """Whether a reply is a forecast, rather than an error or an unreadable answer."""
         if not reply.ok:
             return False
+        # The provider was asked for no more days than it has.
+        num_days = min(num_days, provider.max_days)
         namespace = provider.translation_ns
         return reply.text not in {
             self.translate(f'{namespace}.{key}', num_days=num_days) for key in self._UNREADABLE_REPLY_KEYS
@@ -1461,8 +1546,13 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         return summary
 
     def _fallback_reply(self, location: str, location_type: str, lat: float, lon: float,
-                        forecast_type: str, num_days: int, message: Optional[MeshMessage]):
-        """The Open-Meteo reply for a point outside NWS coverage, labeled the global way."""
+                        forecast_type: str, num_days: int, message: Optional[MeshMessage],
+                        location_prefix: Optional[str] = None):
+        """The Open-Meteo reply for a point outside coverage, labeled the global way.
+
+        A provider with the global location style already labeled the place that
+        way, so that label is kept; a US-style label is rebuilt with the country.
+        """
         openmeteo = self.fallback_provider
         # wx's units, [Wx_Command] overrides included, so one command never mixes unit systems.
         temperature, wind_speed = self._noaa_units()
@@ -1473,21 +1563,13 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             temperature=temperature, wind_speed=wind_speed, precipitation=precipitation
         )
 
-        # The label needs the country, which wx's own prefix leaves out. A city's
-        # lookup is answered from the geocoding cache wx's lookup just filled; a
-        # position needs gwx's reverse lookup.
-        geocode_result = None
-        if location_type == "coordinates" or location_type == "zipcode":
-            _, _, address_info, geocode_result = self.geocode_location(location)
-        else:
-            result = self.city_to_lat_lon(location)
-            address_info = result[2] if len(result) == 3 else None
+        if location_prefix is None or self.provider.location_style != "global":
+            location_prefix = self._fallback_location_prefix(location, location_type)
         self.logger.info(
             "%s,%s is outside %s coverage; answering wx from Open-Meteo",
             round(lat, 2), round(lon, 2),
             "NWS" if self.provider_name == 'noaa' else "Environment Canada",
         )
-        location_prefix = self._global_location_prefix(location, address_info or {}, geocode_result)
         max_length = self.get_max_message_length(message) if message else 130
         reply = self._forecast_or_error(
             openmeteo, lat, lon, forecast_type, num_days,
@@ -1497,6 +1579,21 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             # The base sent the error on its own, without the location label.
             return self._failed_reply(reply.text, lat, lon, forecast_type, max_length)
         return self._labeled_reply(lat, lon, location_prefix, reply, forecast_type, max_length)
+
+    def _fallback_location_prefix(self, location: str, location_type: str) -> str:
+        """The global-style label for a place a US-style lookup found.
+
+        The label needs the country, which the US-style prefix leaves out. A
+        city's lookup is answered from the geocoding cache the first lookup just
+        filled; a position needs the reverse lookup.
+        """
+        geocode_result = None
+        if location_type == "coordinates" or location_type == "zipcode":
+            _, _, address_info, geocode_result = self.geocode_location(location)
+        else:
+            result = self.city_to_lat_lon(location)
+            address_info = result[2] if len(result) == 3 else None
+        return self._global_location_prefix(location, address_info or {}, geocode_result)
 
     def geocode_location(self, location: str) -> tuple:
         """Convert location string to lat/lon with address details.

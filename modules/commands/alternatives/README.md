@@ -13,7 +13,9 @@ Alternative plugins allow you to swap out default plugins without modifying the 
 
 ## Weather Sources Are Not Alternative Plugins
 
-`wx_international.py` is no longer a separate implementation: `GlobalWxCommand` is a subclass of `wx` pinned to Open-Meteo, so `gwx` and `wx` share one request path and differ only in the provider that answers. A new weather source belongs in `modules/weather_providers/`, registered in `PROVIDERS` or `ALERT_PROVIDERS` and selected with `[Weather] weather_provider` or `alerts_provider`, not in this directory.
+`wx_international.py` is a compatibility module now, not an alternative plugin. It keeps the names code imported from it, and its `GlobalWxCommand` is a subclass of `modules/commands/gwx_command.py`'s `GwxCommand` that is always enabled and ignores the provider settings in favor of Open-Meteo. Discovery skips it, so `gwx` isn't registered twice; it loads only when an override names it. `gwx` is a normal command in `modules/commands/`, and `wx` and `gwx` share one request path and differ only in the provider that answers.
+
+A new weather source belongs in `modules/weather_providers/`, registered in `PROVIDERS` or `ALERT_PROVIDERS` and selected with `[Weather] weather_provider` or `alerts_provider`, not in this directory. To make `wx` answer from Open-Meteo, set `[Weather] weather_provider = openmeteo`. `[Plugin_Overrides] wx = wx_international` still works as it did, with a deprecation warning.
 
 ## How It Works
 
@@ -22,7 +24,7 @@ Alternative plugins allow you to swap out default plugins without modifying the 
 If an alternative plugin has the same `name` metadata as a default plugin, it will automatically replace the default plugin. For example:
 
 - Default plugin: `modules/commands/wx_command.py` with `name = "wx"`
-- Alternative plugin: `modules/commands/alternatives/wx_international.py` with `name = "wx"`
+- Alternative plugin: `modules/commands/alternatives/your_plugin.py` with `name = "wx"`
 
 The alternative plugin will automatically replace the default one.
 
@@ -32,10 +34,12 @@ You can explicitly configure which alternative plugin to use for a command by ad
 
 ```ini
 [Plugin_Overrides]
-wx = wx_international
+wx = your_plugin
 ```
 
-This tells the bot to use `wx_international.py` from the alternatives directory to replace the `wx` command.
+This tells the bot to use `your_plugin.py` from the alternatives directory to replace the `wx` command.
+
+`wx = wx_international` is deprecated. It still registers the global weather command as `wx` in place of the default `gwx`, as before, and logs a warning to set `[Weather] weather_provider = openmeteo` instead.
 
 ## Creating an Alternative Plugin
 
@@ -53,15 +57,17 @@ This tells the bot to use `wx_international.py` from the alternatives directory 
 
 ## Example: International Weather Plugin
 
-For international users who need weather data from sources other than NOAA:
+For international users who need weather data from sources other than NOAA, no alternative plugin is needed: `gwx` answers worldwide, and `wx` answers from Open-Meteo when `[Weather] weather_provider = openmeteo`. A source neither of them speaks belongs in `modules/weather_providers/`.
 
-1. Create `modules/commands/alternatives/wx_international.py`
-2. Implement a weather command that uses international APIs (e.g., OpenWeatherMap, WeatherAPI.com)
+An alternative plugin is still the way to replace a command's whole behavior:
+
+1. Create `modules/commands/alternatives/your_plugin.py`
+2. Implement a command that uses the API you need (e.g., OpenWeatherMap, WeatherAPI.com)
 3. Set `name = "wx"` to replace the default wx command
 4. Optionally add to `config.ini`:
    ```ini
    [Plugin_Overrides]
-   wx = wx_international
+   wx = your_plugin
    ```
 
 ## Best Practices
@@ -100,4 +106,5 @@ The `inactive/` subdirectory is for storing alternative plugins you want to keep
 - Configuration-based overrides take precedence over automatic name matching
 - The default plugins remain unchanged - alternatives are additive/replacement only
 - Plugins in the `inactive/` subdirectory are never loaded, even if configured
+- Compatibility modules such as `wx_international.py` are skipped by discovery and load only when an override names them
 

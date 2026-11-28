@@ -15,6 +15,16 @@ from typing import Any, Optional
 
 from .commands.base_command import BaseCommand
 
+# Deprecated alternatives kept so old imports and overrides still work: for
+# each, the setting that replaces it and the file of the default command it
+# used to be.
+# Discovery skips them, so that command is not registered twice; they load only
+# when a [Plugin_Overrides] line names them, and then, as before, the override
+# is the only command with those triggers.
+COMPATIBILITY_ALTERNATIVES = {
+    "wx_international": ("[Weather] weather_provider = openmeteo", "gwx_command"),
+}
+
 
 class PluginLoader:
     """Handles dynamic loading and discovery of command plugins"""
@@ -50,7 +60,14 @@ class PluginLoader:
                     # Remove .py extension if present
                     if alternative_file.endswith('.py'):
                         alternative_file = alternative_file[:-3]
-                    self.plugin_overrides[command_name.strip()] = alternative_file.strip()
+                    command_name = command_name.strip()
+                    alternative_file = alternative_file.strip()
+                    if alternative_file in COMPATIBILITY_ALTERNATIVES:
+                        self.logger.warning(
+                            f"[Plugin_Overrides] {command_name} = {alternative_file} is deprecated; "
+                            f"set {COMPATIBILITY_ALTERNATIVES[alternative_file][0]} instead"
+                        )
+                    self.plugin_overrides[command_name] = alternative_file
                     self.logger.info(f"Plugin override configured: {command_name} -> {alternative_file}")
         except Exception as e:
             self.logger.error(f"Error loading plugin overrides: {e}")
@@ -89,7 +106,7 @@ class PluginLoader:
         # Note: glob("*.py") only matches files in the current directory, not subdirectories
         # So the 'inactive' subdirectory is automatically excluded
         for file_path in alternatives_path.glob("*.py"):
-            if file_path.name not in ["__init__.py"]:
+            if file_path.name not in ["__init__.py"] and file_path.stem not in COMPATIBILITY_ALTERNATIVES:
                 plugin_files.append(file_path.stem)
 
         if plugin_files:
@@ -311,8 +328,22 @@ class PluginLoader:
         default_plugin_map = {}  # plugin_name -> file_name
         loaded_plugins = {}
 
+        # Default command files a compatibility override stands in for, as it
+        # did when it was the only command with their triggers. They are not
+        # even constructed, so their settings can't stop a load.
+        displaced = {
+            COMPATIBILITY_ALTERNATIVES[alternative_file][1]
+            for alternative_file in self.plugin_overrides.values()
+            if alternative_file in COMPATIBILITY_ALTERNATIVES
+        }
+
         # First pass: Load all default plugins and build the map
         for plugin_file in default_plugin_files:
+            if plugin_file in displaced:
+                self.logger.info(
+                    f"Not loading default plugin file '{plugin_file}': a deprecated override provides it"
+                )
+                continue
             plugin_instance = self.load_plugin(plugin_file, from_alternatives=False)
             if plugin_instance:
                 metadata = plugin_instance.get_metadata()
@@ -324,7 +355,7 @@ class PluginLoader:
         # Second pass: Check for overrides and load alternative plugins
         # Check config-based overrides first
         for plugin_name, alternative_file in self.plugin_overrides.items():
-            if alternative_file in alternative_plugin_files:
+            if alternative_file in alternative_plugin_files or alternative_file in COMPATIBILITY_ALTERNATIVES:
                 # Load the alternative plugin
                 alt_instance = self.load_plugin(alternative_file, from_alternatives=True)
                 if alt_instance:
@@ -366,23 +397,6 @@ class PluginLoader:
             if alt_instance:
                 alt_metadata = alt_instance.get_metadata()
                 alt_plugin_name = alt_metadata['name']
-
-                # Special case: If wx_international is available and wx command is missing,
-                # automatically use it as wx (fallback behavior)
-                if alt_file == 'wx_international' and 'wx' not in loaded_plugins:
-                    self.logger.info(
-                        "Default 'wx' command not found, using 'wx_international' as fallback for 'wx' command"
-                    )
-                    # Update the instance to use 'wx' name and keywords
-                    alt_instance.name = 'wx'
-                    alt_metadata['name'] = 'wx'
-                    # Update keywords to match wx command
-                    alt_instance.keywords = ['wx', 'weather', 'wxa', 'wxalert']
-                    alt_metadata['keywords'] = ['wx', 'weather', 'wxa', 'wxalert']
-                    alt_metadata['description'] = "Get weather information for any location (usage: wx Tokyo)"
-                    loaded_plugins['wx'] = alt_instance
-                    self.plugin_metadata['wx'] = alt_metadata
-                    continue
 
                 # If an alternative plugin has the same name as a default plugin,
                 # it will replace it (unless already overridden by config)

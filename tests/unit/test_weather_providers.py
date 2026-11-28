@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from modules.commands.alternatives.wx_international import GlobalWxCommand
+from modules.commands.gwx_command import GwxCommand
 from modules.commands.wx_command import WxCommand
 from modules.i18n import Translator
 from modules.weather_providers import (
@@ -105,7 +105,7 @@ def test_every_provider_combination_builds(command, weather_provider, alerts_pro
         "openmeteo_fallback": fallback,
         "meteoalarm_token": "s3cr3t-token",
     }
-    cls = WxCommand if command == "wx" else GlobalWxCommand
+    cls = WxCommand if command == "wx" else GwxCommand
 
     cmd = cls(_bot(weather))
 
@@ -260,16 +260,129 @@ def test_the_provider_capabilities_and_day_caps_are_declared():
 
 
 def test_gwx_ignores_weather_provider_and_stays_on_openmeteo():
-    cmd = GlobalWxCommand(_bot({"weather_provider": "noaa"}))
+    cmd = GwxCommand(_bot({"weather_provider": "noaa"}))
     assert isinstance(cmd.provider, OpenMeteoProvider)
     assert cmd.provider.location_style == "global"
     assert cmd.alerts_provider is None
 
 
 def test_gwx_takes_an_nws_alerts_provider_when_asked():
-    cmd = GlobalWxCommand(_bot({"weather_provider": "noaa", "alerts_provider": "nws"}))
+    cmd = GwxCommand(_bot({"weather_provider": "noaa", "alerts_provider": "nws"}))
     assert isinstance(cmd.provider, OpenMeteoProvider)
     assert isinstance(cmd.alerts_provider, NwsAlertsProvider)
+
+
+# --- the per-command provider setting ---------------------------------------
+
+
+def _bot_sections(sections):
+    """A bot whose config holds exactly *sections*, plus the empty command ones."""
+    config = configparser.ConfigParser()
+    config.read_dict({"Weather": {}, "Wx_Command": {}, "Gwx_Command": {}, "Bot": {}, **sections})
+    bot = Mock()
+    bot.config = config
+    bot.translator = Translator("en")
+    bot.db_manager.get_cached_geocoding = Mock(return_value=(None, None))
+    return bot
+
+
+def _command(command, sections):
+    cls = WxCommand if command == "wx" else GwxCommand
+    return cls(_bot_sections(sections))
+
+
+@pytest.mark.parametrize("command,own,weather,expected", [
+    # wx has no class default: its own section, then [Weather], then noaa.
+    ("wx", "", "", "noaa"),
+    ("wx", "", "metno", "metno"),
+    ("wx", "eccc", "", "eccc"),
+    ("wx", "eccc", "metno", "eccc"),
+    # gwx defaults to Open-Meteo, so [Weather] only decides when its own section is unset.
+    ("gwx", "", "", "openmeteo"),
+    ("gwx", "", "noaa", "openmeteo"),
+    ("gwx", "metno", "", "metno"),
+    ("gwx", "metno", "noaa", "metno"),
+])
+def test_the_forecast_provider_follows_the_own_section_then_the_class_then_weather(
+    command, own, weather, expected
+):
+    sections = {"Weather": {"weather_provider": weather} if weather else {}}
+    if own:
+        sections[f"{command.title()}_Command"] = {"weather_provider": own}
+
+    cmd = _command(command, sections)
+
+    assert cmd.provider_name == expected
+    assert isinstance(cmd.provider, PROVIDERS[expected])
+
+
+@pytest.mark.parametrize("command,own,weather,expected,logged", [
+    ("wx", "carrier-pigeon", "", "noaa",
+     "Unknown [Wx_Command] weather_provider 'carrier-pigeon'; using 'noaa'"),
+    ("wx", "carrier-pigeon", "metno", "metno",
+     "Unknown [Wx_Command] weather_provider 'carrier-pigeon'; using 'metno'"),
+    ("wx", "", "carrier-pigeon", "noaa",
+     "Unknown [Weather] weather_provider 'carrier-pigeon'; using 'noaa'"),
+    ("gwx", "carrier-pigeon", "", "openmeteo",
+     "Unknown [Gwx_Command] weather_provider 'carrier-pigeon'; using 'openmeteo'"),
+])
+def test_an_unknown_provider_warns_once_and_falls_through_to_the_next_source(
+    command, own, weather, expected, logged
+):
+    sections = {"Weather": {"weather_provider": weather} if weather else {}}
+    if own:
+        sections[f"{command.title()}_Command"] = {"weather_provider": own}
+
+    cmd = _command(command, sections)
+
+    assert cmd.provider_name == expected
+    warnings = _warnings(cmd.logger)
+    assert len(warnings) == 1
+    assert warnings[0].startswith(logged)
+    assert "eccc, metno, noaa, openmeteo" in warnings[0]
+
+
+def test_an_unknown_class_default_falls_through_to_weather():
+    class LocalWx(WxCommand):
+        default_weather_provider = "carrier-pigeon"
+
+    cmd = LocalWx(_bot_sections({"Weather": {"weather_provider": "metno"}}))
+
+    assert cmd.provider_name == "metno"
+    warnings = _warnings(cmd.logger)
+    assert len(warnings) == 1
+    assert warnings[0].startswith(
+        "Unknown LocalWx.default_weather_provider 'carrier-pigeon'; using 'metno'"
+    )
+
+
+def test_an_unknown_class_default_with_no_other_source_uses_noaa():
+    class LocalWx(WxCommand):
+        default_weather_provider = "carrier-pigeon"
+
+    cmd = LocalWx(_bot_sections({}))
+
+    assert cmd.provider_name == "noaa"
+    assert len(_warnings(cmd.logger)) == 1
+
+
+def test_gwx_honours_its_own_enabled_switch():
+    assert _command("gwx", {"Gwx_Command": {"enabled": "false"}}).wx_enabled is False
+    assert _command("gwx", {"Gwx_Command": {"enabled": "true"}}).wx_enabled is True
+    assert _command("gwx", {}).wx_enabled is True
+
+
+def test_wx_still_reads_its_own_enabled_switch():
+    assert _command("wx", {"Wx_Command": {"enabled": "false"}}).wx_enabled is False
+    assert _command("wx", {}).wx_enabled is True
+
+
+def test_the_own_section_setting_does_not_read_the_shared_one():
+    # [Weather] weather_provider must not look like [Wx_Command]'s own setting,
+    # or the shared value would win over the class default for gwx.
+    cmd = _command("gwx", {"Weather": {"weather_provider": "noaa"}})
+    assert cmd._section_provider_setting("Gwx_Command") == ""
+    assert cmd.provider_name == "openmeteo"
 
 
 # --- the second message -----------------------------------------------------
@@ -711,7 +824,7 @@ def test_a_broken_meteoalarm_document_does_not_cost_the_gwx_forecast():
     from tests.unit.test_meteoalarm_alerts import LOCATIONS_URL, NO_URL, _Response, _routes, _Session
 
     reset_rate_limits()
-    cmd = GlobalWxCommand(_bot({"alerts_provider": "meteoalarm", "meteoalarm_token": "s3cr3t-token"}))
+    cmd = GwxCommand(_bot({"alerts_provider": "meteoalarm", "meteoalarm_token": "s3cr3t-token"}))
     provider = cmd.alerts_provider
     assert isinstance(provider, MeteoalarmAlertsProvider)
 
@@ -800,14 +913,15 @@ def test_wxsim_tomorrow_on_openmeteo_uses_the_gwx_key():
     )
 
 
-def test_wxsim_on_openmeteo_reads_weather_units_not_wx_command_units():
+@pytest.mark.parametrize("provider", ["openmeteo", "metno"])
+def test_wxsim_on_a_global_provider_follows_the_command_section_units(provider):
     cmd = _wxsim_command(
-        {"weather_provider": "openmeteo", "temperature_unit": "celsius"},
-        {"temperature_unit": "fahrenheit"},
+        {"weather_provider": provider, "temperature_unit": "fahrenheit", "wind_speed_unit": "mph"},
+        {"temperature_unit": "celsius", "wind_speed_unit": "kmh"},
     )
 
     assert cmd._get_wxsim_weather("https://w.test/cabin") == "CURRENT"
-    assert cmd.wxsim_parser.format_current_conditions.call_args.args[1] == "celsius"
+    assert cmd.wxsim_parser.format_current_conditions.call_args.args[1:3] == ("celsius", "kmh")
 
 
 # --- the NWS fetch takes the session lock -----------------------------------
@@ -1157,7 +1271,7 @@ def test_a_percent_in_the_meteoalarm_token_does_not_break_wx_or_gwx():
     )
     commands = (
         ("wx Paris", WxCommand(_bot_from_ini(ini))),
-        ("gwx Paris", GlobalWxCommand(_bot_from_ini(ini))),
+        ("gwx Paris", GwxCommand(_bot_from_ini(ini))),
     )
     for content, command in commands:
         command.geocode_location = Mock(
@@ -1244,7 +1358,7 @@ def test_the_alert_lookup_runs_outside_the_noaa_lock():
 
 
 def test_gwx_keeps_its_own_description():
-    cmd = GlobalWxCommand(_bot())
+    cmd = GwxCommand(_bot())
     assert cmd.get_metadata()["description"] == (
         "Get weather information for any global location (usage: gwx Tokyo)"
     )
@@ -1345,7 +1459,7 @@ def test_the_noaa_session_setter_leaves_meteoalarm_alone():
 
 
 def test_gwx_with_nws_alerts_says_not_available_from_the_first_request():
-    cmd = GlobalWxCommand(_bot({"alerts_provider": "nws"}))
+    cmd = GwxCommand(_bot({"alerts_provider": "nws"}))
     assert isinstance(cmd.alerts_provider, NwsAlertsProvider)
     # A point outside NWS coverage: /alerts answers 404.
     cmd.alerts_provider.session = Mock(

@@ -162,9 +162,7 @@ channels #general
 
 ### `wx [location] [option]`
 
-Weather from NOAA for US locations: current conditions with today's forecast, plus a separate message when weather alerts are active. With `[Weather] weather_provider = openmeteo`, `wx` answers like `gwx` instead.
-
-**Providers:** `[Weather] weather_provider` picks the forecast source: `noaa` (the default, US coverage), `openmeteo` (global, the same source `gwx` uses), `metno` (MET Norway, global, no alerts; `[Weather] metno_user_agent` overrides the identifying User-Agent its terms ask for, and its local times come from the point's real time zone through `tzfpy`, which ships with the Docker images and the installer's optional extras, or with `pip install .[tz]`, through `timezonefinder` on Nix, and from a longitude estimate when neither is installed; the Nix package takes `pytz` from nixpkgs, so its offsets follow `flake.lock`, and British Columbia's permanent UTC−7 needs a nixpkgs whose `pytz` is 2026.2 or newer) or `eccc` (Environment Canada city pages, Canada only, answered by the nearest city page within 150 km). `[Weather] alerts_provider` picks the alert source separately from it: `auto` (the default) uses NWS when the forecast provider is `noaa`, Environment Canada alerts when it is `eccc`, and no alerts with any other provider; `none` turns alerts off; `nws` asks for NWS alerts whatever the forecast provider is; `meteoalarm` asks for Meteoalarm alerts, which cover Europe and need `[Weather] meteoalarm_token` (without one, alerts are off and a warning is logged); `eccc` asks for Environment Canada alerts, which cover Canada and work with any forecast provider, and `dwd` asks for German weather service alerts via Bright Sky, which cover Germany, need no key, and credit DWD in the help text. Meteoalarm tokens come from the MeteoGate developer portal and use the default `[Weather] meteoalarm_api_url`; direct re-user tokens from api.meteoalarm.org need `meteoalarm_api_url = https://api.meteoalarm.org/edr/v1`. An unknown value in either setting logs a warning and falls back to the default. Meteoalarm data is CC BY 4.0, provided by EUMETNET members.
+Current conditions and today's forecast for a place, plus a second message when weather alerts are active. By default the forecast comes from the National Weather Service, which covers the US; other providers cover the rest of the world. See [Weather Providers](weather-providers.md) for what each provider covers and how to combine them.
 
 **Aliases:** `weather`, `wxa`, `wxalert`
 
@@ -186,32 +184,34 @@ wx
 ```
 
 **Options:**
-- `tomorrow`: tomorrow's day and night periods.
+- `tomorrow`: tomorrow's forecast. NOAA gives its day and night periods; the other providers give one summary of the day.
 - `hourly`: the coming hours, as many as fit in one message.
-- `Nd` (or a bare number, or `7day`): an N-day forecast starting tomorrow, one line per day, for 2 to 16 days. The forecast ends where the provider's does: about 7 days for NOAA, 15 after today for Open-Meteo.
-- `alerts`: every active alert for the location.
+- `Nd` (or a bare number, or `7day`): one line per day for N days starting tomorrow, 2 to 16, with any provider. The reply stops where the provider's forecast does: about 7 days for NOAA, 9 for MET Norway, 6 for Environment Canada and 15 for Open-Meteo.
+- `alerts`: every active alert for the place, from the alerts provider.
+
+**Providers:** `[Weather] weather_provider` sets the forecast source (`noaa`, `openmeteo`, `metno` or `eccc`; the default is `noaa`), and `[Wx_Command] weather_provider` overrides it for `wx` alone. `[Weather] alerts_provider` sets the alerts source separately. `openmeteo_fallback` covers places outside the forecast provider's coverage, and `failover_provider` covers the provider failing. [Weather Providers](weather-providers.md) explains each one.
 
 **With no location** (an option alone, such as `wx hourly`, is fine), `wx` uses, in order: a `custom.wxsim.default` or `custom.mqtt_weather.default` source, the sender's last advertised position, `[Weather] default_city`, and the bot's own position when `[Wx_Command] use_bot_location_when_no_location = true`.
 
-**Units** follow `[Weather] temperature_unit` and `wind_speed_unit` (`[Wx_Command]` overrides them for `wx`). The default is °F and mph.
+**Units** come from `[Weather] temperature_unit`, `wind_speed_unit` and `precipitation_unit`; the same keys in `[Wx_Command]` override them for `wx`, whatever the provider. WXSIM stations follow the temperature and wind units the same way. The default is °F, mph and inches.
 
-**The place is named** in the reply only when it adds information: for a position (the sender's, the bot's or typed coordinates) when a place is found for it, and for a city in another state than `[Weather] default_state` (or any city, when `default_state` is not set). ZIP codes are not named. With `[Weather] always_show_location = true`, every city, ZIP code and position a place is found for is named; the name takes message length from the forecast, and a ZIP code costs one extra reverse lookup.
+**The place is named** only when it adds information. A position (the sender's, the bot's or typed coordinates) is named when a place is found for it. With NOAA, a city is named when it is in another state than `[Weather] default_state`. With the other providers, a city is named when it is in another country than `default_country` (in the US, another state than `default_state`), and a place answered from Open-Meteo through `openmeteo_fallback` is named the same way. ZIP codes and cities in your own state (outside the US, your own country) are not named. With `[Weather] always_show_location = true`, every place a lookup finds is named, including ZIP codes; the name uses part of the message's length, and a ZIP code costs one extra lookup.
 
-**Outside the provider's coverage:** NOAA only covers the US, so by default `wx Tokyo` replies with an error. With `[Weather] openmeteo_fallback = true` (and `weather_provider = noaa` or `eccc`), a place the provider reports as outside its coverage is answered from Open-Meteo instead, in the same format as `gwx`, named as `gwx` names it (`Tokyo, JP: …`), and in `wx`'s units. For NOAA that means outside the US; for Environment Canada, more than 150 km from any Canadian city page. Current conditions, `tomorrow`, `Nd` and `hourly` all fall back; `alerts` replies that alerts are not available there, since the alert source is the provider's own. Provider timeouts and server errors are not coverage; `failover_provider` below handles those. A point found outside coverage is remembered for 24 hours, so later requests for it skip the provider.
+**Custom sources:** a `custom.wxsim.<name>` or `custom.mqtt_weather.<name>` key in `[Weather]` answers `wx <name>` and `gwx <name>` from that station. WXSIM sources answer current conditions, `tomorrow` and `Nd` (from the first day in the station's file, which can be today or earlier); MQTT sources answer current conditions only. `hourly` and `alerts` reply that they are not available for these sources.
 
-**When the provider fails:** with `[Weather] failover_provider` set to another provider key (`noaa`, `openmeteo`, `metno` or `eccc`; the default is `none`), a request the weather provider fails to answer (a timeout after its retries, a server error, an answer it cannot read) is answered from that provider instead, for current conditions, `tomorrow`, `Nd` (capped at the failover's own day limit) and `hourly`. The reply keeps the weather provider's units and its location label, so it reads like any other reply, and one warning is logged per failover with the provider's error. A place outside the provider's coverage is not a failure and never fails over; `openmeteo_fallback` covers that. If the failover provider fails too, the reply is the weather provider's own error. With `weather_provider = noaa` and NWS alerts, the alert summary is left off a failover reply, since it comes from the service that just failed; an independent alert source is still added. `gwx` fails over the same way, from Open-Meteo to the configured provider; with `failover_provider = openmeteo` (a NOAA `wx` failing over to Open-Meteo), `gwx` has no failover, since Open-Meteo is its own provider. Example: `weather_provider = openmeteo` with `failover_provider = metno` answers from MET Norway while Open-Meteo is stalling.
+**Scheduled messages:** `wx` and `gwx` can be used in `{cmd:...}` placeholders, for example `{cmd:wx 98101}`.
 
 ---
 
 ### `gwx [location] [option]`
 
-Weather from Open-Meteo for any location worldwide: current conditions with today's high and low, plus a separate message for extreme heat, cold, wind, heavy rain or snow, or thunderstorms.
+The same command as `wx`, with its own name and its own provider setting, so a bot can answer `wx` from one provider and `gwx` from another. Its default provider is Open-Meteo, which covers the whole world, so the usual setup is `wx` for local US forecasts and `gwx` for anywhere else.
 
 **Aliases:** `globalweather`, `gwxa`
 
 **Usage:**
 ```
-gwx <city | city, country | zipcode | lat,lon> [tomorrow | hourly | Nd]
+gwx <city | city, country | zipcode | lat,lon> [tomorrow | hourly | Nd | alerts]
 gwx [tomorrow | hourly | Nd]
 ```
 
@@ -224,17 +224,15 @@ gwx 35.6762,139.6503 hourly
 gwx Reykjavik 10d
 ```
 
-**Options:** `tomorrow`, `hourly` and `Nd` (2 to 16 days) work as for `wx`. Open-Meteo has no official alerts, so `gwx <location> alerts` says it is not available.
+**Options, no-location order and custom sources** work as for `wx`.
 
-**With no location,** `gwx` uses the same order as `wx`.
+**Providers:** `[Gwx_Command] weather_provider` sets the forecast source for `gwx`; without it, `gwx` uses Open-Meteo. The `[Weather]` settings for alerts, `openmeteo_fallback` and `failover_provider` apply to `gwx` as they do to `wx`. With Open-Meteo forecasts, the default `alerts_provider = auto` gives no alerts; set `alerts_provider` to get them. See [Weather Providers](weather-providers.md).
 
-**Units** follow `[Weather] temperature_unit`, `wind_speed_unit` and `precipitation_unit`.
+**Units** come from `[Weather]`, and the same keys in `[Gwx_Command]` override them for `gwx`.
 
-**The place is named** in the reply when it adds information: a city in another country than `[Weather] default_country` (in the US, another state than `default_state`, or any US city when `default_state` is not set), or a position a place was found for. A city in the bot's own region and ZIP codes are not named. `[Weather] always_show_location = true` names every place a lookup finds, as for `wx`.
+**The place is named** as for `wx`, by the rules of `gwx`'s provider. A reply from `failover_provider` keeps that provider's name for the place.
 
-**Custom sources:** a `custom.wxsim.<name>` or `custom.mqtt_weather.<name>` key in `[Weather]` answers `wx <name>` and `gwx <name>` from that station. WXSIM sources answer current conditions, `tomorrow` and `Nd`; MQTT sources answer current conditions only. Options a source cannot answer (`hourly` and `alerts` for both) reply that they are not available instead of sending the current conditions.
-
-**Scheduled messages:** both commands can be used in `{cmd:...}` placeholders, for example `{cmd:gwx Paris}`.
+**Enabling:** `[Gwx_Command] enabled = false` turns `gwx` off, as for any other command.
 
 ---
 
@@ -917,9 +915,9 @@ Some commands require API keys to be configured in `config.ini`:
 
 ### Weather Data
 
-- `wx` uses the NOAA API (US locations only), or Open-Meteo with `weather_provider = openmeteo`
-- `gwx` uses the Open-Meteo API (global locations)
-- Both provide current conditions, tomorrow, hourly and multi-day forecasts, in the configured units
+- `wx` answers from the National Weather Service by default, or from Open-Meteo, MET Norway or Environment Canada with `[Weather] weather_provider`.
+- `gwx` answers from Open-Meteo by default, for places anywhere in the world.
+- Alerts come from a separately chosen source. See [Weather Providers](weather-providers.md).
 
 ### Command Categories
 

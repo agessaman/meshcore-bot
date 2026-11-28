@@ -5,7 +5,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from modules.commands.alternatives.wx_international import GlobalWxCommand
+from modules.commands.gwx_command import GwxCommand
 
 MODULE = "modules.commands.wx_command"
 
@@ -23,7 +23,7 @@ def _gwx(default_country="US", default_state="", always=None):
     bot = Mock()
     bot.config = config
     bot.translator.translate = Mock(side_effect=lambda key, **kwargs: key)
-    cmd = GlobalWxCommand(bot)
+    cmd = GwxCommand(bot)
     # The fetch lives in the provider now; stub it there.
     cmd.provider.get_open_meteo_weather = Mock(return_value="Clear 20°C")
     cmd.provider._get_open_meteo_weather_with_conditions = Mock(return_value=("Clear 20°C", {}))
@@ -32,7 +32,7 @@ def _gwx(default_country="US", default_state="", always=None):
 
 def _reply(cmd, location, address):
     cmd.geocode_location = Mock(return_value=(1.0, 2.0, address, None))
-    return cmd._get_weather_for_location_sync(location, message=None)
+    return cmd._get_weather_for_location_sync(location, "city", "default", 7, None, False)
 
 
 PARIS = {"city": "Paris", "country_code": "fr"}

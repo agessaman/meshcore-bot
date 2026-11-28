@@ -531,16 +531,18 @@ async def test_prefix_db_lookup_keeps_event_loop_responsive() -> None:
 @pytest.mark.asyncio
 async def test_global_wx_lookup_keeps_event_loop_responsive() -> None:
     """gwx geocodes *and* fetches the forecast; both were inline."""
-    from modules.commands.alternatives.wx_international import GlobalWxCommand
+    from modules.commands.gwx_command import GwxCommand
 
-    command = object.__new__(GlobalWxCommand)
+    command = object.__new__(GwxCommand)
     gate = _HeartbeatGate()
 
     def slow_lookup(
         _location: str,
+        _location_type: str,
         _forecast_type: str = "default",
         _num_days: int = 7,
         _message: Any = None,
+        _using_companion_location: bool = False,
     ) -> str:
         gate.block_until_heartbeat()
         return "Tokyo: 20C clear"
@@ -548,7 +550,7 @@ async def test_global_wx_lookup_keeps_event_loop_responsive() -> None:
     command._get_weather_for_location_sync = slow_lookup  # type: ignore[method-assign]
 
     result = await _run_with_heartbeat(
-        lambda: command.get_weather_for_location("Tokyo"), gate
+        lambda: command.get_weather_for_location("Tokyo", "city"), gate
     )
 
     assert result == "Tokyo: 20C clear"

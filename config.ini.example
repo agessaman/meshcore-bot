@@ -546,11 +546,11 @@ admin_commands = repeater,webviewer,reload,channelpause,neighbors
 # The alternative_file_name should be the name of a Python file (without .py extension)
 # in the modules/commands/alternatives/ directory
 #
-# Example: To use an alternative weather plugin for international users:
-# wx = wx_international
+# Example: ping = my_ping replaces the ping command with the plugin from
+# modules/commands/alternatives/my_ping.py
 #
-# This will replace the default wx command with the plugin from
-# modules/commands/alternatives/wx_international.py
+# wx = wx_international is deprecated: set [Weather] weather_provider = openmeteo
+# instead (see docs/weather-providers.md).
 #
 # Note: The alternative plugin must have the same 'name' metadata as the command
 # it's replacing, or the override will use the alternative plugin's name instead.
@@ -990,6 +990,8 @@ prefix_best_location_radius_km = 50
 prefix_best_do_not_suggest =
 [Weather]
 # NOTE: Unit settings are used by both the wx and gwx commands and Weather_Service plugin
+# What each forecast and alert provider covers, and which combination to pick where:
+# docs/weather-providers.md
 
 # Weather provider selection
 # Options: noaa, openmeteo, metno, eccc
@@ -1066,7 +1068,7 @@ openmeteo_fallback = false
 # A place outside the weather provider's coverage is not a failure; openmeteo_fallback covers that.
 # If the failover fails too, the reply is the weather provider's own error.
 # With weather_provider = noaa, NWS alerts are not added to a failover reply, since they come
-# from the service that just failed. gwx always answers from Open-Meteo, so with
+# from the service that just failed. gwx answers from Open-Meteo by default, so with
 # failover_provider = openmeteo only wx fails over. The weather service plugin does not use this setting.
 # Options: none, noaa, openmeteo, metno, eccc (the same values as weather_provider)
 # Example: weather_provider = openmeteo with failover_provider = metno
@@ -1796,13 +1798,33 @@ url_timeout = 10
 [Wx_Command]
 enabled = true
 
-# Units come from [Weather] temperature_unit / wind_speed_unit. Set these
-# only to give wx (NOAA and WXSIM) different units from the other weather
-# commands; when set, they win for wx.
+# Forecast provider for wx alone. Leave unset to use [Weather] weather_provider.
+# Options: noaa, openmeteo, metno, eccc
+# weather_provider = noaa
+
+# Units come from [Weather] temperature_unit / wind_speed_unit /
+# precipitation_unit. Set these only to give wx different units from the other
+# weather commands; when set, they win for wx, whatever the provider.
 # temperature_unit = fahrenheit
 # wind_speed_unit = mph
+# precipitation_unit = inch
 # channels =
 # aliases = comma-separated additional trigger words, e.g.: aliases = weather, w
+
+[Gwx_Command]
+enabled = true
+
+# Forecast provider for gwx alone. Leave unset to use the command's own default
+# (openmeteo), then [Weather] weather_provider.
+# Options: noaa, openmeteo, metno, eccc
+# weather_provider = openmeteo
+
+# Units come from [Weather], as for wx. Set these only to give gwx its own.
+# temperature_unit = celsius
+# wind_speed_unit = kmh
+# precipitation_unit = mm
+# channels =
+# aliases = comma-separated additional trigger words, e.g.: aliases = globalweather, gwxa
 
 # =============================================================================
 # Background service plugins (*_Service sections, alphabetical)

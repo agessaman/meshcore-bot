@@ -8,10 +8,10 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from modules.commands.alternatives.wx_international import GlobalWxCommand
+from modules.commands.gwx_command import GwxCommand
 from modules.i18n import Translator
+from modules.weather_providers.openmeteo import weather_emoji
 
-MODULE = "modules.commands.alternatives.wx_international"
 SEATTLE = json.loads((Path(__file__).resolve().parents[1] / "fixtures" / "open_meteo" / "seattle.json").read_text())
 
 
@@ -21,7 +21,7 @@ def _reply(time, is_day=..., code=0, language="en", budget=None):
     bot = Mock()
     bot.config = config
     bot.translator = Translator(language)
-    cmd = GlobalWxCommand(bot)
+    cmd = GwxCommand(bot)
     data = copy.deepcopy(SEATTLE)
     data["current"]["time"] = time
     data["current"]["weather_code"] = code
@@ -89,7 +89,7 @@ def test_tomorrow_names_its_weather_when_it_fits():
 
 
 def test_tomorrow_falls_back_to_the_emoji_when_the_description_does_not_fit():
-    emoji = GlobalWxCommand._get_weather_emoji(None, SEATTLE["daily"]["weather_code"][1])
+    emoji = weather_emoji(SEATTLE["daily"]["weather_code"][1])
     tails = {_reply("2026-10-02T05:58", is_day=0, budget=b)[0].split(" | ")[-1] for b in range(100, 200)}
     # Some budget has room for tomorrow but not its description.
     assert any(t.startswith(f"Tomorrow: {emoji} H:") for t in tails)

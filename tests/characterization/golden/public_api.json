@@ -192,18 +192,6 @@
   "AlertCommand",
   "AlertCommand.execute"
  ],
- "modules/commands/alternatives/wx_international.py": [
-  "GlobalWxCommand",
-  "GlobalWxCommand.execute",
-  "GlobalWxCommand.format_multiday_forecast",
-  "GlobalWxCommand.format_tomorrow_forecast",
-  "GlobalWxCommand.geocode_location",
-  "GlobalWxCommand.get_help_text",
-  "GlobalWxCommand.get_open_meteo_weather",
-  "GlobalWxCommand.get_weather_for_location",
-  "GlobalWxCommand.matches_keyword",
-  "GlobalWxCommand.metric_distance"
- ],
  "modules/commands/announcements_command.py": [
   "AnnouncementsCommand",
   "AnnouncementsCommand.can_execute",
@@ -336,6 +324,18 @@
   "GreeterCommand.matches_keyword",
   "GreeterCommand.should_execute",
   "GreeterCommand.start_rollout"
+ ],
+ "modules/commands/gwx_command.py": [
+  "GwxCommand",
+  "GwxCommand.execute",
+  "GwxCommand.format_multiday_forecast",
+  "GwxCommand.format_tomorrow_forecast",
+  "GwxCommand.geocode_location",
+  "GwxCommand.get_help_text",
+  "GwxCommand.get_open_meteo_weather",
+  "GwxCommand.get_weather_for_location",
+  "GwxCommand.matches_keyword",
+  "GwxCommand.metric_distance"
  ],
  "modules/commands/hacker_command.py": [
   "HackerCommand",
