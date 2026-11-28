@@ -1267,7 +1267,11 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                 )
             if result.no_coverage and self.fallback_provider is not None:
                 return self._fallback_reply(location, location_type, lat, lon, forecast_type, num_days, message)
-            if not result.ok and not result.no_coverage and self.failover_provider is not None:
+            if (
+                self.failover_provider is not None
+                and not result.no_coverage
+                and not self._answered(self.provider, result, num_days)
+            ):
                 failover = self._failover_forecast(
                     result, lat, lon, forecast_type, num_days, location_prefix, message
                 )
@@ -1308,6 +1312,24 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                 text=self.translate(f'{provider.translation_ns}.error_fetching'), ok=False
             )
 
+    # The replies a provider sends, with ok set, when its source answered with
+    # data it could not format (a missing field, no day for tomorrow). They keep
+    # their location label as they always have, so ok alone cannot tell them
+    # apart from a forecast; failover has to.
+    _UNREADABLE_REPLY_KEYS = (
+        'tomorrow_error', 'tomorrow_not_available', 'multiday_error',
+        'multiday_not_available', 'hourly_not_available',
+    )
+
+    def _answered(self, provider: WeatherProvider, reply: ForecastReply, num_days: int) -> bool:
+        """Whether a reply is a forecast, rather than an error or an unreadable answer."""
+        if not reply.ok:
+            return False
+        namespace = provider.translation_ns
+        return reply.text not in {
+            self.translate(f'{namespace}.{key}', num_days=num_days) for key in self._UNREADABLE_REPLY_KEYS
+        }
+
     def _failover_forecast(self, failed: ForecastReply, lat: float, lon: float, forecast_type: str,
                            num_days: int, location_prefix: str,
                            message: Optional[MeshMessage]) -> Optional[ForecastReply]:
@@ -1324,13 +1346,14 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             f"answering {round(lat, 2)},{round(lon, 2)} from {failover.name}"
         )
         failover.units = self.provider.units
+        days = min(num_days, failover.max_days)
         lock = self._sync_provider_lock if failover.uses_command_session else nullcontext()
         with lock:
             reply = self._forecast_or_error(
-                failover, lat, lon, forecast_type, min(num_days, failover.max_days),
+                failover, lat, lon, forecast_type, days,
                 self._count_display_width(location_prefix), message,
             )
-        if reply.ok:
+        if self._answered(failover, reply, days):
             return reply
         self.logger.warning(
             f"{failover.name} failover failed too ({reply.text}); replying with {self.provider.name}'s error"

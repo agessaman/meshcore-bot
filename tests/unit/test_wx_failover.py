@@ -192,6 +192,64 @@ def test_every_forecast_type_fails_over(forecast_type, num_days, expected_days):
     assert args[3] == expected_days  # MET Norway forecasts 9 days, Open-Meteo 16
 
 
+def _open_meteo_answers_http(cmd, payload):
+    """Open-Meteo answers HTTP 200 with *payload*, through the provider's real formatting."""
+    session = Mock()
+    session.__enter__ = Mock(return_value=session)
+    session.__exit__ = Mock(return_value=False)
+    session.get = Mock(return_value=Mock(ok=True, status_code=200, json=Mock(return_value=payload)))
+    return patch("modules.weather_providers.openmeteo.make_retry_session", return_value=session)
+
+
+# A day for tomorrow with no low: Open-Meteo formats it as "tomorrow_error", with ok set.
+NO_LOWS = {"daily": {"time": ["2026-11-27", "2026-11-28"], "weather_code": [3, 61],
+                     "temperature_2m_max": [47, 49]}}
+
+
+def test_an_unreadable_open_meteo_answer_fails_over():
+    cmd = _wx({"weather_provider": "openmeteo", "failover_provider": "metno"})
+    cmd.failover_provider.forecast = Mock(return_value=ForecastReply(text="BODY"))
+    with _open_meteo_answers_http(cmd, NO_LOWS):
+        assert _tokyo_global(cmd, "tomorrow") == "Tokyo, JP: BODY"
+    assert _failover_warnings(cmd) == [
+        f"openmeteo forecast failed ({EN.translate('commands.gwx.tomorrow_error')}); "
+        "answering 35.68,139.7 from metno"
+    ]
+
+
+def test_an_unreadable_answer_without_failover_is_unchanged():
+    cmd = _wx({"weather_provider": "openmeteo"})
+    with _open_meteo_answers_http(cmd, NO_LOWS):
+        assert _tokyo_global(cmd, "tomorrow") == f"Tokyo, JP: {EN.translate('commands.gwx.tomorrow_error')}"
+
+
+def test_an_unreadable_failover_answer_never_replaces_the_primarys_error():
+    cmd = _wx({"weather_provider": "metno", "failover_provider": "openmeteo"})
+    cmd.provider.forecast = Mock(
+        return_value=ForecastReply(text=EN.translate("commands.gwx.metno.error_fetching_api"), ok=False)
+    )
+    with _open_meteo_answers_http(cmd, NO_LOWS):
+        assert _tokyo_global(cmd, "tomorrow") == EN.translate("commands.gwx.metno.error_fetching_api")
+    assert _failover_warnings(cmd)[-1].startswith("openmeteo failover failed too")
+
+
+def test_an_unreadable_primary_keeps_its_labeled_reply_when_the_failover_fails():
+    cmd = _wx({"weather_provider": "openmeteo", "failover_provider": "metno"})
+    cmd.failover_provider.forecast = Mock(return_value=ForecastReply(text="err", ok=False))
+    with _open_meteo_answers_http(cmd, NO_LOWS):
+        assert _tokyo_global(cmd, "tomorrow") == f"Tokyo, JP: {EN.translate('commands.gwx.tomorrow_error')}"
+
+
+@pytest.mark.parametrize("key", ["multiday_error", "multiday_not_available"])
+def test_unreadable_multiday_texts_count_with_their_day_count(key):
+    cmd = _wx({"weather_provider": "openmeteo", "failover_provider": "metno"})
+    cmd.provider.forecast = Mock(
+        return_value=ForecastReply(text=EN.translate(f"commands.gwx.{key}", num_days=5))
+    )
+    cmd.failover_provider.forecast = Mock(return_value=ForecastReply(text="BODY"))
+    assert _tokyo_global(cmd, "multiday", 5) == "Tokyo, JP: BODY"
+
+
 def test_a_raising_primary_fails_over():
     cmd = _wx({"weather_provider": "openmeteo", "failover_provider": "metno"})
     cmd.provider.forecast = Mock(side_effect=RuntimeError("boom"))

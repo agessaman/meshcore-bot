@@ -1066,7 +1066,8 @@ openmeteo_fallback = false
 # A place outside the weather provider's coverage is not a failure; openmeteo_fallback covers that.
 # If the failover fails too, the reply is the weather provider's own error.
 # With weather_provider = noaa, NWS alerts are not added to a failover reply, since they come
-# from the service that just failed. The weather service plugin does not use this setting.
+# from the service that just failed. gwx always answers from Open-Meteo, so with
+# failover_provider = openmeteo only wx fails over. The weather service plugin does not use this setting.
 # Options: none, noaa, openmeteo, metno, eccc (the same values as weather_provider)
 # Example: weather_provider = openmeteo with failover_provider = metno
 # Default: none
