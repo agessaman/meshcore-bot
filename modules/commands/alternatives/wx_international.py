@@ -52,7 +52,7 @@ WXSIM_PARSER_AVAILABLE = True
 
 
 class GlobalWxCommand(WxCommand):
-    """gwx: the global weather command, pinned to Open-Meteo.
+    """gwx: the global weather command, answering from Open-Meteo by default.
 
     Everything else is wx's: one execute, one request, one set of providers. This
     class keeps gwx's triggers, its message catalog and its global location style,
@@ -81,11 +81,9 @@ class GlobalWxCommand(WxCommand):
         {"name": "option", "description": "tomorrow, Nd (e.g. 7d, 10d), or hourly (optional)"}
     ]
 
-    # gwx answers from Open-Meteo whatever [Weather] weather_provider says.
-    pinned_provider = "openmeteo"
-    # gwx has never had an enable switch of its own; [Gwx_Command] enabled only
-    # gates a scheduled {cmd:gwx ...} placeholder.
-    enabled_section = None
+    # gwx answers from Open-Meteo unless its own section or [Weather] says otherwise.
+    default_weather_provider = "openmeteo"
+    global_description = "Get weather information for any global location (usage: gwx Tokyo)"
 
     def __init__(self, bot: Any):
         """Initialize the global weather command.

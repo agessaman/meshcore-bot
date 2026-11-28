@@ -289,43 +289,31 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
     # formatters would turn into dropped fields).
     MIN_BODY_BUDGET = _MIN_BODY_BUDGET
 
-    # A subclass that answers from one provider whatever [Weather] weather_provider
-    # says (gwx is pinned to Open-Meteo).
-    pinned_provider: Optional[str] = None
-
-    # The config section whose `enabled` switch gates this command; None: no switch.
-    enabled_section: Optional[str] = 'Wx_Command'
+    # The provider this command answers from when neither its own section nor
+    # [Weather] names one; None: [Weather] weather_provider, then noaa.
+    default_weather_provider: Optional[str] = None
 
     # The provider that answers when the configured one fails ([Weather]
     # failover_provider), or None. Set per instance in __init__.
     failover_provider: Optional[WeatherProvider] = None
 
-    # The one-line description, in the terms of the provider that answers. It is
-    # a class attribute because the settings UI reads it off the class, and
-    # __init__ replaces it on the instance when the provider is global.
+    # The one-line description, in the terms of the provider that answers. Both
+    # are class attributes because the settings UI reads them off the class;
+    # __init__ picks the one the provider's location style calls for.
     description = "Get weather information for a zip code (usage: wx 12345)"
+    global_description = "Get weather information for any location (usage: wx Tokyo)"
 
     def __init__(self, bot):
         super().__init__(bot)
-        self.wx_enabled = (
-            self.get_config_value(self.enabled_section, 'enabled', fallback=True, value_type='bool')
-            if self.enabled_section else True
+        self.wx_enabled = self.get_config_value(
+            self._derive_config_section_name(), 'enabled', fallback=True, value_type='bool'
         )
 
         self.wxsim_parser = WXSIMParser()
 
-        # The forecast provider comes from [Weather] weather_provider. An unknown
-        # value warns once and uses NOAA, as an unset one does.
-        if self.pinned_provider:
-            provider_name = self.pinned_provider
-        else:
-            provider_name = bot.config.get('Weather', 'weather_provider', fallback='noaa').strip().lower()
-            if provider_name not in PROVIDERS:
-                self.logger.warning(
-                    f"Unknown [Weather] weather_provider '{provider_name}'; using 'noaa'. "
-                    f"Valid values: {', '.join(sorted(PROVIDERS))}"
-                )
-                provider_name = 'noaa'
+        # The forecast provider: this command's own section, then its class
+        # default, then [Weather], then noaa.
+        provider_name = self._forecast_provider_name()
         self.provider_name = provider_name
         failover_name = self._failover_provider_name(provider_name)
 
@@ -437,17 +425,62 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                 f"{failover_name} when {provider_name} fails"
             )
 
-        if provider_name == 'openmeteo' and not self.pinned_provider:
+        # A command that answers from Open-Meteo because of config says so; one
+        # whose class default is Open-Meteo has nothing to report.
+        if provider_name == 'openmeteo' and self.default_weather_provider != 'openmeteo':
             self.logger.info("Weather provider set to 'openmeteo': wx answers from Open-Meteo")
 
         # The message catalog follows the provider that answers, so wx on
         # Open-Meteo speaks commands.gwx as gwx always has.
         self.translation_ns = self.provider.translation_ns
 
-        # An unpinned wx on Open-Meteo answers like gwx, so it says so. A pinned
-        # command keeps its own class description.
-        if self.provider.location_style == "global" and not self.pinned_provider:
-            self.description = "Get weather information for any location (usage: wx Tokyo)"
+        # A command whose provider is global answers like gwx, so it says so.
+        if self.provider.location_style == "global":
+            self.description = self.global_description
+
+    def _forecast_provider_name(self) -> str:
+        """The forecast provider this command answers from.
+
+        ``[<own section>] weather_provider``, then the class's
+        ``default_weather_provider``, then ``[Weather] weather_provider``, then
+        ``noaa``. An unknown value warns once and falls through to the next
+        source.
+        """
+        own_section = self._derive_config_section_name()
+        sources = [
+            (f"[{own_section}] weather_provider", self._section_provider_setting(own_section)),
+            (f"{type(self).__name__}.default_weather_provider", self.default_weather_provider or ''),
+            ("[Weather] weather_provider",
+             self.bot.config.get('Weather', 'weather_provider', fallback='').strip().lower()),
+        ]
+        unknown: list[tuple[str, str]] = []
+        for where, value in sources:
+            if not value:
+                continue
+            if value in PROVIDERS:
+                for bad_where, bad_value in unknown:
+                    self.logger.warning(
+                        f"Unknown {bad_where} '{bad_value}'; using '{value}'. "
+                        f"Valid values: {', '.join(sorted(PROVIDERS))}"
+                    )
+                return value
+            unknown.append((where, value))
+        for bad_where, bad_value in unknown:
+            self.logger.warning(
+                f"Unknown {bad_where} '{bad_value}'; using 'noaa'. "
+                f"Valid values: {', '.join(sorted(PROVIDERS))}"
+            )
+        return 'noaa'
+
+    def _section_provider_setting(self, section: str) -> str:
+        """``[<section>] weather_provider``, or '' when the section does not set it.
+
+        Read directly rather than through get_config_value, whose [Weather]
+        fallback would make the shared setting look like this command's own.
+        """
+        if not self.bot.config.has_section(section):
+            return ''
+        return self.bot.config.get(section, 'weather_provider', fallback='').strip().lower()
 
     @property
     def _noaa(self) -> NoaaProvider:
@@ -570,9 +603,9 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
 
         ``none`` (the default) and an empty value turn failover off. An unknown
         value warns and turns it off. A failover that is the command's own
-        provider is off too; that warns only for an unpinned command, since gwx
-        is pinned to Open-Meteo and ``failover_provider = openmeteo`` is a normal
-        setting for a NOAA wx.
+        provider is off too; that warns only when the value is not the command's
+        own default, since a shared ``failover_provider = openmeteo`` is a normal
+        setting for a NOAA wx and gwx answers from Open-Meteo anyway.
         """
         value = self.bot.config.get('Weather', 'failover_provider', fallback='none').strip().lower()
         if value in ('', 'none'):
@@ -584,7 +617,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             )
             return None
         if value == provider_name:
-            if not self.pinned_provider:
+            if value != self.default_weather_provider:
                 self.logger.warning(
                     f"[Weather] failover_provider '{value}' is the weather provider itself; failover is off"
                 )
