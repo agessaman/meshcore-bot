@@ -169,7 +169,7 @@ def _search_boxes(lat: float, lon: float, scale: float) -> list:
     wrap, and the full longitude range when the half-width reaches it.
     """
     delta_lat, delta_lon = _search_box(lat, scale)
-    south, north = lat - delta_lat, lat + delta_lat
+    south, north = max(lat - delta_lat, -90.0), min(lat + delta_lat, 90.0)
     if delta_lon >= MAX_LON_HALF_WIDTH:
         return [f"-180.0000,{south:.4f},180.0000,{north:.4f}"]
     west, east = lon - delta_lon, lon + delta_lon
@@ -339,7 +339,8 @@ class EcccProvider(WeatherProvider):
                 # forecast, kept only briefly; without one, this is a failure,
                 # never a "no coverage" that would last ten minutes.
                 if nearest is not None:
-                    return nearest, False, FAILURE_CACHE_SECONDS
+                    shortest = min((self._ttl(r) for r in responses), default=FAILURE_CACHE_SECONDS)
+                    return nearest, False, min(FAILURE_CACHE_SECONDS, shortest)
                 return None, True, FAILURE_CACHE_SECONDS
             if nearest is not None:
                 return nearest, False, min(self._ttl(r) for r in responses) if responses else CITY_CACHE_SECONDS

@@ -980,6 +980,16 @@ class MeteoalarmAlertsProvider(PackedAlertsMixin, AlertsProvider):
                 self._utcnow() + timedelta(seconds=seconds), text
             )
 
+    def _shorten_raw(self, alert_id: str, indexes: set, text: str, seconds: float) -> None:
+        """Cache *text* for at most *seconds* from now, never past an earlier deadline."""
+        deadline = self._utcnow() + timedelta(seconds=seconds)
+        raw_key = _raw_key(alert_id, indexes)
+        with self._lock:
+            current = self._caps.get(raw_key)
+            if current is not None and current[0] < deadline:
+                deadline = current[0]
+            self._caps[raw_key] = (deadline, text)
+
     def _fetch_cap(self, alert_id: str, features: list, indexes: set, key: tuple,
                    language: str) -> tuple:
         with self._lock:
@@ -994,10 +1004,11 @@ class MeteoalarmAlertsProvider(PackedAlertsMixin, AlertsProvider):
         if details is None or details["expires"] is None:
             # An unparseable document is a failure, not an answer: keep it only
             # briefly, so the alert reappears when the endpoint recovers. A
-            # cached copy keeps its original deadline; renewing it on every hit
-            # would hide the alert for as long as requests keep coming.
-            if fresh:
-                self._cache_raw(alert_id, indexes, text, FAILURE_TTL)
+            # cached copy is shortened to the failure TTL but never extended:
+            # renewing it on every hit would hide the alert for as long as
+            # requests keep coming, and a copy cached as good in another
+            # language must not keep its ten minutes now that it fails here.
+            self._shorten_raw(alert_id, indexes, text, FAILURE_TTL)
             return None, True
         if fresh:
             self._cache_raw(alert_id, indexes, text, WINDOW_TTL_TODAY)

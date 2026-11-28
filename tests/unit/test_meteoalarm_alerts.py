@@ -1288,6 +1288,37 @@ def test_switching_language_on_a_warm_cache_picks_the_new_block():
     assert session.count(TWO_LANGUAGES_URL) == 1
 
 
+def test_a_document_failing_in_the_new_language_is_retried_after_a_minute():
+    """A copy cached as good in English must not keep its ten minutes once it fails in Norwegian."""
+    import re
+
+    full = _text("alert-two-languages.xml")
+    blocks = full.split("<info>")
+    blocks = [
+        re.sub(r"<expires>.*?</expires>", "", block, flags=re.S) if "<language>no</language>" in block else block
+        for block in blocks
+    ]
+    broken_norwegian = "<info>".join(blocks)
+    assert broken_norwegian != full
+    routes = _two_language_routes()
+    routes[TWO_LANGUAGES_URL] = _Response(200, text=broken_norwegian)
+    provider, session, host, clock = _provider(routes, language="en")
+    assert "Gale" in provider.summary(LAT, LON, 130).text
+
+    host.bot.config.set("Localization", "language", "no")
+    assert provider.summary(LAT, LON, 130) is None
+    routes[TWO_LANGUAGES_URL] = _Response(200, text=full)
+    clock.advance(30)
+    assert provider.summary(LAT, LON, 130) is None
+    assert session.count(TWO_LANGUAGES_URL) == 1
+
+    clock.advance(31)
+    summary = provider.summary(LAT, LON, 130)
+
+    assert session.count(TWO_LANGUAGES_URL) == 2
+    assert summary is not None and "Kuling" in summary.text
+
+
 def test_the_norwegian_language_picks_the_norwegian_block():
     provider, _session_, _host_, _clock = _provider(_two_language_routes(), language="no")
 

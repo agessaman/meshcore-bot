@@ -16,11 +16,10 @@ from unittest.mock import Mock
 
 import pytest
 
-from modules.weather_providers._geo import haversine_km
-
 from modules.i18n import Translator
 from modules.weather_common import WeatherCommandMixin
 from modules.weather_providers import eccc
+from modules.weather_providers._geo import haversine_km
 from modules.weather_providers.base import WeatherUnits
 from modules.weather_providers.eccc import (
     CITYPAGE_COLLECTION,
@@ -974,7 +973,7 @@ def test_the_box_covers_the_whole_longitude_range_near_the_pole():
 
     assert failed is False
     assert feature is not None
-    assert session.calls[0]["params"]["bbox"] == "-180.0000,88.5525,180.0000,91.2475"
+    assert session.calls[0]["params"]["bbox"] == "-180.0000,88.5525,180.0000,90.0000"
 
 
 def test_a_box_across_the_dateline_is_split_in_two():
@@ -1072,6 +1071,31 @@ def test_a_failed_second_page_keeps_a_city_already_in_reach():
 
     assert failed is False
     assert feature["properties"]["name"]["en"] == "Vancouver"
+
+
+def test_a_partial_result_does_not_outlive_its_expires():
+    first = _Response(
+        200,
+        _collection([_page_at(*VANCOUVER, label="Vancouver")], "page2"),
+        headers={"Expires": "Mon, 01 Jan 2024 00:00:00 GMT"},
+    )
+    provider, session = _scripted_provider([
+        first, _Response(503),
+        _Response(200, _collection([_page_at(*VANCOUVER, label="Vancouver")])),
+    ])
+
+    assert provider._lookup(*VANCOUVER)[0] is not None
+    # Already expired, so the next lookup asks again instead of serving it for a minute.
+    feature, failed = provider._lookup(*VANCOUVER)
+
+    assert failed is False and feature is not None
+    assert len(session.calls) == 3
+
+
+def test_the_search_box_stays_within_the_poles():
+    for bbox in _search_boxes(89.9, 10.0, 1.0) + _search_boxes(-89.9, 10.0, 2.0):
+        south, north = (float(v) for v in bbox.split(",")[1::2])
+        assert -90.0 <= south <= north <= 90.0
 
 
 def test_an_unfinished_page_chain_is_a_failure_not_no_coverage():
