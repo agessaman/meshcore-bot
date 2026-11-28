@@ -5042,7 +5042,7 @@
   "calls": [
    "_get_custom_mqtt_weather_topic('both',)",
    "_get_custom_wxsim_source('both',)",
-   "logger.info(\"Using custom WXSIM source for location 'both': https://w.test/both\",)",
+   "logger.info(\"Using custom WXSIM source for location 'both'\",)",
    "record_execution('u1',)",
    "_get_wxsim_weather_async('https://w.test/both', 'multiday', 5, '<msg>'){'location_name': 'both'}",
    "_send_multiday_forecast('<msg>', 'WXSIM[https://w.test/both,multiday,5,None,both]')"
@@ -5057,7 +5057,7 @@
    "_get_custom_wxsim_source('both',)",
    "_get_custom_mqtt_weather_topic('both',)",
    "_get_custom_wxsim_source('both',)",
-   "logger.info(\"Using custom WXSIM source for location 'both': https://w.test/both\",)",
+   "logger.info(\"Using custom WXSIM source for location 'both'\",)",
    "record_execution('u1',)",
    "_get_wxsim_weather_async('https://w.test/both', 'default', 7, '<msg>'){'location_name': 'both'}",
    "send_response('<msg>', 'WXSIM[https://w.test/both,default,7,None,both]')"
@@ -5068,7 +5068,7 @@
   "calls": [
    "_get_custom_mqtt_weather_topic('cabin',)",
    "_get_custom_wxsim_source('cabin',)",
-   "logger.info(\"Using custom WXSIM source for location 'cabin': https://w.test/cabin\",)",
+   "logger.info(\"Using custom WXSIM source for location 'cabin'\",)",
    "record_execution('u1',)",
    "_get_wxsim_weather_async('https://w.test/cabin', 'alerts', 7, '<msg>'){'location_name': 'cabin'}",
    "send_response('<msg>', 'WXSIM[https://w.test/cabin,alerts,7,None,cabin]')"
@@ -5079,7 +5079,7 @@
   "calls": [
    "_get_custom_mqtt_weather_topic('cabin',)",
    "_get_custom_wxsim_source('cabin',)",
-   "logger.info(\"Using custom WXSIM source for location 'cabin': https://w.test/cabin\",)",
+   "logger.info(\"Using custom WXSIM source for location 'cabin'\",)",
    "record_execution('u1',)",
    "_get_wxsim_weather_async('https://w.test/cabin', 'tomorrow', 7, '<msg>'){'location_name': 'cabin'}",
    "send_response('<msg>', 'WXSIM[https://w.test/cabin,tomorrow,7,None,cabin]')"
@@ -5094,7 +5094,7 @@
    "_get_custom_wxsim_source('cabin',)",
    "_get_custom_mqtt_weather_topic('cabin',)",
    "_get_custom_wxsim_source('cabin',)",
-   "logger.info(\"Using custom WXSIM source for location 'cabin': https://w.test/cabin\",)",
+   "logger.info(\"Using custom WXSIM source for location 'cabin'\",)",
    "record_execution('u1',)",
    "_get_wxsim_weather_async('https://w.test/cabin', 'default', 7, '<msg>'){'location_name': 'cabin'}",
    "send_response('<msg>', 'WXSIM[https://w.test/cabin,default,7,None,cabin]')"
@@ -5415,7 +5415,7 @@
   "calls": [
    "_get_custom_mqtt_weather_topic('cabin',)",
    "_get_custom_wxsim_source('cabin',)",
-   "logger.info(\"Using custom WXSIM source for location 'cabin': https://w.test/cabin\",)",
+   "logger.info(\"Using custom WXSIM source for location 'cabin'\",)",
    "record_execution('u1',)",
    "_get_wxsim_weather_async('https://w.test/cabin', 'alerts', 7, '<msg>'){'location_name': 'cabin'}",
    "logger.error('Error fetching WXSIM weather: wxsim down',)",
@@ -5427,7 +5427,7 @@
   "calls": [
    "_get_custom_mqtt_weather_topic('cabin',)",
    "_get_custom_wxsim_source('cabin',)",
-   "logger.info(\"Using custom WXSIM source for location 'cabin': https://w.test/cabin\",)",
+   "logger.info(\"Using custom WXSIM source for location 'cabin'\",)",
    "record_execution('u1',)",
    "_get_wxsim_weather_async('https://w.test/cabin', 'tomorrow', 7, '<msg>'){'location_name': 'cabin'}",
    "logger.error('Error fetching WXSIM weather: wxsim down',)",
@@ -5443,7 +5443,7 @@
    "_get_custom_wxsim_source('cabin',)",
    "_get_custom_mqtt_weather_topic('cabin',)",
    "_get_custom_wxsim_source('cabin',)",
-   "logger.info(\"Using custom WXSIM source for location 'cabin': https://w.test/cabin\",)",
+   "logger.info(\"Using custom WXSIM source for location 'cabin'\",)",
    "record_execution('u1',)",
    "_get_wxsim_weather_async('https://w.test/cabin', 'default', 7, '<msg>'){'location_name': 'cabin'}",
    "logger.error('Error fetching WXSIM weather: wxsim down',)",

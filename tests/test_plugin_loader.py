@@ -304,8 +304,18 @@ class TestDeprecatedWxInternationalOverride:
         assert wx.provider_name == "openmeteo"
         assert wx.wx_enabled is True
         assert "gwx" in wx.keywords
-        assert loaded["gwx"].__class__.__name__ == "GwxCommand"
         assert "wx_international" not in loader.get_failed_plugins()
+
+    def test_the_override_stays_on_open_meteo_and_replaces_the_default_gwx(self, loader_bot):
+        loader = self._loader(
+            loader_bot, {"wx": "wx_international"}, {"Gwx_Command": {"weather_provider": "metno"}}
+        )
+
+        loaded = loader.load_all_plugins()
+
+        assert loaded["wx"].provider_name == "openmeteo"
+        assert "gwx" not in loaded
+        assert loader.get_plugin_by_keyword("gwx") is loaded["wx"]
 
     def test_another_name_loads_beside_wx(self, loader_bot):
         loader = self._loader(loader_bot, {"otherwx": "wx_international"})

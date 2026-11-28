@@ -193,11 +193,11 @@ wx
 
 **With no location** (an option alone, such as `wx hourly`, is fine), `wx` uses, in order: a `custom.wxsim.default` or `custom.mqtt_weather.default` source, the sender's last advertised position, `[Weather] default_city`, and the bot's own position when `[Wx_Command] use_bot_location_when_no_location = true`.
 
-**Units** come from `[Weather] temperature_unit`, `wind_speed_unit` and `precipitation_unit`; the same keys in `[Wx_Command]` override them for `wx`, whatever the provider, WXSIM stations included. The default is °F, mph and inches.
+**Units** come from `[Weather] temperature_unit`, `wind_speed_unit` and `precipitation_unit`; the same keys in `[Wx_Command]` override them for `wx`, whatever the provider. WXSIM stations follow the temperature and wind units the same way. The default is °F, mph and inches.
 
 **The place is named** only when it adds information. A position (the sender's, the bot's or typed coordinates) is named when a place is found for it. With NOAA, a city is named when it is in another state than `[Weather] default_state`. With the other providers, a city is named when it is in another country than `default_country` (in the US, another state than `default_state`), and a place answered from Open-Meteo through `openmeteo_fallback` is named the same way. ZIP codes and cities in your own state (outside the US, your own country) are not named. With `[Weather] always_show_location = true`, every place a lookup finds is named, including ZIP codes; the name uses part of the message's length, and a ZIP code costs one extra lookup.
 
-**Custom sources:** a `custom.wxsim.<name>` or `custom.mqtt_weather.<name>` key in `[Weather]` answers `wx <name>` and `gwx <name>` from that station. WXSIM sources answer current conditions, `tomorrow` and `Nd`; MQTT sources answer current conditions only. `hourly` and `alerts` reply that they are not available for these sources.
+**Custom sources:** a `custom.wxsim.<name>` or `custom.mqtt_weather.<name>` key in `[Weather]` answers `wx <name>` and `gwx <name>` from that station. WXSIM sources answer current conditions, `tomorrow` and `Nd` (starting with today); MQTT sources answer current conditions only. `hourly` and `alerts` reply that they are not available for these sources.
 
 **Scheduled messages:** `wx` and `gwx` can be used in `{cmd:...}` placeholders, for example `{cmd:wx 98101}`.
 
@@ -230,7 +230,7 @@ gwx Reykjavik 10d
 
 **Units** come from `[Weather]`, and the same keys in `[Gwx_Command]` override them for `gwx`.
 
-**The place is named** as for `wx`, by the rules of whichever provider answers.
+**The place is named** as for `wx`, by the rules of `gwx`'s provider. A reply from `failover_provider` keeps that provider's name for the place.
 
 **Enabling:** `[Gwx_Command] enabled = false` turns `gwx` off, as for any other command.
 

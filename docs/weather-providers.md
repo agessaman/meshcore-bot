@@ -86,7 +86,7 @@ Three settings decide what happens when the forecast provider can't answer. They
 
 **The weather service plugin** (scheduled forecasts and alert posts) has its own settings and doesn't use any of these. See [Weather Service](weather-service.md).
 
-**Units** come from `[Weather] temperature_unit`, `wind_speed_unit` and `precipitation_unit` for every provider, and for WXSIM stations. The same keys in `[Wx_Command]` or `[Gwx_Command]` override them for that command.
+**Units** come from `[Weather] temperature_unit`, `wind_speed_unit` and `precipitation_unit` for every provider, and WXSIM stations use the temperature and wind units the same way. The same keys in `[Wx_Command]` or `[Gwx_Command]` override them for that command.
 
 ---
 

@@ -146,7 +146,9 @@ def test_the_unit_setters_warn_and_reach_the_provider():
 
 
 def test_a_forwarder_on_another_provider_says_so():
-    cmd = GlobalWxCommand(_bot({"Gwx_Command": {"weather_provider": "noaa"}}))
+    from modules.commands.gwx_command import GwxCommand
+
+    cmd = GwxCommand(_bot({"Gwx_Command": {"weather_provider": "noaa"}}))
 
     with pytest.warns(DeprecationWarning):
         with pytest.raises(AttributeError, match="needs the Open-Meteo provider"):

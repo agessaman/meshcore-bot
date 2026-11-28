@@ -1103,7 +1103,8 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         if wxsim_source:
             if self.provider.location_style == "us":
                 # wx has always named the source it answers from; gwx has not.
-                self.logger.info(f"Using custom WXSIM source for location '{location}': {wxsim_source}")
+                # The name only: a station URL can carry an access token.
+                self.logger.info(f"Using custom WXSIM source for location '{location}'")
             return await self._reply_from_wxsim(message, wxsim_source, forecast_type, num_days, location)
 
         return await self._execute_request(

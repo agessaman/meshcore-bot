@@ -57,12 +57,15 @@ WXSIM_PARSER_AVAILABLE = True
 class GlobalWxCommand(GwxCommand):
     """The class this module used to define, for old imports and overrides.
 
-    It is ``gwx`` with one difference kept from before gwx was a normal command:
-    it is always enabled. A ``[Plugin_Overrides] wx = wx_international`` line
-    registers it as ``wx`` with gwx's triggers and channels, and ``[Wx_Command]
-    enabled`` never switched that off.
+    It is ``gwx`` as it was before gwx was a normal command: always enabled and
+    always on Open-Meteo. A ``[Plugin_Overrides] wx = wx_international`` line
+    registers it as ``wx`` with gwx's triggers and channels, and neither
+    ``[Wx_Command] enabled`` nor a provider setting ever changed that.
     """
 
     def __init__(self, bot):
         super().__init__(bot)
         self.wx_enabled = True
+
+    def _forecast_provider_name(self) -> str:
+        return "openmeteo"

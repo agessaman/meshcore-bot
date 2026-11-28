@@ -15,11 +15,14 @@ from typing import Any, Optional
 
 from .commands.base_command import BaseCommand
 
-# Deprecated alternatives kept so old imports and overrides still work, and the
-# setting that replaces each. Discovery skips them, so their command is not
-# registered a second time; they load only when a [Plugin_Overrides] line names
-# them.
-COMPATIBILITY_ALTERNATIVES = {"wx_international": "[Weather] weather_provider = openmeteo"}
+# Deprecated alternatives kept so old imports and overrides still work: for
+# each, the setting that replaces it and the default command it used to be.
+# Discovery skips them, so that command is not registered twice; they load only
+# when a [Plugin_Overrides] line names them, and then, as before, the override
+# is the only command with those triggers.
+COMPATIBILITY_ALTERNATIVES = {
+    "wx_international": ("[Weather] weather_provider = openmeteo", "gwx"),
+}
 
 
 class PluginLoader:
@@ -61,7 +64,7 @@ class PluginLoader:
                     if alternative_file in COMPATIBILITY_ALTERNATIVES:
                         self.logger.warning(
                             f"[Plugin_Overrides] {command_name} = {alternative_file} is deprecated; "
-                            f"set {COMPATIBILITY_ALTERNATIVES[alternative_file]} instead"
+                            f"set {COMPATIBILITY_ALTERNATIVES[alternative_file][0]} instead"
                         )
                     self.plugin_overrides[command_name] = alternative_file
                     self.logger.info(f"Plugin override configured: {command_name} -> {alternative_file}")
@@ -324,12 +327,25 @@ class PluginLoader:
         default_plugin_map = {}  # plugin_name -> file_name
         loaded_plugins = {}
 
+        # Default commands a compatibility override stands in for, as it did
+        # when it was the only command with their triggers.
+        displaced = {
+            COMPATIBILITY_ALTERNATIVES[alternative_file][1]
+            for alternative_file in self.plugin_overrides.values()
+            if alternative_file in COMPATIBILITY_ALTERNATIVES
+        }
+
         # First pass: Load all default plugins and build the map
         for plugin_file in default_plugin_files:
             plugin_instance = self.load_plugin(plugin_file, from_alternatives=False)
             if plugin_instance:
                 metadata = plugin_instance.get_metadata()
                 plugin_name = metadata['name']
+                if plugin_name in displaced and plugin_name not in self.plugin_overrides:
+                    self.logger.info(
+                        f"Not loading default plugin '{plugin_name}': a deprecated override provides it"
+                    )
+                    continue
                 default_plugin_map[plugin_name] = plugin_file
                 loaded_plugins[plugin_name] = plugin_instance
                 self.plugin_metadata[plugin_name] = metadata

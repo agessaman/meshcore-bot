@@ -123,6 +123,14 @@ def test_the_settings_view_shows_each_commands_own_overrides(name, section):
     assert shared["weather_provider"] == "noaa"
 
 
+def test_the_settings_view_never_sends_a_default_section_token_raw():
+    config = configparser.ConfigParser(defaults={"meteoalarm_token": "SECRET"})
+    config.read_dict({"Weather": {}, "Wx_Command": {"enabled": "true"}, "Gwx_Command": {"enabled": "true"}})
+
+    for name in ("wx", "gwx"):
+        assert "meteoalarm_token" not in _view_entry(config, name)["values"]
+
+
 @pytest.mark.parametrize("section", ["Wx_Command", "Gwx_Command"])
 def test_validation_knows_the_per_command_weather_keys(section):
     config = configparser.ConfigParser()
