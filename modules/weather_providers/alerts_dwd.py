@@ -30,6 +30,9 @@ from .metno import _default_user_agent
 BRIGHTSKY_BASE_URL = "https://api.brightsky.dev"
 BRIGHTSKY_TIMEOUT = (5, 6)  # (connect, read) seconds, per attempt
 ALERT_CACHE_SECONDS = 300
+# A failed fetch is retried soon: caching it as long as a success would hide a
+# recovered service for the whole TTL.
+FAILURE_CACHE_SECONDS = 60
 
 # Germany, wide enough for the coast and the Alpine edge.
 GERMANY_LON = (5.8, 15.1)
@@ -176,7 +179,8 @@ class DwdAlertsProvider(PackedAlertsMixin, AlertsProvider):
     def _fetch(self, lat: float, lon: float) -> tuple[Optional[dict], bool]:
         """The alerts around a point, and whether the fetch failed.
 
-        ``(None, False)`` is a 404, which means the point is not covered.
+        ``(None, False)`` is a 404, which means the point is not covered; a 5xx,
+        a timeout or a malformed body is ``(None, True)``.
         """
         key = (round(lat, 2), round(lon, 2))
         now = self._clock()
@@ -186,8 +190,9 @@ class DwdAlertsProvider(PackedAlertsMixin, AlertsProvider):
                 return cached[1], cached[2]
 
         body, failed = self._request(lat, lon)
+        ttl = FAILURE_CACHE_SECONDS if failed else ALERT_CACHE_SECONDS
         with self._lock:
-            self._cache[key] = (now + ALERT_CACHE_SECONDS, body, failed)
+            self._cache[key] = (now + ttl, body, failed)
         return body, failed
 
     def _request(self, lat: float, lon: float) -> tuple[Optional[dict], bool]:
@@ -210,9 +215,11 @@ class DwdAlertsProvider(PackedAlertsMixin, AlertsProvider):
             return None, True
 
         status = getattr(response, "status_code", None)
-        if status == 404 and not self.covers(lat, lon):
-            # Outside the DWD's warning cells: no alerts, not a failure. Inside
-            # them a 404 is the service failing, so it falls through.
+        if status == 404:
+            # Bright Sky answers 404 for a point outside its warning cells, and
+            # those cells do not follow the border: Prague, Zurich and
+            # Strasbourg are all inside the bbox and outside the service. A 404
+            # is therefore "not covered" wherever the point is.
             self._clear_streak("http")
             return None, False
         if not getattr(response, "ok", False):

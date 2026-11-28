@@ -68,6 +68,45 @@ def _warnings(mock):
     return [call.args[0] for call in mock.warning.call_args_list]
 
 
+# --- the construction matrix ------------------------------------------------
+
+
+@pytest.mark.parametrize("command", ["wx", "gwx"])
+@pytest.mark.parametrize("weather_provider", sorted(PROVIDERS))
+@pytest.mark.parametrize(
+    "alerts_provider", ["auto", "none", *sorted(ALERT_PROVIDERS)]
+)
+@pytest.mark.parametrize("fallback", ["true", "false"])
+def test_every_provider_combination_builds(command, weather_provider, alerts_provider, fallback):
+    """Every pair of settings the config accepts has to construct a command.
+
+    Only NWS takes the command's NOAA state, so a NOAA forecast with an ECCC or
+    DWD alerts provider used to raise TypeError at construction and `wx` never
+    loaded.
+    """
+    weather = {
+        "weather_provider": weather_provider,
+        "alerts_provider": alerts_provider,
+        "openmeteo_fallback": fallback,
+        "meteoalarm_token": "s3cr3t-token",
+    }
+    cls = WxCommand if command == "wx" else GlobalWxCommand
+
+    cmd = cls(_bot(weather))
+
+    # gwx is pinned to Open-Meteo whatever the forecast setting says.
+    expected_forecast = "openmeteo" if command == "gwx" else weather_provider
+    assert isinstance(cmd.provider, PROVIDERS[expected_forecast])
+    if alerts_provider == "none":
+        assert cmd.alerts_provider is None
+    else:
+        expected = resolve_alerts_provider_name(alerts_provider, expected_forecast)
+        if expected is None:
+            assert cmd.alerts_provider is None
+        else:
+            assert isinstance(cmd.alerts_provider, ALERT_PROVIDERS[expected])
+
+
 # --- registries -------------------------------------------------------------
 
 
@@ -466,9 +505,15 @@ def test_the_model_warning_comes_before_the_unit_warnings():
 
 
 def test_an_invalid_wx_precipitation_unit_keeps_openmeteos_validated_one():
+    # alerts_provider = none: the fallback reply would otherwise ask NWS for a
+    # summary, and this test is about the units.
     cmd = _wx({"weather_provider": "noaa", "openmeteo_fallback": "true",
-               "precipitation_unit": "mm"},
+               "precipitation_unit": "mm", "alerts_provider": "none"},
               wx_section={"precipitation_unit": "furlongs"})
+    cmd.provider.covers = Mock(return_value=True)
+    cmd.provider.forecast = Mock(
+        return_value=ForecastReply(text="", ok=False, no_coverage=True)
+    )
     cmd.fallback_provider.forecast = Mock(return_value=ForecastReply(text="BODY"))
     cmd.geocode_location = Mock(
         return_value=(47.6, -122.3, {"city": "Portland", "country_code": "us"}, None)
@@ -788,11 +833,18 @@ def test_the_nws_summary_does_not_deadlock_when_the_lock_is_already_held():
 
 def test_a_failed_fallback_fetch_is_the_bare_error():
     cmd = _wx({"weather_provider": "noaa", "openmeteo_fallback": "true"})
+    cmd.provider.covers = Mock(return_value=True)
+    cmd.provider.forecast = Mock(
+        return_value=ForecastReply(text="", ok=False, no_coverage=True)
+    )
     cmd.fallback_provider.forecast = Mock(
         return_value=ForecastReply(text="Error fetching weather data", ok=False)
     )
     cmd.geocode_location = Mock(
         return_value=(48.85, 2.35, {"city": "Paris", "country_code": "fr"}, None)
+    )
+    cmd.city_to_lat_lon = Mock(
+        return_value=(48.85, 2.35, {"city": "Paris", "country_code": "fr"})
     )
     cmd._format_location_display = Mock(return_value="Paris, FR")
     cmd.get_max_message_length = Mock(return_value=130)
@@ -1215,7 +1267,10 @@ def test_the_noaa_provider_still_takes_the_command_lock():
 
 
 def test_eccc_falls_back_to_openmeteo_past_its_coverage():
-    cmd = _wx({"weather_provider": "eccc", "openmeteo_fallback": "true"})
+    # alerts_provider = none: the point is outside Canada, so `auto` would ask
+    # the ECCC alerts API about it, and this test is about the forecast.
+    cmd = _wx({"weather_provider": "eccc", "openmeteo_fallback": "true",
+               "alerts_provider": "none"})
     assert isinstance(cmd.fallback_provider, OpenMeteoProvider)
     cmd.provider.forecast = Mock(return_value=ForecastReply(text="", ok=False, no_coverage=True))
     cmd.fallback_provider.forecast = Mock(return_value=ForecastReply(text="OM BODY"))
@@ -1233,7 +1288,12 @@ def test_eccc_falls_back_to_openmeteo_past_its_coverage():
 
 
 def test_noaa_keeps_its_own_fallback_log_line():
-    cmd = _wx({"weather_provider": "noaa", "openmeteo_fallback": "true"})
+    cmd = _wx({"weather_provider": "noaa", "openmeteo_fallback": "true",
+               "alerts_provider": "none"})
+    cmd.provider.covers = Mock(return_value=True)
+    cmd.provider.forecast = Mock(
+        return_value=ForecastReply(text="", ok=False, no_coverage=True)
+    )
     cmd.fallback_provider.forecast = Mock(return_value=ForecastReply(text="OM BODY"))
     cmd._locate_for_forecast = Mock(return_value=(None, 48.85, 2.35, "Paris, FR: "))
     cmd.city_to_lat_lon = Mock(return_value=(48.85, 2.35, {"city": "Paris"}))

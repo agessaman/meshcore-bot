@@ -374,6 +374,65 @@ def test_a_city_page_without_a_temperature_is_an_error_reply():
     host.logger.warning.assert_called()
 
 
+# --- failures ---------------------------------------------------------------
+
+
+def test_a_transient_failure_is_retried_after_a_minute():
+    calls = {"n": 0}
+    good = _Response(200, _payload("vancouver"))
+
+    def respond(_call):
+        calls["n"] += 1
+        return _Response(503) if calls["n"] == 1 else good
+
+    provider, session, _host_, clock = _provider(response=respond)
+
+    assert provider.forecast(*VANCOUVER, "default", 7, 0, None).ok is False
+    clock.advance(61)
+
+    assert provider.forecast(*VANCOUVER, "default", 7, 0, None).ok is True
+    assert session.count() == 2
+
+
+def test_a_malformed_body_is_a_failure_not_no_coverage():
+    # An HTML 200 is not a feature collection: it says nothing about whether a
+    # city page is near the point, so it must not read as "no coverage".
+    provider, _session_, _host_, _clock = _provider(response=_Response(200, None))
+
+    reply = provider.forecast(*VANCOUVER, "default", 7, 0, None)
+
+    assert reply.ok is False
+    assert reply.no_coverage is False
+
+
+def test_a_body_without_a_feature_list_is_a_failure():
+    provider, _session_, _host_, _clock = _provider(
+        response=_Response(200, {"features": "nope"})
+    )
+
+    reply = provider.forecast(*VANCOUVER, "default", 7, 0, None)
+
+    assert reply.ok is False
+    assert reply.no_coverage is False
+
+
+def test_a_malformed_body_is_not_cached_as_no_coverage():
+    calls = {"n": 0}
+    good = _Response(200, _payload("vancouver"))
+
+    def respond(_call):
+        calls["n"] += 1
+        return _Response(200, None) if calls["n"] == 1 else good
+
+    provider, session, _host_, clock = _provider(response=respond)
+
+    assert provider.forecast(*VANCOUVER, "default", 7, 0, None).ok is False
+    clock.advance(61)
+
+    assert provider.forecast(*VANCOUVER, "default", 7, 0, None).ok is True
+    assert session.count() == 2
+
+
 # --- the cache --------------------------------------------------------------
 
 
@@ -554,6 +613,83 @@ def test_a_calm_wind_is_named_rather_than_dropped():
     assert "SE" not in reply.text
 
 
+def test_the_french_evening_period_is_tonight():
+    host = _Host(localization={"language": "fr"})
+    provider, _session_, _host_, _clock = _provider(
+        "ottawa_evening", units=WeatherUnits("celsius", "kmh", "mm"),
+        host=host, now=lambda: EVENING,
+    )
+
+    # "Ce soir et cette nuit" covers the evening, so it is tonight, not
+    # overnight: the same label the English "Tonight" gets.
+    assert provider._period_key_from_name("Ce soir et cette nuit") == "tonight"
+    assert provider._period_key_from_name("Tonight") == "tonight"
+    assert provider._period_key_from_name("Cette nuit") == "overnight"
+
+    # The label itself comes from the catalog, so it is the tonight key's text;
+    # what the French data decides is which key that is.
+    reply = provider.forecast(*OTTAWA, "default", 7, 0, None)
+    assert reply.text.startswith(f"{host.translate('commands.gwx.periods.tonight')}: ")
+
+
+def test_pressure_follows_the_catalog_unit():
+    payload = _payload("vancouver")
+    current = payload["features"][2]["properties"]["currentConditions"]
+    current["pressure"]["value"] = {"en": 102.1, "fr": 102.1}
+
+    metric, _session_, _host_, _clock = _provider(
+        response=_Response(200, payload), units=WeatherUnits("celsius", "kmh", "mm")
+    )
+    assert "📊1021hPa" in metric.forecast(*VANCOUVER, "default", 7, 0, None).text
+
+    host = _Host()
+    host.translator = Translator("ru")  # the catalog that asks for mmHg
+    host.response_translator = host.translator
+    mercury, _session_, _host_, _clock = _provider(
+        response=_Response(200, payload), units=WeatherUnits("celsius", "kmh", "mm"), host=host
+    )
+    assert "мм рт. ст." in mercury.forecast(*VANCOUVER, "default", 7, 0, None).text
+
+
+def test_the_wind_direction_is_an_arrow_and_a_compass_point():
+    payload = _payload("ottawa")
+    current = payload["features"][0]["properties"]["currentConditions"]
+    current["wind"]["speed"]["value"] = {"en": 20, "fr": 20}
+    current["wind"]["direction"]["value"] = {"en": "ENE", "fr": "ENE"}
+    current["wind"]["bearing"]["value"] = {"en": 73.0, "fr": 73.0}
+    provider, _session_, host, _clock = _provider(
+        response=_Response(200, payload), units=WeatherUnits("celsius", "kmh", "mm")
+    )
+
+    reply = provider.forecast(*OTTAWA, "default", 7, 0, None)
+
+    # 73° is ENE, and the arrow is the one Open-Meteo and MET Norway use.
+    assert f"➡️{host.translate('common.wind_directions.ENE')}20" in reply.text
+
+
+def test_the_wind_direction_falls_back_to_the_compass_text():
+    payload = _payload("ottawa")
+    current = payload["features"][0]["properties"]["currentConditions"]
+    current["wind"]["speed"]["value"] = {"en": 20, "fr": 20}
+    current["wind"]["direction"]["value"] = {"en": "SW", "fr": "SO"}
+    current["wind"].pop("bearing", None)
+    provider, _session_, host, _clock = _provider(
+        response=_Response(200, payload), units=WeatherUnits("celsius", "kmh", "mm")
+    )
+
+    reply = provider.forecast(*OTTAWA, "default", 7, 0, None)
+
+    assert f"↙️{host.translate('common.wind_directions.SW')}20" in reply.text
+
+
+def test_the_city_page_query_asks_for_a_bounded_page():
+    provider, session, _host_, _clock = _provider("vancouver")
+
+    provider._lookup(*VANCOUVER)
+
+    assert session.calls[0]["params"]["limit"] == 50
+
+
 # --- the budget -------------------------------------------------------------
 
 
@@ -561,12 +697,12 @@ def test_pressure_goes_before_the_high_low_and_tomorrow():
     provider, _session_, host, _clock = _provider(
         "ottawa_evening", units=WeatherUnits("celsius", "kmh", "mm"), now=lambda: EVENING
     )
-    host.get_max_message_length = Mock(return_value=45)
+    host.get_max_message_length = Mock(return_value=50)
 
     reply = provider.forecast(*OTTAWA, "default", 7, 0, SimpleNamespace(content="wx Ottawa"))
 
     # Pressure is the first part to go, and the high/low stays.
-    assert _width(host, reply.text) <= 45
+    assert _width(host, reply.text) <= 50
     assert "hPa" not in reply.text
     assert "97%RH" in reply.text
     assert "| L:3°C" in reply.text

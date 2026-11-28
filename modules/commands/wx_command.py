@@ -562,7 +562,11 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                     fallback=DEFAULT_METEOALARM_API_URL, raw=True,
                 ).strip().rstrip('/'),
             )
-        if alerts_name == 'nws' and self.provider_name != 'noaa':
+        if alerts_name != 'nws':
+            # Only NWS takes the command's NOAA state (session, worker lock,
+            # coverage cache). The other alert sources own their session.
+            return make_alerts_provider(alerts_name, host=self)
+        if self.provider_name != 'noaa':
             # NWS alerts are not the only source when the forecast comes from
             # elsewhere: a point outside NWS coverage reads as "not available",
             # in the forecast provider's catalog, from the first request on.

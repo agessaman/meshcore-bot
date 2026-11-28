@@ -24,9 +24,10 @@ from email.utils import parsedate_to_datetime
 from typing import Any, Optional
 
 from ..http_retry import make_retry_session
+from ..weather_common import _ARROWS_8, _COMPASS_16
 from ._geo import haversine_km
 from ._tz import utc_offset_at
-from ._units import c_to_f, kmh_to, mm_to_inch, round_half_away
+from ._units import c_to_f, hpa_to_mmhg, kmh_to, mm_to_inch, round_half_away
 from .base import Capability, ForecastReply, ProviderHost, WeatherProvider, WeatherUnits
 from .openmeteo import weather_emoji
 
@@ -34,7 +35,11 @@ ECCC_BASE_URL = "https://api.weather.gc.ca"
 CITYPAGE_COLLECTION = "citypageweather-realtime"
 ECCC_TIMEOUT = (5, 6)  # (connect, read) seconds, per attempt
 CITY_CACHE_SECONDS = 600
+# A failed fetch is retried soon: caching it as long as a success would hide a
+# recovered service for the whole TTL.
+FAILURE_CACHE_SECONDS = 60
 CITY_SEARCH_RADII = (0.3, 1.0, 2.0)  # degrees, widened in turn
+CITY_PAGE_LIMIT = 50  # the API's own page size; a 2° box holds far fewer
 MAX_CITY_DISTANCE_KM = 150.0
 ECCC_MULTIDAY_MAX_DAYS = 6
 
@@ -42,6 +47,18 @@ ECCC_MULTIDAY_MAX_DAYS = 6
 # command can fall back to Open-Meteo elsewhere without a request.
 CANADA_LON = (-141.0, -52.0)
 CANADA_LAT = (41.6, 83.2)
+
+# ECCC writes the wind direction as a compass point in the reply language, and
+# usually carries the bearing too. The bearing is preferred; this table is the
+# fallback, in both languages.
+COMPASS_DEGREES = {
+    "N": 0.0, "NNE": 22.5, "NE": 45.0, "ENE": 67.5,
+    "E": 90.0, "ESE": 112.5, "SE": 135.0, "SSE": 157.5,
+    "S": 180.0, "SSW": 202.5, "SW": 225.0, "WSW": 247.5,
+    "W": 270.0, "WNW": 292.5, "NW": 315.0, "NNW": 337.5,
+    "O": 90.0, "OSO": 112.5, "SO": 135.0, "SSO": 157.5,
+    "ONO": 292.5, "NO": 315.0, "NNO": 337.5,
+}
 
 # ECCC icon codes to the WMO codes the shared emoji and description tables use.
 # The codes in the samples (2, 3, 10, 12, 16, 28, 32, 33, 36) are confirmed
@@ -228,6 +245,7 @@ class EcccProvider(WeatherProvider):
             params = {
                 "f": "json",
                 "lang": language,
+                "limit": CITY_PAGE_LIMIT,
                 "bbox": (
                     f"{lon - radius:.4f},{lat - radius:.4f},"
                     f"{lon + radius:.4f},{lat + radius:.4f}"
@@ -237,17 +255,22 @@ class EcccProvider(WeatherProvider):
                 response = self._get(f"{ECCC_BASE_URL}/collections/{CITYPAGE_COLLECTION}/items", params)
             except Exception as error:
                 self.host.logger.warning(f"Error fetching Environment Canada city pages: {error}")
-                return None, True, CITY_CACHE_SECONDS
+                return None, True, FAILURE_CACHE_SECONDS
             if response is None:
-                return None, True, CITY_CACHE_SECONDS
+                return None, True, FAILURE_CACHE_SECONDS
             if not getattr(response, "ok", False):
                 self.host.logger.warning(
                     "Error fetching weather from Environment Canada: "
                     f"{getattr(response, 'status_code', '?')}"
                 )
-                return None, True, CITY_CACHE_SECONDS
+                return None, True, FAILURE_CACHE_SECONDS
 
             features = self._features(response)
+            if features is None:
+                self.host.logger.warning(
+                    "Environment Canada city pages returned an unexpected body"
+                )
+                return None, True, FAILURE_CACHE_SECONDS
             nearest = self._nearest(features, lat, lon)
             if nearest is not None:
                 return nearest, False, self._ttl(response)
@@ -260,14 +283,20 @@ class EcccProvider(WeatherProvider):
         with make_retry_session() as session:
             return session.get(url, params=params, timeout=ECCC_TIMEOUT)
 
-    def _features(self, response) -> list:
-        """The GeoJSON features of a successful response, or an empty list."""
+    def _features(self, response) -> Optional[list]:
+        """The GeoJSON features of a successful response, or None when it is not GeoJSON.
+
+        None is a failure, not an empty answer: a body that is not a feature
+        collection says nothing about whether a city page is near the point.
+        """
         try:
             body = response.json()
         except Exception:
-            return []
+            return None
         features = body.get("features") if isinstance(body, dict) else None
-        return [feature for feature in (features or []) if isinstance(feature, dict)]
+        if not isinstance(features, list):
+            return None
+        return [feature for feature in features if isinstance(feature, dict)]
 
     def _nearest(self, features: list, lat: float, lon: float) -> Optional[dict]:
         """The city page closest to the point, if one is within reach."""
@@ -376,6 +405,22 @@ class EcccProvider(WeatherProvider):
             value = c_to_f(value)
         return round_half_away(value)
 
+    def _compass(self, wind: dict) -> str:
+        """The wind direction as the nearest compass point with its arrow."""
+        value = None
+        bearing = self._value((wind.get("bearing") or {}).get("value"))
+        try:
+            value = float(bearing)
+        except (TypeError, ValueError):
+            text = self._text((wind.get("direction") or {}).get("value")).strip().upper()
+            value = COMPASS_DEGREES.get(text)
+        if value is None:
+            return ""
+        index = int((value % 360) / 22.5 + 0.5) % 16
+        key = _COMPASS_16[index]
+        arrow = _ARROWS_8[int(index / 2 + 0.5) % 8]
+        return f"{arrow}{self.host.translate(f'common.wind_directions.{key}')}"
+
     def _is_calm(self, wind: dict) -> bool:
         """Whether the data says the wind is calm, which it writes as a word."""
         raw = self._value((wind.get("speed") or {}).get("value"))
@@ -453,10 +498,13 @@ class EcccProvider(WeatherProvider):
         text = (name or "").strip().lower()
         if not text:
             return None
+        # "Ce soir et cette nuit" is one period covering the evening, so the
+        # evening word has to win over the night word.
+        if "ce soir" in text or "tonight" in text:
+            return 'tonight'
         if "overnight" in text or "cette nuit" in text:
             return 'overnight'
-        if ("tonight" in text or "ce soir" in text or "night" in text
-                or "nuit" in text or "soir" in text):
+        if "night" in text or "nuit" in text or "soir" in text:
             return 'tonight'
         if ("today" in text or "aujourd'hui" in text or "afternoon" in text
                 or "après-midi" in text or "morning" in text or "matin" in text):
@@ -498,10 +546,10 @@ class EcccProvider(WeatherProvider):
 
         wind = current.get("wind") or {}
         speed = self._wind_speed(self._value((wind.get("speed") or {}).get("value")))
-        direction = self._text((wind.get("direction") or {}).get("value"))
         if self._is_calm(wind):
             wind_text = self.host.translate('commands.gwx.calm')
         else:
+            direction = self._compass(wind)
             wind_text = f"{direction}{speed}" if speed is not None and speed >= 3 else ""
 
         humidity = self._value((current.get("relativeHumidity") or {}).get("value"))
@@ -518,11 +566,21 @@ class EcccProvider(WeatherProvider):
         pressure_text = ""
         if pressure is not None:
             try:
-                pressure_text = self.host.translate(
-                    'commands.gwx.pressure', value=int(round(float(pressure) * 10))
-                )
+                # The API sends kPa; the reply shows hPa, or mmHg where the
+                # catalog asks for it, as MET Norway and Open-Meteo do.
+                pressure_hpa = round_half_away(float(pressure) * 10)
             except (TypeError, ValueError):
-                pass
+                pressure_hpa = None
+            if pressure_hpa is not None:
+                if self.host.translate('commands.gwx.pressure_unit').strip().lower() == 'mmhg':
+                    pressure_text = self.host.translate(
+                        'commands.gwx.pressure_mmhg',
+                        value=round_half_away(hpa_to_mmhg(pressure_hpa)),
+                    )
+                else:
+                    pressure_text = self.host.translate(
+                        'commands.gwx.pressure', value=pressure_hpa
+                    )
 
         # Tonight's period has a low and no high, so the pair becomes the low
         # alone; the high is shown whenever the period carries one.
@@ -693,10 +751,11 @@ class EcccProvider(WeatherProvider):
             parts.append(f"{temperature}°")
             wind = hour.get("wind") or {}
             speed = self._wind_speed(self._value((wind.get("speed") or {}).get("value")))
-            direction = self._text((wind.get("direction") or {}).get("value"))
             if self._is_calm(wind):
                 parts.append(self.host.translate('commands.gwx.calm'))
             elif speed is not None:
-                parts.append(f"{self.host._without_arrow(direction)}{speed}")
+                # The hourly line drops the arrow to keep an extra hour in the
+                # reply, as Open-Meteo's does; the letters stay, translated.
+                parts.append(f"{self.host._without_arrow(self._compass(wind))}{speed}")
             lines.append(" ".join(parts))
         return self.host._pack_hourly_lines(lines, max_length, self.translation_ns)

@@ -568,6 +568,85 @@ def test_polar_twilight_takes_the_moon():
     assert provider._emoji("clearsky", is_day=True) == "☀️"
 
 
+# --- the high-wind threshold ------------------------------------------------
+
+
+def _with_wind(meters_per_second, unit):
+    payload = _payload("egersund")
+    for step in payload["properties"]["timeseries"]:
+        step["data"]["instant"]["details"]["wind_speed"] = meters_per_second
+    provider, *_ = _provider(units=WeatherUnits("celsius", unit, "mm"),
+                             response=_Response(200, payload))
+    return provider
+
+
+def test_the_high_wind_threshold_is_thirty_mph_in_kmh():
+    # 9 m/s is 32 km/h and 20 mph: below the threshold, as Open-Meteo has it.
+    reply = _with_wind(9.0, "kmh").forecast(*EGERSUND, "default", 7, 0, None)
+
+    assert not reply.extra or "wind" not in reply.extra.lower()
+
+
+def test_the_high_wind_threshold_is_thirty_mph_in_ms():
+    # 20 m/s is 45 mph: over the threshold whatever the display unit.
+    reply = _with_wind(20.0, "ms").forecast(*EGERSUND, "default", 7, 0, None)
+
+    assert reply.extra and "wind" in reply.extra.lower()
+
+
+# --- staleness --------------------------------------------------------------
+
+
+def test_a_document_older_than_six_hours_is_not_served():
+    good = _Response(200, _payload("egersund"))
+    state = {"fail": False}
+
+    def respond(_call):
+        return _Response(500) if state["fail"] else good
+
+    provider, _session_, _host_, clock = _provider(response=respond)
+    fresh = provider.forecast(*EGERSUND, "default", 7, 0, None)
+    assert fresh.ok is True
+
+    state["fail"] = True
+    clock.advance(26 * 3600)
+    stale = provider.forecast(*EGERSUND, "default", 7, 0, None)
+
+    assert stale.ok is False
+    assert stale.text == provider.host.translate("commands.gwx.metno.error_fetching_api")
+
+
+def test_a_six_hour_old_document_still_answers():
+    good = _Response(200, _payload("egersund"))
+    state = {"fail": False}
+
+    def respond(_call):
+        return _Response(500) if state["fail"] else good
+
+    provider, _session_, _host_, clock = _provider(response=respond)
+    assert provider.forecast(*EGERSUND, "default", 7, 0, None).ok is True
+
+    state["fail"] = True
+    clock.advance(5 * 3600)
+    stale = provider.forecast(*EGERSUND, "default", 7, 0, None)
+
+    # The same document answers, read at the later step: still a forecast.
+    assert stale.ok is True
+    assert stale.text != provider.host.translate("commands.gwx.metno.error_fetching_api")
+
+
+def test_a_document_starting_yesterday_labels_today_as_today():
+    provider, _session_, host, clock = _provider()
+    # The fixture starts at 21:00Z on 27 November; six hours later the local day
+    # in Egersund (UTC+1) is the 28th, and the 27th must not be "today".
+    clock.advance(6 * 3600)
+
+    days = provider._daily(_payload("egersund"), *EGERSUND)
+
+    assert days[0]["date"].isoformat() == "2026-11-28"
+    assert all(day["date"].isoformat() >= "2026-11-28" for day in days)
+
+
 # --- the tzfpy dependency marker --------------------------------------------
 
 

@@ -51,6 +51,9 @@ USER_AGENT_CONTACT = "(+https://github.com/agessaman/meshcore-bot)"
 DEFAULT_TTL = 30 * 60
 MIN_TTL = 60
 MAX_TTL = 6 * 60 * 60
+# A failed refresh may answer from the last document, but only while it is still
+# a forecast: past this age the reply is an error instead of yesterday's weather.
+STALE_MAX_SECONDS = 6 * 60 * 60
 # A 429 without Retry-After parks the provider for this long.
 RATE_LIMIT_PAUSE = 300.0
 
@@ -207,12 +210,13 @@ def _wmo_for(base: str) -> Optional[int]:
 
 
 class _Entry:
-    """One cached document: when it expires, its Last-Modified, and the payload."""
+    """One cached document: when it expires, when it was fetched, and the payload."""
 
-    __slots__ = ("expires", "last_modified", "payload")
+    __slots__ = ("expires", "fetched", "last_modified", "payload")
 
-    def __init__(self, expires: float, last_modified: Optional[str], payload: dict):
+    def __init__(self, expires: float, fetched: float, last_modified: Optional[str], payload: dict):
         self.expires = expires
+        self.fetched = fetched
         self.last_modified = last_modified
         self.payload = payload
 
@@ -369,6 +373,12 @@ class MetNorwayProvider(WeatherProvider):
         ttl = (expires - issued).total_seconds()
         return min(max(ttl, MIN_TTL), MAX_TTL)
 
+    def _stale(self, entry: Optional[_Entry], now: float) -> Optional[dict]:
+        """The last document, while it is still a forecast; None once it is too old."""
+        if entry is None or now - entry.fetched > STALE_MAX_SECONDS:
+            return None
+        return entry.payload
+
     def _fetch(self, lat: float, lon: float) -> Optional[dict]:
         """The document for a point, from the cache or the API; None on failure."""
         key = (round(lat, 4), round(lon, 4))
@@ -379,7 +389,7 @@ class MetNorwayProvider(WeatherProvider):
                 return entry.payload
             if now < self._pause_until:
                 # A 429 parks every request; a stale document still answers.
-                return entry.payload if entry is not None else None
+                return self._stale(entry, now)
 
         headers = {"User-Agent": self._user_agent_header()}
         if entry is not None and entry.last_modified:
@@ -398,7 +408,7 @@ class MetNorwayProvider(WeatherProvider):
                     )
         except Exception as error:
             self.host.logger.warning(f"Error fetching weather from MET Norway: {error}")
-            return entry.payload if entry is not None else None
+            return self._stale(entry, self._clock())
 
         if response.status_code == 304 and entry is not None:
             with self._lock:
@@ -412,13 +422,13 @@ class MetNorwayProvider(WeatherProvider):
             self.host.logger.warning(
                 f"MET Norway rate limited the request; pausing for {int(delay)} s"
             )
-            return entry.payload if entry is not None else None
+            return self._stale(entry, self._clock())
 
         if not response.ok:
             self.host.logger.warning(
                 f"Error fetching weather from MET Norway: {response.status_code}"
             )
-            return entry.payload if entry is not None else None
+            return self._stale(entry, self._clock())
 
         try:
             payload = response.json()
@@ -426,11 +436,12 @@ class MetNorwayProvider(WeatherProvider):
             payload = None
         if not isinstance(payload, dict) or not self._steps(payload):
             self.host.logger.warning("MET Norway response has no forecast series")
-            return entry.payload if entry is not None else None
+            return self._stale(entry, self._clock())
 
         with self._lock:
             self._cache[key] = _Entry(
                 self._clock() + self._ttl(response.headers, now),
+                self._clock(),
                 (response.headers or {}).get("Last-Modified"),
                 payload,
             )
@@ -530,13 +541,21 @@ class MetNorwayProvider(WeatherProvider):
         return utc_offset_at(lat, lon, when_utc)
 
     def _daily(self, data: dict, lat: float, lon: float) -> list:
-        """Per local day: high, low, precipitation and the daytime symbol."""
+        """Per local day: high, low, precipitation and the daytime symbol.
+
+        Steps before the current local day are dropped, so a document fetched
+        yesterday cannot label yesterday as today.
+        """
+        now = self._now()
+        today = (now + self._offset(lat, lon, now)).date()
         days: dict = {}
         order: list = []
         for step in self._steps(data):
             when = _parse_time(step["time"])
             moment = when + self._offset(lat, lon, when)
             day = moment.date()
+            if day < today:
+                continue
             if day not in days:
                 days[day] = {
                     "date": day,
@@ -869,8 +888,11 @@ class MetNorwayProvider(WeatherProvider):
         if wmo in (75, 85, 86):
             warnings.append(self.host.translate('commands.gwx.warnings.heavy_snow'))
 
-        wind = self._wind_speed(details.get("wind_speed")) or 0
-        if wind >= 30:
+        # The threshold is 30 mph, as Open-Meteo's is; the warning shows the
+        # speed in the configured unit, like the wind in the reply it follows.
+        meters_per_second = details.get("wind_speed")
+        if meters_per_second is not None and ms_to(meters_per_second, 'mph') >= 30:
+            wind = self._wind_speed(meters_per_second) or 0
             unit = self.host.translate(f'services.weather_service.wind_speed_units.{self.units.wind_speed}')
             warnings.append(self.host.translate(
                 'commands.gwx.warnings.high_winds', wind_speed=round_half_away(wind), unit=unit

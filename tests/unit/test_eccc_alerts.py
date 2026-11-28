@@ -77,6 +77,56 @@ def _provider(response=None, host=None, clock=None):
     return provider, session, host, clock
 
 
+# --- the window -------------------------------------------------------------
+
+
+def test_the_summary_window_is_in_local_time():
+    """Apica Mountain is UTC-5 in November: 05:00Z is midnight there."""
+    provider, _session_, _host_, _clock = _provider()
+
+    summary = provider.summary(*INSIDE, 150)
+
+    assert "12AM" in summary.text, summary.text
+
+
+def test_the_full_list_window_is_in_local_time():
+    provider, _session_, host, _clock = _provider()
+
+    asyncio.run(provider.send_full_list(Mock(), *INSIDE))
+
+    sent = host.send_response.call_args.args[1]
+    assert "12AM" in sent, sent
+
+
+# --- caching ----------------------------------------------------------------
+
+
+def test_a_transient_failure_is_retried_after_a_minute():
+    calls = {"n": 0}
+
+    def respond(_call):
+        calls["n"] += 1
+        return _Response(503) if calls["n"] == 1 else _Response(200, _payload())
+
+    provider, session, _host_, clock = _provider(response=respond)
+
+    assert provider._alerts_for(*INSIDE) is None
+    clock.advance(61)
+
+    assert provider._alerts_for(*INSIDE) is not None
+    assert session.count() == 2
+
+
+def test_a_success_is_still_cached_for_five_minutes():
+    provider, session, _host_, clock = _provider()
+
+    provider._alerts_for(*INSIDE)
+    clock.advance(61)
+    provider._alerts_for(*INSIDE)
+
+    assert session.count() == 1
+
+
 # --- matching ---------------------------------------------------------------
 
 
@@ -129,8 +179,10 @@ def test_the_window_runs_from_validity_to_the_event_end():
     alerts = provider._alerts_for(*INSIDE)
     yellow = [alert for alert in alerts if alert["level"] == 2][0]
 
-    assert yellow["onset"] == datetime(2026, 11, 27, 20, 18, tzinfo=timezone.utc)
-    assert yellow["expires"] == datetime(2026, 11, 28, 5, 0, tzinfo=timezone.utc)
+    # The window is shifted into the point's offset (UTC-5 here), so the
+    # summary and the full list read in local time.
+    assert yellow["onset"] == datetime(2026, 11, 27, 15, 18, tzinfo=timezone.utc)
+    assert yellow["expires"] == datetime(2026, 11, 28, 0, 0, tzinfo=timezone.utc)
 
 
 def test_the_event_and_area_follow_the_bot_language():

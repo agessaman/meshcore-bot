@@ -68,8 +68,13 @@ class _Host(WeatherCommandMixin):
         return 150
 
 
-def _provider():
-    return MetNorwayProvider(_Host(), WeatherUnits("fahrenheit", "mph", "inch"))
+def _provider(now=None):
+    provider = MetNorwayProvider(_Host(), WeatherUnits("fahrenheit", "mph", "inch"))
+    if now is not None:
+        # The daily split drops days before the current local day, so a fixture
+        # dated in the past needs the clock to agree with it.
+        provider._now = lambda: now
+    return provider
 
 
 def _payload(times):
@@ -339,7 +344,7 @@ def test_the_lookup_keeps_four_decimals(zones):
 
 
 def test_the_daily_split_uses_the_real_zone(zones):
-    provider = _provider()
+    provider = _provider(now=datetime(2026, 1, 15, 12, 0, tzinfo=UTC))
     payload = _payload(["2026-01-15T23:30:00Z", "2026-01-16T00:30:00Z"])
 
     days = provider._daily(payload, *MADRID)
@@ -349,7 +354,7 @@ def test_the_daily_split_uses_the_real_zone(zones):
 
 
 def test_the_daily_split_falls_back_to_the_estimate(no_tzfpy):
-    provider = _provider()
+    provider = _provider(now=datetime(2026, 1, 15, 12, 0, tzinfo=UTC))
     payload = _payload(["2026-01-15T23:30:00Z", "2026-01-16T00:30:00Z"])
 
     days = provider._daily(payload, *MADRID)

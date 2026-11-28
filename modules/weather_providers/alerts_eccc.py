@@ -22,11 +22,15 @@ from typing import Any, Optional
 from ..http_retry import make_retry_session
 from ._alerts_common import PackedAlertsMixin
 from ._geo import geometry_contains
+from ._tz import utc_offset_at
 from .base import AlertsProvider, Coverage, ProviderHost
 from .eccc import CANADA_LAT, CANADA_LON, ECCC_BASE_URL, ECCC_TIMEOUT
 
 ALERTS_COLLECTION = "weather-alerts"
 ALERT_CACHE_SECONDS = 300
+# A failed fetch is retried soon: caching it as long as a success would hide a
+# recovered service for the whole TTL.
+FAILURE_CACHE_SECONDS = 60
 ALERT_BBOX_DEGREES = 0.05
 
 # The risk colour is the severity: a statement carries none and ranks lowest.
@@ -120,7 +124,7 @@ class EcccAlertsProvider(PackedAlertsMixin, AlertsProvider):
         for feature in features:
             if not geometry_contains(feature.get("geometry"), lon, lat):
                 continue
-            alert = self._normalize(feature, now)
+            alert = self._normalize(feature, now, lat, lon)
             if alert is not None:
                 alerts.append(alert)
         alerts.sort(key=lambda alert: (-alert["level"], alert["onset"] or now))
@@ -136,8 +140,9 @@ class EcccAlertsProvider(PackedAlertsMixin, AlertsProvider):
                 return cached[1], cached[2]
 
         features, failed = self._fetch(lat, lon)
+        ttl = FAILURE_CACHE_SECONDS if failed else ALERT_CACHE_SECONDS
         with self._lock:
-            self._cache[key] = (now + ALERT_CACHE_SECONDS, features, failed)
+            self._cache[key] = (now + ttl, features, failed)
         return features, failed
 
     def _fetch(self, lat: float, lon: float) -> tuple[list, bool]:
@@ -191,8 +196,12 @@ class EcccAlertsProvider(PackedAlertsMixin, AlertsProvider):
             value = ''
         return 'fr' if value.lower().startswith('fr') else 'en'
 
-    def _normalize(self, feature: dict, now: datetime) -> Optional[dict]:
-        """One alert in the shape the shared summary and full list expect."""
+    def _normalize(self, feature: dict, now: datetime, lat: float, lon: float) -> Optional[dict]:
+        """One alert in the shape the shared summary and full list expect.
+
+        The window is shifted into the point's own offset, as DWD's is, so the
+        summary and the full list read in local time rather than in UTC.
+        """
         properties = feature.get("properties") or {}
         if str(properties.get("status_en") or "").strip().lower() == "ended":
             return None
@@ -215,7 +224,14 @@ class EcccAlertsProvider(PackedAlertsMixin, AlertsProvider):
         return {
             "level": RISK_LEVEL.get(colour, STATEMENT_LEVEL),
             "event": str(event).strip(),
-            "onset": _parse_time(properties.get("validity_datetime")),
-            "expires": expires,
+            "onset": self._local(_parse_time(properties.get("validity_datetime")), lat, lon),
+            "expires": self._local(expires, lat, lon),
             "area": str(properties.get(f"feature_name_{language}") or "").strip(),
         }
+
+    @staticmethod
+    def _local(moment: Optional[datetime], lat: float, lon: float) -> Optional[datetime]:
+        """A UTC instant in the point's own offset, so the window reads locally."""
+        if moment is None:
+            return None
+        return moment + utc_offset_at(lat, lon, moment)

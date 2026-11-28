@@ -144,19 +144,46 @@ def test_a_404_is_no_alerts_rather_than_a_failure():
     host.logger.warning.assert_not_called()
 
 
-def test_a_404_inside_germany_is_a_failure_not_an_all_clear():
-    # Bright Sky answers 404 for a point outside its warning cells, but inside
-    # them a 404 is the service failing, and an all-clear would be a lie.
+def test_a_404_inside_the_bbox_is_not_covered():
+    # Bright Sky's warning cells do not follow the border: Prague, Zurich and
+    # Strasbourg are inside the bbox and outside the service, and all of them
+    # answer 404. A 404 is therefore "not covered", not a failure.
+    prague = (50.08, 14.43)
     provider, _session_, host, _clock = _provider(
         response=_Response(404, _payload("paris"))
     )
 
+    assert provider.covers(*prague) is True  # the cheap pre-check says maybe
+    assert provider._alerts_for(*prague) == []
+    assert provider.summary(*prague, 150) is None
+    assert asyncio.run(provider.send_full_list(None, *prague)) is True
+    host.send_response.assert_awaited_once_with(None, "No weather alerts")
+
+
+def test_a_5xx_inside_the_bbox_is_still_a_failure():
+    provider, _session_, host, _clock = _provider(response=_Response(503))
+
     assert provider._alerts_for(*MUNICH) is None
-    assert provider.summary(*MUNICH, 150) is None
     assert asyncio.run(provider.send_full_list(None, *MUNICH)) is True
     host.send_response.assert_awaited_once_with(
         None, host.translate("commands.wx.dwd.error_fetching")
     )
+
+
+def test_a_transient_failure_is_retried_after_a_minute():
+    calls = {"n": 0}
+
+    def respond(_call):
+        calls["n"] += 1
+        return _Response(503) if calls["n"] == 1 else _Response(200, _payload("munich"))
+
+    provider, session, _host_, clock = _provider(response=respond)
+
+    assert provider._alerts_for(*MUNICH) is None
+    clock.advance(61)
+
+    assert provider._alerts_for(*MUNICH) is not None
+    assert session.count() == 2
 
 
 # --- filtering --------------------------------------------------------------
