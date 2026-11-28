@@ -308,11 +308,12 @@ class NoaaProvider(WeatherProvider):
         With the Open-Meteo fallback on, a *point* request also records whether
         NWS covers that point.
         """
+        # Only a point request with the fallback on records coverage.
+        point = point if self.fallback_enabled else None
         try:
             response = self.session.get(url, timeout=self.url_timeout)
-            track = point is not None and self.fallback_enabled
             if not response.ok:
-                if track and nws_http_means_no_coverage(response.status_code):
+                if point is not None and nws_http_means_no_coverage(response.status_code):
                     self.coverage.mark_unavailable(*point)
                     self.host.logger.debug(
                         "NWS has no coverage for %s,%s (HTTP %s)",
@@ -321,7 +322,7 @@ class NoaaProvider(WeatherProvider):
                     return None
                 self.host.logger.warning(f"Error fetching {what} from NOAA: HTTP {response.status_code}")
                 return None
-            if track:
+            if point is not None:
                 self.coverage.mark_available(*point)
         except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
             self.host.logger.warning(f"Timeout/connection error fetching {what} from NOAA: {e}")
@@ -1157,7 +1158,7 @@ class NoaaProvider(WeatherProvider):
             return datetime.now().strftime('%A')
         return None
 
-    def _add_period_details(self, period_str: str, detailed_forecast: str, current_weather_length: int, max_length: int = 130, observation_data: dict = None) -> str:
+    def _add_period_details(self, period_str: str, detailed_forecast: str, current_weather_length: int, max_length: int = 130, observation_data: Optional[dict] = None) -> str:
         """Add additional details (humidity, dew point, visibility, etc.) to a period string
 
         Args:

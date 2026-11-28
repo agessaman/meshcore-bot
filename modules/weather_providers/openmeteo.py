@@ -157,7 +157,7 @@ class OpenMeteoProvider(WeatherProvider):
         command prepends; the body is formatted to what is left of the frame
         budget.
         """
-        current = {}
+        current: dict[str, Any] = {}
         if forecast_type == "tomorrow":
             text = self.get_open_meteo_weather(
                 lat, lon, forecast_type="tomorrow", message=message, location_prefix_len=location_prefix_len
@@ -226,7 +226,7 @@ class OpenMeteoProvider(WeatherProvider):
             else:
                 forecast_days = 2  # Default
 
-            params = {
+            params: dict[str, Any] = {
                 'latitude': lat,
                 'longitude': lon,
                 'current': 'temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure,is_day',

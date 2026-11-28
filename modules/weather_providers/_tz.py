@@ -23,15 +23,24 @@ import functools
 import logging
 import threading
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Any, Optional, TypedDict
 
-import pytz
+import pytz  # type: ignore[import-untyped]  # pytz ships no type information
 
 logger = logging.getLogger(__name__)
 
+class _State(TypedDict):
+    """The lazily chosen backend and the objects it needs."""
+
+    checked: bool
+    backend: Optional[str]
+    module: Any
+    finder: Any
+
+
 # Both lookups are imported on first use rather than at import time, so a
 # missing wheel costs one failed import and the tests can stub them.
-_state = {
+_state: _State = {
     "checked": False,
     "backend": None,
     "module": None,

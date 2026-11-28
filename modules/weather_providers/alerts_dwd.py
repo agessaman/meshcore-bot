@@ -78,7 +78,7 @@ def _title_case(text: str, language: str = "en") -> str:
     out = []
     first = True
     for word in text.lower().split(" "):
-        pieces = []
+        pieces: list[str] = []
         for piece in word.split("-"):
             if not piece:
                 pieces.append(piece)
@@ -164,7 +164,8 @@ class DwdAlertsProvider(PackedAlertsMixin, AlertsProvider):
             return []
 
         now = self._now()
-        location = body.get("location") if isinstance(body.get("location"), dict) else {}
+        raw_location = body.get("location")
+        location = raw_location if isinstance(raw_location, dict) else {}
         area = str(location.get("name") or "").strip()
         alerts = []
         for raw in body.get("alerts") or []:

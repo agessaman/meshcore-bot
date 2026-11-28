@@ -232,6 +232,8 @@ def _references(value: Optional[str]) -> set:
 def _index_info(feature: dict) -> Optional[int]:
     """A feature's indexInfo: which CAP info block describes its area."""
     value = (feature.get("properties") or {}).get("indexInfo")
+    if not isinstance(value, (int, float, str)):
+        return None
     try:
         return int(value)
     except (TypeError, ValueError):
@@ -657,9 +659,11 @@ class MeteoalarmAlertsProvider(PackedAlertsMixin, AlertsProvider):
         """
         with self._lock:
             entry = self._inflight.get(key)
-            owner = entry is None
-            if owner:
+            if entry is None:
                 entry = self._inflight[key] = _Inflight()
+                owner = True
+            else:
+                owner = False
         if not owner:
             entry.done.wait(INFLIGHT_TIMEOUT)
             return entry.value

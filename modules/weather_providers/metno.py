@@ -151,6 +151,14 @@ def _default_user_agent() -> str:
     return f"{name} {USER_AGENT_CONTACT}"
 
 
+def _step_time(step: dict) -> datetime:
+    """A step's time, which :meth:`MetNorwayProvider._steps` has already validated."""
+    when = _parse_time(step.get("time"))
+    if when is None:
+        raise ValueError("step has no usable time")
+    return when
+
+
 def _parse_time(value: Any) -> Optional[datetime]:
     """An ISO 8601 UTC timestamp from the API, or None."""
     if not isinstance(value, str) or not value:
@@ -530,7 +538,7 @@ class MetNorwayProvider(WeatherProvider):
         now = self._now()
         chosen = steps[0]
         for step in steps:
-            if _parse_time(step["time"]) <= now:
+            if _step_time(step) <= now:
                 chosen = step
             else:
                 break
@@ -551,7 +559,7 @@ class MetNorwayProvider(WeatherProvider):
         days: dict = {}
         order: list = []
         for step in self._steps(data):
-            when = _parse_time(step["time"])
+            when = _step_time(step)
             moment = when + self._offset(lat, lon, when)
             day = moment.date()
             if day < today:
@@ -657,7 +665,7 @@ class MetNorwayProvider(WeatherProvider):
             self.host.logger.warning("MET Norway response has no current temperature")
             return None
 
-        when = _parse_time(step["time"])
+        when = _step_time(step)
         local_hour = (when + self._offset(lat, lon, when)).hour
         base, is_day = self._step_symbol(step)
         condition = f"{self._emoji(base, is_day)}{self._description(base)}" if base else ""
@@ -831,7 +839,7 @@ class MetNorwayProvider(WeatherProvider):
         if not steps:
             return self.host.translate('commands.gwx.hourly_not_available')
         current = self._current_step(steps)
-        current_when = _parse_time(current["time"])
+        current_when = _step_time(current)
         # The cutoff is a UTC instant, so a fall-back day keeps both of its
         # 02:00 steps; the offset is only used to label each one.
         next_hour = current_when.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
@@ -841,7 +849,7 @@ class MetNorwayProvider(WeatherProvider):
             if not self._next(step, "next_1_hours"):
                 # The series turns six-hourly after about two and a half days.
                 continue
-            when = _parse_time(step["time"])
+            when = _step_time(step)
             if when < next_hour:
                 continue
             moment = when + self._offset(lat, lon, when)
