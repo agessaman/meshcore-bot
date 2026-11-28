@@ -80,3 +80,74 @@ def test_rain_keeps_its_quiet_companion_lookup():
     rain.logger = Mock()
     rain._get_companion_location(SimpleNamespace(sender_pubkey="ab" * 16))
     rain.logger.debug.assert_not_called()
+
+
+def test_the_old_class_name_is_the_new_class():
+    from modules.commands.gwx_command import GwxCommand
+
+    assert GlobalWxCommand is GwxCommand
+    assert wx_international.GlobalWxCommand is GwxCommand
+
+
+def test_the_compat_module_keeps_the_names_code_imported():
+    for name in ("OPEN_METEO_TIMEOUT", "GWX_MULTIDAY_MAX_DAYS", "MI_TO_KM", "HPA_TO_MMHG",
+                 "VISIBILITY_CAP_MI", "VISIBILITY_CAP_KM", "OpenMeteoProvider", "weather_emoji",
+                 "WXSIMParser", "WeatherCommandMixin", "load_open_meteo_model", "BaseCommand",
+                 "MeshMessage", "datetime", "timedelta", "requests", "asyncio", "math", "re"):
+        assert hasattr(wx_international, name), name
+
+
+@pytest.mark.parametrize(("method", "args"), [
+    ("get_open_meteo_weather", (47.6, -122.3)),
+    ("format_tomorrow_forecast", ({},)),
+    ("format_multiday_forecast", ({},)),
+])
+def test_the_open_meteo_forwarders_warn_and_reach_the_provider(method, args):
+    cmd = GlobalWxCommand(_bot())
+    reached = Mock(return_value="ANSWER")
+    setattr(cmd.provider, method, reached)
+
+    with pytest.warns(DeprecationWarning, match=f"cmd.provider.{method}; removed in 1.4"):
+        assert getattr(cmd, method)(*args) == "ANSWER"
+
+    assert reached.call_args.args[:len(args)] == args
+
+
+@pytest.mark.parametrize(("attribute", "expected"), [
+    ("temperature_unit", "fahrenheit"),
+    ("wind_speed_unit", "mph"),
+    ("precipitation_unit", "inch"),
+    ("weather_model", "best_match"),
+    ("metric_distance", False),
+])
+def test_the_unit_and_model_properties_warn_and_read_the_provider(attribute, expected):
+    cmd = GlobalWxCommand(_bot())
+
+    with pytest.warns(DeprecationWarning, match="removed in 1.4"):
+        assert getattr(cmd, attribute) == expected
+
+
+def test_the_unit_setters_warn_and_reach_the_provider():
+    cmd = GlobalWxCommand(_bot())
+
+    with pytest.warns(DeprecationWarning, match="removed in 1.4"):
+        cmd.temperature_unit = "celsius"
+    with pytest.warns(DeprecationWarning, match="removed in 1.4"):
+        cmd.wind_speed_unit = "kmh"
+    with pytest.warns(DeprecationWarning, match="removed in 1.4"):
+        cmd.precipitation_unit = "mm"
+    with pytest.warns(DeprecationWarning, match="removed in 1.4"):
+        cmd.weather_model = "ecmwf_ifs04"
+
+    assert cmd.provider.units.temperature == "celsius"
+    assert cmd.provider.units.wind_speed == "kmh"
+    assert cmd.provider.units.precipitation == "mm"
+    assert cmd.provider.weather_model == "ecmwf_ifs04"
+
+
+def test_a_forwarder_on_another_provider_says_so():
+    cmd = GlobalWxCommand(_bot({"Gwx_Command": {"weather_provider": "noaa"}}))
+
+    with pytest.warns(DeprecationWarning):
+        with pytest.raises(AttributeError, match="needs the Open-Meteo provider"):
+            cmd.get_open_meteo_weather(47.6, -122.3)

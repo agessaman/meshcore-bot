@@ -5,10 +5,9 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from modules.commands.alternatives.wx_international import GlobalWxCommand
+from modules.commands.gwx_command import GwxCommand
 from modules.i18n import Translator
-
-MODULE = "modules.commands.alternatives.wx_international"
+from modules.weather_providers.openmeteo import weather_emoji
 
 
 def _gwx(temperature_unit="fahrenheit", wind_unit="mph", language="en"):
@@ -20,7 +19,7 @@ def _gwx(temperature_unit="fahrenheit", wind_unit="mph", language="en"):
     bot = Mock()
     bot.config = config
     bot.translator = Translator(language)
-    cmd = GlobalWxCommand(bot)
+    cmd = GwxCommand(bot)
     cmd.geocode_location = Mock(return_value=(1.0, 2.0, {"city": "Test City", "country_code": "fr"}, None))
     cmd._format_location_display = Mock(return_value="Test City")
     cmd.get_max_message_length = Mock(return_value=158)
@@ -53,7 +52,7 @@ def _run(cmd, data, forecast_type="default", ok=True):
     response.json.return_value = data
     with patch("requests.Session.get", return_value=response) as get:
         result = cmd._get_weather_for_location_sync(
-            "Test City", forecast_type=forecast_type, num_days=2, message=Mock()
+            "Test City", "city", forecast_type, 2, Mock(), False
         )
     get.assert_called_once()
     assert get.call_args.kwargs["params"]["temperature_unit"] == cmd.temperature_unit
@@ -161,7 +160,7 @@ def test_warning_words_in_a_description_do_not_create_warnings():
 
 def test_warning_does_not_depend_on_a_rendered_description():
     cmd = _gwx()
-    cmd._get_weather_description = Mock(return_value="Wet")
+    cmd.provider._get_weather_description = Mock(return_value="Wet")
     _assert_warning(_run(cmd, _data(cmd, weather_code=65)), "⚠️ Heavy rain")
 
 
@@ -209,5 +208,5 @@ def test_public_weather_getter_still_returns_text():
 def test_heavy_thunderstorm_code_has_its_own_description_and_emoji():
     # Open-Meteo documents WMO 97 as a heavy thunderstorm.
     cmd = _gwx()
-    assert cmd._get_weather_description(97) == "Heavy T-Storm"
-    assert cmd._get_weather_emoji(97) == "⛈️"
+    assert cmd.provider._get_weather_description(97) == "Heavy T-Storm"
+    assert weather_emoji(97) == "⛈️"

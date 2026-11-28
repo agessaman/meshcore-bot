@@ -7,10 +7,10 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from modules.commands.alternatives.wx_international import GlobalWxCommand
+from modules.commands.gwx_command import GwxCommand
 from modules.commands.wx_command import WxCommand
 
-CLASSES = [WxCommand, GlobalWxCommand]
+CLASSES = [WxCommand, GwxCommand]
 
 
 def _cmd(cls, default_city=""):
@@ -75,9 +75,8 @@ def test_the_default_wxsim_source_answers_the_option(cls):
     cmd._get_wxsim_weather = Mock(return_value="Tomorrow: sunny")
     cmd._get_wxsim_weather_async = AsyncMock(return_value="Tomorrow: sunny")
     assert _say(cmd, f"{cmd.keywords[0]} tomorrow")
-    fetch = cmd._get_wxsim_weather_async if cls is WxCommand else cmd._get_wxsim_weather
-    call = fetch.await_args if cls is WxCommand else fetch.call_args
-    assert call.args[1:3] == ("tomorrow", 7)
+    # Both commands fetch a WXSIM source through the same off-loop wrapper.
+    assert cmd._get_wxsim_weather_async.await_args.args[1:3] == ("tomorrow", 7)
     cmd.send_response.assert_awaited_once()
 
 

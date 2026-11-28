@@ -262,3 +262,58 @@ class TestLocalPlugins:
         warning_calls = [str(c) for c in loader_bot.logger.warning.call_args_list]
         assert any("already loaded" in str(c) and "ping" in str(c) for c in warning_calls)
 
+
+class TestRetiredWxInternationalOverride:
+    """`[Plugin_Overrides] wx = wx_international` is the provider setting now."""
+
+    def _loader(self, loader_bot, overrides):
+        loader_bot.config.add_section("Plugin_Overrides")
+        for key, value in overrides.items():
+            loader_bot.config.set("Plugin_Overrides", key, value)
+        return PluginLoader(loader_bot)
+
+    def test_the_override_warns_once_and_sets_the_provider(self, loader_bot):
+        loader = self._loader(loader_bot, {"wx": "wx_international"})
+
+        assert loader.plugin_overrides == {}
+        assert loader_bot.config.get("Weather", "weather_provider") == "openmeteo"
+        warnings = [str(c) for c in loader_bot.logger.warning.call_args_list]
+        assert len(warnings) == 1
+        assert "wx = wx_international is deprecated" in warnings[0]
+        assert "[Weather] weather_provider = openmeteo" in warnings[0]
+
+    def test_the_override_accepts_the_py_suffix(self, loader_bot):
+        loader = self._loader(loader_bot, {"wx": "wx_international.py"})
+
+        assert loader.plugin_overrides == {}
+        assert loader_bot.config.get("Weather", "weather_provider") == "openmeteo"
+
+    def test_the_override_creates_the_weather_section_when_missing(self, loader_bot):
+        loader_bot.config.remove_section("Weather")
+        loader = self._loader(loader_bot, {"wx": "wx_international"})
+
+        assert loader.plugin_overrides == {}
+        assert loader_bot.config.get("Weather", "weather_provider") == "openmeteo"
+
+    def test_other_overrides_still_load(self, loader_bot):
+        loader = self._loader(loader_bot, {"wx": "wx_international", "ping": "ping_alt"})
+
+        assert loader.plugin_overrides == {"ping": "ping_alt"}
+
+
+class TestCompatibilityAlternatives:
+    """A compatibility module defines no command class, so it is not a plugin."""
+
+    def test_the_compat_module_is_not_discovered(self, loader_bot):
+        loader = PluginLoader(loader_bot)
+
+        assert "wx_international" not in loader.discover_alternative_plugins()
+
+    def test_loading_all_plugins_does_not_report_it_as_failed(self, loader_bot):
+        loader = PluginLoader(loader_bot, local_commands_dir=str(Path("/nonexistent")))
+
+        loaded = loader.load_all_plugins()
+
+        assert "wx_international" not in loader.get_failed_plugins()
+        assert "gwx" in loaded
+        assert loaded["gwx"].__class__.__name__ == "GwxCommand"

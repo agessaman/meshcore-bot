@@ -15,6 +15,15 @@ from typing import Any, Optional
 
 from .commands.base_command import BaseCommand
 
+# Alternatives kept only so old imports and overrides still resolve. They define
+# no command class of their own, so there is nothing to load and nothing to warn
+# about.
+COMPATIBILITY_ALTERNATIVES = frozenset({"wx_international"})
+
+# The alternative that used to be the way to make wx answer from Open-Meteo, and
+# the setting that does it now.
+_RETIRED_OVERRIDES = {"wx_international": ("Weather", "weather_provider", "openmeteo")}
+
 
 class PluginLoader:
     """Handles dynamic loading and discovery of command plugins"""
@@ -50,12 +59,34 @@ class PluginLoader:
                     # Remove .py extension if present
                     if alternative_file.endswith('.py'):
                         alternative_file = alternative_file[:-3]
-                    self.plugin_overrides[command_name.strip()] = alternative_file.strip()
+                    command_name = command_name.strip()
+                    alternative_file = alternative_file.strip()
+                    if alternative_file in _RETIRED_OVERRIDES:
+                        self._retire_override(command_name, alternative_file)
+                        continue
+                    self.plugin_overrides[command_name] = alternative_file
                     self.logger.info(f"Plugin override configured: {command_name} -> {alternative_file}")
         except Exception as e:
             self.logger.error(f"Error loading plugin overrides: {e}")
             # Track this as a configuration error
             self._failed_plugins['plugin_overrides_config'] = str(e)
+
+    def _retire_override(self, command_name: str, alternative_file: str) -> None:
+        """Apply a retired override as the setting that replaced it, with one warning.
+
+        ``wx = wx_international`` used to swap in the global weather command. The
+        global command is ``gwx`` now, and ``wx`` answers from Open-Meteo when the
+        provider setting says so, so the override sets that instead of loading a
+        second command.
+        """
+        section, key, value = _RETIRED_OVERRIDES[alternative_file]
+        self.logger.warning(
+            f"[Plugin_Overrides] {command_name} = {alternative_file} is deprecated; "
+            f"set [{section}] {key} = {value} instead"
+        )
+        if not self.bot.config.has_section(section):
+            self.bot.config.add_section(section)
+        self.bot.config.set(section, key, value)
 
     def discover_plugins(self) -> list[str]:
         """Discover all Python files in the commands directory that could be plugins"""
@@ -89,7 +120,7 @@ class PluginLoader:
         # Note: glob("*.py") only matches files in the current directory, not subdirectories
         # So the 'inactive' subdirectory is automatically excluded
         for file_path in alternatives_path.glob("*.py"):
-            if file_path.name not in ["__init__.py"]:
+            if file_path.name not in ["__init__.py"] and file_path.stem not in COMPATIBILITY_ALTERNATIVES:
                 plugin_files.append(file_path.stem)
 
         if plugin_files:
@@ -366,23 +397,6 @@ class PluginLoader:
             if alt_instance:
                 alt_metadata = alt_instance.get_metadata()
                 alt_plugin_name = alt_metadata['name']
-
-                # Special case: If wx_international is available and wx command is missing,
-                # automatically use it as wx (fallback behavior)
-                if alt_file == 'wx_international' and 'wx' not in loaded_plugins:
-                    self.logger.info(
-                        "Default 'wx' command not found, using 'wx_international' as fallback for 'wx' command"
-                    )
-                    # Update the instance to use 'wx' name and keywords
-                    alt_instance.name = 'wx'
-                    alt_metadata['name'] = 'wx'
-                    # Update keywords to match wx command
-                    alt_instance.keywords = ['wx', 'weather', 'wxa', 'wxalert']
-                    alt_metadata['keywords'] = ['wx', 'weather', 'wxa', 'wxalert']
-                    alt_metadata['description'] = "Get weather information for any location (usage: wx Tokyo)"
-                    loaded_plugins['wx'] = alt_instance
-                    self.plugin_metadata['wx'] = alt_metadata
-                    continue
 
                 # If an alternative plugin has the same name as a default plugin,
                 # it will replace it (unless already overridden by config)

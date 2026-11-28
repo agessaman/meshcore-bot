@@ -655,7 +655,6 @@
  "modules/commands/wx_command.py": [
   "BaseCommand",
   "Callable",
-  "GlobalWxCommand",
   "MeshMessage",
   "NWSNoCoverageCache",
   "Optional",
