@@ -176,11 +176,55 @@ def service_section_name(service_class: type) -> str:
     return cls[:-7] if cls.endswith("Service") else cls
 
 
+def section_own_items(config: configparser.ConfigParser, section: str) -> list[tuple[str, str]]:
+    """Return the raw ``(key, value)`` pairs a section sets itself.
+
+    ``config.items(section)`` folds in every ``[DEFAULT]`` key, so a secret set
+    there (a token, a password) would show up in every plugin card's raw values
+    and be sent to the browser in plaintext. This lists only the section's own
+    keys, uninterpolated, so '%' in values doesn't trip interpolation either.
+    """
+    if not config.has_section(section):
+        return []
+    own = getattr(config, "_sections", None)
+    if isinstance(own, dict) and isinstance(own.get(section), dict):
+        return [(key, "" if raw is None else str(raw)) for key, raw in own[section].items()]
+    # Fallback for parser-like objects without the private store: drop keys that
+    # only mirror [DEFAULT]. A section that repeats a default verbatim loses that
+    # key from the list, which is harmless: it reads the same either way.
+    defaults = config.defaults()
+    return [
+        (key, raw)
+        for key, raw in config.items(section, raw=True)
+        if key not in defaults or defaults[key] != raw
+    ]
+
+
+def is_inherited_default(config: configparser.ConfigParser, section: str, key: str, value: str) -> bool:
+    """True when ``value`` is just ``[DEFAULT]``'s value for a key ``section`` doesn't set.
+
+    The save path uses this to avoid copying an inherited value into a section,
+    which would freeze it there and stop later ``[DEFAULT]`` edits from applying.
+    """
+    defaults = config.defaults()
+    optkey = config.optionxform(key)
+    if optkey not in defaults or defaults[optkey] != value:
+        return False
+    return all(k != optkey for k, _ in section_own_items(config, section))
+
+
 def _read_typed(config: configparser.ConfigParser, section: str, field: dict) -> Any:
     """Read a field's current value from config, typed, falling back to default.
 
     A field may override ``section`` to read from a shared section (e.g. a
     weather command exposing ``[Weather] default_state``).
+
+    Typed fields deliberately report a value inherited from ``[DEFAULT]``: the
+    bot reads it at runtime through the same configparser fallback, so showing
+    the schema default instead would misstate what runs. That's safe for
+    secrets because password fields are masked to ``has_value`` before the view
+    leaves the server, and the save path skips a value that only echoes
+    ``[DEFAULT]`` so the inherited value isn't copied into the section.
     """
     key = field["key"]
     section = field.get("section") or section
@@ -552,14 +596,14 @@ def _assemble_entry(
             skip_keys.add(legacy_key.lower())
     schema_keys = {f["key"].lower() for f in fields}
 
-    # Raw values for the fallback editor: every other key in the section.
-    # raw=True so '%' in values doesn't trip configparser interpolation.
+    # Raw values for the fallback editor: every other key the section sets
+    # itself. Keys inherited from [DEFAULT] stay out, or a secret there would
+    # reach the browser in plaintext on every card.
     values: dict[str, str] = {}
-    if config.has_section(section):
-        for key, raw in config.items(section, raw=True):
-            if key.lower() in skip_keys or key.lower() in schema_keys:
-                continue
-            values[key] = raw
+    for key, raw in section_own_items(config, section):
+        if key.lower() in skip_keys or key.lower() in schema_keys:
+            continue
+        values[key] = raw
 
     for field in fields:
         target = field.get("section") or section
@@ -613,11 +657,10 @@ def _read_repeating_blocks(
         enabled_field = d.get("enabled_field", "enabled")
         rx = re.compile(rf"^{re.escape(bid)}(\d+)_(.+)$")
         groups: dict[int, dict[str, str]] = {}
-        if config.has_section(section):
-            for key, raw in config.items(section, raw=True):
-                m = rx.match(key)
-                if m:
-                    groups.setdefault(int(m.group(1)), {})[m.group(2)] = raw
+        for key, raw in section_own_items(config, section):
+            m = rx.match(key)
+            if m:
+                groups.setdefault(int(m.group(1)), {})[m.group(2)] = raw
         blocks = []
         schema_keys = [
             field.get("key")
@@ -668,8 +711,7 @@ def read_section_items(
     if not config.has_section(section):
         return items
     pl = prefix.lower()
-    # raw=True so '%' in values doesn't trip interpolation.
-    for key, raw in config.items(section, raw=True):
+    for key, raw in section_own_items(config, section):
         if prefix:
             if not key.lower().startswith(pl):
                 continue

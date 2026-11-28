@@ -18,8 +18,11 @@ from modules.ini_writer import backup_config, update_ini_values
 from modules.managed_keys import MANAGED_KEYS_ENV
 from modules.settings_schema import (
     _assemble_entry,
+    _read_typed,
     build_plugin_settings_view,
     read_enabled,
+    read_section_items,
+    section_own_items,
     to_config_string,
     validate_field,
 )
@@ -1029,3 +1032,147 @@ class TestHomeAssistantManagedKeys:
         assert deleted.status_code == 400, deleted.get_json()
         assert "Managed by Home Assistant" in deleted.get_json()["error"]
         assert "@daily = general:hello" in path.read_text(encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
+# [DEFAULT] keys must not leak into per-section raw values
+# ---------------------------------------------------------------------------
+
+def _config_with_default_secret() -> configparser.ConfigParser:
+    cfg = configparser.ConfigParser(defaults={"meteoalarm_token": "SECRET"})
+    cfg.add_section("Ping_Command")
+    return cfg
+
+
+class TestDefaultSectionLeak:
+    def test_default_secret_absent_from_raw_values(self):
+        view = build_plugin_settings_view(_config_with_default_secret())
+        ping = next(e for e in view if e["kind"] == "command" and e["name"] == "ping")
+        assert "meteoalarm_token" not in ping["values"]
+        assert "SECRET" not in json.dumps(view)
+
+    def test_section_own_keys_still_listed(self):
+        cfg = _config_with_default_secret()
+        cfg.read_string("[Ping_Command]\ncustom_key = 50%\n")
+        view = build_plugin_settings_view(cfg)
+        ping = next(e for e in view if e["kind"] == "command" and e["name"] == "ping")
+        assert ping["values"] == {"custom_key": "50%"}
+
+    def test_section_override_of_a_default_key_is_listed(self):
+        """A key the section sets itself stays, even when [DEFAULT] has it too."""
+        cfg = _config_with_default_secret()
+        cfg.set("Ping_Command", "meteoalarm_token", "SECRET")
+        assert section_own_items(cfg, "Ping_Command") == [("meteoalarm_token", "SECRET")]
+
+    def test_section_own_items_missing_section(self):
+        assert section_own_items(_config_with_default_secret(), "Nope") == []
+
+    def test_read_section_items_skips_default_keys(self):
+        cfg = _config_with_default_secret()
+        cfg.add_section("Channels_List")
+        cfg.set("Channels_List", "seattle", "Seattle chat")
+        items = read_section_items(cfg, "Channels_List", "", frozenset())
+        assert items == [{"key": "seattle", "value": "Seattle chat"}]
+
+    def test_typed_field_reports_inherited_default(self):
+        """Typed fields show what the bot actually reads, [DEFAULT] included."""
+        cfg = configparser.ConfigParser(defaults={"rollout_days": "3"})
+        cfg.add_section("Greeter_Command")
+        field = {"key": "rollout_days", "type": "int", "default": 7}
+        assert _read_typed(cfg, "Greeter_Command", field) == 3
+
+    def test_inherited_password_is_masked(self):
+        cfg = configparser.ConfigParser(defaults={"api_password": "s3cret-value"})
+        cfg.add_section("Dummy_Command")
+        field = TestBuildViewPasswordRedaction()._field(cfg)
+        assert field["value"] == ""
+        assert field["has_value"] is True
+
+
+def _add_default_section(viewer, tmp_path: Path, body: str) -> Path:
+    path = tmp_path / "config.ini"
+    path.write_text(f"[DEFAULT]\n{body}\n" + path.read_text(encoding="utf-8"), encoding="utf-8")
+    viewer.config = viewer._load_merged_config()
+    return path
+
+
+class TestPluginsApiDefaultSection:
+    def test_get_plugins_never_sends_default_secret(self, viewer, tmp_path):
+        _add_default_section(viewer, tmp_path, "meteoalarm_token = SECRET")
+        resp = viewer.app.test_client().get("/api/plugins")
+        assert resp.status_code == 200
+        assert "SECRET" not in resp.get_data(as_text=True)
+
+    def test_raw_values_round_trip_without_copying_defaults(self, viewer, tmp_path):
+        path = _add_default_section(viewer, tmp_path, "meteoalarm_token = SECRET\nshared_note = hi")
+        client = viewer.app.test_client()
+        resp = client.post("/api/plugins/command/ping", json={"enabled": True, "values": {
+            "custom_key": "50%",
+        }})
+        assert resp.status_code == 200, resp.get_json()
+
+        ping = next(
+            e for e in client.get("/api/plugins").get_json()["plugins"]
+            if e["kind"] == "command" and e["name"] == "ping"
+        )
+        assert ping["values"] == {"custom_key": "50%"}
+
+        # Save what the page shows, plus the [DEFAULT] keys a page loaded before
+        # the fix would echo back: only the section's own keys get written.
+        resp = client.post("/api/plugins/command/ping", json={"enabled": True, "values": {
+            **ping["values"], "meteoalarm_token": "SECRET", "shared_note": "hi",
+        }})
+        assert resp.status_code == 200, resp.get_json()
+        raw = configparser.RawConfigParser()
+        raw.read(path, encoding="utf-8")
+        own = dict(section_own_items(raw, "Ping_Command"))
+        assert own == {"custom_key": "50%", "enabled": "true"}
+        assert raw.defaults() == {"meteoalarm_token": "SECRET", "shared_note": "hi"}
+
+    def test_changed_value_for_a_default_key_is_written(self, viewer, tmp_path):
+        """Overriding a [DEFAULT] key with a different value is a real edit."""
+        path = _add_default_section(viewer, tmp_path, "shared_note = hi")
+        resp = viewer.app.test_client().post("/api/plugins/command/ping", json={
+            "enabled": True, "values": {"shared_note": "bye"},
+        })
+        assert resp.status_code == 200, resp.get_json()
+        raw = configparser.RawConfigParser()
+        raw.read(path, encoding="utf-8")
+        assert dict(section_own_items(raw, "Ping_Command"))["shared_note"] == "bye"
+
+    def test_typed_inherited_value_saved_unchanged_is_not_copied(self, viewer, tmp_path):
+        path = _add_default_section(viewer, tmp_path, "rollout_days = 3")
+        client = viewer.app.test_client()
+        resp = client.post("/api/plugins/command/greeter", json={"values": {"rollout_days": "3"}})
+        assert resp.status_code == 200, resp.get_json()
+        raw = configparser.RawConfigParser()
+        raw.read(path, encoding="utf-8")
+        assert "rollout_days" not in dict(section_own_items(raw, "Greeter_Command"))
+
+        resp = client.post("/api/plugins/command/greeter", json={"values": {"rollout_days": "5"}})
+        assert resp.status_code == 200, resp.get_json()
+        raw = configparser.RawConfigParser()
+        raw.read(path, encoding="utf-8")
+        assert dict(section_own_items(raw, "Greeter_Command"))["rollout_days"] == "5"
+
+    def test_dynamic_section_save_leaves_default_keys_alone(self, viewer, tmp_path):
+        """Channels_List deletes rows that disappear; [DEFAULT] keys aren't rows."""
+        path = _add_default_section(viewer, tmp_path, "meteoalarm_token = SECRET")
+        client = viewer.app.test_client()
+        entry = next(
+            e for e in client.get("/api/plugins").get_json()["plugins"]
+            if any(ds["section"] == "Channels_List" for ds in e.get("dynamic_sections", []))
+        )
+        ds = next(d for d in entry["dynamic_sections"] if d["section"] == "Channels_List")
+        assert all(item["key"] != "meteoalarm_token" for item in ds["items"])
+        resp = client.post(f"/api/plugins/{entry['kind']}/{entry['name']}", json={
+            "enabled": entry["enabled"], "values": {},
+            "dynamic_sections": {"Channels_List": ds["items"]},
+        })
+        assert resp.status_code == 200, resp.get_json()
+        raw = configparser.RawConfigParser()
+        raw.read(path, encoding="utf-8")
+        assert raw.defaults() == {"meteoalarm_token": "SECRET"}
+        assert dict(section_own_items(raw, "Channels_List")) == {
+            "seattle": "Seattle chat", "tacoma": "Tacoma chat",
+        }

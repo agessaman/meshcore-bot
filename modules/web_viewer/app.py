@@ -85,6 +85,8 @@ from modules.security_utils import (
 from modules.settings_schema import (
     build_plugin_settings_view,
     field_id,
+    is_inherited_default,
+    section_own_items,
     to_config_string,
     validate_field,
 )
@@ -1369,9 +1371,18 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
                                 # raise, or read as an invalid choice.
                                 deletes.setdefault(tsec, []).append(key)
                             else:
-                                updates.setdefault(tsec, {})[key] = to_config_string(field, coerced)
+                                sval = to_config_string(field, coerced)
+                                # A typed field shows a [DEFAULT] value it inherits;
+                                # saving it unchanged shouldn't copy it into the section.
+                                if not is_inherited_default(self.config, tsec, key, sval):
+                                    updates.setdefault(tsec, {})[key] = sval
                     else:
-                        updates[section][str(submitted)] = '' if val is None else str(val)
+                        sval = '' if val is None else str(val)
+                        # Raw values only list keys the section sets itself, but a
+                        # page loaded before that fix (or a scripted save) may still
+                        # echo a [DEFAULT] key; never copy one into the section.
+                        if not is_inherited_default(self.config, section, str(submitted), sval):
+                            updates[section][str(submitted)] = sval
 
                 if errors:
                     return jsonify({'success': False, 'errors': errors}), 400
@@ -1412,7 +1423,7 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
                     # Merge into the target section (own section keeps schema fields).
                     updates.setdefault(dsec, {}).update(new_full)
                     # Delete existing managed keys that are no longer present.
-                    existing = self.config.items(dsec, raw=True) if self.config.has_section(dsec) else []
+                    existing = section_own_items(self.config, dsec)
                     pl = prefix.lower()
                     del_keys = [
                         k for k, _ in existing
@@ -1457,7 +1468,7 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
                         written.add(en.lower())
                     # Delete any existing block keys (old higher indices / removed).
                     brx = re.compile(rf"^{re.escape(bid)}\d+_", re.IGNORECASE)
-                    existing = self.config.items(section, raw=True) if self.config.has_section(section) else []
+                    existing = section_own_items(self.config, section)
                     for k, _ in existing:
                         if brx.match(k) and k.lower() not in written:
                             deletes.setdefault(section, []).append(k)
