@@ -68,8 +68,13 @@ def test_service_units_do_not_make_code_tree_writable():
     )
 
 
-def test_dockerfile_armv7_leg_installs_tzfpy_from_piwheels():
-    """requirements.txt skips tzfpy on 32-bit ARM; the armv7 leg names it."""
+def test_dockerfile_installs_tzfpy_on_every_leg():
+    """requirements.txt cannot carry tzfpy, so each leg names it explicitly.
+
+    A 32-bit Raspberry Pi OS boots a 64-bit kernel, so a PEP 508 marker on
+    tzfpy would be true on a system with no armv7l wheel and pip would try a
+    Rust source build. The Dockerfile knows the target platform, so it decides.
+    """
     dockerfile = (REPO_ROOT / "Dockerfile").read_text(encoding="utf-8")
     armv7 = dockerfile.split('if [ "$TARGETPLATFORM" = "linux/arm/v7" ]; then', 1)[1]
     armv7 = armv7.split("else", 1)[0]
@@ -78,11 +83,12 @@ def test_dockerfile_armv7_leg_installs_tzfpy_from_piwheels():
     assert '"tzfpy>=2.1"' in armv7
     assert "-r requirements.txt" in armv7
 
-    # The other legs must not gain the extra index or the explicit pin.
+    # amd64 and arm64 take the wheel from PyPI, so no extra index there.
     other = dockerfile.split('if [ "$TARGETPLATFORM" = "linux/arm/v7" ]; then', 1)[1]
     other = other.split("else", 1)[1].split("fi", 1)[0]
     assert "piwheels" not in other
-    assert "tzfpy" not in other
+    assert '"tzfpy>=2.1"' in other
+    assert "-r requirements.txt" in other
 
 
 def test_installer_offers_the_time_zone_extra_through_piwheels():
@@ -157,15 +163,20 @@ def test_standalone_installer_separates_code_and_private_state():
 
 
 def _run_armv7_pip_args(
-    machine: str, requirements: Path, extra_bash: str = ""
+    machine: str,
+    requirements: Path,
+    extra_bash: str = "",
+    long_bit: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     helper = REPO_ROOT / "scripts/armv7_pip_args.sh"
+    getconf_stub = f"getconf() {{ echo {long_bit}; }}" if long_bit is not None else ""
     return subprocess.run(
         [
             "bash",
             "-c",
             f"""
             uname() {{ echo {machine}; }}
+            {getconf_stub}
             {extra_bash}
             # shellcheck disable=SC1091
             source "$1"
@@ -185,6 +196,7 @@ def _run_armv7_pip_args(
 def test_armv7_pip_args_helper_contents() -> None:
     helper = (REPO_ROOT / "scripts/armv7_pip_args.sh").read_text(encoding="utf-8")
     assert "armv6l|armv7l" in helper
+    assert "getconf LONG_BIT" in helper
     assert "--extra-index-url https://www.piwheels.org/simple" in helper
     assert "constraints-armv7.txt" in helper
     assert "ARMV7_PIP_ARGS+=(-c" in helper
@@ -248,6 +260,30 @@ def test_armv7_pip_args_helper_uses_print_info_when_defined(tmp_path: Path) -> N
         extra_bash='print_info() { echo "INFO:$1"; }',
     )
     assert "INFO:32-bit ARM detected" in result.stdout + result.stderr
+
+
+def test_armv7_pip_args_helper_sees_32bit_userland_on_a_64bit_kernel(
+    tmp_path: Path,
+) -> None:
+    """Raspberry Pi OS boots a 64-bit kernel with a 32-bit userland by default.
+
+    uname -m says aarch64 there, so the helper has to ask the C library how
+    wide a long is before deciding the platform is not 32-bit ARM.
+    """
+    requirements = tmp_path / "requirements.txt"
+    requirements.write_text("flask-compress>=1.14\n", encoding="utf-8")
+    result = _run_armv7_pip_args("aarch64", requirements, long_bit="32")
+    args = result.stdout.split()
+    assert args[:2] == ["--extra-index-url", "https://www.piwheels.org/simple"]
+    assert "32-bit ARM detected" in result.stderr
+
+
+def test_armv7_pip_args_helper_ignores_a_64bit_userland(tmp_path: Path) -> None:
+    requirements = tmp_path / "requirements.txt"
+    requirements.write_text("flask-compress>=1.14\n", encoding="utf-8")
+    result = _run_armv7_pip_args("aarch64", requirements, long_bit="64")
+    assert result.stdout.strip() == ""
+    assert result.stderr.strip() == ""
 
 
 def test_relocated_venv_shebangs_are_rewritten(tmp_path: Path) -> None:

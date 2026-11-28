@@ -15,7 +15,6 @@ from unittest.mock import Mock
 
 import pytest
 import pytz
-from packaging.requirements import Requirement
 
 from modules.i18n import Translator
 from modules.weather_common import WeatherCommandMixin
@@ -647,18 +646,24 @@ def test_a_document_starting_yesterday_labels_today_as_today():
     assert all(day["date"].isoformat() >= "2026-11-28" for day in days)
 
 
-# --- the tzfpy dependency marker --------------------------------------------
+# --- the tzfpy dependency ---------------------------------------------------
 
 
-def test_the_tzfpy_marker_names_each_64_bit_machine():
+def test_tzfpy_is_an_optional_extra_not_a_requirement():
+    """A marker cannot say "64-bit interpreter", so tzfpy is not in requirements.
+
+    A 32-bit Raspberry Pi OS boots a 64-bit kernel: platform_machine says
+    aarch64 while Python is 32-bit, so any marker that admits aarch64 also
+    admits a system with no armv7l wheel, and pip would attempt a Rust source
+    build and abort the whole install.
+    """
     root = Path(__file__).resolve().parents[2]
-    lines = [line.strip() for line in (root / "requirements.txt").read_text().splitlines()
-             if line.strip().startswith("tzfpy")]
-    assert len(lines) == 1
-    marker = Requirement(lines[0]).marker
+    requirements = (root / "requirements.txt").read_text(encoding="utf-8")
+    assert not [line for line in requirements.splitlines()
+                if line.strip().startswith("tzfpy")]
 
-    for machine in ("x86_64", "AMD64", "aarch64", "arm64"):
-        assert marker.evaluate({"platform_machine": machine}) is True, machine
-    # The substring form of the marker also matched 32-bit x86.
-    for machine in ("x86", "armv7l", "i686"):
-        assert marker.evaluate({"platform_machine": machine}) is False, machine
+    pyproject = (root / "pyproject.toml").read_text(encoding="utf-8")
+    dependencies = pyproject.split("[project.optional-dependencies]", 1)[0]
+    assert "tzfpy" not in dependencies
+    extras = pyproject.split("[project.optional-dependencies]", 1)[1]
+    assert 'tz = ["tzfpy>=2.1"]' in extras

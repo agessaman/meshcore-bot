@@ -16,10 +16,10 @@ NIX_NAMES = {
 }
 
 # Declared but not needed under Nix: the standard library already provides it.
-# tzfpy is a Rust crate that nixpkgs does not carry; the weather time zone helper
-# uses timezonefinder instead, which nix/packages.nix adds on its own, and falls
-# back to the longitude estimate if neither is importable.
-NOT_PACKAGED = {"configparser", "tzfpy"}
+# tzfpy is not here because it is not in requirements.txt at all: it is an
+# optional extra, and the weather time zone helper uses timezonefinder under
+# Nix instead (see the test below).
+NOT_PACKAGED = {"configparser"}
 
 
 def _requirement_names() -> set[str]:

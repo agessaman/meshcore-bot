@@ -40,15 +40,27 @@ _armv7_pip_warn() {
     fi
 }
 
+# Whether this is a 32-bit ARM userland, whatever the kernel reports.
+#
+# A 32-bit Raspberry Pi OS boots a 64-bit kernel on a Pi 4/5, so uname -m says
+# aarch64 while Python, and therefore pip, is 32-bit and needs the armv7l
+# wheels. getconf LONG_BIT answers for the userland.
+_armv7_is_32bit_arm() {
+    case "$(uname -m)" in
+        armv6l|armv7l) return 0 ;;
+        aarch64|arm64)
+            [ "$(getconf LONG_BIT 2>/dev/null)" = "32" ] && return 0
+            ;;
+    esac
+    return 1
+}
+
 configure_armv7_pip_args() {
     local requirements="$1"
     local constraints
 
     ARMV7_PIP_ARGS=()
-    case "$(uname -m)" in
-        armv6l|armv7l) ;;
-        *) return 0 ;;
-    esac
+    _armv7_is_32bit_arm || return 0
 
     ARMV7_PIP_ARGS+=(--extra-index-url https://www.piwheels.org/simple)
     _armv7_pip_info "32-bit ARM detected; using piwheels prebuilt wheels to avoid on-device compilation"

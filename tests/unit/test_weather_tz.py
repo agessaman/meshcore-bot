@@ -194,6 +194,47 @@ def test_the_timezonefinder_instance_is_built_once(timezonefinder_only):
     assert timezonefinder_only.instances == 1
 
 
+def test_the_shared_timezonefinder_is_used_by_one_thread_at_a_time(
+    timezonefinder_only, monkeypatch
+):
+    """The command calls providers from worker threads.
+
+    timezonefinder reads a memory-mapped index and does not document its
+    lookups as thread-safe, so the shared instance is used under a lock.
+    """
+    import threading
+    import time
+
+    active = 0
+    peak = 0
+    guard = threading.Lock()
+
+    def timezone_at(self, lng, lat):
+        nonlocal active, peak
+        with guard:
+            active += 1
+            peak = max(peak, active)
+        time.sleep(0.01)
+        with guard:
+            active -= 1
+        return None
+
+    monkeypatch.setattr(timezonefinder_only, "timezone_at", timezone_at)
+    moment = datetime(2026, 1, 15, 12, 0, tzinfo=UTC)
+
+    def lookup(index):
+        # Distinct points so the per-point cache cannot hide the overlap.
+        _tz.utc_offset_at(10.0 + index, 20.0 + index, moment)
+
+    threads = [threading.Thread(target=lookup, args=(index,)) for index in range(8)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert peak == 1
+
+
 def test_timezonefinder_gets_longitude_and_latitude_by_keyword(timezonefinder_only):
     _tz.utc_offset_at(*TOKYO, datetime(2026, 1, 15, 12, 0, tzinfo=UTC))
 

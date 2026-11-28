@@ -6,12 +6,15 @@ needs no system tzdata) turns that name into a DST-correct offset at a given
 instant.
 
 Two lookups are tried in order. ``tzfpy`` is a Rust extension with wheels for
-64-bit x86 and ARM on PyPI and for 32-bit ARM on piwheels, which is what the
-Raspberry Pi images and the armv7 Docker leg install. ``timezonefinder`` is the
-Nix stand-in, because nixpkgs does not carry tzfpy. Without either, the offset
-falls back to the longitude estimate, which is exact where civil time follows
-solar time and off by an hour or two where it does not (Spain, western China,
-the edges of a wide zone).
+64-bit x86 and ARM on PyPI and for 32-bit ARM on piwheels. It is an optional
+extra (``pip install .[tz]``), not a requirement: a 32-bit Raspberry Pi OS boots
+a 64-bit kernel, so no PEP 508 marker can tell it apart from a 64-bit system,
+and pip would attempt a source build. The Docker images and the installer's
+optional extras name it per platform instead. ``timezonefinder`` is the Nix
+stand-in, because nixpkgs does not carry tzfpy. Without either, the offset falls
+back to the longitude estimate, which is exact where civil time follows solar
+time and off by an hour or two where it does not (Spain, western China, the
+edges of a wide zone).
 """
 
 from __future__ import annotations
@@ -35,6 +38,10 @@ _state = {
     "finder": None,
 }
 _lock = threading.Lock()
+# timezonefinder reads a memory-mapped index and does not document its lookups
+# as thread-safe, and the command calls providers from worker threads, so the
+# shared instance is used under its own lock.
+_finder_lock = threading.Lock()
 
 
 def estimate_offset_hours(lon: float) -> int:
@@ -95,7 +102,9 @@ def _zone_name(lat: float, lon: float) -> Optional[str]:
             # tzfpy takes (longitude, latitude), the opposite of the usual order.
             name = _state["module"].get_tz(lon, lat)
         else:
-            name = _finder().timezone_at(lng=lon, lat=lat)
+            finder = _finder()
+            with _finder_lock:
+                name = finder.timezone_at(lng=lon, lat=lat)
     except Exception:
         return None
     return name or None

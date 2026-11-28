@@ -33,9 +33,6 @@ dependencies = [
     "maidenhead>=1.4.0",
     # 2026.2+ carries tz 2026b, which models British Columbia's permanent UTC-7.
     "pytz>=2026.2",
-    # Real time zones for MET Norway; no armv7 wheel, so the marker keeps the
-    # armv7 Docker build working (the provider falls back to the longitude estimate).
-    "tzfpy>=2.1; platform_machine == \"x86_64\" or platform_machine == \"AMD64\" or platform_machine == \"aarch64\" or platform_machine == \"arm64\"",
     "aiohttp>=3.8.0",
     # 2.3.14+ required for send_msg_with_retry's ACK handling (see requirements.txt)
     "meshcore>=2.3.14",
@@ -58,6 +55,11 @@ dependencies = [
 [project.optional-dependencies]
 profanity = ["better-profanity>=0.7.0", "unidecode>=1.3.0"]
 geo = ["pycountry>=23.12.0", "us>=2.0.0"]
+# Real time zones for MET Norway's local times. Optional on purpose: a 32-bit
+# Raspberry Pi OS boots a 64-bit kernel, so platform_machine says aarch64 while
+# Python is 32-bit, and a marker cannot tell pip to take the armv7l wheel. The
+# Docker images and the installer's extras install it explicitly instead.
+tz = ["tzfpy>=2.1"]
 lang = ["langdetect>=1.0.9"]
 test = ["pytest>=7.0", "pytest-asyncio>=0.21", "pytest-mock>=3.10", "pytest-cov>=4.0", "pytest-timeout>=2.1.0", "types-requests>=2.31", "pyyaml>=6.0"]
 docs = ["mkdocs-material>=9.0.0", "mkdocs-exclude>=1.0.0"]
