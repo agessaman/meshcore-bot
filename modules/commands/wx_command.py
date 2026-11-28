@@ -198,7 +198,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
          "default": "noaa", "help": "API used for forecasts. Shared weather setting."},
         {"key": "alerts_provider", "label": "Weather alerts provider", "type": "enum", "section": "Weather",
          "options": [
-             {"value": "auto", "label": "Automatic (NWS with NOAA, none with Open-Meteo)"},
+             {"value": "auto", "label": "Automatic (NWS with NOAA, Environment Canada with ECCC, none otherwise)"},
              {"value": "none", "label": "No weather alerts"},
              *({"value": name, "label": _ALERT_PROVIDER_LABELS.get(name, name)} for name in ALERT_PROVIDERS),
          ],
@@ -315,14 +315,14 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         if provider_name == 'openmeteo' or fallback_enabled or failover_name == 'openmeteo':
             openmeteo_model = load_open_meteo_model(bot.config, self.logger)
 
-        # Units are per provider: NOAA takes [Wx_Command] overrides, Open-Meteo
-        # reads [Weather] only, as gwx always has. The fallback provider is an
-        # Open-Meteo provider, so it validates and warns about its own units even
-        # though wx's units are overlaid on it per request.
+        # Units follow one rule for every command and provider: the command's own
+        # section ([Wx_Command], [Gwx_Command]) when it sets a unit, else [Weather].
+        # An Open-Meteo provider still validates [Weather] itself, so an invalid
+        # shared unit warns as it always has; the resolved units are the same.
         openmeteo_units = None
         if provider_name == 'openmeteo' or fallback_enabled:
             openmeteo_units = WeatherUnits(*load_open_meteo_units(bot.config, self.logger))
-        units = openmeteo_units if provider_name == 'openmeteo' else resolve_units(self._unit_setting)
+        units = resolve_units(self._unit_setting)
 
         self.url_timeout = 8  # seconds (reduced from 10 for faster failure detection)
         self.forecast_duration = 3  # days
@@ -528,14 +528,14 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                 provider.session = session
 
     def _unit_setting(self, key: str, fallback: str) -> str:
-        """A unit setting: [Wx_Command] when it overrides, else the shared [Weather] one.
+        """A unit setting: the command's own section when it overrides, else [Weather].
 
         Read directly rather than through get_config_value, whose [Weather] fallback
-        logs a notice to move the setting into [Wx_Command]; for units, [Weather] is
-        where they belong.
+        logs a notice to move the setting into the command's section; for units,
+        [Weather] is where they belong.
         """
         config = self.bot.config
-        for section in ('Wx_Command', 'Weather'):
+        for section in (self._derive_config_section_name(), 'Weather'):
             if config.has_section(section) and config.has_option(section, key):
                 return str(config.get(section, key)).strip().lower()
         return fallback

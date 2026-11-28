@@ -79,7 +79,8 @@ def resolve_alerts_provider_name(
     """The alerts provider for a ``[Weather] alerts_provider`` value, or None.
 
     ``auto`` (the default, and an empty value) follows the forecast provider:
-    NWS alerts with NOAA, none with Open-Meteo. ``none`` asks for no alerts.
+    NWS alerts with NOAA, Environment Canada alerts with ECCC, none with
+    Open-Meteo or MET Norway. ``none`` asks for no alerts.
     Any key of ``ALERT_PROVIDERS`` names that provider. An unknown value warns
     once, when a *logger* is given, and behaves like ``auto``.
     """

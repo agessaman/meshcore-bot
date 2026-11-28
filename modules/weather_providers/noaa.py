@@ -162,9 +162,9 @@ def _first_match(text: str, patterns: tuple[str, ...], low: int | None = None, h
 
 
 def resolve_units(setting: Callable[[str, str], str]) -> WeatherUnits:
-    """The units NOAA replies in, from a (key, fallback) -> value lookup.
+    """The units a provider replies in, from a (key, fallback) -> value lookup.
 
-    Same lookup as the WXSIM path: [Wx_Command], falling back to [Weather].
+    Same lookup as the WXSIM path: the command's own section, falling back to [Weather].
     Invalid values fall back to fahrenheit/mph/inch, as gwx does.
     """
     temperature = setting('temperature_unit', 'fahrenheit')
