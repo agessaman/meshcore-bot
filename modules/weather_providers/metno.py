@@ -701,7 +701,11 @@ class MetNorwayProvider(WeatherProvider):
         optional = [pressure, humidity_text, wind, condition]
         weather = ""
         for dropped in range(len(optional) + 1):
-            pressure_, humidity_, wind_, condition_ = optional[dropped:] + [""] * dropped
+            # Blank the dropped parts in place: shifting the list instead would
+            # move the survivors into each other's slots and reorder the line.
+            pressure_, humidity_, wind_, condition_ = [
+                "" if index < dropped else value for index, value in enumerate(optional)
+            ]
             weather = self._current_line(
                 period_name, condition_, temperature, wind_, humidity_, pressure_, high_low
             )
@@ -735,13 +739,16 @@ class MetNorwayProvider(WeatherProvider):
         conditions = []
         pressure = details.get("air_pressure_at_sea_level")
         if pressure is not None:
-            pressure_hpa = round_half_away(pressure)
+            # Rounded once, after the unit is chosen: rounding to hPa first and
+            # converting that would round twice.
             if self.host.translate('commands.gwx.pressure_unit').strip().lower() == 'mmhg':
                 conditions.append(self.host.translate(
-                    'commands.gwx.pressure_mmhg', value=round_half_away(hpa_to_mmhg(pressure_hpa))
+                    'commands.gwx.pressure_mmhg', value=round_half_away(hpa_to_mmhg(pressure))
                 ))
             else:
-                conditions.append(self.host.translate('commands.gwx.pressure', value=pressure_hpa))
+                conditions.append(self.host.translate(
+                    'commands.gwx.pressure', value=round_half_away(pressure)
+                ))
         return conditions
 
     def _tomorrow_tail(self, weather: str, day: dict, max_length: int) -> str:

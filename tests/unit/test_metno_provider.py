@@ -125,6 +125,11 @@ def _width(host, text):
     return host._count_display_width(text)
 
 
+# A stand-in for the MeshMessage: without one the provider falls back to a fixed
+# 130-byte budget and the mocked ``get_max_message_length`` is never consulted.
+MESSAGE = SimpleNamespace(content="gwx Egersund")
+
+
 # --- the reply shapes -------------------------------------------------------
 
 
@@ -136,7 +141,7 @@ def test_every_forecast_type_fits_the_budget(name, point, budget):
     lat, lon = point
 
     for forecast_type, num_days in (("default", 7), ("tomorrow", 7), ("multiday", 3), ("hourly", 7)):
-        reply = provider.forecast(lat, lon, forecast_type, num_days, 0, None)
+        reply = provider.forecast(lat, lon, forecast_type, num_days, 0, MESSAGE)
         assert reply.ok is True
         assert reply.text
         assert _width(host, reply.text) <= budget, (forecast_type, reply.text)
@@ -192,8 +197,8 @@ def test_the_location_prefix_comes_out_of_the_budget():
     provider, _session_, host, _clock = _provider("egersund")
     host.get_max_message_length = Mock(return_value=150)
 
-    full = provider.forecast(*EGERSUND, "hourly", 7, 0, None)
-    prefixed = provider.forecast(*EGERSUND, "hourly", 7, 12, None)
+    full = provider.forecast(*EGERSUND, "hourly", 7, 0, MESSAGE)
+    prefixed = provider.forecast(*EGERSUND, "hourly", 7, 12, MESSAGE)
 
     assert _width(host, prefixed.text) <= 150 - 12
     assert _width(host, prefixed.text) <= _width(host, full.text)
@@ -667,3 +672,43 @@ def test_tzfpy_is_an_optional_extra_not_a_requirement():
     assert "tzfpy" not in dependencies
     extras = pyproject.split("[project.optional-dependencies]", 1)[1]
     assert 'tz = ["tzfpy>=2.1"]' in extras
+
+
+# --- the budget order -------------------------------------------------------
+
+
+@pytest.mark.parametrize("budget", range(30, 131, 5))
+def test_the_condition_stays_before_the_temperature_under_any_budget(budget):
+    """Dropping a part must blank it in place, not shift the survivors along."""
+    provider, _session_, _host_, _clock = _provider("egersund")
+    data = _payload("egersund")
+    base, _is_day = provider._step_symbol(provider._current_step(provider._steps(data)))
+    condition = provider._description(base)
+
+    line = provider._current(data, *EGERSUND, budget)
+
+    assert line is not None
+    if condition and condition in line:
+        assert line.index(condition) < line.index("°")
+
+
+# --- the pressure unit ------------------------------------------------------
+
+
+def test_the_pressure_is_rounded_once_after_the_unit_is_chosen():
+    """1000.5 hPa is 750 mmHg; rounding to hPa first would give 751."""
+    payload = _payload("egersund")
+    for step in payload["properties"]["timeseries"]:
+        step["data"]["instant"]["details"]["air_pressure_at_sea_level"] = 1000.5
+    host = _Host()
+    # The Russian catalog is the one that asks for mmHg.
+    host.translator = Translator("ru")
+    provider, _session_, _host_, _clock = _provider(
+        response=_Response(200, payload),
+        units=WeatherUnits("celsius", "kmh", "mm"),
+        host=host,
+    )
+
+    reply = provider.forecast(*EGERSUND, "default", 7, 0, MESSAGE)
+
+    assert host.translate('commands.gwx.pressure_mmhg', value=750) in reply.text

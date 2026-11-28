@@ -167,6 +167,9 @@
           meshcore
           pyserial
           python-dateutil
+          # Offsets come from this package's tz data, so they follow flake.lock:
+          # British Columbia's permanent UTC-7 needs a nixpkgs with pytz 2026.2
+          # or newer.
           pytz
           requests
           requests-cache

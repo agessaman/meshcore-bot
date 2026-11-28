@@ -37,9 +37,13 @@
 # -----------------
 # scripts/armv7_pip_args.sh passes this file together with the piwheels index, but only
 # when it detects a 32-bit ARM host. install-service.sh and the .deb postinst both source
-# that helper. The Dockerfile does the same for the linux/arm/v7 build leg only. The
-# environment markers below are a second layer of safety: if this file is ever applied on
-# another platform, it becomes a no-op rather than needlessly pinning it.
+# that helper. The Dockerfile does the same for the linux/arm/v7 build leg only.
+#
+# The pins below carry no architecture markers. They used to, as a second layer of
+# safety, but a 32-bit Raspberry Pi OS userland on a 64-bit kernel reports
+# platform_machine as aarch64, so the markers evaluated False exactly where the pins are
+# needed and disabled them. The helper and the Dockerfile already decide when this file
+# applies, so the markers only ever did harm.
 #
 # MAINTENANCE
 # -----------
@@ -58,5 +62,5 @@
 # Note that piwheels builds track the Debian release's Python (bookworm = cp311,
 # trixie = cp313), so this skew can differ across OS versions.
 
-brotli <= 1.1.0 ; platform_machine == "armv7l" or platform_machine == "armv6l"
-ephem <= 4.2 ; platform_machine == "armv7l" or platform_machine == "armv6l"
+brotli <= 1.1.0
+ephem <= 4.2

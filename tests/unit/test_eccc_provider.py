@@ -17,9 +17,11 @@ import pytest
 
 from modules.i18n import Translator
 from modules.weather_common import WeatherCommandMixin
+from modules.weather_providers import eccc
 from modules.weather_providers.base import WeatherUnits
 from modules.weather_providers.eccc import (
     CITYPAGE_COLLECTION,
+    COMPASS_DEGREES,
     ECCC_BASE_URL,
     EcccProvider,
     _wmo_for,
@@ -34,6 +36,9 @@ OTTAWA = (45.42, -75.70)
 OFFSHORE = (48.0, -140.0)
 # 17:00 in Ottawa on 27 November, when the first period is already "Tonight".
 EVENING = datetime(2026, 11, 27, 22, 0, tzinfo=timezone.utc)
+# A stand-in for the MeshMessage: without one the provider falls back to a fixed
+# 130-byte budget and the mocked ``get_max_message_length`` is never consulted.
+MESSAGE = SimpleNamespace(content="wx Vancouver")
 
 
 def _payload(name):
@@ -118,6 +123,25 @@ def _width(host, text):
     return host._count_display_width(text)
 
 
+def _pinned_offset(lat, lon, when):
+    """Each fixture point's offset, pinned so the expectations do not follow the tz database.
+
+    British Columbia stopped observing daylight saving in 2026, so Vancouver is
+    permanently UTC-7, which the installed pytz predates; Ottawa still changes on
+    1 November 2026.
+    """
+    if lon < -100:
+        return timedelta(hours=-7)
+    if when < datetime(2026, 11, 1, 6, tzinfo=timezone.utc):
+        return timedelta(hours=-4)
+    return timedelta(hours=-5)
+
+
+@pytest.fixture(autouse=True)
+def _pin_the_time_zones(monkeypatch):
+    monkeypatch.setattr(eccc, "utc_offset_at", _pinned_offset)
+
+
 # --- the reply shapes -------------------------------------------------------
 
 
@@ -129,7 +153,7 @@ def test_every_forecast_type_fits_the_budget(name, point, budget):
     lat, lon = point
 
     for forecast_type, num_days in (("default", 7), ("tomorrow", 7), ("multiday", 3), ("hourly", 7)):
-        reply = provider.forecast(lat, lon, forecast_type, num_days, 0, None)
+        reply = provider.forecast(lat, lon, forecast_type, num_days, 0, MESSAGE)
         assert reply.ok is True
         assert reply.text
         assert _width(host, reply.text) <= budget, (forecast_type, reply.text)
@@ -176,8 +200,8 @@ def test_the_hourly_reply_starts_after_the_current_hour():
 
     reply = provider.forecast(*VANCOUVER, "hourly", 7, 0, None)
 
-    # 21:30Z is 13:30 in Vancouver, so the first hour shown is 2PM.
-    assert reply.text.startswith("2PM:")
+    # 21:30Z is 14:30 in Vancouver (UTC-7), so the first hour shown is 3PM.
+    assert reply.text.startswith("3PM:")
     assert "°" in reply.text
 
 
@@ -217,13 +241,14 @@ def test_the_nearest_city_page_wins():
     assert feature["properties"]["name"]["en"] == "Vancouver"
     assert session.count() == 1
     assert session.calls[0]["url"] == f"{ECCC_BASE_URL}/collections/{CITYPAGE_COLLECTION}/items"
-    assert session.calls[0]["params"]["bbox"] == "-123.4200,48.9800,-122.8200,49.5800"
+    # A 150 km box, widened in longitude for the latitude.
+    assert session.calls[0]["params"]["bbox"] == "-125.1915,47.9286,-121.0485,50.6314"
 
 
 def test_the_search_box_widens_until_a_city_page_answers():
     empty = _Response(200, {"type": "FeatureCollection", "features": []})
     full = _Response(200, _payload("vancouver"))
-    session = _Session(lambda call: empty if call["params"]["bbox"].startswith("-123.42") else full)
+    session = _Session(lambda call: empty if call["params"]["bbox"].startswith("-125.19") else full)
     provider = EcccProvider(
         _Host(), WeatherUnits("fahrenheit", "mph", "inch"),
         session=session, clock=lambda: 1000.0, now=lambda: NOW,
@@ -234,7 +259,8 @@ def test_the_search_box_widens_until_a_city_page_answers():
     assert failed is False
     assert feature["properties"]["name"]["en"] == "Vancouver"
     assert session.count() == 2
-    assert session.calls[1]["params"]["bbox"] == "-124.1200,48.2800,-122.1200,50.2800"
+    # The second box is twice as wide, for a sparse area.
+    assert session.calls[1]["params"]["bbox"] == "-127.2629,46.5773,-118.9771,51.9827"
 
 
 def test_a_point_past_150_km_has_no_coverage():
@@ -515,7 +541,8 @@ def test_the_days_pair_highs_with_their_nights():
 def test_the_offset_comes_from_the_point_time_zone():
     provider, _session_, host, _clock = _provider()
 
-    assert provider._offset(*VANCOUVER, NOW) == timedelta(hours=-8)
+    # British Columbia is permanently UTC-7 from 2026.
+    assert provider._offset(*VANCOUVER, NOW) == timedelta(hours=-7)
 
 
 # --- the hourly lines -------------------------------------------------------
@@ -539,7 +566,7 @@ def test_the_hourly_reply_packs_as_many_hours_as_open_meteo(name, point):
     provider, _session_, host, _clock = _provider(name)
     host.get_max_message_length = Mock(return_value=150)
 
-    reply = provider.forecast(*point, "hourly", 7, 0, None)
+    reply = provider.forecast(*point, "hourly", 7, 0, MESSAGE)
 
     # Open-Meteo fits three or four hours in the same frame.
     assert 3 <= len(reply.text.splitlines()) <= 4
@@ -549,10 +576,10 @@ def test_the_hourly_reply_packs_as_many_hours_as_open_meteo(name, point):
 def test_the_hourly_pop_sits_where_open_meteo_puts_it():
     provider, _session_, _host_, _clock = _provider("vancouver")
 
-    reply = provider.forecast(*VANCOUVER, "hourly", 7, 0, None)
+    reply = provider.forecast(*VANCOUVER, "hourly", 7, 0, MESSAGE)
 
     # Emoji, then the probability, then the description.
-    assert reply.text.splitlines()[0].startswith("2PM: 🌧️ 80% A few showers ")
+    assert reply.text.splitlines()[0].startswith("3PM: 🌧️ 80% A few showers ")
 
 
 # --- the evening default reply ----------------------------------------------
@@ -706,3 +733,144 @@ def test_pressure_goes_before_the_high_low_and_tomorrow():
     assert "hPa" not in reply.text
     assert "97%RH" in reply.text
     assert "| L:3°C" in reply.text
+
+
+# --- the repeated hour when the clocks go back ------------------------------
+
+
+def test_the_hourly_reply_keeps_the_repeated_hour_when_the_clocks_go_back():
+    """Ottawa's clocks go back at 06:00Z on 1 November 2026, so 1 AM happens twice."""
+    payload = _payload("ottawa")
+    properties = payload["features"][0]["properties"]
+    template = properties["hourlyForecastGroup"]["hourlyForecasts"][0]
+    properties["hourlyForecastGroup"]["hourlyForecasts"] = [
+        {**json.loads(json.dumps(template)), "timestamp": stamp}
+        for stamp in (
+            "2026-11-01T04:00:00Z",
+            "2026-11-01T05:00:00Z",
+            "2026-11-01T06:00:00Z",
+            "2026-11-01T07:00:00Z",
+        )
+    ]
+    # 01:30 EDT: the current hour is the first 1 AM, so the next step is the
+    # second one, an hour later on the clock but the same wall time.
+    now = datetime(2026, 11, 1, 5, 30, tzinfo=timezone.utc)
+    provider, _session_, _host_, _clock = _provider(
+        "ottawa", response=_Response(200, payload), now=lambda: now
+    )
+
+    reply = provider.forecast(*OTTAWA, "hourly", 7, 0, MESSAGE)
+
+    labels = [line.split(":")[0] for line in reply.text.splitlines()]
+    assert labels == ["1AM", "2AM"]
+
+
+# --- the search box ---------------------------------------------------------
+
+
+def test_the_search_box_widens_with_the_latitude():
+    """A city page 114 km east at 70N is inside the box; a square one misses it.
+
+    Two degrees of longitude are 76 km at that latitude, so the old square box
+    never reached the page however far it widened.
+    """
+    page = {
+        "type": "Feature",
+        "geometry": {"type": "Point", "coordinates": [-93.0, 70.0]},
+        "properties": _payload("ottawa")["features"][0]["properties"],
+    }
+
+    def respond(call):
+        west, south, east, north = (float(part) for part in call["params"]["bbox"].split(","))
+        inside = west <= -93.0 <= east and south <= 70.0 <= north
+        return _Response(200, {"type": "FeatureCollection", "features": [page] if inside else []})
+
+    provider, session, _host_, _clock = _provider("ottawa", response=respond)
+
+    reply = provider.forecast(70.0, -90.0, "default", 7, 0, MESSAGE)
+
+    assert reply.ok is True
+    assert session.count() == 1
+
+
+# --- the French compass points ----------------------------------------------
+
+
+@pytest.mark.parametrize("text,degrees", [
+    ("O", 270.0), ("ONO", 292.5), ("NO", 315.0),
+    ("OSO", 247.5), ("SO", 225.0), ("SSO", 202.5),
+])
+def test_the_french_compass_points_are_not_mirrored(text, degrees):
+    assert COMPASS_DEGREES[text] == degrees
+
+
+def test_a_french_wind_direction_matches_its_bearing():
+    payload = _payload("ottawa")
+    current = payload["features"][0]["properties"]["currentConditions"]
+    current["wind"]["speed"]["value"] = {"en": 20, "fr": 20}
+    current["wind"]["direction"]["value"] = {"en": "W", "fr": "O"}
+    current["wind"].pop("bearing", None)
+    host = _Host(localization={"language": "fr"})
+    provider, _session_, _host_, _clock = _provider(
+        response=_Response(200, payload),
+        units=WeatherUnits("celsius", "kmh", "mm"),
+        host=host,
+    )
+
+    reply = provider.forecast(*OTTAWA, "default", 7, 0, MESSAGE)
+
+    # "O" is ouest: the arrow points west, not east.
+    assert f"⬅️{host.translate('common.wind_directions.W')}20" in reply.text
+
+
+# --- the budget order -------------------------------------------------------
+
+
+def _is_subsequence(short: list, long: list) -> bool:
+    """Whether every token of *short* appears in *long*, in the same order."""
+    remaining = iter(long)
+    return all(token in remaining for token in short)
+
+
+@pytest.mark.parametrize("budget", range(40, 131, 5))
+def test_a_dropped_part_keeps_the_rest_in_order(budget):
+    """Dropping a part must blank it in place, not shift the survivors along.
+
+    A shifted list moves the condition text after the temperature and the
+    humidity into the pressure slot, so the tight line stops being the wide line
+    with parts removed.
+    """
+    provider, _session_, _host_, _clock = _provider("vancouver")
+    feature = _payload("vancouver")["features"][0]
+    full = provider._current(feature, *VANCOUVER, 400).split(" | ")[0]
+
+    line = provider._current(feature, *VANCOUVER, budget)
+
+    assert line is not None
+    assert line.startswith("Today: ")
+    assert _is_subsequence(line.split(" | ")[0].split(), full.split())
+
+
+# --- the pressure unit ------------------------------------------------------
+
+
+def test_the_pressure_is_rounded_once_after_the_unit_is_chosen():
+    """1000.5 hPa is 750 mmHg; rounding to hPa first would give 751."""
+    payload = _payload("vancouver")
+    # Every city page in the fixture, since the nearest one answers.
+    for feature in payload["features"]:
+        feature["properties"]["currentConditions"]["pressure"]["value"] = {
+            "en": 100.05, "fr": 100.05
+        }
+    host = _Host()
+    # The Russian catalog is the one that asks for mmHg.
+    host.translator = Translator("ru")
+    provider, _session_, _host_, _clock = _provider(
+        response=_Response(200, payload),
+        units=WeatherUnits("celsius", "kmh", "mm"),
+        host=host,
+    )
+
+    reply = provider.forecast(*VANCOUVER, "default", 7, 0, MESSAGE)
+
+    assert host.translate('commands.gwx.pressure_mmhg', value=750) in reply.text

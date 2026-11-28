@@ -116,3 +116,24 @@ def test_millimetres_and_pressure():
     assert round_half_away(mm_to_inch(12.7)) == 1
     # One standard atmosphere is 1013.25 hPa and 760 mmHg, by definition.
     assert round_half_away(hpa_to_mmhg(1013.25)) == 760
+
+
+@pytest.mark.unit
+def test_open_meteo_rounds_the_pressure_once_after_the_unit_is_chosen():
+    """1000.5 hPa is 750 mmHg; rounding to hPa first would give 751."""
+    from modules.i18n import Translator
+    from modules.weather_providers.base import WeatherUnits
+    from modules.weather_providers.openmeteo import OpenMeteoProvider
+
+    class _Host:
+        def __init__(self):
+            self.translator = Translator("ru")  # the catalog that asks for mmHg
+
+        def translate(self, key, **kwargs):
+            return self.translator.translate(key, **kwargs)
+
+    provider = OpenMeteoProvider(_Host(), WeatherUnits("celsius", "kmh", "mm"), weather_model=None)
+
+    conditions = provider._open_meteo_extra_conditions(None, None, 1000.5, "°C")
+
+    assert conditions == [_Host().translate("commands.gwx.pressure_mmhg", value=750)]

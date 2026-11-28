@@ -433,15 +433,16 @@ class OpenMeteoProvider(WeatherProvider):
 
         # Add pressure (convert from hPa to display format)
         if pressure is not None:
-            pressure_hpa = round_half_away(pressure)
             # Which pressure unit reads as normal is a locale convention, not
             # a metric/imperial split: Russia uses mmHg, most of metric
-            # Europe uses hPa. The catalog names its own.
+            # Europe uses hPa. The catalog names its own. The value is rounded
+            # once, after the unit is chosen.
             if self.host.translate('commands.gwx.pressure_unit').strip().lower() == 'mmhg':
                 press_str = self.host.translate('commands.gwx.pressure_mmhg',
-                                                value=round_half_away(hpa_to_mmhg(pressure_hpa)))
+                                                value=round_half_away(hpa_to_mmhg(pressure)))
             else:
-                press_str = self.host.translate('commands.gwx.pressure', value=pressure_hpa)
+                press_str = self.host.translate('commands.gwx.pressure',
+                                                value=round_half_away(pressure))
             conditions.append(press_str)
         return conditions
 

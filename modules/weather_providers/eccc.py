@@ -17,6 +17,7 @@ look. The forecast group covers today plus six days, which is ``max_days``.
 
 from __future__ import annotations
 
+import math
 import threading
 import time
 from datetime import datetime, timedelta, timezone
@@ -38,9 +39,13 @@ CITY_CACHE_SECONDS = 600
 # A failed fetch is retried soon: caching it as long as a success would hide a
 # recovered service for the whole TTL.
 FAILURE_CACHE_SECONDS = 60
-CITY_SEARCH_RADII = (0.3, 1.0, 2.0)  # degrees, widened in turn
-CITY_PAGE_LIMIT = 50  # the API's own page size; a 2° box holds far fewer
+CITY_PAGE_LIMIT = 50  # the API's own page size; a 150 km box holds far fewer
 MAX_CITY_DISTANCE_KM = 150.0
+# The box is sized to the coverage radius, then widened once for a sparse area
+# whose only city page sits just outside it.
+CITY_SEARCH_SCALES = (1.0, 2.0)
+KM_PER_DEGREE_LAT = 111.0
+MAX_LON_HALF_WIDTH = 60.0  # near the poles the box would otherwise wrap the globe
 ECCC_MULTIDAY_MAX_DAYS = 6
 
 # Roughly Canada: the city-page network's own extent, used for coverage so the
@@ -56,7 +61,7 @@ COMPASS_DEGREES = {
     "E": 90.0, "ESE": 112.5, "SE": 135.0, "SSE": 157.5,
     "S": 180.0, "SSW": 202.5, "SW": 225.0, "WSW": 247.5,
     "W": 270.0, "WNW": 292.5, "NW": 315.0, "NNW": 337.5,
-    "O": 90.0, "OSO": 112.5, "SO": 135.0, "SSO": 157.5,
+    "O": 270.0, "OSO": 247.5, "SO": 225.0, "SSO": 202.5,
     "ONO": 292.5, "NO": 315.0, "NNO": 337.5,
 }
 
@@ -107,6 +112,22 @@ def _wmo_for(icon_code: Any, description: str) -> Optional[int]:
         if keyword in text:
             return wmo
     return None
+
+
+def _search_box(lat: float, scale: float) -> tuple[float, float]:
+    """Half-widths in degrees of a box covering ``scale`` × 150 km around a latitude.
+
+    A degree of longitude shrinks with the cosine of the latitude, so a square
+    box misses a city page a hundred kilometres east at high latitude: at 70°N
+    two degrees of longitude are only 76 km. The longitude half-width is widened
+    to match, and capped near the poles where the box would wrap the globe.
+    """
+    delta_lat = MAX_CITY_DISTANCE_KM * scale / KM_PER_DEGREE_LAT
+    cosine = max(math.cos(math.radians(lat)), 1e-6)
+    delta_lon = min(
+        MAX_CITY_DISTANCE_KM * scale / (KM_PER_DEGREE_LAT * cosine), MAX_LON_HALF_WIDTH
+    )
+    return delta_lat, delta_lon
 
 
 def _parse_time(value: Any) -> Optional[datetime]:
@@ -241,14 +262,15 @@ class EcccProvider(WeatherProvider):
     def _fetch_city_page(self, lat: float, lon: float) -> tuple[Optional[dict], bool, float]:
         """Query the city pages around a point, widening the box until one answers."""
         language = self._language()
-        for radius in CITY_SEARCH_RADII:
+        for scale in CITY_SEARCH_SCALES:
+            delta_lat, delta_lon = _search_box(lat, scale)
             params = {
                 "f": "json",
                 "lang": language,
                 "limit": CITY_PAGE_LIMIT,
                 "bbox": (
-                    f"{lon - radius:.4f},{lat - radius:.4f},"
-                    f"{lon + radius:.4f},{lat + radius:.4f}"
+                    f"{lon - delta_lon:.4f},{lat - delta_lat:.4f},"
+                    f"{lon + delta_lon:.4f},{lat + delta_lat:.4f}"
                 ),
             }
             try:
@@ -566,9 +588,10 @@ class EcccProvider(WeatherProvider):
         pressure_text = ""
         if pressure is not None:
             try:
-                # The API sends kPa; the reply shows hPa, or mmHg where the
-                # catalog asks for it, as MET Norway and Open-Meteo do.
-                pressure_hpa = round_half_away(float(pressure) * 10)
+                # The API sends kPa. The reply shows hPa, or mmHg where the
+                # catalog asks for it, as MET Norway and Open-Meteo do; the
+                # value is rounded once, after the unit is chosen.
+                pressure_hpa = float(pressure) * 10
             except (TypeError, ValueError):
                 pressure_hpa = None
             if pressure_hpa is not None:
@@ -579,7 +602,7 @@ class EcccProvider(WeatherProvider):
                     )
                 else:
                     pressure_text = self.host.translate(
-                        'commands.gwx.pressure', value=pressure_hpa
+                        'commands.gwx.pressure', value=round_half_away(pressure_hpa)
                     )
 
         # Tonight's period has a low and no high, so the pair becomes the low
@@ -598,7 +621,11 @@ class EcccProvider(WeatherProvider):
         optional = [pressure_text, humidity_text, wind_text, condition]
         weather = ""
         for dropped in range(len(optional) + 1):
-            pressure_, humidity_, wind_, condition_ = optional[dropped:] + [""] * dropped
+            # Blank the dropped parts in place: shifting the list instead would
+            # move the survivors into each other's slots and reorder the line.
+            pressure_, humidity_, wind_, condition_ = [
+                "" if index < dropped else value for index, value in enumerate(optional)
+            ]
             weather = self._current_line(
                 period_name, condition_, temperature, wind_, humidity_, pressure_, high_low
             )
@@ -715,8 +742,12 @@ class EcccProvider(WeatherProvider):
             return self.host.translate('commands.gwx.hourly_not_available')
 
         now = self._now()
-        next_hour = (now + self._offset(lat, lon, now)).replace(minute=0, second=0, microsecond=0)
-        next_hour += timedelta(hours=1)
+        # The cutoff is the instant the current local hour began, so the steps
+        # are selected by UTC instant and the offset is only used for the label.
+        # Comparing local wall times would drop the second 1 AM when the clocks
+        # go back, since both steps carry the same wall time.
+        offset_now = self._offset(lat, lon, now)
+        cutoff = (now + offset_now).replace(minute=0, second=0, microsecond=0) - offset_now
 
         lines = []
         for hour in hours:
@@ -725,9 +756,9 @@ class EcccProvider(WeatherProvider):
             when = _parse_time(hour.get("timestamp"))
             if when is None:
                 continue
-            moment = when + self._offset(lat, lon, when)
-            if moment < next_hour:
+            if when <= cutoff:
                 continue
+            moment = when + self._offset(lat, lon, when)
             temperature = self._temperature(self._value((hour.get("temperature") or {}).get("value")))
             if temperature is None:
                 break
