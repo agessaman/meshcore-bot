@@ -13,7 +13,7 @@ Alternative plugins allow you to swap out default plugins without modifying the 
 
 ## Weather Sources Are Not Alternative Plugins
 
-`wx_international.py` is a compatibility module now, not an alternative plugin. It keeps the names code imported from it, and its `GlobalWxCommand` is a subclass of `modules/commands/gwx_command.py`'s `GwxCommand` that is always enabled and always on Open-Meteo. Discovery skips it, so `gwx` isn't registered twice; it loads only when an override names it. `gwx` is a normal command in `modules/commands/`, and `wx` and `gwx` share one request path and differ only in the provider that answers.
+`wx_international.py` is a compatibility module now, not an alternative plugin. It keeps the names code imported from it, and its `GlobalWxCommand` is a subclass of `modules/commands/gwx_command.py`'s `GwxCommand` that is always enabled and ignores the provider settings in favor of Open-Meteo. Discovery skips it, so `gwx` isn't registered twice; it loads only when an override names it. `gwx` is a normal command in `modules/commands/`, and `wx` and `gwx` share one request path and differ only in the provider that answers.
 
 A new weather source belongs in `modules/weather_providers/`, registered in `PROVIDERS` or `ALERT_PROVIDERS` and selected with `[Weather] weather_provider` or `alerts_provider`, not in this directory. To make `wx` answer from Open-Meteo, set `[Weather] weather_provider = openmeteo`. `[Plugin_Overrides] wx = wx_international` still works as it did, with a deprecation warning.
 

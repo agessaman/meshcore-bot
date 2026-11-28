@@ -57,8 +57,9 @@ WXSIM_PARSER_AVAILABLE = True
 class GlobalWxCommand(GwxCommand):
     """The class this module used to define, for old imports and overrides.
 
-    It is ``gwx`` as it was before gwx was a normal command: always enabled and
-    always on Open-Meteo. A ``[Plugin_Overrides] wx = wx_international`` line
+    It is ``gwx`` as it was before gwx was a normal command: always enabled, and
+    on Open-Meteo whatever the provider settings say (``failover_provider``
+    still applies). A ``[Plugin_Overrides] wx = wx_international`` line
     registers it as ``wx`` with gwx's triggers and channels, and neither
     ``[Wx_Command] enabled`` nor a provider setting ever changed that.
     """

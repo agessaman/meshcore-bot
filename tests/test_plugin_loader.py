@@ -317,6 +317,23 @@ class TestDeprecatedWxInternationalOverride:
         assert "gwx" not in loaded
         assert loader.get_plugin_by_keyword("gwx") is loaded["wx"]
 
+    def test_the_displaced_gwx_is_not_constructed(self, loader_bot):
+        loader = self._loader(
+            loader_bot, {"wx": "wx_international"}, {"Gwx_Command": {"weather_provider": "%(missing)s"}}
+        )
+
+        loaded = loader.load_all_plugins()
+
+        assert loaded["wx"].provider_name == "openmeteo"
+        assert "gwx_command" not in loader.get_failed_plugins()
+
+    def test_an_explicit_gwx_override_keeps_dev_keyword_routing(self, loader_bot):
+        loader = self._loader(loader_bot, {"otherwx": "wx_international", "gwx": "wx_international"})
+
+        loader.load_all_plugins()
+
+        assert loader.get_plugin_by_keyword("gwx") is loader.loaded_plugins["gwx"]
+
     def test_another_name_loads_beside_wx(self, loader_bot):
         loader = self._loader(loader_bot, {"otherwx": "wx_international"})
 

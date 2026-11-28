@@ -197,7 +197,7 @@ wx
 
 **The place is named** only when it adds information. A position (the sender's, the bot's or typed coordinates) is named when a place is found for it. With NOAA, a city is named when it is in another state than `[Weather] default_state`. With the other providers, a city is named when it is in another country than `default_country` (in the US, another state than `default_state`), and a place answered from Open-Meteo through `openmeteo_fallback` is named the same way. ZIP codes and cities in your own state (outside the US, your own country) are not named. With `[Weather] always_show_location = true`, every place a lookup finds is named, including ZIP codes; the name uses part of the message's length, and a ZIP code costs one extra lookup.
 
-**Custom sources:** a `custom.wxsim.<name>` or `custom.mqtt_weather.<name>` key in `[Weather]` answers `wx <name>` and `gwx <name>` from that station. WXSIM sources answer current conditions, `tomorrow` and `Nd` (starting with today); MQTT sources answer current conditions only. `hourly` and `alerts` reply that they are not available for these sources.
+**Custom sources:** a `custom.wxsim.<name>` or `custom.mqtt_weather.<name>` key in `[Weather]` answers `wx <name>` and `gwx <name>` from that station. WXSIM sources answer current conditions, `tomorrow` and `Nd` (from the first day in the station's file, which can be today or earlier); MQTT sources answer current conditions only. `hourly` and `alerts` reply that they are not available for these sources.
 
 **Scheduled messages:** `wx` and `gwx` can be used in `{cmd:...}` placeholders, for example `{cmd:wx 98101}`.
 
