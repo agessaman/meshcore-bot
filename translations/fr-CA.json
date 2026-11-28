@@ -276,6 +276,17 @@
         "Friday": "Ve",
         "Saturday": "Sa",
         "Sunday": "Di"
+      },
+      "meteoalarm": {
+        "attribution": "Alertes : MeteoAlarm/EUMETNET",
+        "error_fetching": "Erreur lors de la récupération des alertes météo"
+      },
+      "eccc": {
+        "error_fetching": "Erreur lors de la récupération des alertes météo"
+      },
+      "dwd": {
+        "attribution": "Alertes : DWD via Bright Sky",
+        "error_fetching": "Erreur lors de la récupération des alertes météo"
       }
     },
     "gwx": {
@@ -346,13 +357,20 @@
         "Sunday": "Di"
       },
       "feels_like": "(ressenti {value}{unit})",
+      "calm": "Calme",
       "hourly_not_available": "Prévisions horaires non disponibles",
       "source_option_not_available": "Non disponible pour cette source météo",
       "mqtt_forecast_not_supported": "Les prévisions étendues ne sont pas disponibles pour les sources météo MQTT",
       "mqtt_weather_no_data": "Aucun message météo MQTT reçu pour ce sujet pour le moment",
       "mqtt_weather_no_subscriber": "L'abonné météo MQTT n'est pas actif (activez [MqttWeather] et les sujets custom.mqtt_weather.*)",
       "mqtt_weather_payload_error": "Erreur dans les données météo MQTT : {detail}",
-      "mqtt_weather_stale": "Les données météo MQTT sont trop anciennes"
+      "mqtt_weather_stale": "Les données météo MQTT sont trop anciennes",
+      "metno": {
+        "error_fetching_api": "Erreur lors de la récupération des données météo depuis MET Norway"
+      },
+      "eccc": {
+        "error_fetching_api": "Erreur lors de la récupération des données météo depuis Environment Canada"
+      }
     },
     "sports": {
       "description": "Obtenir les scores et horaires sportifs (utilisation : sports [équipe/ligue])",

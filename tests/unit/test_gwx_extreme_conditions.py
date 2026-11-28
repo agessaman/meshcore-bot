@@ -95,7 +95,10 @@ def test_wind_thresholds(wind_unit, factor, label, mph, warns):
     # The threshold is 30 mph in any unit; the warning shows the speed in the reply's own unit.
     cmd = _gwx(wind_unit=wind_unit)
     result = _run(cmd, _data(cmd, wind_speed_10m=mph * factor))
-    _assert_warning(result, f"⚠️ High winds ({int(mph * factor)} {label})" if warns else None)
+    # The reply rounds to the nearest whole unit, halves away from zero; every
+    # value here is positive, so +0.5 then truncate is the same rule.
+    shown = int(mph * factor + 0.5)
+    _assert_warning(result, f"⚠️ High winds ({shown} {label})" if warns else None)
 
 
 def test_polish_warning_shows_the_replys_own_speed():

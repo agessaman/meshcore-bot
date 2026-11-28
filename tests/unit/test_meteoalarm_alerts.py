@@ -23,6 +23,7 @@ import requests
 from modules.i18n import Translator
 from modules.weather_providers.alerts_meteoalarm import (
     DEFAULT_BASE_URL,
+    FAILURE_TTL,
     GEOMETRY_CACHE_MAX,
     LOCATIONS_TTL,
     LOCATIONS_URL,
@@ -34,6 +35,7 @@ from modules.weather_providers.alerts_meteoalarm import (
     WINDOW_TTL_TODAY,
     MeteoalarmAlertsProvider,
     _make_session,
+    _raw_key,
     _reset_seconds,
     _retry_after_seconds,
     geometry_contains,
@@ -216,6 +218,26 @@ def test_the_locations_list_skips_the_all_feature():
     assert [code for code, _geometry in countries] == ["NO", "AT", "DE"]
 
 
+def test_a_malformed_country_polygon_is_skipped_rather_than_raised():
+    routes = _routes()
+    locations = _json("locations.json")
+    broken = {
+        "type": "Feature",
+        "id": "XX",
+        "properties": {"name": "Broken"},
+        "geometry": {"type": "Polygon", "coordinates": [[[0, 0], "not a position"]]},
+    }
+    locations["features"] = [broken, *locations["features"]]
+    routes[LOCATIONS_URL] = _Response(200, locations)
+    provider, _session_, host, _clock = _provider(routes)
+
+    # covers() reads every cached polygon, so a bad ring must never reach it.
+    assert provider.covers(LAT, LON) is True
+    assert provider.covers(FAR_LAT, FAR_LON) is False
+    assert [code for code, _geometry in provider._country_geometries()] == ["NO", "AT", "DE"]
+    assert any("unusable geometry" in call.args[0] for call in host.logger.debug.call_args_list)
+
+
 # --- windows ----------------------------------------------------------------
 
 
@@ -273,6 +295,32 @@ def test_a_204_means_no_warnings_and_is_never_parsed_as_json():
 
     assert provider.summary(LAT, LON, 130) is None
     assert _warnings(host) == []
+
+
+def test_a_locations_body_without_a_feature_list_is_unavailable():
+    routes = _routes()
+    routes[LOCATIONS_URL] = _Response(200, {})
+    provider, _session_, host, _clock = _provider(routes)
+
+    # No list is not an empty list: the point is possibly covered, and the
+    # lookup reports a fetch failure rather than an all-clear.
+    assert provider._country_geometries() is None
+    assert provider.coverage_for(LAT, LON) is Coverage.COVERED
+    assert provider.summary(LAT, LON, 130) is None
+    assert any("no feature list" in message for message in _warnings(host))
+
+
+def test_a_country_body_without_a_feature_list_is_unavailable():
+    routes = _routes()
+    routes[NO_URL] = lambda params: (
+        _Response(200, {"type": "FeatureCollection"})
+        if str(params.get("datetime", "")).startswith(TODAY)
+        else _Response(204)
+    )
+    provider, _session_, host, _clock = _provider(routes)
+
+    assert provider.summary(LAT, LON, 130) is None
+    assert any("no feature list" in message for message in _warnings(host))
 
 
 def test_pagination_follows_total_pages():
@@ -1227,6 +1275,79 @@ def test_the_configured_language_picks_its_own_info_block():
     assert "Kuling" not in summary.text
 
 
+def test_switching_language_on_a_warm_cache_picks_the_new_block():
+    provider, session, host, _clock = _provider(_two_language_routes(), language="en")
+    assert "Gale" in provider.summary(LAT, LON, 130).text
+
+    # The same provider, the same caches, a different configured language.
+    host.bot.config.set("Localization", "language", "no")
+    summary = provider.summary(LAT, LON, 130)
+
+    assert "Kuling" in summary.text
+    assert "Gale" not in summary.text
+    # The CAP document itself is not refetched: only the parse is per language.
+    assert session.count(TWO_LANGUAGES_URL) == 1
+
+
+def test_a_document_failing_in_the_new_language_is_retried_after_a_minute():
+    """A copy cached as good in English must not keep its ten minutes once it fails in Norwegian."""
+    import re
+
+    full = _text("alert-two-languages.xml")
+    blocks = full.split("<info>")
+    blocks = [
+        re.sub(r"<expires>.*?</expires>", "", block, flags=re.S) if "<language>no</language>" in block else block
+        for block in blocks
+    ]
+    broken_norwegian = "<info>".join(blocks)
+    assert broken_norwegian != full
+    routes = _two_language_routes()
+    routes[TWO_LANGUAGES_URL] = _Response(200, text=broken_norwegian)
+    provider, session, host, clock = _provider(routes, language="en")
+    assert "Gale" in provider.summary(LAT, LON, 130).text
+
+    host.bot.config.set("Localization", "language", "no")
+    assert provider.summary(LAT, LON, 130) is None
+    routes[TWO_LANGUAGES_URL] = _Response(200, text=full)
+    clock.advance(30)
+    assert provider.summary(LAT, LON, 130) is None
+    assert session.count(TWO_LANGUAGES_URL) == 1
+
+    clock.advance(31)
+    summary = provider.summary(LAT, LON, 130)
+
+    assert session.count(TWO_LANGUAGES_URL) == 2
+    assert summary is not None and "Kuling" in summary.text
+
+
+def test_a_late_failed_check_does_not_overwrite_a_repaired_copy():
+    """A Norwegian check of the old text must not put it back over a newer document."""
+    provider, _session_, _host_, clock = _provider(_two_language_routes(), language="en")
+    alert_id, indexes = "a-two-languages", {0}
+    provider._cache_raw(alert_id, indexes, "<html>old</html>", 60)
+    repaired = _text("alert-two-languages.xml")
+    provider._cache_raw(alert_id, indexes, repaired, 600)
+
+    provider._shorten_raw(alert_id, indexes, "<html>old</html>", 60, fresh=False)
+
+    deadline, text = provider._caps[_raw_key(alert_id, indexes)]
+    assert text == repaired
+    assert deadline > provider._utcnow() + timedelta(seconds=500)
+
+
+def test_a_fresh_failure_gets_its_own_failure_window():
+    provider, _session_, _host_, clock = _provider(_two_language_routes(), language="en")
+    alert_id, indexes = "a-two-languages", {0}
+    provider._cache_raw(alert_id, indexes, "<html>old</html>", 1)
+    clock.advance(2)
+
+    provider._shorten_raw(alert_id, indexes, "<html>new</html>", 60, fresh=True)
+
+    deadline, text = provider._caps[_raw_key(alert_id, indexes)]
+    assert text == "<html>new</html>"
+    assert deadline >= provider._utcnow() + timedelta(seconds=59)
+
+
 def test_the_norwegian_language_picks_the_norwegian_block():
     provider, _session_, _host_, _clock = _provider(_two_language_routes(), language="no")
 
@@ -1402,13 +1523,47 @@ def test_two_providers_with_the_same_origin_and_token_share_their_caches():
 
     assert first._cache is second._cache
     assert other._cache is not first._cache
-    assert first._session_lock is not None
+    # The session is per thread, not shared behind a lock.
+    assert not hasattr(first, "_session_lock")
 
     first.summary(LAT, LON, 130)
     second.summary(LAT, LON, 130)
 
     assert first_session.count(LOCATIONS_URL) == 1
     assert second_session.count(LOCATIONS_URL) == 0
+
+
+def test_each_thread_gets_its_own_session_and_no_lock_is_held_during_http():
+    reset_rate_limits()
+    host = _host()
+    provider = MeteoalarmAlertsProvider(host=host, token="shared")
+    provider._wait = lambda seconds: None
+    seen = []
+    in_flight = threading.Event()
+    release = threading.Event()
+
+    class _SlowSession:
+        def get(self, url, params=None, headers=None, timeout=None):
+            # The cache lock must be free while a request is in flight.
+            assert provider._lock.acquire(blocking=False) is True
+            provider._lock.release()
+            seen.append(threading.current_thread().name)
+            in_flight.set()
+            release.wait(5)
+            return _Response(200, _json("locations.json"))
+
+    provider._session_for_thread = lambda: _SlowSession()
+
+    worker = threading.Thread(target=provider._country_geometries, name="worker")
+    worker.start()
+    assert in_flight.wait(5) is True
+    # The main thread is not blocked by the worker's request.
+    assert provider._lock.acquire(blocking=False) is True
+    provider._lock.release()
+    release.set()
+    worker.join(5)
+
+    assert seen == ["worker"]
 
 
 def test_the_dead_coverage_state_and_translation_keys_are_gone():
@@ -1419,3 +1574,100 @@ def test_the_dead_coverage_state_and_translation_keys_are_gone():
     meteoalarm = keys["commands"]["wx"]["meteoalarm"]
     assert "from" not in meteoalarm
     assert "until" not in meteoalarm
+
+
+# --- a CAP document that does not parse -------------------------------------
+
+
+def test_an_html_cap_is_retried_after_a_minute():
+    """An HTML 200 must not be cached for the window TTL and hide the alert."""
+    routes = _routes()
+    routes[CAP_GALE] = _Response(200, text="<html>Bad Gateway</html>")
+    provider, session, _host_, clock = _provider(routes)
+
+    first = provider.summary(LAT, LON, 130)
+    assert session.count(CAP_GALE) == 1
+    # The gale alert is lost, the other one still answers.
+    assert first is not None and first.count == 1
+
+    clock.advance(FAILURE_TTL + 1)
+    routes[CAP_GALE] = _Response(200, text=_text("alert-gale.xml"))
+    second = provider.summary(LAT, LON, 130)
+
+    assert session.count(CAP_GALE) == 2
+    assert second is not None and second.count == 2
+
+
+def test_a_cached_html_cap_keeps_its_original_deadline():
+    """A cache hit must not renew the failure TTL, or steady requests hide the alert."""
+    routes = _routes()
+    routes[CAP_GALE] = _Response(200, text="<html>Bad Gateway</html>")
+    provider, session, _host_, clock = _provider(routes)
+
+    provider.summary(LAT, LON, 130)
+    routes[CAP_GALE] = _Response(200, text=_text("alert-gale.xml"))
+    clock.advance(30)
+    provider.summary(LAT, LON, 130)
+    assert session.count(CAP_GALE) == 1
+
+    clock.advance(31)
+    recovered = provider.summary(LAT, LON, 130)
+
+    assert session.count(CAP_GALE) == 2
+    assert recovered is not None and recovered.count == 2
+
+
+@pytest.mark.parametrize("geometry", [None, {}])
+def test_an_empty_country_geometry_counts_as_unusable(geometry):
+    """A null or empty geometry must not become a day-long "not covered"."""
+    locations = _json("locations.json")
+    for feature in locations["features"]:
+        if feature.get("id") == "NO":
+            feature["geometry"] = geometry
+    routes = _routes()
+    routes[LOCATIONS_URL] = _Response(200, locations)
+    provider, session, _host_, clock = _provider(routes)
+
+    assert provider.coverage_for(LAT, LON) is Coverage.COVERED
+    provider.summary(LAT, LON, 130)
+    assert session.count(NO_URL) > 0
+
+    clock.advance(FAILURE_TTL + 1)
+    provider.coverage_for(LAT, LON)
+    assert session.count(LOCATIONS_URL) == 2
+
+
+# --- a country polygon that does not parse ----------------------------------
+
+
+def test_a_malformed_country_polygon_is_retried_after_a_minute():
+    """A list with a country missing is cached briefly, not for a day."""
+    locations = _json("locations.json")
+    for feature in locations["features"]:
+        if feature.get("id") == "NO":
+            feature["geometry"] = {"type": "Polygon", "coordinates": [[[0, 0], [1]]]}
+    routes = _routes()
+    routes[LOCATIONS_URL] = _Response(200, locations)
+    provider, session, _host_, clock = _provider(routes)
+
+    assert provider.coverage_for(LAT, LON) is Coverage.COVERED
+    assert session.count(LOCATIONS_URL) == 1
+
+    clock.advance(FAILURE_TTL + 1)
+    assert provider.coverage_for(LAT, LON) is Coverage.COVERED
+    assert session.count(LOCATIONS_URL) == 2
+
+
+def test_a_point_outside_every_valid_polygon_is_possibly_covered_in_europe():
+    """Norway's polygon is unreadable, so the point cannot be ruled out."""
+    locations = _json("locations.json")
+    for feature in locations["features"]:
+        if feature.get("id") == "NO":
+            feature["geometry"] = {"type": "Polygon", "coordinates": [[[0, 0], [1]]]}
+    routes = _routes()
+    routes[LOCATIONS_URL] = _Response(200, locations)
+    provider, _session_, _host_, _clock = _provider(routes)
+
+    assert provider.coverage_for(LAT, LON) is Coverage.COVERED
+    # Outside Europe the missing polygon changes nothing.
+    assert provider.coverage_for(FAR_LAT, FAR_LON) is Coverage.NOT_COVERED

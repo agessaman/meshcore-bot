@@ -176,6 +176,24 @@
     "wx": {
       "description": "Meteorologia dos EUA por código postal, cidade ou coordenadas (uso: wx 98101)",
       "usage": "Uso: wx <código|cidade|lat,lon> [tomorrow|hourly|Nd|alerts] - Exemplo: wx 98101 ou wx seattle 5d",
+      "subcommands": [
+        {
+          "name": "tomorrow",
+          "description": "Previsão de amanhã"
+        },
+        {
+          "name": "Nd",
+          "description": "Previsão de N dias (ex. 7d, 10d; também 7-day, 7 ou 2–16)"
+        },
+        {
+          "name": "hourly",
+          "description": "Previsão por hora"
+        },
+        {
+          "name": "alerts",
+          "description": "Ver todos os alertas meteorológicos"
+        }
+      ],
       "error_fetching": "Erro ao buscar dados meteorológicos do NOAA",
       "no_location_zipcode": "Não foi possível encontrar localização para CEP {location}",
       "no_location_city": "Não foi possível encontrar cidade '{location}' em {state}",
@@ -200,6 +218,17 @@
         "Friday": "Sex",
         "Saturday": "Sáb",
         "Sunday": "Dom"
+      },
+      "meteoalarm": {
+        "attribution": "Alertas: MeteoAlarm/EUMETNET",
+        "error_fetching": "Erro ao buscar alertas meteorológicos"
+      },
+      "eccc": {
+        "error_fetching": "Erro ao buscar alertas meteorológicos"
+      },
+      "dwd": {
+        "attribution": "Alertas: DWD via Bright Sky",
+        "error_fetching": "Erro ao buscar alertas meteorológicos"
       }
     },
     "gwx": {
@@ -214,6 +243,13 @@
       "tomorrow_error": "Erro ao formatar a previsão para amanhã",
       "multiday_not_available": "Previsão de {num_days} dias não disponível",
       "multiday_error": "Erro ao formatar a previsão de {num_days} dias",
+      "humidity": "{value}%RH",
+      "dew_point": "💧{value}{unit}",
+      "visibility": "👁️{value}mi",
+      "visibility_km": "👁️{value}km",
+      "pressure": "📊{value}hPa",
+      "pressure_mmhg": "📊{value}mmHg",
+      "gust": "G{value}",
       "periods": {
         "today": "Hoje",
         "tonight": "Esta Noite",
@@ -270,13 +306,21 @@
         "Sunday": "Dom"
       },
       "feels_like": "(sensação {value}{unit})",
+      "calm": "Calmo",
       "hourly_not_available": "Previsão horária não disponível",
       "source_option_not_available": "Não disponível para esta fonte meteorológica",
       "mqtt_forecast_not_supported": "A previsão alargada não está disponível para fontes meteorológicas MQTT",
       "mqtt_weather_no_data": "Ainda não foi recebida nenhuma mensagem meteorológica MQTT para este tópico",
       "mqtt_weather_no_subscriber": "O subscritor meteorológico MQTT não está ativo (ative [MqttWeather] e os tópicos custom.mqtt_weather.*)",
       "mqtt_weather_payload_error": "Erro nos dados meteorológicos MQTT: {detail}",
-      "mqtt_weather_stale": "Os dados meteorológicos MQTT são demasiado antigos"
+      "mqtt_weather_stale": "Os dados meteorológicos MQTT são demasiado antigos",
+      "pressure_unit": "hpa",
+      "metno": {
+        "error_fetching_api": "Erro ao buscar dados meteorológicos do MET Norway"
+      },
+      "eccc": {
+        "error_fetching_api": "Erro ao buscar dados meteorológicos do Environment Canada"
+      }
     },
     "sports": {
       "description": "Obter placares e horários de esportes (uso: esportes [time/liga])",
@@ -1020,6 +1064,8 @@
     "no_help_available": "Nenhuma ajuda disponível para este comando.",
     "snr_label": "SNR: {value} dB",
     "rssi_label": "RSSI: {value} dBm",
+    "temp_high_label": "Máx",
+    "temp_low_label": "Mín",
     "date_time": {
       "day_abbreviations": {
         "Mon": "Seg",
@@ -1085,6 +1131,21 @@
       "WNW": "ONO",
       "NW": "NO",
       "NNW": "NNO"
+    },
+    "alerts": {
+      "til": "até",
+      "by": "de",
+      "from": "desde",
+      "am": "a.m.",
+      "pm": "p.m.",
+      "time_12h": "{hour} {meridiem}",
+      "date_12h": "{day} {month} {time}",
+      "event_types": {
+        "Warning": "Alerta",
+        "Watch": "Vig.",
+        "Advisory": "Aviso",
+        "Statement": "Com."
+      }
     }
   },
   "categories": {
@@ -1097,5 +1158,55 @@
     "analytics": "Comandos de Análise",
     "meshcore_info": "Comandos de Info MeshCore",
     "management": "Comandos de Gerenciamento"
+  },
+  "services": {
+    "weather_service": {
+      "daily_weather": "Clima diário",
+      "tomorrow": "Amanhã",
+      "error_fetching": "Erro ao buscar dados meteorológicos",
+      "no_data": "Sem dados de previsão",
+      "near": "perto de",
+      "est": "aprox.",
+      "steady": "contínuo",
+      "rain_starting": "{emoji} Atenção — {ptype} começa em ~{minutes}min{est}{steady}{temp}{location}",
+      "rain_ending": "{emoji} Atenção — {ptype} termina em ~{minutes}min{est}{temp}{location}",
+      "weather_descriptions": {
+        "0": "Limpo",
+        "1": "Quase Limpo",
+        "2": "Parcialmente Nublado",
+        "3": "Nublado",
+        "45": "Neblina",
+        "48": "Neblina",
+        "51": "Garoa Leve",
+        "53": "Garoa",
+        "55": "Garoa Forte",
+        "56": "Garoa Congelante Leve",
+        "57": "Garoa Congelante",
+        "61": "Chuva Leve",
+        "63": "Chuva",
+        "65": "Chuva Forte",
+        "66": "Chuva Congelante Leve",
+        "67": "Chuva Congelante",
+        "71": "Neve Leve",
+        "73": "Neve",
+        "75": "Neve Forte",
+        "77": "Grãos de Neve",
+        "80": "Pancadas Leves",
+        "81": "Pancadas",
+        "82": "Pancadas Fortes",
+        "85": "Pancadas de Neve Leves",
+        "86": "Pancadas de Neve",
+        "95": "Tempestade",
+        "96": "Tempestade c/Granizo",
+        "97": "Tempestade Forte",
+        "99": "Tempestade Severa"
+      },
+      "wind_speed_units": {
+        "ms": "m/s",
+        "mph": "mph",
+        "kmh": "km/h",
+        "kn": "kn"
+      }
+    }
   }
 }

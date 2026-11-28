@@ -992,18 +992,22 @@ prefix_best_do_not_suggest =
 # NOTE: Unit settings are used by both the wx and gwx commands and Weather_Service plugin
 
 # Weather provider selection
-# Options: noaa, openmeteo
+# Options: noaa, openmeteo, metno, eccc
 #   noaa: Use NOAA API (US-focused, better for US locations, includes weather alerts)
 #   openmeteo: Use Open-Meteo API (global coverage, works worldwide)
+#   metno: Use MET Norway Locationforecast (global coverage, no alerts)
+#   eccc: Use Environment Canada city pages (Canada, nearest city within 150 km)
 # Default: noaa
 weather_provider = noaa
 
 # Weather alerts provider selection, chosen separately from the forecast provider
-# Options: auto, none, nws, meteoalarm
-#   auto: nws when weather_provider = noaa, no alerts when weather_provider = openmeteo
+# Options: auto, none, nws, meteoalarm, eccc, dwd
+#   auto: nws when weather_provider = noaa, eccc when it is eccc, no alerts otherwise
 #   none: never send weather alerts
 #   nws: Use NWS alerts (US coverage only)
 #   meteoalarm: Use Meteoalarm alerts (Europe; needs meteoalarm_token below)
+#   eccc: Use Environment Canada alerts (Canada; works with any forecast provider)
+#   dwd: Use German weather service alerts via Bright Sky (Germany; no key needed)
 # Default: auto
 alerts_provider = auto
 
@@ -1016,6 +1020,11 @@ alerts_provider = auto
 # Leave the default for MeteoGate tokens. Direct re-user tokens from api.meteoalarm.org/register
 # need meteoalarm_api_url = https://api.meteoalarm.org/edr/v1
 #meteoalarm_api_url = https://api.meteogate.eu/warnings
+
+# MET Norway User-Agent, used only with weather_provider = metno
+# The API's terms ask for an identifying agent with contact information. Leave unset to send
+# the bot's own name and version; set it to your own contact if you run a modified bot.
+#metno_user_agent =
 
 # Open-Meteo model selection (used by gwx and Weather_Service when provider is openmeteo)
 # Leave unset to default to "best_match"
@@ -1043,10 +1052,11 @@ default_country = US
 # Default: false (show usage instead)
 use_bot_location_when_no_location = false
 
-# Only with weather_provider = noaa: when a place is outside NWS (weather.gov) coverage,
-# answer wx from Open-Meteo (as gwx would) instead of replying with an error.
-# NWS timeouts and server errors still reply with an error. Ignored with
-# weather_provider = openmeteo, where wx already uses Open-Meteo for everything.
+# Only with weather_provider = noaa or eccc: when a place is outside the provider's coverage
+# (outside the US for NWS, or more than 150 km from a Canadian city page for Environment
+# Canada), answer wx from Open-Meteo (as gwx would) instead of replying with an error.
+# Provider timeouts and server errors still reply with an error. Ignored with
+# weather_provider = openmeteo or metno, which already cover the whole world.
 # Default: false
 openmeteo_fallback = false
 

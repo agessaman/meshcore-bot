@@ -16,13 +16,15 @@ from typing import Any, Optional
 
 from ..http_retry import make_retry_session
 from ..weather_common import _ARROWS_8, _COMPASS_16, load_open_meteo_model
+from ._units import HPA_PER_MMHG, hpa_to_mmhg, round_half_away
 from .base import Capability, ForecastReply, ProviderHost, WeatherProvider, WeatherUnits
 
 # Multiday: plain digits, 7day/7-day, or suffix form 7d/10d (min 2, max below). Open-Meteo allows up to 16 forecast days.
 GWX_MULTIDAY_MAX_DAYS = 16
 
 MI_TO_KM = 1.609344
-HPA_TO_MMHG = 0.750062
+# Kept as a module constant: wx_international re-exports it.
+HPA_TO_MMHG = 1 / HPA_PER_MMHG
 # Past ~20 mi / 32 km, visibility is reported as unlimited anyway.
 VISIBILITY_CAP_MI = 20
 VISIBILITY_CAP_KM = 32
@@ -40,6 +42,11 @@ ERROR_FETCHING_DATA = "ERROR_FETCHING_DATA"
 def _int_or_none(value: Any) -> Optional[int]:
     """int(value), or None for a missing or null field."""
     return None if value is None else int(value)
+
+
+def _round_or_none(value: Any) -> Optional[int]:
+    """round_half_away(value), or None for a missing or null field."""
+    return None if value is None else round_half_away(value)
 
 
 def weather_emoji(code: int, is_day: Optional[bool] = True) -> str:
@@ -150,7 +157,7 @@ class OpenMeteoProvider(WeatherProvider):
         command prepends; the body is formatted to what is left of the frame
         budget.
         """
-        current = {}
+        current: dict[str, Any] = {}
         if forecast_type == "tomorrow":
             text = self.get_open_meteo_weather(
                 lat, lon, forecast_type="tomorrow", message=message, location_prefix_len=location_prefix_len
@@ -219,7 +226,7 @@ class OpenMeteoProvider(WeatherProvider):
             else:
                 forecast_days = 2  # Default
 
-            params = {
+            params: dict[str, Any] = {
                 'latitude': lat,
                 'longitude': lon,
                 'current': 'temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure,is_day',
@@ -299,11 +306,11 @@ class OpenMeteoProvider(WeatherProvider):
             if probability is not None and probability > 0:
                 parts.append(f"{int(probability)}%")
             parts.append(self.host._short_hourly_description(self._get_weather_description(code)))
-            parts.append(f"{int(temperature)}°")
+            parts.append(f"{round_half_away(temperature)}°")
             speed = value('wind_speed_10m')
             direction = value('wind_direction_10m')
             if speed is not None and direction is not None:
-                parts.append(f"{self.host._without_arrow(self._degrees_to_direction(direction))}{int(speed)}")
+                parts.append(f"{self.host._without_arrow(self._degrees_to_direction(direction))}{round_half_away(speed)}")
             lines.append(" ".join(parts))
         return self.host._pack_hourly_lines(lines, max_length, self.translation_ns)
 
@@ -325,15 +332,15 @@ class OpenMeteoProvider(WeatherProvider):
         if current.get('temperature_2m') is None:
             self.host.logger.warning("Open-Meteo response has no current temperature")
             return None
-        temp = int(current['temperature_2m'])
-        feels_like = _int_or_none(current.get('apparent_temperature'))
+        temp = round_half_away(current['temperature_2m'])
+        feels_like = _round_or_none(current.get('apparent_temperature'))
         if feels_like is None:
             feels_like = temp
         dewpoint = current.get('dewpoint_2m')
         humidity = _int_or_none(current.get('relative_humidity_2m'))
-        wind_speed = _int_or_none(current.get('wind_speed_10m'))
+        wind_speed = _round_or_none(current.get('wind_speed_10m'))
         wind_direction = self._degrees_to_direction(current.get('wind_direction_10m'))
-        wind_gusts = _int_or_none(current.get('wind_gusts_10m'))
+        wind_gusts = _round_or_none(current.get('wind_gusts_10m'))
         visibility = current.get('visibility')
         pressure = current.get('surface_pressure')
         weather_code = current.get('weather_code')
@@ -408,7 +415,7 @@ class OpenMeteoProvider(WeatherProvider):
 
         # Add dew point
         if dewpoint is not None:
-            dewpoint_val = int(dewpoint)
+            dewpoint_val = round_half_away(dewpoint)
             dew_str = self.host.translate('commands.gwx.dew_point', value=dewpoint_val, unit=temp_symbol)
             conditions.append(dew_str)
 
@@ -417,38 +424,39 @@ class OpenMeteoProvider(WeatherProvider):
             # Beyond ~20 mi visibility is essentially unlimited, so cap the
             # display at that in whichever unit we are showing.
             if self.metric_distance:
-                visibility_display = min(int(visibility_mi * MI_TO_KM), VISIBILITY_CAP_KM)
+                visibility_display = min(round_half_away(visibility_mi * MI_TO_KM), VISIBILITY_CAP_KM)
                 vis_str = self.host.translate('commands.gwx.visibility_km', value=visibility_display)
             else:
-                visibility_display = min(int(visibility_mi), VISIBILITY_CAP_MI)
+                visibility_display = min(round_half_away(visibility_mi), VISIBILITY_CAP_MI)
                 vis_str = self.host.translate('commands.gwx.visibility', value=visibility_display)
             conditions.append(vis_str)
 
         # Add pressure (convert from hPa to display format)
         if pressure is not None:
-            pressure_hpa = int(pressure)
             # Which pressure unit reads as normal is a locale convention, not
             # a metric/imperial split: Russia uses mmHg, most of metric
-            # Europe uses hPa. The catalog names its own.
+            # Europe uses hPa. The catalog names its own. The value is rounded
+            # once, after the unit is chosen.
             if self.host.translate('commands.gwx.pressure_unit').strip().lower() == 'mmhg':
                 press_str = self.host.translate('commands.gwx.pressure_mmhg',
-                                                value=round(pressure_hpa * HPA_TO_MMHG))
+                                                value=round_half_away(hpa_to_mmhg(pressure)))
             else:
-                press_str = self.host.translate('commands.gwx.pressure', value=pressure_hpa)
+                press_str = self.host.translate('commands.gwx.pressure',
+                                                value=round_half_away(pressure))
             conditions.append(press_str)
         return conditions
 
     def _open_meteo_daily_tail(self, weather: str, daily: dict, max_length: int, temp_symbol: str) -> str:
         """Append today's high/low, then tomorrow and its precipitation while they fit."""
-        today_high = int(daily['temperature_2m_max'][0])
-        today_low = int(daily['temperature_2m_min'][0])
+        today_high = round_half_away(daily['temperature_2m_max'][0])
+        today_low = round_half_away(daily['temperature_2m_min'][0])
 
         weather += f" | {self.host._format_high_low(today_high, today_low, temp_symbol)}"
 
         # Add tomorrow if space allows (check length more carefully)
         if len(daily['temperature_2m_max']) > 1:
-            tomorrow_high = int(daily['temperature_2m_max'][1])
-            tomorrow_low = int(daily['temperature_2m_min'][1])
+            tomorrow_high = round_half_away(daily['temperature_2m_max'][1])
+            tomorrow_low = round_half_away(daily['temperature_2m_min'][1])
 
             tomorrow_code = daily['weather_code'][1]
             tomorrow_emoji = self._get_weather_emoji(tomorrow_code)
@@ -551,8 +559,8 @@ class OpenMeteoProvider(WeatherProvider):
                 return self.host.translate('commands.gwx.tomorrow_not_available')
 
             temp_symbol = "°F" if self.units.temperature == 'fahrenheit' else "°C"
-            tomorrow_high = int(daily['temperature_2m_max'][1])
-            tomorrow_low = int(daily['temperature_2m_min'][1])
+            tomorrow_high = round_half_away(daily['temperature_2m_max'][1])
+            tomorrow_low = round_half_away(daily['temperature_2m_min'][1])
             tomorrow_code = daily['weather_code'][1]
             tomorrow_emoji = self._get_weather_emoji(tomorrow_code)
             tomorrow_desc = self._get_weather_description(tomorrow_code)
@@ -561,11 +569,11 @@ class OpenMeteoProvider(WeatherProvider):
             wind_info = ""
             gust_info = ""
             if len(daily.get('wind_speed_10m_max', [])) > 1:
-                wind_speed = int(daily['wind_speed_10m_max'][1])
+                wind_speed = round_half_away(daily['wind_speed_10m_max'][1])
                 if wind_speed >= 3:
                     wind_info = f" {wind_speed}"
                     if len(daily.get('wind_gusts_10m_max', [])) > 1:
-                        wind_gusts = int(daily['wind_gusts_10m_max'][1])
+                        wind_gusts = round_half_away(daily['wind_gusts_10m_max'][1])
                         if wind_gusts > wind_speed + 3:
                             gust_info = self.host.translate('commands.gwx.gust', value=wind_gusts)
 
@@ -662,8 +670,8 @@ class OpenMeteoProvider(WeatherProvider):
                 day_name = day_date.strftime('%A')
                 day_abbrev = day_abbrev_map.get(day_name, day_name[:2])
 
-                high = int(temps_max[i])
-                low = int(temps_min[i])
+                high = round_half_away(temps_max[i])
+                low = round_half_away(temps_min[i])
                 code = weather_codes[i] if i < len(weather_codes) else 0
                 emoji = self._get_weather_emoji(code)
                 desc = self._get_weather_description(code)
@@ -801,6 +809,6 @@ class OpenMeteoProvider(WeatherProvider):
         wind = current.get('wind_speed_10m') or 0
         if wind / wind_factor >= 30:
             unit = self.host.translate(f'services.weather_service.wind_speed_units.{self.units.wind_speed}')
-            warnings.append(self.host.translate('commands.gwx.warnings.high_winds', wind_speed=int(wind), unit=unit))
+            warnings.append(self.host.translate('commands.gwx.warnings.high_winds', wind_speed=round_half_away(wind), unit=unit))
 
         return " | ".join(warnings) if warnings else None

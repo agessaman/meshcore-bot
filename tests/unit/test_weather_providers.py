@@ -23,6 +23,8 @@ from modules.weather_providers import (
     make_provider,
     resolve_alerts_provider_name,
 )
+from modules.weather_providers.alerts_dwd import DwdAlertsProvider
+from modules.weather_providers.alerts_eccc import EcccAlertsProvider
 from modules.weather_providers.alerts_meteoalarm import (
     MeteoalarmAlertsProvider,
     reset_rate_limits,
@@ -36,6 +38,8 @@ from modules.weather_providers.base import (
     WeatherProvider,
     WeatherUnits,
 )
+from modules.weather_providers.eccc import EcccProvider
+from modules.weather_providers.metno import MetNorwayProvider
 from modules.weather_providers.noaa import NoaaProvider
 from modules.weather_providers.openmeteo import OpenMeteoProvider
 
@@ -56,6 +60,21 @@ def _bot(weather=None, wx_section=None, bot_section=None):
     return bot
 
 
+def _bot_from_ini(weather_ini):
+    """A bot whose [Weather] section is read as a file.
+
+    read_dict validates interpolation on the way in, so a literal '%' can only
+    be set up the way a real config.ini sets it up.
+    """
+    config = configparser.ConfigParser()
+    config.read_string("[Weather]\n" + weather_ini + "\n[Wx_Command]\n\n[Bot]\n")
+    bot = Mock()
+    bot.config = config
+    bot.translator = Translator("en")
+    bot.db_manager.get_cached_geocoding = Mock(return_value=(None, None))
+    return bot
+
+
 def _wx(weather=None, wx_section=None, bot_section=None):
     return WxCommand(_bot(weather, wx_section, bot_section))
 
@@ -64,16 +83,59 @@ def _warnings(mock):
     return [call.args[0] for call in mock.warning.call_args_list]
 
 
+# --- the construction matrix ------------------------------------------------
+
+
+@pytest.mark.parametrize("command", ["wx", "gwx"])
+@pytest.mark.parametrize("weather_provider", sorted(PROVIDERS))
+@pytest.mark.parametrize(
+    "alerts_provider", ["auto", "none", *sorted(ALERT_PROVIDERS)]
+)
+@pytest.mark.parametrize("fallback", ["true", "false"])
+def test_every_provider_combination_builds(command, weather_provider, alerts_provider, fallback):
+    """Every pair of settings the config accepts has to construct a command.
+
+    Only NWS takes the command's NOAA state, so a NOAA forecast with an ECCC or
+    DWD alerts provider used to raise TypeError at construction and `wx` never
+    loaded.
+    """
+    weather = {
+        "weather_provider": weather_provider,
+        "alerts_provider": alerts_provider,
+        "openmeteo_fallback": fallback,
+        "meteoalarm_token": "s3cr3t-token",
+    }
+    cls = WxCommand if command == "wx" else GlobalWxCommand
+
+    cmd = cls(_bot(weather))
+
+    # gwx is pinned to Open-Meteo whatever the forecast setting says.
+    expected_forecast = "openmeteo" if command == "gwx" else weather_provider
+    assert isinstance(cmd.provider, PROVIDERS[expected_forecast])
+    if alerts_provider == "none":
+        assert cmd.alerts_provider is None
+    else:
+        expected = resolve_alerts_provider_name(alerts_provider, expected_forecast)
+        if expected is None:
+            assert cmd.alerts_provider is None
+        else:
+            assert isinstance(cmd.alerts_provider, ALERT_PROVIDERS[expected])
+
+
 # --- registries -------------------------------------------------------------
 
 
 def test_the_registries_hold_the_shipped_providers():
-    assert set(PROVIDERS) == {"noaa", "openmeteo"}
+    assert set(PROVIDERS) == {"eccc", "metno", "noaa", "openmeteo"}
     assert PROVIDERS["noaa"] is NoaaProvider
     assert PROVIDERS["openmeteo"] is OpenMeteoProvider
-    assert set(ALERT_PROVIDERS) == {"meteoalarm", "nws"}
+    assert PROVIDERS["metno"] is MetNorwayProvider
+    assert PROVIDERS["eccc"] is EcccProvider
+    assert set(ALERT_PROVIDERS) == {"dwd", "eccc", "meteoalarm", "nws"}
     assert ALERT_PROVIDERS["nws"] is NwsAlertsProvider
     assert ALERT_PROVIDERS["meteoalarm"] is MeteoalarmAlertsProvider
+    assert ALERT_PROVIDERS["eccc"] is EcccAlertsProvider
+    assert ALERT_PROVIDERS["dwd"] is DwdAlertsProvider
 
 
 def test_make_provider_binds_the_host_and_units():
@@ -230,9 +292,12 @@ class _FakeAlerts(AlertsProvider):
         return True
 
 
-def _forecast_reply(cmd, extra=None, alerts=None, ok=True, text="BODY"):
+def _forecast_reply(cmd, extra=None, alerts=None, ok=True, text="BODY", raises=None):
     """Drive one default forecast through the command with the network stubbed."""
-    cmd.provider.forecast = Mock(return_value=ForecastReply(text=text, extra=extra, ok=ok))
+    if raises is not None:
+        cmd.provider.forecast = Mock(side_effect=raises)
+    else:
+        cmd.provider.forecast = Mock(return_value=ForecastReply(text=text, extra=extra, ok=ok))
     if alerts is not None:
         cmd.alerts_provider = alerts
     cmd.geocode_location = Mock(
@@ -458,9 +523,15 @@ def test_the_model_warning_comes_before_the_unit_warnings():
 
 
 def test_an_invalid_wx_precipitation_unit_keeps_openmeteos_validated_one():
+    # alerts_provider = none: the fallback reply would otherwise ask NWS for a
+    # summary, and this test is about the units.
     cmd = _wx({"weather_provider": "noaa", "openmeteo_fallback": "true",
-               "precipitation_unit": "mm"},
+               "precipitation_unit": "mm", "alerts_provider": "none"},
               wx_section={"precipitation_unit": "furlongs"})
+    cmd.provider.covers = Mock(return_value=True)
+    cmd.provider.forecast = Mock(
+        return_value=ForecastReply(text="", ok=False, no_coverage=True)
+    )
     cmd.fallback_provider.forecast = Mock(return_value=ForecastReply(text="BODY"))
     cmd.geocode_location = Mock(
         return_value=(47.6, -122.3, {"city": "Portland", "country_code": "us"}, None)
@@ -613,6 +684,27 @@ def test_the_alerts_option_replies_when_meteoalarm_cannot_fetch():
 
     texts = [call.args[1] for call in cmd.send_response.call_args_list]
     assert texts == ["Error fetching weather alerts"]
+
+
+def test_a_malformed_country_polygon_still_queries_its_warnings():
+    """Norway's polygon unreadable must not read as "not available"."""
+    from tests.unit.test_meteoalarm_alerts import LOCATIONS_URL, NO_URL, _json, _Response
+
+    cmd, provider = _meteoalarm_command()
+    locations = _json("locations.json")
+    for feature in locations["features"]:
+        if feature.get("id") == "NO":
+            feature["geometry"] = {"type": "Polygon", "coordinates": [[[0, 0], [1]]]}
+    provider.session.routes[LOCATIONS_URL] = _Response(200, locations)
+    message = SimpleNamespace(content="wx 58.4,6.0 alerts", sender_id="u1")
+
+    assert asyncio.run(cmd.execute(message)) is True
+
+    # The point is inside Europe, so the warnings query still runs.
+    assert provider.session.count(NO_URL) > 0
+    texts = [call.args[1] for call in cmd.send_response.call_args_list]
+    assert texts
+    assert not any("not available" in text.lower() for text in texts)
 
 
 def test_a_broken_meteoalarm_document_does_not_cost_the_gwx_forecast():
@@ -780,11 +872,18 @@ def test_the_nws_summary_does_not_deadlock_when_the_lock_is_already_held():
 
 def test_a_failed_fallback_fetch_is_the_bare_error():
     cmd = _wx({"weather_provider": "noaa", "openmeteo_fallback": "true"})
+    cmd.provider.covers = Mock(return_value=True)
+    cmd.provider.forecast = Mock(
+        return_value=ForecastReply(text="", ok=False, no_coverage=True)
+    )
     cmd.fallback_provider.forecast = Mock(
         return_value=ForecastReply(text="Error fetching weather data", ok=False)
     )
     cmd.geocode_location = Mock(
         return_value=(48.85, 2.35, {"city": "Paris", "country_code": "fr"}, None)
+    )
+    cmd.city_to_lat_lon = Mock(
+        return_value=(48.85, 2.35, {"city": "Paris", "country_code": "fr"})
     )
     cmd._format_location_display = Mock(return_value="Paris, FR")
     cmd.get_max_message_length = Mock(return_value=130)
@@ -915,6 +1014,186 @@ def test_a_failed_noaa_forecast_does_not_append_nws_alerts():
     cmd._locate_for_forecast = Mock(return_value=(None, 47.6, -122.3, "Portland, US: "))
 
     assert _forecast_reply(cmd, ok=False, text="NOAA DOWN") == "NOAA DOWN"
+
+
+@pytest.mark.parametrize("weather_provider", ["eccc", "metno", "openmeteo"])
+def test_a_failed_forecast_still_carries_nws_alerts_on_another_provider(weather_provider):
+    # NWS alerts are independent of an ECCC, MET Norway or Open-Meteo forecast.
+    cmd = _wx({"weather_provider": weather_provider, "alerts_provider": "nws"})
+    cmd.alerts_provider.summary = Mock(return_value=AlertSummary(text="ALERTS", count=1))
+    cmd._locate_for_forecast = Mock(return_value=(None, 47.6, -122.3, "Portland, US: "))
+
+    assert _forecast_reply(cmd, ok=False, text="FORECAST DOWN") == (
+        "multi_message", "FORECAST DOWN", "ALERTS", 1
+    )
+
+
+def test_a_failed_fallback_still_carries_independent_alerts():
+    # NOAA + DWD: the fallback's failure is not the alerts provider's.
+    cmd = _wx({"weather_provider": "noaa", "alerts_provider": "dwd",
+               "openmeteo_fallback": "true"})
+    cmd.alerts_provider.summary = Mock(return_value=AlertSummary(text="ALERTS", count=1))
+    cmd.provider.covers = Mock(return_value=True)
+    cmd.provider.forecast = Mock(
+        return_value=ForecastReply(text="", ok=False, no_coverage=True)
+    )
+    cmd.fallback_provider.forecast = Mock(
+        return_value=ForecastReply(text="Error fetching weather data", ok=False)
+    )
+    cmd.geocode_location = Mock(
+        return_value=(52.52, 13.40, {"city": "Berlin", "country_code": "de"}, None)
+    )
+    cmd.city_to_lat_lon = Mock(
+        return_value=(52.52, 13.40, {"city": "Berlin", "country_code": "de"})
+    )
+    cmd._format_location_display = Mock(return_value="Berlin, DE")
+    cmd.get_max_message_length = Mock(return_value=130)
+
+    reply = cmd._fallback_reply("Berlin", "city", 52.52, 13.40, "default", 7, None)
+
+    assert reply == ("multi_message", "Error fetching weather data", "ALERTS", 1)
+
+
+def test_a_failed_noaa_fallback_does_not_append_nws_alerts():
+    # The NOAA + NWS pairing keeps dev's behavior: the error is the whole answer.
+    cmd = _wx({"weather_provider": "noaa", "alerts_provider": "nws",
+               "openmeteo_fallback": "true"})
+    cmd.alerts_provider.summary = Mock(return_value=AlertSummary(text="ALERTS", count=1))
+    cmd.provider.covers = Mock(return_value=True)
+    cmd.provider.forecast = Mock(
+        return_value=ForecastReply(text="", ok=False, no_coverage=True)
+    )
+    cmd.fallback_provider.forecast = Mock(
+        return_value=ForecastReply(text="Error fetching weather data", ok=False)
+    )
+    cmd.geocode_location = Mock(
+        return_value=(48.85, 2.35, {"city": "Paris", "country_code": "fr"}, None)
+    )
+    cmd.city_to_lat_lon = Mock(
+        return_value=(48.85, 2.35, {"city": "Paris", "country_code": "fr"})
+    )
+    cmd._format_location_display = Mock(return_value="Paris, FR")
+    cmd.get_max_message_length = Mock(return_value=130)
+
+    reply = cmd._fallback_reply("Paris", "city", 48.85, 2.35, "default", 7, None)
+
+    assert reply == "Error fetching weather data"
+
+
+def test_a_raising_forecast_still_carries_an_independent_alert_summary():
+    """A provider that raises must cost the forecast, not the alerts.
+
+    ECCC + explicit NWS: a malformed body used to raise out of the lookup, and
+    the command sent only the error with no alert summary at all.
+    """
+    cmd = _wx({"weather_provider": "eccc", "alerts_provider": "nws"})
+    cmd.alerts_provider.summary = Mock(return_value=AlertSummary(text="ALERTS", count=1))
+    cmd._locate_for_forecast = Mock(return_value=(None, 47.6, -122.3, "Portland, US: "))
+
+    assert _forecast_reply(cmd, raises=RuntimeError("invalid geometry")) == (
+        "multi_message", cmd.translate("commands.gwx.error_fetching"), "ALERTS", 1
+    )
+    assert any("forecast failed" in line for line in _warnings(cmd.logger))
+
+
+def test_a_raising_fallback_forecast_still_carries_independent_alerts():
+    cmd = _wx({"weather_provider": "noaa", "alerts_provider": "dwd",
+               "openmeteo_fallback": "true"})
+    cmd.alerts_provider.summary = Mock(return_value=AlertSummary(text="ALERTS", count=1))
+    cmd.provider.covers = Mock(return_value=True)
+    cmd.provider.forecast = Mock(
+        return_value=ForecastReply(text="", ok=False, no_coverage=True)
+    )
+    cmd.fallback_provider.forecast = Mock(side_effect=RuntimeError("boom"))
+    cmd.geocode_location = Mock(
+        return_value=(52.52, 13.40, {"city": "Berlin", "country_code": "de"}, None)
+    )
+    cmd.city_to_lat_lon = Mock(
+        return_value=(52.52, 13.40, {"city": "Berlin", "country_code": "de"})
+    )
+    cmd._format_location_display = Mock(return_value="Berlin, DE")
+    cmd.get_max_message_length = Mock(return_value=130)
+
+    reply = cmd._fallback_reply("Berlin", "city", 52.52, 13.40, "default", 7, None)
+
+    assert reply == (
+        "multi_message", cmd.translate("commands.gwx.error_fetching"), "ALERTS", 1
+    )
+
+
+# --- an alerts provider that raises costs the alerts, never the forecast ----
+
+
+def test_a_raising_alert_summary_still_sends_the_forecast():
+    cmd = _wx({"weather_provider": "openmeteo"})
+    alerts = _FakeAlerts(cmd)
+    alerts.summary = Mock(side_effect=RuntimeError("broken polygon"))
+    cmd.alerts_provider = alerts
+
+    assert _forecast_reply(cmd) == "Portland, US: BODY"
+    assert any("Alert summary failed" in line for line in _warnings(cmd.logger))
+
+
+def test_a_raising_coverage_lookup_reports_a_fetch_error_not_a_crash():
+    cmd = _alerts_command({"weather_provider": "openmeteo", "alerts_provider": "nws"})
+    cmd.alerts_provider.coverage_for = Mock(side_effect=RuntimeError("broken polygon"))
+    message = SimpleNamespace(content="wx 98101 alerts", sender_id="u1")
+
+    assert asyncio.run(cmd.execute(message)) is True
+
+    # Possibly covered, so the list request reports its own failure.
+    cmd._send_full_alert_list.assert_awaited_once_with(message, 47.6, -122.3)
+    assert any("Alert coverage lookup failed" in line for line in _warnings(cmd.logger))
+
+
+# --- a literal '%' in [Weather] ---------------------------------------------
+
+
+def test_a_percent_in_the_meteoalarm_token_does_not_break_wx_or_gwx():
+    ini = (
+        "weather_provider = openmeteo\n"
+        "alerts_provider = meteoalarm\n"
+        "meteoalarm_token = ab%cd\n"
+    )
+    commands = (
+        ("wx Paris", WxCommand(_bot_from_ini(ini))),
+        ("gwx Paris", GlobalWxCommand(_bot_from_ini(ini))),
+    )
+    for content, command in commands:
+        command.geocode_location = Mock(
+            return_value=(48.85, 2.35, {"city": "Paris", "country_code": "fr"}, None)
+        )
+        command._format_location_display = Mock(return_value="Paris, FR")
+        command.get_max_message_length = Mock(return_value=130)
+        command.record_execution = Mock()
+        command.send_response = AsyncMock(return_value=True)
+        command.provider.forecast = Mock(return_value=ForecastReply(text="BODY"))
+        # The token is read at construction; the alerts call stays offline.
+        command.alerts_provider = None
+
+        assert asyncio.run(command.execute(
+            SimpleNamespace(content=content, sender_id="u1")
+        )) is True
+        assert command.send_response.await_args.args[1].endswith("BODY")
+
+
+def test_a_wxsim_source_still_interpolates_another_key():
+    # dev interpolated the matched value, so "%(base)s/plaintext.txt" resolved.
+    cmd = _wx({"weather_provider": "openmeteo",
+               "base": "http://h",
+               "custom.wxsim.lethbridge": "%(base)s/plaintext.txt"})
+
+    assert cmd._get_custom_wxsim_source("lethbridge") == "http://h/plaintext.txt"
+
+
+def test_a_wxsim_source_survives_a_percent_in_another_value():
+    cmd = WxCommand(_bot_from_ini(
+        "weather_provider = openmeteo\n"
+        "meteoalarm_token = ab%cd\n"
+        "custom.wxsim.lethbridge = http://h/plaintext.txt\n"
+    ))
+
+    assert cmd._get_custom_wxsim_source("lethbridge") == "http://h/plaintext.txt"
 
 
 # --- the lock covers the provider call, not the alert lookup ----------------
@@ -1085,3 +1364,161 @@ def test_gwx_with_nws_alerts_says_not_available_from_the_first_request():
     texts = [call.args[1] for call in cmd.send_response.call_args_list]
     expected = Translator("en").translate("commands.gwx.source_option_not_available")
     assert texts == [expected, expected]
+
+
+# --- MET Norway, the third forecast provider --------------------------------
+
+
+def test_metno_answers_wx_end_to_end():
+    from tests.unit.test_metno_provider import NOW, _payload, _Response, _Session
+
+    cmd = _wx({"weather_provider": "metno"})
+    assert isinstance(cmd.provider, MetNorwayProvider)
+    assert cmd.provider.location_style == "global"
+    assert cmd.provider.translation_ns == "commands.gwx"
+    # auto gives no alerts with a non-NOAA forecast provider.
+    assert cmd.alerts_provider is None
+
+    cmd.provider.session = _Session(_Response(200, _payload("tokyo")))
+    cmd.provider._clock = lambda: 1000.0
+    cmd.provider._now = lambda: NOW
+    cmd.geocode_location = Mock(return_value=(35.68, 139.7, {}, None))
+    cmd._get_custom_mqtt_weather_topic = Mock(return_value=None)
+    cmd._get_custom_wxsim_source = Mock(return_value=None)
+    cmd.record_execution = Mock()
+    cmd.send_response = AsyncMock(return_value=True)
+    cmd._pace_reply = AsyncMock()
+    cmd.get_max_message_length = Mock(return_value=150)
+
+    message = SimpleNamespace(content="wx Tokyo", sender_id="u1")
+    assert asyncio.run(cmd.execute(message)) is True
+
+    texts = [call.args[1] for call in cmd.send_response.call_args_list]
+    # The forecast, then the extreme-conditions warning as its own message.
+    assert len(texts) == 2
+    assert texts[0].startswith("Today: ")
+    assert "°F" in texts[0]
+    assert texts[1] == "⚠️ Heavy rain"
+
+
+def test_eccc_answers_wx_end_to_end():
+    from tests.unit.test_eccc_provider import NOW, _payload, _Response, _Session
+
+    cmd = _wx({"weather_provider": "eccc"})
+    assert isinstance(cmd.provider, EcccProvider)
+    assert cmd.provider.location_style == "global"
+    assert cmd.provider.translation_ns == "commands.gwx"
+    # auto follows the forecast provider's own declaration: eccc alerts.
+    assert cmd.alerts_provider is not None
+    assert cmd.alerts_provider.name == "eccc"
+
+    cmd.provider._session = _Session(_Response(200, _payload("vancouver")))
+    cmd.provider._clock = lambda: 1000.0
+    cmd.provider._now = lambda: NOW
+    # auto gives eccc its own alerts provider, so it needs a fake session too.
+    alerts_session = _Session(_Response(200, {"features": []}))
+    cmd.alerts_provider._session = alerts_session
+    cmd.alerts_provider._clock = lambda: 1000.0
+    cmd.alerts_provider._now = lambda: NOW
+    cmd.geocode_location = Mock(return_value=(49.28, -123.12, {}, None))
+    cmd._get_custom_mqtt_weather_topic = Mock(return_value=None)
+    cmd._get_custom_wxsim_source = Mock(return_value=None)
+    cmd.record_execution = Mock()
+    cmd.send_response = AsyncMock(return_value=True)
+    cmd._pace_reply = AsyncMock()
+    cmd.get_max_message_length = Mock(return_value=150)
+
+    message = SimpleNamespace(content="wx Vancouver", sender_id="u1")
+    assert asyncio.run(cmd.execute(message)) is True
+
+    texts = [call.args[1] for call in cmd.send_response.call_args_list]
+    assert texts[0].startswith("Today: ")
+    assert "°F" in texts[0]
+    # One alerts request, to the fake session, and no second message.
+    assert len(texts) == 1
+    assert alerts_session.count() == 1
+    assert alerts_session.calls[0]["url"].endswith("/weather-alerts/items")
+
+
+# --- the lock is the NOAA session's, not every provider's -------------------
+
+
+class _RecordingLock:
+    """A lock that only counts how often it was entered."""
+
+    def __init__(self):
+        self.entered = 0
+
+    def __enter__(self):
+        self.entered += 1
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+@pytest.mark.parametrize("provider_name", ["eccc", "metno"])
+def test_a_provider_with_its_own_session_does_not_take_the_command_lock(provider_name):
+    cmd = _wx({"weather_provider": provider_name, "alerts_provider": "none"})
+    lock = _RecordingLock()
+    cmd._sync_provider_lock = lock
+    cmd.provider.forecast = Mock(return_value=ForecastReply(text="BODY"))
+    cmd._locate_for_forecast = Mock(return_value=(None, 49.28, -123.12, "Vancouver, CA: "))
+    cmd.get_max_message_length = Mock(return_value=130)
+
+    assert cmd._forecast_for_location("Vancouver", "city").endswith("BODY")
+    assert lock.entered == 0
+
+
+def test_the_noaa_provider_still_takes_the_command_lock():
+    cmd = _wx({"weather_provider": "noaa", "alerts_provider": "none"})
+    lock = _RecordingLock()
+    cmd._sync_provider_lock = lock
+    cmd.provider.forecast = Mock(return_value=ForecastReply(text="BODY"))
+    cmd._locate_for_forecast = Mock(return_value=(None, 47.6, -122.3, "Portland, US: "))
+    cmd.get_max_message_length = Mock(return_value=130)
+
+    assert cmd._forecast_for_location("Portland", "city").endswith("BODY")
+    assert lock.entered == 1
+
+
+# --- the fallback is for any provider that can report no coverage -----------
+
+
+def test_eccc_falls_back_to_openmeteo_past_its_coverage():
+    # alerts_provider = none: the point is outside Canada, so `auto` would ask
+    # the ECCC alerts API about it, and this test is about the forecast.
+    cmd = _wx({"weather_provider": "eccc", "openmeteo_fallback": "true",
+               "alerts_provider": "none"})
+    assert isinstance(cmd.fallback_provider, OpenMeteoProvider)
+    cmd.provider.forecast = Mock(return_value=ForecastReply(text="", ok=False, no_coverage=True))
+    cmd.fallback_provider.forecast = Mock(return_value=ForecastReply(text="OM BODY"))
+    cmd._locate_for_forecast = Mock(return_value=(None, 48.0, -140.0, "Nowhere, CA: "))
+    cmd.city_to_lat_lon = Mock(return_value=(48.0, -140.0, {"city": "Nowhere"}))
+    cmd._format_location_display = Mock(return_value="Nowhere, CA")
+    cmd.get_max_message_length = Mock(return_value=130)
+
+    reply = cmd._forecast_for_location("Nowhere", "city")
+
+    assert reply.endswith("OM BODY")
+    cmd.fallback_provider.forecast.assert_called_once()
+    # The log line names the provider that did not cover the point.
+    assert cmd.logger.info.call_args.args[3] == "Environment Canada"
+
+
+def test_noaa_keeps_its_own_fallback_log_line():
+    cmd = _wx({"weather_provider": "noaa", "openmeteo_fallback": "true",
+               "alerts_provider": "none"})
+    cmd.provider.covers = Mock(return_value=True)
+    cmd.provider.forecast = Mock(
+        return_value=ForecastReply(text="", ok=False, no_coverage=True)
+    )
+    cmd.fallback_provider.forecast = Mock(return_value=ForecastReply(text="OM BODY"))
+    cmd._locate_for_forecast = Mock(return_value=(None, 48.85, 2.35, "Paris, FR: "))
+    cmd.city_to_lat_lon = Mock(return_value=(48.85, 2.35, {"city": "Paris"}))
+    cmd._format_location_display = Mock(return_value="Paris, FR")
+    cmd.get_max_message_length = Mock(return_value=130)
+
+    cmd._forecast_for_location("Paris", "city")
+
+    assert cmd.logger.info.call_args.args[3] == "NWS"

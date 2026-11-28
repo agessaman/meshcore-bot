@@ -1,0 +1,56 @@
+{
+ "alerts": [
+  {
+   "id": 3071722,
+   "alert_id": "2.49.0.0.276.0.DWD.PVW.1795779180000.b7344383-b5e9-47b7-bf9f-55df3f5d4b42",
+   "effective": "2026-11-27T11:33:00+00:00",
+   "onset": "2026-11-27T11:00:00+00:00",
+   "expires": "2026-11-28T11:00:00+00:00",
+   "category": "met",
+   "response_type": "prepare",
+   "urgency": "immediate",
+   "severity": "minor",
+   "certainty": "likely",
+   "event_code": 22,
+   "event_en": "frost",
+   "event_de": "FROST",
+   "headline_en": "Official WARNING of FROST",
+   "headline_de": "Amtliche WARNUNG vor FROST",
+   "description_en": "There is a risk of frost (level 1 of 2).\nMinimum temperature: -1 - -4 °C",
+   "description_de": "Es tritt leichter Frost zwischen -1 °C und -4 °C auf.",
+   "instruction_en": "Hazard(s) to expect: possible frost damage. \nRecommendations for what to do: \nIf necessary, take precautions against frost.",
+   "instruction_de": "Hinweis auf: mögliche Frostschäden. \nHandlungsempfehlungen: \nggf. Frostschutzmaßnahmen ergreifen",
+   "status": "actual"
+  },
+  {
+   "id": 3071728,
+   "alert_id": "2.49.0.0.276.0.DWD.PVW.1795779180000.b814c6fa-df60-4eb8-93d4-6d373a36aa0a",
+   "effective": "2026-11-27T11:33:00+00:00",
+   "onset": "2026-11-27T15:00:00+00:00",
+   "expires": "2026-11-28T10:00:00+00:00",
+   "category": "met",
+   "response_type": "prepare",
+   "urgency": "immediate",
+   "severity": "minor",
+   "certainty": "likely",
+   "event_code": 84,
+   "event_en": "icy surfaces",
+   "event_de": "GLÄTTE",
+   "headline_en": "Official WARNING of ICY SURFACES",
+   "headline_de": "Amtliche WARNUNG vor GLÄTTE",
+   "description_en": "There is a risk of icy surfaces (level 1 of 4).\n",
+   "description_de": "Es besteht Glättegefahr.",
+   "instruction_en": "Hazard(s) to expect: slippery ground. \nRecommendations for what to do: \nAdapt your behaviour in road traffic.",
+   "instruction_de": "Hinweis auf: Rutschgefahr. \nHandlungsempfehlungen: \nVerhalten im Straßenverkehr anpassen",
+   "status": "actual"
+  }
+ ],
+ "location": {
+  "warn_cell_id": 709162001,
+  "name": "München-Altstadt-Lehel",
+  "name_short": "M-Altst./Lehel",
+  "district": "München",
+  "state": "Bayern",
+  "state_short": "BY"
+ }
+}

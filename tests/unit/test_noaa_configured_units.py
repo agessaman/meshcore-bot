@@ -121,8 +121,9 @@ def test_fahrenheit_observations_are_as_before():
     observed["properties"]["windGust"] = {"unitCode": "wmoUnit:km_h-1", "value": 36.0}
     cmd.noaa_session, _ = _session(si=False, observation=observed)
     data = cmd.get_observation_data(US["points"])
-    # A 36 km/h gust is 22 mph; reading it as m/s showed 80.
-    assert (data["visibility"], data["dew_point"], data["wind_gusts"]) == ("9", "47", "22")
+    # A 36 km/h gust is 22 mph; reading it as m/s showed 80. 16090 m is 9.998
+    # miles, which rounds to 10 rather than truncating to 9.
+    assert (data["visibility"], data["dew_point"], data["wind_gusts"]) == ("10", "47", "22")
 
 
 @pytest.mark.parametrize(("unit_code", "value", "wind_unit", "shown"), [

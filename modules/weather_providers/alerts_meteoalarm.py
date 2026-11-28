@@ -28,7 +28,6 @@ and is where a public token comes from. Meteoalarm Direct re-user tokens point
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import threading
 import time
@@ -42,8 +41,9 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-from .. import alert_format
-from .base import AlertsProvider, AlertSummary, Coverage, ProviderHost
+from ._alerts_common import PackedAlertsMixin
+from ._geo import geometry_contains, valid_geometry
+from .base import AlertsProvider, Coverage, ProviderHost
 
 # MeteoGate serves the same EDR API as Meteoalarm Direct and is where a public
 # token comes from. Direct re-user tokens point [Weather] meteoalarm_api_url at
@@ -60,6 +60,9 @@ CONNECT_TIMEOUT = 5
 READ_TIMEOUT = 10
 
 LOCATIONS_TTL = 24 * 60 * 60
+# A failed fetch, or a document that did not parse, is retried soon: caching it
+# as long as a success would hide a recovered endpoint for the whole TTL.
+FAILURE_TTL = 60
 # The API rejects a datetime range of 24 hours or more, so each UTC day is a
 # window of its own: today's moves and is cached briefly, past days are fixed.
 WINDOW_TTL_TODAY = 10 * 60
@@ -93,48 +96,12 @@ INFLIGHT_TIMEOUT = 30.0
 UNAVAILABLE = object()
 
 CAP_NS = {"cap": "urn:oasis:names:tc:emergency:cap:1.2"}
-LEVEL_EMOJI = {2: "\U0001f7e1", 3: "\U0001f7e0", 4: "\U0001f534"}
 MIN_LEVEL = 2
 
 
-def _point_in_ring(lon: float, lat: float, ring: list) -> bool:
-    """Ray casting: whether (lon, lat) is inside one linear ring of [lon, lat] pairs."""
-    inside = False
-    count = len(ring)
-    if count < 3:
-        return False
-    previous = count - 1
-    for current in range(count):
-        x_current, y_current = ring[current][0], ring[current][1]
-        x_previous, y_previous = ring[previous][0], ring[previous][1]
-        if (y_current > lat) != (y_previous > lat):
-            crossing = (x_previous - x_current) * (lat - y_current) / (y_previous - y_current) + x_current
-            if lon < crossing:
-                inside = not inside
-        previous = current
-    return inside
-
-
-def _point_in_polygon(lon: float, lat: float, polygon: list) -> bool:
-    """Whether a GeoJSON Polygon's outline contains the point and no hole does."""
-    if not polygon:
-        return False
-    if not _point_in_ring(lon, lat, polygon[0]):
-        return False
-    return not any(_point_in_ring(lon, lat, hole) for hole in polygon[1:])
-
-
-def geometry_contains(geometry: Optional[dict], lon: float, lat: float) -> bool:
-    """Whether a GeoJSON Polygon or MultiPolygon contains the point."""
-    if not geometry:
-        return False
-    kind = geometry.get("type")
-    coordinates = geometry.get("coordinates") or []
-    if kind == "Polygon":
-        return _point_in_polygon(lon, lat, coordinates)
-    if kind == "MultiPolygon":
-        return any(_point_in_polygon(lon, lat, polygon) for polygon in coordinates)
-    return False
+def _raw_key(alert_id: str, indexes: set) -> tuple:
+    """The cache key for an alert's raw CAP text, by alertId and area."""
+    return ("raw", alert_id, tuple(sorted(indexes)))
 
 
 def _stamp(moment: datetime) -> str:
@@ -273,6 +240,8 @@ def _references(value: Optional[str]) -> set:
 def _index_info(feature: dict) -> Optional[int]:
     """A feature's indexInfo: which CAP info block describes its area."""
     value = (feature.get("properties") or {}).get("indexInfo")
+    if not isinstance(value, (int, float, str)):
+        return None
     try:
         return int(value)
     except (TypeError, ValueError):
@@ -484,11 +453,12 @@ class _Inflight:
         self.value = None
 
 
-class MeteoalarmAlertsProvider(AlertsProvider):
+class MeteoalarmAlertsProvider(PackedAlertsMixin, AlertsProvider):
     """Europe's Meteoalarm warnings, matched to a point by country and outline."""
 
     name = "meteoalarm"
     translation_ns = "commands.wx"
+    fetch_error_key = "commands.wx.meteoalarm.error_fetching"
 
     def __init__(self, host: ProviderHost, token: Optional[str] = None,
                  session: Any = None, base_url: Optional[str] = None):
@@ -504,13 +474,16 @@ class MeteoalarmAlertsProvider(AlertsProvider):
         self.base_url = (base_url or DEFAULT_BASE_URL).strip().rstrip("/")
         self.locations_url = f"{self.base_url}{LOCATIONS_PATH}"
         self.country_url = f"{self.base_url}{COUNTRY_PATH}"
-        self.session = session if session is not None else _make_session()
+        # An injected session (tests, or a caller's own) is used as it is; with
+        # none, each worker thread gets its own. requests.Session is not
+        # thread-safe, and a lock held across a request would serialize every
+        # alert lookup in the process.
+        self.session = session
+        self._local = threading.local()
         # One lock for every cache, shared with the other instances on this
         # origin and token. Never held across HTTP.
         self._cache = _cache_for(self.base_url, self.token)
         self._lock = self._cache.lock
-        # requests.Session is not thread-safe, and the caches are shared.
-        self._session_lock = threading.Lock()
         self._api_origin = _origin(self.base_url)
         self._rate = _rate_limit_for(self.base_url)
 
@@ -642,10 +615,9 @@ class MeteoalarmAlertsProvider(AlertsProvider):
         if self.token and api and self._api_origin[0] == "https":
             headers["Authorization"] = f"Bearer {self.token}"
         try:
-            with self._session_lock:
-                response = self.session.get(
-                    url, params=params, headers=headers, timeout=(CONNECT_TIMEOUT, READ_TIMEOUT)
-                )
+            response = self._session_for_thread().get(
+                url, params=params, headers=headers, timeout=(CONNECT_TIMEOUT, READ_TIMEOUT)
+            )
         except Exception as error:
             self._warn_once(
                 f"http:{urlparse(url).netloc}",
@@ -668,6 +640,15 @@ class MeteoalarmAlertsProvider(AlertsProvider):
         if api:
             self._note_rate_limit(response)
         return response
+
+    def _session_for_thread(self) -> requests.Session:
+        """This thread's session: an injected one is used as it is."""
+        if self.session is not None:
+            return self.session
+        session = getattr(self._local, "session", None)
+        if session is None:
+            session = self._local.session = _make_session()
+        return session
 
     def _json(self, response):
         """The JSON body, or None when the body is empty or not JSON."""
@@ -697,9 +678,11 @@ class MeteoalarmAlertsProvider(AlertsProvider):
         """
         with self._lock:
             entry = self._inflight.get(key)
-            owner = entry is None
-            if owner:
+            if entry is None:
                 entry = self._inflight[key] = _Inflight()
+                owner = True
+            else:
+                owner = False
         if not owner:
             entry.done.wait(INFLIGHT_TIMEOUT)
             return entry.value
@@ -722,9 +705,19 @@ class MeteoalarmAlertsProvider(AlertsProvider):
     def _cached_locations(self) -> Optional[list]:
         with self._lock:
             cached = self._locations
-        if cached is not None and self._clock() - cached[0] < LOCATIONS_TTL:
+        if cached is not None and self._clock() - cached[0] < cached[2]:
             return cached[1]
         return None
+
+    def _skipped_countries(self) -> tuple:
+        """The countries whose polygon could not be read, so coverage is a guess."""
+        with self._lock:
+            cached = self._locations
+        return tuple(cached[3]) if cached is not None else ()
+
+    def _locations_incomplete(self) -> bool:
+        """Whether the cached list is missing a country whose polygon was unusable."""
+        return bool(self._skipped_countries())
 
     def _country_geometries(self) -> Optional[list]:
         """[(country code, geometry)] for every country, cached for a day."""
@@ -743,22 +736,35 @@ class MeteoalarmAlertsProvider(AlertsProvider):
         if response is UNAVAILABLE:
             # A stale list still says which countries could cover the point.
             return stale[1] if stale is not None else None
-        if response.status_code == 204:
-            features = []
-        else:
-            body = self._json(response)
-            if not isinstance(body, dict):
-                self._warn_once("locations", "Meteoalarm locations fetch returned no JSON")
-                return stale[1] if stale is not None else None
-            features = [item for item in body.get("features") or [] if isinstance(item, dict)]
+        body = self._json(response)
+        if not isinstance(body, dict) or not isinstance(body.get("features"), list):
+            # An empty or shapeless body is not a list of countries: without
+            # one, every point would read as uncovered.
+            self._warn_once("locations", "Meteoalarm locations fetch returned no feature list")
+            return stale[1] if stale is not None else None
+        features = [item for item in body["features"] if isinstance(item, dict)]
 
-        countries = [
-            (feature.get("id"), feature.get("geometry"))
-            for feature in features
-            if feature.get("id") and feature.get("id") != "ALL" and feature.get("geometry")
-        ]
+        countries = []
+        skipped: list = []
+        for feature in features:
+            code = feature.get("id")
+            geometry = feature.get("geometry")
+            if not code or code == "ALL":
+                continue
+            if not geometry or not valid_geometry(geometry):
+                # A malformed ring would raise in covers(); skip the country,
+                # but remember that the list is not the whole picture.
+                self.host.logger.debug(
+                    f"Meteoalarm country {code} has an unusable geometry; skipped"
+                )
+                skipped.append(code)
+                continue
+            countries.append((code, geometry))
+        # A list with a country missing is retried soon: the next fetch may
+        # carry a usable polygon, and until then coverage is only a guess.
+        ttl = FAILURE_TTL if skipped else LOCATIONS_TTL
         with self._lock:
-            self._locations = (self._clock(), countries)
+            self._locations = (self._clock(), countries, ttl, tuple(skipped))
         self._clear_streak("locations")
         return countries
 
@@ -832,13 +838,15 @@ class MeteoalarmAlertsProvider(AlertsProvider):
             if response.status_code == 204:
                 break
             body = self._json(response)
-            if not isinstance(body, dict):
+            if not isinstance(body, dict) or not isinstance(body.get("features"), list):
+                # No feature list is not an empty list: an all-clear has to be
+                # explicit, or a broken page reads as "no warnings".
                 self._warn_once(
                     f"country:{country}",
-                    f"Meteoalarm warnings fetch for {country} returned no JSON",
+                    f"Meteoalarm warnings fetch for {country} returned no feature list",
                 )
                 return None
-            features.extend(item for item in body.get("features") or [] if isinstance(item, dict))
+            features.extend(item for item in body["features"] if isinstance(item, dict))
             total_pages = _total_pages(body.get("metadata"))
             if page >= total_pages:
                 break
@@ -898,7 +906,7 @@ class MeteoalarmAlertsProvider(AlertsProvider):
         if response is UNAVAILABLE or response.status_code == 204:
             return None
         geometry = _geometry_of(self._json(response))
-        if geometry is None:
+        if not valid_geometry(geometry):
             self._warn_once(f"geometry:{key}", "Meteoalarm geometry fetch returned no geometry")
             return None
         with self._lock:
@@ -913,26 +921,38 @@ class MeteoalarmAlertsProvider(AlertsProvider):
             return "en"
 
     def _cap_details(self, alert_id: str, features: list, indexes: set) -> tuple:
-        """(details, incomplete) for one alert, cached by alertId and area.
+        """(details, incomplete) for one alert, cached by alertId, area and language.
 
         Every feature of an alertId links to the same document, so the first one
-        that carries an xml link is enough.
+        that carries an xml link is enough. The language is part of the key
+        because the parsed details are the block it selected: a cache filled in
+        one language must not answer for another.
         """
-        key = (alert_id, tuple(sorted(indexes)))
+        language = self._language()
+        key = (alert_id, tuple(sorted(indexes)), language)
         with self._lock:
             cached = self._caps.get(key)
         if cached is not None and cached[0] > self._utcnow():
             return cached[1], False
         result = self._shared(
-            ("cap", key), lambda: self._fetch_cap(alert_id, features, indexes, key)
+            ("cap", key), lambda: self._fetch_cap(alert_id, features, indexes, key, language)
         )
         if result is None:
             return None, True
         return result
 
-    def _fetch_cap(self, alert_id: str, features: list, indexes: set, key: tuple) -> tuple:
+    def _cap_text(self, alert_id: str, features: list, indexes: set) -> tuple[Optional[str], bool]:
+        """The CAP document for an alert, cached by alertId and area.
+
+        The text is cached rather than the parsed details, so a change of the
+        configured language re-reads the same document instead of refetching it.
+        Only a document that parsed is cached for the window TTL: an HTML error
+        page must not hide the alert for ten minutes. Returns ``(text, fresh)``;
+        ``fresh`` is False for a cache hit, which must not renew its deadline.
+        """
+        raw_key = _raw_key(alert_id, indexes)
         with self._lock:
-            cached = self._caps.get(key)
+            cached = self._caps.get(raw_key)
         if cached is not None and cached[0] > self._utcnow():
             return cached[1], False
 
@@ -946,14 +966,63 @@ class MeteoalarmAlertsProvider(AlertsProvider):
             if url:
                 break
         if not url:
-            return None, True
+            return None, False
 
         response = self._get(url)
         if response is UNAVAILABLE or response.status_code == 204:
+            return None, False
+        return response.text, True
+
+    def _cache_raw(self, alert_id: str, indexes: set, text: str, seconds: float) -> None:
+        """Keep a CAP document's text for *seconds*, once it has been judged."""
+        with self._lock:
+            self._caps[_raw_key(alert_id, indexes)] = (
+                self._utcnow() + timedelta(seconds=seconds), text
+            )
+
+    def _shorten_raw(self, alert_id: str, indexes: set, text: str, seconds: float, fresh: bool) -> None:
+        """Keep a document that failed to parse for at most *seconds* from now.
+
+        A fresh fetch is cached for the failure TTL. A cached copy is only ever
+        shortened, and only while it is still the copy that failed: another
+        request may have replaced it with a repaired document in the meantime,
+        and that must not be overwritten by the older text.
+        """
+        now = self._utcnow()
+        deadline = now + timedelta(seconds=seconds)
+        raw_key = _raw_key(alert_id, indexes)
+        with self._lock:
+            current = self._caps.get(raw_key)
+            if fresh:
+                self._caps[raw_key] = (deadline, text)
+                return
+            if current is None or current[1] != text or current[0] <= now:
+                return
+            if deadline < current[0]:
+                self._caps[raw_key] = (deadline, text)
+
+    def _fetch_cap(self, alert_id: str, features: list, indexes: set, key: tuple,
+                   language: str) -> tuple:
+        with self._lock:
+            cached = self._caps.get(key)
+        if cached is not None and cached[0] > self._utcnow():
+            return cached[1], False
+
+        text, fresh = self._cap_text(alert_id, features, indexes)
+        if text is None:
             return None, True
-        details = parse_cap(response.text, self._language(), indexes)
+        details = parse_cap(text, language, indexes)
         if details is None or details["expires"] is None:
+            # An unparseable document is a failure, not an answer: keep it only
+            # briefly, so the alert reappears when the endpoint recovers. A
+            # cached copy is shortened to the failure TTL but never extended:
+            # renewing it on every hit would hide the alert for as long as
+            # requests keep coming, and a copy cached as good in another
+            # language must not keep its ten minutes now that it fails here.
+            self._shorten_raw(alert_id, indexes, text, FAILURE_TTL, fresh)
             return None, True
+        if fresh:
+            self._cache_raw(alert_id, indexes, text, WINDOW_TTL_TODAY)
 
         now = self._utcnow()
         # A Cancel or an Update still names what it replaces, so the alert is
@@ -1019,6 +1088,11 @@ class MeteoalarmAlertsProvider(AlertsProvider):
             return Coverage.COVERED if _in_europe(lat, lon) else Coverage.NOT_COVERED
         if any(geometry_contains(geometry, lon, lat) for _code, geometry in countries):
             return Coverage.COVERED
+        if self._locations_incomplete() and _in_europe(lat, lon):
+            # A country whose polygon could not be read may be the one covering
+            # the point, so the warnings query still runs and a failure there
+            # surfaces as a fetch error rather than "not available".
+            return Coverage.COVERED
         return Coverage.NOT_COVERED
 
     def _feature_covers(self, feature: dict, lon: float, lat: float) -> tuple:
@@ -1042,6 +1116,18 @@ class MeteoalarmAlertsProvider(AlertsProvider):
             )
             return False, True
         return geometry_contains(exact, lon, lat), False
+
+    @staticmethod
+    def _headline_area(headline: str) -> str:
+        """The area part of a CAP headline ("Gale, yellow level, Aana-Sira - Karmoey")."""
+        parts = [part.strip() for part in (headline or "").split(",")]
+        if len(parts) < 3:
+            return ""
+        return parts[-1]
+
+    def _alert_area(self, alert: dict) -> str:
+        """The area for the full list, from the CAP headline."""
+        return self._headline_area(alert.get("headline", ""))
 
     def _alerts_for(self, lat: float, lon: float) -> Optional[list]:
         """The active alerts covering a point, most severe first.
@@ -1073,9 +1159,9 @@ class MeteoalarmAlertsProvider(AlertsProvider):
 
         grouped: dict[str, list] = {}
         incomplete = False
-        for country, geometry in countries:
-            if not geometry_contains(geometry, lon, lat):
-                continue
+
+        def collect(country: str) -> None:
+            nonlocal incomplete
             features, failed = self._country_features(country)
             incomplete = incomplete or failed
             for feature in features:
@@ -1085,6 +1171,20 @@ class MeteoalarmAlertsProvider(AlertsProvider):
                 alert_id = properties.get("alertId")
                 if alert_id:
                     grouped.setdefault(alert_id, []).append(feature)
+
+        queried: set = set()
+        for country, geometry in countries:
+            if not geometry_contains(geometry, lon, lat):
+                continue
+            queried.add(country)
+            collect(country)
+        # A country whose polygon could not be read may be the one covering the
+        # point, so its warnings are queried rather than reporting an all-clear.
+        if _in_europe(lat, lon):
+            for country in self._skipped_countries():
+                if country not in queried:
+                    queried.add(country)
+                    collect(country)
 
         alerts = []
         superseded: set = set()
@@ -1118,138 +1218,3 @@ class MeteoalarmAlertsProvider(AlertsProvider):
 
     # --- formatting -------------------------------------------------------
 
-    def _summary_line(self, alert: dict) -> str:
-        """One alert for the compact summary, in the same style as the full list."""
-        emoji = LEVEL_EMOJI.get(alert["level"], "")
-        until = alert_format.format_alert_window(
-            {"expires": alert["expires"].isoformat() if alert["expires"] else ""},
-            self.host.response_translator,
-        )
-        return f"{emoji} {alert['event']} {until}".strip()
-
-    def summary(self, lat: float, lon: float, max_length: int) -> Optional[AlertSummary]:
-        """The compact alert text and count for the second message, or None."""
-        try:
-            return self._summary_for(lat, lon, max_length)
-        except Exception as error:
-            self._warn_once(
-                "summary", f"Meteoalarm summary failed: {type(error).__name__}"
-            )
-            return None
-
-    def _summary_for(self, lat: float, lon: float, max_length: int) -> Optional[AlertSummary]:
-        """The body of :meth:`summary`."""
-        alerts = self._alerts_for(lat, lon)
-        if not alerts:
-            return None
-
-        lines = [self._summary_line(alert) for alert in alerts]
-        text = ""
-        shown = 0
-        for line in lines:
-            candidate = f"{text}; {line}" if text else line
-            remaining = len(lines) - shown - 1
-            suffix = f" +{remaining}" if remaining > 0 else ""
-            if self.host._count_display_width(candidate + suffix) > max_length:
-                break
-            text = candidate
-            shown += 1
-
-        if shown == 0:
-            # The first line alone is too long: trim it and re-check the suffix.
-            return AlertSummary(
-                text=self._trim(lines[0], max_length, len(lines) - 1), count=len(alerts)
-            )
-        remaining = len(lines) - shown
-        if remaining > 0:
-            text = f"{text} +{remaining}"
-        return AlertSummary(text=text, count=len(alerts))
-
-    def _trim(self, line: str, max_length: int, remaining: int) -> str:
-        """Cut a line to the budget with an ellipsis, leaving room for " +N"."""
-        suffix = f" +{remaining}" if remaining > 0 else ""
-        budget = max_length - self.host._count_display_width(suffix)
-        trimmed = line
-        while trimmed and self.host._count_display_width(trimmed + "\u2026") > budget:
-            trimmed = trimmed[:-1]
-        return f"{trimmed}\u2026{suffix}" if trimmed else suffix.strip()
-
-    @staticmethod
-    def _headline_area(headline: str) -> str:
-        """The area part of a CAP headline ("Gale, yellow level, Aana-Sira - Karmoey")."""
-        parts = [part.strip() for part in (headline or "").split(",")]
-        if len(parts) < 3:
-            return ""
-        return parts[-1]
-
-    def _full_alert_text(self, alert: dict, index: int, max_length: int) -> str:
-        """One alert as a single line, in the shape NWS's full list uses.
-
-        ``{index}. {emoji}{event} {window} {area}``: the window comes from the
-        shared alert formatter, and the area is the last part of the headline,
-        added only when the line still fits.
-        """
-        emoji = LEVEL_EMOJI.get(alert["level"], "")
-        window = alert_format.format_alert_window(
-            {
-                "effective": alert["onset"].isoformat() if alert["onset"] else "",
-                "expires": alert["expires"].isoformat() if alert["expires"] else "",
-            },
-            self.host.response_translator,
-        )
-        parts = [f"{index}.", f"{emoji} {alert['event']}".strip()]
-        if window:
-            parts.append(window)
-        line = " ".join(parts)
-        area = self._headline_area(alert["headline"])
-        if area:
-            candidate = f"{line} {area}"
-            if self.host._count_display_width(candidate) <= max_length:
-                return candidate
-        return line
-
-    def _fit(self, text: str, max_length: int) -> str:
-        """Cut a message to the frame budget, by display width."""
-        if self.host._count_display_width(text) <= max_length:
-            return text
-        trimmed = text
-        while trimmed and self.host._count_display_width(trimmed) > max_length:
-            trimmed = trimmed[:-1]
-        return trimmed
-
-    async def send_full_list(self, message: Any, lat: float, lon: float) -> bool:
-        """Send the full alert list, packed and paced exactly as the NWS list is."""
-        alerts = await asyncio.to_thread(self._alerts_for, lat, lon)
-        if alerts is None:
-            return bool(await self.host.send_response(
-                message, self.host.translate("commands.wx.meteoalarm.error_fetching")
-            ))
-        if not alerts:
-            return bool(await self.host.send_response(message, "No weather alerts"))
-
-        max_length = self.host.get_max_message_length(message)
-        rate_limit = self.host.bot.config.getfloat("Bot", "bot_tx_rate_limit_seconds", fallback=1.0)
-        sleep_time = max(rate_limit + 1.0, 2.0)
-
-        # A count header, then whole alert lines: a new message starts when the
-        # next line would not fit, as NWS's list does.
-        current_message = f"{len(alerts)} alerts:"
-        messages = []
-        for index, alert in enumerate(alerts, 1):
-            line = self._fit(self._full_alert_text(alert, index, max_length), max_length)
-            test_message = f"{current_message}\n{line}" if current_message else line
-            if self.host._count_display_width(test_message) > max_length:
-                if current_message:
-                    messages.append(current_message)
-                current_message = line
-            else:
-                current_message = test_message
-        if current_message:
-            messages.append(current_message)
-
-        for index, text in enumerate(messages):
-            if not await self.host.send_response(message, text, skip_user_rate_limit=(index > 0)):
-                return False
-            if index < len(messages) - 1:
-                await self.host._pace_reply(message, sleep_time)
-        return True

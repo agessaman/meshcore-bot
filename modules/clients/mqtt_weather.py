@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from ..security_utils import sanitize_input
+from ..utils import config_value
 
 MQTT_WEATHER_PREFIX = "custom.mqtt_weather."
 
@@ -102,19 +103,22 @@ def get_mqtt_weather_topic(config: ConfigParser, location: str | None) -> str | 
         location = location.strip()
         location_lower = location.lower()
         prefix = MQTT_WEATHER_PREFIX
-        for key, value in config.items(section):
-            if not key.startswith(prefix):
+        # Names only: reading every value would interpolate the whole section,
+        # and a literal '%' in any of them would raise here.
+        for name in config.options(section):
+            if not name.startswith(prefix):
                 continue
-            key_location = key[len(prefix) :].strip()
-            if key_location.lower() == location_lower:
-                topic = (value or "").strip()
-                if topic and validate_mqtt_weather_topic(topic):
-                    return topic
+            key_location = name[len(prefix) :].strip()
+            if key_location.lower() != location_lower:
+                continue
+            topic = (config_value(config, section, name) or "").strip()
+            if topic and validate_mqtt_weather_topic(topic):
+                return topic
         return None
 
     default_key = f"{MQTT_WEATHER_PREFIX}default"
     if config.has_option(section, default_key):
-        topic = config.get(section, default_key, fallback="").strip()
+        topic = config_value(config, section, default_key).strip()
         if topic and validate_mqtt_weather_topic(topic):
             return topic
     return None
@@ -128,10 +132,10 @@ def iter_mqtt_weather_topics(config: ConfigParser) -> list[str]:
     seen: set[str] = set()
     out: list[str] = []
     prefix = MQTT_WEATHER_PREFIX
-    for key, value in config.items(section):
-        if not key.startswith(prefix):
+    for name in config.options(section):
+        if not name.startswith(prefix):
             continue
-        topic = (value or "").strip()
+        topic = (config_value(config, section, name) or "").strip()
         if not topic or not validate_mqtt_weather_topic(topic):
             continue
         if topic not in seen:

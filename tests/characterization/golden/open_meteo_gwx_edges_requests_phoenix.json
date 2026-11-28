@@ -80,7 +80,7 @@
    "wind_speed_unit": "mph"
   },
   "requests": 1,
-  "text": "<commands.gwx.periods.tonight>: 🌙<commands.gwx.weather_descriptions.0> 84°F ⬅️<common.wind_directions.WSW>4 <commands.gwx.humidity[('value', 32)]> | <common.temp_high_label>:93°F <common.temp_low_label>:69°F"
+  "text": "<commands.gwx.periods.tonight>: 🌙<commands.gwx.weather_descriptions.0> 85°F ⬅️<common.wind_directions.WSW>5 <commands.gwx.humidity[('value', 32)]> | <common.temp_high_label>:94°F <common.temp_low_label>:70°F"
  },
  "model-omitted-default-timeout": {
   "logs": [
@@ -185,7 +185,7 @@
    "wind_speed_unit": "mph"
   },
   "requests": 1,
-  "text": "<commands.gwx.day_abbrev.Friday>: ☀️<commands.gwx.wea... <common.temp_high_label>:95°F <common.temp_low_label>:70°F\n<commands.gwx.day_abbrev.Saturday>: ☀️<commands.gwx.wea... <common.temp_high_label>:95°F <common.temp_low_label>:74°F\n<commands.gwx.day_abbrev.Sunday>: ☀️<commands.gwx.wea... <common.temp_high_label>:96°F <common.temp_low_label>:84°F\n<commands.gwx.day_abbrev.Monday>: ☁️<commands.gwx.wea... <common.temp_high_label>:97°F <common.temp_low_label>:84°F\n<commands.gwx.day_abbrev.Tuesday>: ☁️<commands.gwx.wea... <common.temp_high_label>:97°F <common.temp_low_label>:85°F\n<commands.gwx.day_abbrev.Wednesday>: ☀️<commands.gwx.wea... <common.temp_high_label>:100°F <common.temp_low_label>:87°F\n<commands.gwx.day_abbrev.Thursday>: ☀️<commands.gwx.wea... <common.temp_high_label>:102°F <common.temp_low_label>:87°F\n<commands.gwx.day_abbrev.Friday>: ☀️<commands.gwx.wea... <common.temp_high_label>:100°F <common.temp_low_label>:87°F\n<commands.gwx.day_abbrev.Saturday>: ☀️<commands.gwx.wea... <common.temp_high_label>:97°F <common.temp_low_label>:85°F\n<commands.gwx.day_abbrev.Sunday>: ☀️<commands.gwx.wea... <common.temp_high_label>:95°F <common.temp_low_label>:84°F\n<commands.gwx.day_abbrev.Monday>: ⛅<commands.gwx.wea... <common.temp_high_label>:93°F <common.temp_low_label>:85°F\n<commands.gwx.day_abbrev.Tuesday>: 🌤️<commands.gwx.wea... <common.temp_high_label>:95°F <common.temp_low_label>:85°F\n<commands.gwx.day_abbrev.Wednesday>: 🌦️<commands.gwx.wea... <common.temp_high_label>:95°F <common.temp_low_label>:86°F\n<commands.gwx.day_abbrev.Thursday>: ☁️<commands.gwx.wea... <common.temp_high_label>:93°F <common.temp_low_label>:80°F\n<commands.gwx.day_abbrev.Friday>: 🌤️<commands.gwx.wea... <common.temp_high_label>:82°F <common.temp_low_label>:71°F"
+  "text": "<commands.gwx.day_abbrev.Friday>: ☀️<commands.gwx.wea... <common.temp_high_label>:96°F <common.temp_low_label>:71°F\n<commands.gwx.day_abbrev.Saturday>: ☀️<commands.gwx.wea... <common.temp_high_label>:95°F <common.temp_low_label>:74°F\n<commands.gwx.day_abbrev.Sunday>: ☀️<commands.gwx.wea... <common.temp_high_label>:97°F <common.temp_low_label>:85°F\n<commands.gwx.day_abbrev.Monday>: ☁️<commands.gwx.wea... <common.temp_high_label>:97°F <common.temp_low_label>:84°F\n<commands.gwx.day_abbrev.Tuesday>: ☁️<commands.gwx.wea... <common.temp_high_label>:97°F <common.temp_low_label>:86°F\n<commands.gwx.day_abbrev.Wednesday>: ☀️<commands.gwx.wea... <common.temp_high_label>:101°F <common.temp_low_label>:88°F\n<commands.gwx.day_abbrev.Thursday>: ☀️<commands.gwx.wea... <common.temp_high_label>:103°F <common.temp_low_label>:88°F\n<commands.gwx.day_abbrev.Friday>: ☀️<commands.gwx.wea... <common.temp_high_label>:100°F <common.temp_low_label>:88°F\n<commands.gwx.day_abbrev.Saturday>: ☀️<commands.gwx.wea... <common.temp_high_label>:98°F <common.temp_low_label>:86°F\n<commands.gwx.day_abbrev.Sunday>: ☀️<commands.gwx.wea... <common.temp_high_label>:95°F <common.temp_low_label>:84°F\n<commands.gwx.day_abbrev.Monday>: ⛅<commands.gwx.wea... <common.temp_high_label>:94°F <common.temp_low_label>:86°F\n<commands.gwx.day_abbrev.Tuesday>: 🌤️<commands.gwx.wea... <common.temp_high_label>:95°F <common.temp_low_label>:85°F\n<commands.gwx.day_abbrev.Wednesday>: 🌦️<commands.gwx.wea... <common.temp_high_label>:95°F <common.temp_low_label>:86°F\n<commands.gwx.day_abbrev.Thursday>: ☁️<commands.gwx.wea... <common.temp_high_label>:94°F <common.temp_low_label>:81°F\n<commands.gwx.day_abbrev.Friday>: 🌤️<commands.gwx.wea... <common.temp_high_label>:83°F <common.temp_low_label>:72°F"
  },
  "model-omitted-multiday-timeout": {
   "logs": [
@@ -290,7 +290,7 @@
    "wind_speed_unit": "mph"
   },
   "requests": 1,
-  "text": "<commands.gwx.periods.tomorrow>: ☀️<commands.gwx.weather_descriptions.0> <common.temp_high_label>:95°F <common.temp_low_label>:70°F 14<commands.gwx.gust[('value', 22)]>"
+  "text": "<commands.gwx.periods.tomorrow>: ☀️<commands.gwx.weather_descriptions.0> <common.temp_high_label>:96°F <common.temp_low_label>:71°F 14<commands.gwx.gust[('value', 22)]>"
  },
  "model-omitted-tomorrow-timeout": {
   "logs": [
@@ -399,7 +399,7 @@
    "wind_speed_unit": "mph"
   },
   "requests": 1,
-  "text": "<commands.gwx.periods.tonight>: 🌙<commands.gwx.weather_descriptions.0> 84°F ⬅️<common.wind_directions.WSW>4 <commands.gwx.humidity[('value', 32)]> | <common.temp_high_label>:93°F <common.temp_low_label>:69°F"
+  "text": "<commands.gwx.periods.tonight>: 🌙<commands.gwx.weather_descriptions.0> 85°F ⬅️<common.wind_directions.WSW>5 <commands.gwx.humidity[('value', 32)]> | <common.temp_high_label>:94°F <common.temp_low_label>:70°F"
  },
  "model-override-default-timeout": {
   "logs": [
@@ -509,7 +509,7 @@
    "wind_speed_unit": "mph"
   },
   "requests": 1,
-  "text": "<commands.gwx.day_abbrev.Friday>: ☀️<commands.gwx.wea... <common.temp_high_label>:95°F <common.temp_low_label>:70°F\n<commands.gwx.day_abbrev.Saturday>: ☀️<commands.gwx.wea... <common.temp_high_label>:95°F <common.temp_low_label>:74°F\n<commands.gwx.day_abbrev.Sunday>: ☀️<commands.gwx.wea... <common.temp_high_label>:96°F <common.temp_low_label>:84°F\n<commands.gwx.day_abbrev.Monday>: ☁️<commands.gwx.wea... <common.temp_high_label>:97°F <common.temp_low_label>:84°F\n<commands.gwx.day_abbrev.Tuesday>: ☁️<commands.gwx.wea... <common.temp_high_label>:97°F <common.temp_low_label>:85°F\n<commands.gwx.day_abbrev.Wednesday>: ☀️<commands.gwx.wea... <common.temp_high_label>:100°F <common.temp_low_label>:87°F\n<commands.gwx.day_abbrev.Thursday>: ☀️<commands.gwx.wea... <common.temp_high_label>:102°F <common.temp_low_label>:87°F\n<commands.gwx.day_abbrev.Friday>: ☀️<commands.gwx.wea... <common.temp_high_label>:100°F <common.temp_low_label>:87°F\n<commands.gwx.day_abbrev.Saturday>: ☀️<commands.gwx.wea... <common.temp_high_label>:97°F <common.temp_low_label>:85°F\n<commands.gwx.day_abbrev.Sunday>: ☀️<commands.gwx.wea... <common.temp_high_label>:95°F <common.temp_low_label>:84°F\n<commands.gwx.day_abbrev.Monday>: ⛅<commands.gwx.wea... <common.temp_high_label>:93°F <common.temp_low_label>:85°F\n<commands.gwx.day_abbrev.Tuesday>: 🌤️<commands.gwx.wea... <common.temp_high_label>:95°F <common.temp_low_label>:85°F\n<commands.gwx.day_abbrev.Wednesday>: 🌦️<commands.gwx.wea... <common.temp_high_label>:95°F <common.temp_low_label>:86°F\n<commands.gwx.day_abbrev.Thursday>: ☁️<commands.gwx.wea... <common.temp_high_label>:93°F <common.temp_low_label>:80°F\n<commands.gwx.day_abbrev.Friday>: 🌤️<commands.gwx.wea... <common.temp_high_label>:82°F <common.temp_low_label>:71°F"
+  "text": "<commands.gwx.day_abbrev.Friday>: ☀️<commands.gwx.wea... <common.temp_high_label>:96°F <common.temp_low_label>:71°F\n<commands.gwx.day_abbrev.Saturday>: ☀️<commands.gwx.wea... <common.temp_high_label>:95°F <common.temp_low_label>:74°F\n<commands.gwx.day_abbrev.Sunday>: ☀️<commands.gwx.wea... <common.temp_high_label>:97°F <common.temp_low_label>:85°F\n<commands.gwx.day_abbrev.Monday>: ☁️<commands.gwx.wea... <common.temp_high_label>:97°F <common.temp_low_label>:84°F\n<commands.gwx.day_abbrev.Tuesday>: ☁️<commands.gwx.wea... <common.temp_high_label>:97°F <common.temp_low_label>:86°F\n<commands.gwx.day_abbrev.Wednesday>: ☀️<commands.gwx.wea... <common.temp_high_label>:101°F <common.temp_low_label>:88°F\n<commands.gwx.day_abbrev.Thursday>: ☀️<commands.gwx.wea... <common.temp_high_label>:103°F <common.temp_low_label>:88°F\n<commands.gwx.day_abbrev.Friday>: ☀️<commands.gwx.wea... <common.temp_high_label>:100°F <common.temp_low_label>:88°F\n<commands.gwx.day_abbrev.Saturday>: ☀️<commands.gwx.wea... <common.temp_high_label>:98°F <common.temp_low_label>:86°F\n<commands.gwx.day_abbrev.Sunday>: ☀️<commands.gwx.wea... <common.temp_high_label>:95°F <common.temp_low_label>:84°F\n<commands.gwx.day_abbrev.Monday>: ⛅<commands.gwx.wea... <common.temp_high_label>:94°F <common.temp_low_label>:86°F\n<commands.gwx.day_abbrev.Tuesday>: 🌤️<commands.gwx.wea... <common.temp_high_label>:95°F <common.temp_low_label>:85°F\n<commands.gwx.day_abbrev.Wednesday>: 🌦️<commands.gwx.wea... <common.temp_high_label>:95°F <common.temp_low_label>:86°F\n<commands.gwx.day_abbrev.Thursday>: ☁️<commands.gwx.wea... <common.temp_high_label>:94°F <common.temp_low_label>:81°F\n<commands.gwx.day_abbrev.Friday>: 🌤️<commands.gwx.wea... <common.temp_high_label>:83°F <common.temp_low_label>:72°F"
  },
  "model-override-multiday-timeout": {
   "logs": [
@@ -619,7 +619,7 @@
    "wind_speed_unit": "mph"
   },
   "requests": 1,
-  "text": "<commands.gwx.periods.tomorrow>: ☀️<commands.gwx.weather_descriptions.0> <common.temp_high_label>:95°F <common.temp_low_label>:70°F 14<commands.gwx.gust[('value', 22)]>"
+  "text": "<commands.gwx.periods.tomorrow>: ☀️<commands.gwx.weather_descriptions.0> <common.temp_high_label>:96°F <common.temp_low_label>:71°F 14<commands.gwx.gust[('value', 22)]>"
  },
  "model-override-tomorrow-timeout": {
   "logs": [
@@ -729,7 +729,7 @@
    "wind_speed_unit": "mph"
   },
   "requests": 1,
-  "text": "<commands.gwx.periods.tonight>: 🌙<commands.gwx.weather_descriptions.0> 84°F ⬅️<common.wind_directions.WSW>4 <commands.gwx.humidity[('value', 32)]> | <common.temp_high_label>:93°F <common.temp_low_label>:69°F"
+  "text": "<commands.gwx.periods.tonight>: 🌙<commands.gwx.weather_descriptions.0> 85°F ⬅️<common.wind_directions.WSW>5 <commands.gwx.humidity[('value', 32)]> | <common.temp_high_label>:94°F <common.temp_low_label>:70°F"
  },
  "no-override-default-timeout": {
   "logs": [
@@ -839,7 +839,7 @@
    "wind_speed_unit": "mph"
   },
   "requests": 1,
-  "text": "<commands.gwx.day_abbrev.Friday>: ☀️<commands.gwx.wea... <common.temp_high_label>:95°F <common.temp_low_label>:70°F\n<commands.gwx.day_abbrev.Saturday>: ☀️<commands.gwx.wea... <common.temp_high_label>:95°F <common.temp_low_label>:74°F\n<commands.gwx.day_abbrev.Sunday>: ☀️<commands.gwx.wea... <common.temp_high_label>:96°F <common.temp_low_label>:84°F\n<commands.gwx.day_abbrev.Monday>: ☁️<commands.gwx.wea... <common.temp_high_label>:97°F <common.temp_low_label>:84°F\n<commands.gwx.day_abbrev.Tuesday>: ☁️<commands.gwx.wea... <common.temp_high_label>:97°F <common.temp_low_label>:85°F\n<commands.gwx.day_abbrev.Wednesday>: ☀️<commands.gwx.wea... <common.temp_high_label>:100°F <common.temp_low_label>:87°F\n<commands.gwx.day_abbrev.Thursday>: ☀️<commands.gwx.wea... <common.temp_high_label>:102°F <common.temp_low_label>:87°F\n<commands.gwx.day_abbrev.Friday>: ☀️<commands.gwx.wea... <common.temp_high_label>:100°F <common.temp_low_label>:87°F\n<commands.gwx.day_abbrev.Saturday>: ☀️<commands.gwx.wea... <common.temp_high_label>:97°F <common.temp_low_label>:85°F\n<commands.gwx.day_abbrev.Sunday>: ☀️<commands.gwx.wea... <common.temp_high_label>:95°F <common.temp_low_label>:84°F\n<commands.gwx.day_abbrev.Monday>: ⛅<commands.gwx.wea... <common.temp_high_label>:93°F <common.temp_low_label>:85°F\n<commands.gwx.day_abbrev.Tuesday>: 🌤️<commands.gwx.wea... <common.temp_high_label>:95°F <common.temp_low_label>:85°F\n<commands.gwx.day_abbrev.Wednesday>: 🌦️<commands.gwx.wea... <common.temp_high_label>:95°F <common.temp_low_label>:86°F\n<commands.gwx.day_abbrev.Thursday>: ☁️<commands.gwx.wea... <common.temp_high_label>:93°F <common.temp_low_label>:80°F\n<commands.gwx.day_abbrev.Friday>: 🌤️<commands.gwx.wea... <common.temp_high_label>:82°F <common.temp_low_label>:71°F"
+  "text": "<commands.gwx.day_abbrev.Friday>: ☀️<commands.gwx.wea... <common.temp_high_label>:96°F <common.temp_low_label>:71°F\n<commands.gwx.day_abbrev.Saturday>: ☀️<commands.gwx.wea... <common.temp_high_label>:95°F <common.temp_low_label>:74°F\n<commands.gwx.day_abbrev.Sunday>: ☀️<commands.gwx.wea... <common.temp_high_label>:97°F <common.temp_low_label>:85°F\n<commands.gwx.day_abbrev.Monday>: ☁️<commands.gwx.wea... <common.temp_high_label>:97°F <common.temp_low_label>:84°F\n<commands.gwx.day_abbrev.Tuesday>: ☁️<commands.gwx.wea... <common.temp_high_label>:97°F <common.temp_low_label>:86°F\n<commands.gwx.day_abbrev.Wednesday>: ☀️<commands.gwx.wea... <common.temp_high_label>:101°F <common.temp_low_label>:88°F\n<commands.gwx.day_abbrev.Thursday>: ☀️<commands.gwx.wea... <common.temp_high_label>:103°F <common.temp_low_label>:88°F\n<commands.gwx.day_abbrev.Friday>: ☀️<commands.gwx.wea... <common.temp_high_label>:100°F <common.temp_low_label>:88°F\n<commands.gwx.day_abbrev.Saturday>: ☀️<commands.gwx.wea... <common.temp_high_label>:98°F <common.temp_low_label>:86°F\n<commands.gwx.day_abbrev.Sunday>: ☀️<commands.gwx.wea... <common.temp_high_label>:95°F <common.temp_low_label>:84°F\n<commands.gwx.day_abbrev.Monday>: ⛅<commands.gwx.wea... <common.temp_high_label>:94°F <common.temp_low_label>:86°F\n<commands.gwx.day_abbrev.Tuesday>: 🌤️<commands.gwx.wea... <common.temp_high_label>:95°F <common.temp_low_label>:85°F\n<commands.gwx.day_abbrev.Wednesday>: 🌦️<commands.gwx.wea... <common.temp_high_label>:95°F <common.temp_low_label>:86°F\n<commands.gwx.day_abbrev.Thursday>: ☁️<commands.gwx.wea... <common.temp_high_label>:94°F <common.temp_low_label>:81°F\n<commands.gwx.day_abbrev.Friday>: 🌤️<commands.gwx.wea... <common.temp_high_label>:83°F <common.temp_low_label>:72°F"
  },
  "no-override-multiday-timeout": {
   "logs": [
@@ -949,7 +949,7 @@
    "wind_speed_unit": "mph"
   },
   "requests": 1,
-  "text": "<commands.gwx.periods.tomorrow>: ☀️<commands.gwx.weather_descriptions.0> <common.temp_high_label>:95°F <common.temp_low_label>:70°F 14<commands.gwx.gust[('value', 22)]>"
+  "text": "<commands.gwx.periods.tomorrow>: ☀️<commands.gwx.weather_descriptions.0> <common.temp_high_label>:96°F <common.temp_low_label>:71°F 14<commands.gwx.gust[('value', 22)]>"
  },
  "no-override-tomorrow-timeout": {
   "logs": [

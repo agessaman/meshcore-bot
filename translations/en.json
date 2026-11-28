@@ -245,6 +245,13 @@
       "meteoalarm": {
         "attribution": "Alerts: MeteoAlarm/EUMETNET",
         "error_fetching": "Error fetching weather alerts"
+      },
+      "eccc": {
+        "error_fetching": "Error fetching weather alerts"
+      },
+      "dwd": {
+        "attribution": "Alerts: DWD via Bright Sky",
+        "error_fetching": "Error fetching weather alerts"
       }
     },
     "gwx": {
@@ -268,6 +275,7 @@
       "mqtt_weather_payload_error": "MQTT weather payload error: {detail}",
       "feels_like": "(feels {value}{unit})",
       "humidity": "{value}%RH",
+      "calm": "Calm",
       "dew_point": "💧{value}{unit}",
       "visibility": "👁️{value}mi",
       "visibility_km": "👁️{value}km",
@@ -329,7 +337,13 @@
         "heavy_snow": "⚠️ Heavy snow",
         "high_winds": "⚠️ High winds ({wind_speed} {unit})"
       },
-      "pressure_unit": "hpa"
+      "pressure_unit": "hpa",
+      "metno": {
+        "error_fetching_api": "Error fetching weather data from MET Norway"
+      },
+      "eccc": {
+        "error_fetching_api": "Error fetching weather data from Environment Canada"
+      }
     },
     "sports": {
       "description": "Get sports scores and schedules (usage: sports [team/league])",

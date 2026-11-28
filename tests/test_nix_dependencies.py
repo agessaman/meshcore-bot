@@ -16,6 +16,9 @@ NIX_NAMES = {
 }
 
 # Declared but not needed under Nix: the standard library already provides it.
+# tzfpy is not here because it is not in requirements.txt at all: it is an
+# optional extra, and the weather time zone helper uses timezonefinder under
+# Nix instead (see the test below).
 NOT_PACKAGED = {"configparser"}
 
 
@@ -43,6 +46,11 @@ def _nix_bot_inputs() -> set[str]:
         if re.fullmatch(r"[A-Za-z0-9._-]+", line):
             names.add(line.lower())
     return names
+
+
+def test_nix_package_carries_the_time_zone_lookup() -> None:
+    """tzfpy is not in nixpkgs, so the Nix build needs its stand-in."""
+    assert "timezonefinder" in _nix_bot_inputs()
 
 
 def test_nix_package_installs_every_runtime_requirement() -> None:

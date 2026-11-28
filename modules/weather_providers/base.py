@@ -101,6 +101,12 @@ class WeatherProvider(ABC):
     location_style: ClassVar[str]          # "us" (zip/city/state labels) or "global" (country labels)
     capabilities: ClassVar[frozenset[Capability]]
     max_days: ClassVar[int]                # multiday cap
+    # The alerts provider ``alerts_provider = auto`` picks for this source, if any.
+    default_alerts_provider: ClassVar[Optional[str]] = None
+    # Whether this provider calls through the command's own requests.Session,
+    # which then has to be serialized across worker threads. A provider that
+    # makes its own requests does not need the command's lock.
+    uses_command_session: ClassVar[bool] = False
 
     def __init__(self, host: ProviderHost, units: WeatherUnits):
         self.host = host

@@ -179,6 +179,24 @@
     "wx": {
       "description": "Amerikaans weer voor postcode, plaats of coördinaten (gebruik: wx 98101)",
       "usage": "Gebruik: wx <postcode|plaats|lat,lon> [tomorrow|hourly|Nd|alerts] - Voorbeeld: wx 98101 of wx seattle 5d",
+      "subcommands": [
+        {
+          "name": "tomorrow",
+          "description": "Voorspelling voor morgen"
+        },
+        {
+          "name": "Nd",
+          "description": "Voorspelling voor N dagen (bijv. 7d, 10d; ook 7-day, 7 of 2–16)"
+        },
+        {
+          "name": "hourly",
+          "description": "Uurlijkse voorspelling"
+        },
+        {
+          "name": "alerts",
+          "description": "Alle weerwaarschuwingen tonen"
+        }
+      ],
       "error_fetching": "Fout bij ophalen weerdata van NOAA",
       "no_location_zipcode": "Locatie voor postcode {location} niet gevonden",
       "no_location_city": "Plaats '{location}' niet gevonden in {state}",
@@ -203,6 +221,17 @@
         "Friday": "Vr",
         "Saturday": "Za",
         "Sunday": "Zo"
+      },
+      "meteoalarm": {
+        "attribution": "Waarschuwingen: MeteoAlarm/EUMETNET",
+        "error_fetching": "Fout bij ophalen weerwaarschuwingen"
+      },
+      "eccc": {
+        "error_fetching": "Fout bij ophalen weerwaarschuwingen"
+      },
+      "dwd": {
+        "attribution": "Waarschuwingen: DWD via Bright Sky",
+        "error_fetching": "Fout bij ophalen weerwaarschuwingen"
       }
     },
     "gwx": {
@@ -217,6 +246,13 @@
       "tomorrow_error": "Fout bij het opmaken van de verwachting voor morgen",
       "multiday_not_available": "{num_days}-daagse verwachting niet beschikbaar",
       "multiday_error": "Fout bij het opmaken van de {num_days}-daagse verwachting",
+      "humidity": "{value}%RH",
+      "dew_point": "💧{value}{unit}",
+      "visibility": "👁️{value}mi",
+      "visibility_km": "👁️{value}km",
+      "pressure": "📊{value}hPa",
+      "pressure_mmhg": "📊{value}mmHg",
+      "gust": "G{value}",
       "periods": {
         "today": "Vandaag",
         "tonight": "Vanavond",
@@ -273,13 +309,21 @@
         "Sunday": "Zo"
       },
       "feels_like": "(voelt als {value}{unit})",
+      "calm": "Windstil",
       "hourly_not_available": "Uurverwachting niet beschikbaar",
       "source_option_not_available": "Niet beschikbaar voor deze weerbron",
       "mqtt_forecast_not_supported": "Uitgebreide verwachting is niet beschikbaar voor MQTT-weerbronnen",
       "mqtt_weather_no_data": "Nog geen MQTT-weerbericht ontvangen voor dit topic",
       "mqtt_weather_no_subscriber": "MQTT-weerontvanger is niet actief (schakel [MqttWeather] en custom.mqtt_weather.*-topics in)",
       "mqtt_weather_payload_error": "Fout in MQTT-weergegevens: {detail}",
-      "mqtt_weather_stale": "MQTT-weergegevens zijn te oud"
+      "mqtt_weather_stale": "MQTT-weergegevens zijn te oud",
+      "pressure_unit": "hpa",
+      "metno": {
+        "error_fetching_api": "Fout bij ophalen weerdata van MET Norway"
+      },
+      "eccc": {
+        "error_fetching_api": "Fout bij ophalen weerdata van Environment Canada"
+      }
     },
     "sports": {
       "description": "Sportuitslagen en -schema's (gebruik: sports [team/competitie])",
@@ -1023,6 +1067,8 @@
     "no_help_available": "Geen help beschikbaar voor dit commando.",
     "snr_label": "SNR: {value} dB",
     "rssi_label": "RSSI: {value} dBm",
+    "temp_high_label": "Max",
+    "temp_low_label": "Min",
     "date_time": {
       "day_abbreviations": {
         "Mon": "Ma",
@@ -1088,6 +1134,21 @@
       "WNW": "WNW",
       "NW": "NW",
       "NNW": "NNW"
+    },
+    "alerts": {
+      "til": "tot",
+      "by": "van",
+      "from": "vanaf",
+      "am": "a.m.",
+      "pm": "p.m.",
+      "time_12h": "{hour} {meridiem}",
+      "date_12h": "{day} {month} {time}",
+      "event_types": {
+        "Warning": "Waars.",
+        "Watch": "Wacht",
+        "Advisory": "Advies",
+        "Statement": "Med."
+      }
     }
   },
   "categories": {
@@ -1100,5 +1161,55 @@
     "analytics": "Analysecommando's",
     "meshcore_info": "MeshCore info commando's",
     "management": "Beheercommando's"
+  },
+  "services": {
+    "weather_service": {
+      "daily_weather": "Dagelijks weer",
+      "tomorrow": "Morgen",
+      "error_fetching": "Fout bij ophalen weerdata",
+      "no_data": "Geen prognosedata beschikbaar",
+      "near": "bij",
+      "est": "ca.",
+      "steady": "aanhoudend",
+      "rain_starting": "{emoji} Let op — {ptype} begint over ~{minutes}min{est}{steady}{temp}{location}",
+      "rain_ending": "{emoji} Let op — {ptype} stopt over ~{minutes}min{est}{temp}{location}",
+      "weather_descriptions": {
+        "0": "Helder",
+        "1": "Overwegend helder",
+        "2": "Halfbewolkt",
+        "3": "Bewolkt",
+        "45": "Mistig",
+        "48": "Mistig",
+        "51": "Lichte motregen",
+        "53": "Motregen",
+        "55": "Zware motregen",
+        "56": "Lichte ijzel",
+        "57": "IJzel",
+        "61": "Lichte regen",
+        "63": "Regen",
+        "65": "Zware regen",
+        "66": "Lichte ijzel",
+        "67": "IJzel",
+        "71": "Lichte sneeuw",
+        "73": "Sneeuw",
+        "75": "Zware sneeuw",
+        "77": "IJskristallen",
+        "80": "Lichte buien",
+        "81": "Buien",
+        "82": "Zware buien",
+        "85": "Lichte sneeuwbuien",
+        "86": "Sneeuwbuien",
+        "95": "Onweer",
+        "96": "Onweer m/hagel",
+        "97": "Hevig onweer",
+        "99": "Zwaar onweer"
+      },
+      "wind_speed_units": {
+        "ms": "m/s",
+        "mph": "mph",
+        "kmh": "km/h",
+        "kn": "kn"
+      }
+    }
   }
 }

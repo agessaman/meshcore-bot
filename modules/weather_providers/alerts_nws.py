@@ -12,7 +12,7 @@ import asyncio
 import re
 import threading
 import xml.dom.minidom
-from typing import Optional
+from typing import Any, Optional, Union
 
 import requests
 
@@ -24,6 +24,11 @@ from ..nws_alerts import WX_SPECIAL_RULES, entry_nws_headline, entry_summary, en
 from ..nws_coverage import NWSNoCoverageCache
 from .base import AlertsProvider, AlertSummary, ProviderHost
 from .noaa import ERROR_FETCHING_DATA, NO_ALERTS, NOAA_TIMEOUT
+
+# What a NOAA alert fetch answers with: a sentinel string (ERROR_FETCHING_DATA
+# or NO_ALERTS), or a tuple whose shape depends on return_full_data: (alert
+# dicts, count) with it, (full text, abbreviated text, count) without it.
+AlertsResult = Union[str, tuple[Any, ...]]
 
 
 class NwsAlertsProvider(AlertsProvider):
@@ -75,14 +80,15 @@ class NwsAlertsProvider(AlertsProvider):
     def _summary_locked(self, lat: float, lon: float, max_length: int) -> Optional[AlertSummary]:
         """The body of :meth:`summary`, run under the worker lock."""
         alerts_result = self.get_weather_alerts_noaa(lat, lon, return_full_data=False)
-        if alerts_result == ERROR_FETCHING_DATA or alerts_result == NO_ALERTS:
+        if not isinstance(alerts_result, tuple):
+            # ERROR_FETCHING_DATA or NO_ALERTS: a sentinel, not a result.
             return None
         full_alert_text, _abbreviated_alert_text, alert_count = alerts_result
         if alert_count <= 0:
             return None
         # Get full alert data for prioritized formatting
         alerts_full_result = self.get_weather_alerts_noaa(lat, lon, return_full_data=True)
-        if alerts_full_result not in [ERROR_FETCHING_DATA, NO_ALERTS]:
+        if isinstance(alerts_full_result, tuple):
             alerts_list, _ = alerts_full_result
             text = self._format_alerts_compact_summary(alerts_list, alert_count, max_length=max_length)
         else:
@@ -97,12 +103,14 @@ class NwsAlertsProvider(AlertsProvider):
 
     async def _get_weather_alerts_noaa_async(
         self, lat: float, lon: float, return_full_data: bool = False
-    ) -> tuple:
+    ) -> AlertsResult:
         return await asyncio.to_thread(
             self._run_sync, self.get_weather_alerts_noaa, lat, lon, return_full_data
         )
 
-    def get_weather_alerts_noaa(self, lat: float, lon: float, return_full_data: bool = False) -> tuple:
+    def get_weather_alerts_noaa(
+        self, lat: float, lon: float, return_full_data: bool = False
+    ) -> AlertsResult:
         """Get weather alerts from NOAA with full metadata extraction and prioritization
 
         Args:
@@ -154,6 +162,11 @@ class NwsAlertsProvider(AlertsProvider):
                     title = entry_title(entry)
                     summary = entry_summary(entry)
                     nws_headline = entry_nws_headline(entry)
+                    if title is None:
+                        # entry_title answers None when the title's first child
+                        # is not text; parse_alert_fields needs a string, and
+                        # the old code raised inside it for the same entries.
+                        raise ValueError("alert entry title is not text")
                     alerts.append(parse_alert_fields(entry, title, summary, nws_headline, WX_SPECIAL_RULES))
 
                 except Exception as e:
@@ -210,7 +223,7 @@ class NwsAlertsProvider(AlertsProvider):
             List of alerts with differentiated event names for duplicate statements
         """
         # Group alerts by event type and event name
-        statement_groups = {}
+        statement_groups: dict[str, list] = {}
         for alert in alerts:
             if alert.get('event_type') == 'Statement':
                 event = alert.get('event', 'Special')
@@ -494,7 +507,7 @@ class NwsAlertsProvider(AlertsProvider):
                 'Statement': '📢'
             }.get(event_type, '⚠️')
 
-    def _format_alert_full(self, alert: dict, index: int = None) -> str:
+    def _format_alert_full(self, alert: dict, index: Optional[int] = None) -> str:
         """Format a single alert with full details for multi-message display
 
         Args:
@@ -538,13 +551,13 @@ class NwsAlertsProvider(AlertsProvider):
         alerts_result = await self._get_weather_alerts_noaa_async(
             lat, lon, return_full_data=True
         )
-        if alerts_result == ERROR_FETCHING_DATA:
-            if self.fallback_enabled and self.coverage.is_unavailable(lat, lon):
-                # NWS alerts are not the only source here, so a point outside
-                # coverage reads as "not available" from the first request on.
-                return bool(await self.host.send_response(message, self.host.translate(self.no_coverage_key)))
-            return bool(await self.host.send_response(message, self.host.translate('commands.wx.error_fetching')))
-        elif alerts_result == NO_ALERTS:
+        if not isinstance(alerts_result, tuple):
+            if alerts_result == ERROR_FETCHING_DATA:
+                if self.fallback_enabled and self.coverage.is_unavailable(lat, lon):
+                    # NWS alerts are not the only source here, so a point outside
+                    # coverage reads as "not available" from the first request on.
+                    return bool(await self.host.send_response(message, self.host.translate(self.no_coverage_key)))
+                return bool(await self.host.send_response(message, self.host.translate('commands.wx.error_fetching')))
             return bool(await self.host.send_response(message, "No weather alerts"))
 
         alerts, alert_count = alerts_result
