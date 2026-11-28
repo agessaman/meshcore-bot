@@ -402,9 +402,11 @@ install_optional_extras() {
         print_warning "Failed to install geocoding extras (non-fatal)"
     fi
 
-    # requirements.txt installs tzfpy only on 64-bit machines: on 32-bit ARM a
-    # plain PyPI install would try a Rust source build.  piwheels has armv6l and
-    # armv7l wheels, so route this one through the armv7 pip arguments.
+    # tzfpy is not in requirements.txt: PyPI has no 32-bit ARM wheel, and a
+    # source build needs Rust, which would abort the whole install.  piwheels has
+    # armv6l and armv7l wheels, so route this one through the armv7 pip arguments
+    # (which also catch a 32-bit userland on a 64-bit kernel); a failure here only
+    # means weather times fall back to the longitude estimate.
     print_info "Installing time zone lookup..."
     configure_armv7_pip_args "$INSTALL_DIR/requirements.txt"
     if "$venv_python" -m pip install --quiet "${ARMV7_PIP_ARGS[@]}" "tzfpy>=2.1"; then
