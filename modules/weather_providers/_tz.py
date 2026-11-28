@@ -25,7 +25,7 @@ import threading
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional, TypedDict
 
-import pytz  # type: ignore[import-untyped]  # pytz ships no type information
+import pytz  # type: ignore[import-untyped, unused-ignore]  # stubs (types-pytz) may or may not be installed
 
 logger = logging.getLogger(__name__)
 
