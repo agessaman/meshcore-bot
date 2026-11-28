@@ -990,6 +990,8 @@ prefix_best_location_radius_km = 50
 prefix_best_do_not_suggest =
 [Weather]
 # NOTE: Unit settings are used by both the wx and gwx commands and Weather_Service plugin
+# What each forecast and alert provider covers, and which combination to pick where:
+# docs/weather-providers.md
 
 # Weather provider selection
 # Options: noaa, openmeteo, metno, eccc

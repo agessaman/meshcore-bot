@@ -69,6 +69,7 @@ nav:
   - Web Viewer: web-viewer.md
   - Command Reference:
     - Overview: command-reference.md
+    - Weather Providers: weather-providers.md
     - Repeater Commands: repeater-commands.md
     - Custom Command Website: command-reference-website.md
     - Developing Commands: develop-command-scripts.md
