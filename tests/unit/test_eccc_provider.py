@@ -16,6 +16,8 @@ from unittest.mock import Mock
 
 import pytest
 
+from modules.weather_providers._geo import haversine_km
+
 from modules.i18n import Translator
 from modules.weather_common import WeatherCommandMixin
 from modules.weather_providers import eccc
@@ -245,7 +247,7 @@ def test_the_nearest_city_page_wins():
     assert session.count() == 1
     assert session.calls[0]["url"] == f"{ECCC_BASE_URL}/collections/{CITYPAGE_COLLECTION}/items"
     # A 150 km box, widened in longitude for the latitude.
-    assert session.calls[0]["params"]["bbox"] == "-125.1855,47.9325,-121.0545,50.6275"
+    assert session.calls[0]["params"]["bbox"] == "-125.1881,47.9325,-121.0519,50.6275"
 
 
 def test_the_search_box_widens_until_a_city_page_answers():
@@ -263,7 +265,7 @@ def test_the_search_box_widens_until_a_city_page_answers():
     assert feature["properties"]["name"]["en"] == "Vancouver"
     assert session.count() == 2
     # The second box is twice as wide, for a sparse area.
-    assert session.calls[1]["params"]["bbox"] == "-127.2510,46.5851,-118.9890,51.9749"
+    assert session.calls[1]["params"]["bbox"] == "-127.2577,46.5851,-118.9823,51.9749"
 
 
 def test_a_point_past_150_km_has_no_coverage():
@@ -898,11 +900,53 @@ def _lon_for_km(lat, kilometres):
     return math.degrees(2 * math.asin(math.sin(kilometres / (2 * 6371.0)) / math.cos(math.radians(lat))))
 
 
-def test_the_search_box_is_the_exact_parallel_arc():
+def test_the_search_box_is_the_exact_spherical_bound():
     delta_lat, delta_lon = _search_box(83.0, 1.0)
 
     assert delta_lat == pytest.approx(150.0 / 111.32)
-    assert delta_lon == pytest.approx(150.0 / (111.32 * math.cos(math.radians(83.0))))
+    # The widest point of the circle sits poleward of its center, so the bound
+    # is asin(sin(d/R) / cos(lat)), wider than the parallel arc at the center.
+    expected = math.degrees(math.asin(math.sin(150.0 / 6371.0) / math.cos(math.radians(83.0))))
+    assert delta_lon == pytest.approx(expected)
+    assert delta_lon > 150.0 / (111.32 * math.cos(math.radians(83.0)))
+
+
+class _BoxSession:
+    """A session that answers a bbox query with only the pages inside the box."""
+
+    def __init__(self, pages):
+        self.pages = pages
+        self.calls = []
+
+    def get(self, url, params=None, headers=None, timeout=None):
+        self.calls.append({"url": url, "params": dict(params or {})})
+        west, south, east, north = (float(v) for v in params["bbox"].split(","))
+        inside = [
+            page for page in self.pages
+            if west <= page["geometry"]["coordinates"][0] <= east
+            and south <= page["geometry"]["coordinates"][1] <= north
+        ]
+        return _Response(200, {"type": "FeatureCollection", "features": inside})
+
+
+def test_a_page_poleward_of_the_center_is_inside_the_first_box():
+    """At 83N the nearest page sits north-east, outside a parallel-arc box."""
+    near = _page_at(83.1292353, -68.9002614, label="Near")
+    # 149.89 km to the south-east: inside even the old, too-narrow box, so a
+    # search that misses Near returns Far instead of widening.
+    far = _page_at(82.645724, -69.572625, label="Far")
+    assert math.isclose(haversine_km(83.0, -80.0, 83.1292353, -68.9002614), 149.49, abs_tol=0.05)
+    assert math.isclose(haversine_km(83.0, -80.0, 82.645724, -69.572625), 149.89, abs_tol=0.05)
+    session = _BoxSession([near, far])
+    provider = EcccProvider(
+        _Host(), WeatherUnits("fahrenheit", "mph", "inch"),
+        session=session, clock=lambda: 1000.0, now=lambda: NOW,
+    )
+
+    feature, failed = provider._lookup(83.0, -80.0)
+
+    assert failed is False
+    assert feature["properties"]["name"]["en"] == "Near"
 
 
 def test_the_nearer_of_two_pages_just_inside_the_radius_wins():
@@ -937,8 +981,8 @@ def test_a_box_across_the_dateline_is_split_in_two():
     boxes = _search_boxes(0.0, 179.0, 1.0)
 
     assert len(boxes) == 2
-    assert boxes[0].startswith("177.6525,") and boxes[0].endswith(",180.0000,1.3475")
-    assert boxes[1].startswith("-180.0000,") and boxes[1].endswith(",-179.6525,1.3475")
+    assert boxes[0].startswith("177.6510,") and boxes[0].endswith(",180.0000,1.3475")
+    assert boxes[1].startswith("-180.0000,") and boxes[1].endswith(",-179.6510,1.3475")
 
 
 # --- pagination -------------------------------------------------------------
@@ -976,6 +1020,87 @@ def test_the_next_page_is_followed_for_the_nearest_city():
 
     assert failed is False
     assert feature["properties"]["name"]["en"] == "Vancouver"
+    assert len(session.calls) == 2
+
+
+class _ScriptedSession:
+    """Answers each GET from a list, in order, recording the URLs."""
+
+    def __init__(self, responses):
+        self.responses = list(responses)
+        self.calls = []
+
+    def get(self, url, params=None, headers=None, timeout=None):
+        self.calls.append({"url": url, "params": dict(params or {})})
+        return self.responses.pop(0)
+
+
+def _scripted_provider(responses):
+    session = _ScriptedSession(responses)
+    provider = EcccProvider(
+        _Host(), WeatherUnits("fahrenheit", "mph", "inch"),
+        session=session, clock=lambda: 1000.0, now=lambda: NOW,
+    )
+    return provider, session
+
+
+def _collection(features, next_href=None):
+    body = {"type": "FeatureCollection", "features": features}
+    if next_href:
+        body["links"] = [{"rel": "next", "href": next_href}]
+    return body
+
+
+def test_a_relative_next_link_stays_on_the_collection_endpoint():
+    first = _Response(200, _collection([_page_at(0.0, 0.0, "Far")] * 50, "?offset=50"))
+    first.url = f"{ECCC_BASE_URL}/collections/{CITYPAGE_COLLECTION}/items?bbox=x&limit=50"
+    second = _Response(200, _collection([_page_at(*VANCOUVER, label="Vancouver")]))
+    provider, session = _scripted_provider([first, second])
+
+    feature, failed = provider._lookup(*VANCOUVER)
+
+    assert failed is False
+    assert feature["properties"]["name"]["en"] == "Vancouver"
+    assert session.calls[1]["url"] == f"{ECCC_BASE_URL}/collections/{CITYPAGE_COLLECTION}/items?offset=50"
+
+
+def test_a_failed_second_page_keeps_a_city_already_in_reach():
+    first = _Response(200, _collection([_page_at(*VANCOUVER, label="Vancouver")], "page2"))
+    provider, _session = _scripted_provider([first, _Response(503)])
+
+    feature, failed = provider._lookup(*VANCOUVER)
+
+    assert failed is False
+    assert feature["properties"]["name"]["en"] == "Vancouver"
+
+
+def test_an_unfinished_page_chain_is_a_failure_not_no_coverage():
+    """Five pages all pointing on, with nothing in reach, cannot prove there is no city page."""
+    pages = [
+        _Response(200, _collection([_page_at(0.0, 0.0, "Far")], f"{ECCC_BASE_URL}/p{i}"))
+        for i in range(1, 6)
+    ]
+    provider, session = _scripted_provider(pages)
+
+    feature, failed = provider._lookup(*VANCOUVER)
+
+    assert feature is None
+    assert failed is True
+    assert len(session.calls) == 5
+
+
+def test_a_next_link_back_to_a_read_page_stops_as_a_failure():
+    loop = f"{ECCC_BASE_URL}/loop"
+    pages = [
+        _Response(200, _collection([_page_at(0.0, 0.0, "Far")], loop)),
+        _Response(200, _collection([_page_at(0.0, 0.0, "Far")], loop)),
+    ]
+    provider, session = _scripted_provider(pages)
+
+    feature, failed = provider._lookup(*VANCOUVER)
+
+    assert feature is None
+    assert failed is True
     assert len(session.calls) == 2
 
 

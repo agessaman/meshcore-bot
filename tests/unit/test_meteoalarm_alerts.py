@@ -1538,6 +1538,45 @@ def test_an_html_cap_is_retried_after_a_minute():
     assert second is not None and second.count == 2
 
 
+def test_a_cached_html_cap_keeps_its_original_deadline():
+    """A cache hit must not renew the failure TTL, or steady requests hide the alert."""
+    routes = _routes()
+    routes[CAP_GALE] = _Response(200, text="<html>Bad Gateway</html>")
+    provider, session, _host_, clock = _provider(routes)
+
+    provider.summary(LAT, LON, 130)
+    routes[CAP_GALE] = _Response(200, text=_text("alert-gale.xml"))
+    clock.advance(30)
+    provider.summary(LAT, LON, 130)
+    assert session.count(CAP_GALE) == 1
+
+    clock.advance(31)
+    recovered = provider.summary(LAT, LON, 130)
+
+    assert session.count(CAP_GALE) == 2
+    assert recovered is not None and recovered.count == 2
+
+
+@pytest.mark.parametrize("geometry", [None, {}])
+def test_an_empty_country_geometry_counts_as_unusable(geometry):
+    """A null or empty geometry must not become a day-long "not covered"."""
+    locations = _json("locations.json")
+    for feature in locations["features"]:
+        if feature.get("id") == "NO":
+            feature["geometry"] = geometry
+    routes = _routes()
+    routes[LOCATIONS_URL] = _Response(200, locations)
+    provider, session, _host_, clock = _provider(routes)
+
+    assert provider.coverage_for(LAT, LON) is Coverage.COVERED
+    provider.summary(LAT, LON, 130)
+    assert session.count(NO_URL) > 0
+
+    clock.advance(FAILURE_TTL + 1)
+    provider.coverage_for(LAT, LON)
+    assert session.count(LOCATIONS_URL) == 2
+
+
 # --- a country polygon that does not parse ----------------------------------
 
 

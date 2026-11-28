@@ -749,9 +749,9 @@ class MeteoalarmAlertsProvider(PackedAlertsMixin, AlertsProvider):
         for feature in features:
             code = feature.get("id")
             geometry = feature.get("geometry")
-            if not code or code == "ALL" or not geometry:
+            if not code or code == "ALL":
                 continue
-            if not valid_geometry(geometry):
+            if not geometry or not valid_geometry(geometry):
                 # A malformed ring would raise in covers(); skip the country,
                 # but remember that the list is not the whole picture.
                 self.host.logger.debug(
@@ -941,19 +941,20 @@ class MeteoalarmAlertsProvider(PackedAlertsMixin, AlertsProvider):
             return None, True
         return result
 
-    def _cap_text(self, alert_id: str, features: list, indexes: set) -> Optional[str]:
+    def _cap_text(self, alert_id: str, features: list, indexes: set) -> tuple[Optional[str], bool]:
         """The CAP document for an alert, cached by alertId and area.
 
         The text is cached rather than the parsed details, so a change of the
         configured language re-reads the same document instead of refetching it.
         Only a document that parsed is cached for the window TTL: an HTML error
-        page must not hide the alert for ten minutes.
+        page must not hide the alert for ten minutes. Returns ``(text, fresh)``;
+        ``fresh`` is False for a cache hit, which must not renew its deadline.
         """
         raw_key = _raw_key(alert_id, indexes)
         with self._lock:
             cached = self._caps.get(raw_key)
         if cached is not None and cached[0] > self._utcnow():
-            return cached[1]
+            return cached[1], False
 
         url = None
         for feature in features:
@@ -965,12 +966,12 @@ class MeteoalarmAlertsProvider(PackedAlertsMixin, AlertsProvider):
             if url:
                 break
         if not url:
-            return None
+            return None, False
 
         response = self._get(url)
         if response is UNAVAILABLE or response.status_code == 204:
-            return None
-        return response.text
+            return None, False
+        return response.text, True
 
     def _cache_raw(self, alert_id: str, indexes: set, text: str, seconds: float) -> None:
         """Keep a CAP document's text for *seconds*, once it has been judged."""
@@ -986,16 +987,20 @@ class MeteoalarmAlertsProvider(PackedAlertsMixin, AlertsProvider):
         if cached is not None and cached[0] > self._utcnow():
             return cached[1], False
 
-        text = self._cap_text(alert_id, features, indexes)
+        text, fresh = self._cap_text(alert_id, features, indexes)
         if text is None:
             return None, True
         details = parse_cap(text, language, indexes)
         if details is None or details["expires"] is None:
             # An unparseable document is a failure, not an answer: keep it only
-            # briefly, so the alert reappears when the endpoint recovers.
-            self._cache_raw(alert_id, indexes, text, FAILURE_TTL)
+            # briefly, so the alert reappears when the endpoint recovers. A
+            # cached copy keeps its original deadline; renewing it on every hit
+            # would hide the alert for as long as requests keep coming.
+            if fresh:
+                self._cache_raw(alert_id, indexes, text, FAILURE_TTL)
             return None, True
-        self._cache_raw(alert_id, indexes, text, WINDOW_TTL_TODAY)
+        if fresh:
+            self._cache_raw(alert_id, indexes, text, WINDOW_TTL_TODAY)
 
         now = self._utcnow()
         # A Cancel or an Update still names what it replaces, so the alert is

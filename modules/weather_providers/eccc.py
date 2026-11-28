@@ -44,6 +44,8 @@ CITY_PAGE_LIMIT = 50  # the API's own page size; a 150 km box holds far fewer
 # A wide box can hold more than one page, and the right city can sit on the
 # second, so the next links are followed up to this many pages per box.
 CITY_PAGE_MAX_PAGES = 5
+# Matches _geo.haversine_km, so the search box and the distance test agree.
+EARTH_RADIUS_KM = 6371.0
 MAX_CITY_DISTANCE_KM = 150.0
 # The box is sized to the coverage radius, then widened once for a sparse area
 # whose only city page sits just outside it.
@@ -140,11 +142,24 @@ def _search_box(lat: float, scale: float) -> tuple[float, float]:
     it is clamped to the full range near the poles.
     """
     delta_lat = MAX_CITY_DISTANCE_KM * scale / KM_PER_DEGREE_LAT
-    cosine = max(math.cos(math.radians(lat)), 1e-6)
-    delta_lon = min(
-        MAX_CITY_DISTANCE_KM * scale / (KM_PER_DEGREE_LAT * cosine), MAX_LON_HALF_WIDTH
-    )
+    # The widest point of a circle on a sphere sits poleward of its center, so
+    # the parallel arc at the center's latitude is too narrow: at 83°N it
+    # misses a city page 149 km away. The exact half-width is
+    # asin(sin(d/R) / cos(lat)), and the whole range once that reaches 1.
+    angular = MAX_CITY_DISTANCE_KM * scale / EARTH_RADIUS_KM
+    cosine = math.cos(math.radians(lat))
+    ratio = math.sin(angular) / cosine if cosine > 1e-9 else 2.0
+    if ratio >= 1.0:
+        return delta_lat, MAX_LON_HALF_WIDTH
+    delta_lon = min(math.degrees(math.asin(ratio)), MAX_LON_HALF_WIDTH)
     return delta_lat, delta_lon
+
+
+def _page_key(url: str, params: Optional[dict]) -> str:
+    """A comparable identity for one page request, to catch a looping next link."""
+    if not params:
+        return url
+    return url + "?" + "&".join(f"{k}={params[k]}" for k in sorted(params))
 
 
 def _search_boxes(lat: float, lon: float, scale: float) -> list:
@@ -304,7 +319,8 @@ class EcccProvider(WeatherProvider):
         language = self._language()
         for scale in CITY_SEARCH_SCALES:
             features: list = []
-            first = None
+            responses: list = []
+            complete = True
             for bbox in _search_boxes(lat, lon, scale):
                 params = {
                     "f": "json",
@@ -312,56 +328,69 @@ class EcccProvider(WeatherProvider):
                     "limit": CITY_PAGE_LIMIT,
                     "bbox": bbox,
                 }
-                page, response = self._collect_features(params)
-                if page is None:
-                    return None, True, FAILURE_CACHE_SECONDS
-                if first is None:
-                    first = response
+                page, page_responses, page_complete = self._collect_features(params)
                 features.extend(page)
+                responses.extend(page_responses)
+                complete = complete and page_complete
             nearest = self._nearest(features, lat, lon)
+            if not complete:
+                # Part of the box was never read (a failed page, a page cap, a
+                # looping link). A city page already in reach is still a
+                # forecast, kept only briefly; without one, this is a failure,
+                # never a "no coverage" that would last ten minutes.
+                if nearest is not None:
+                    return nearest, False, FAILURE_CACHE_SECONDS
+                return None, True, FAILURE_CACHE_SECONDS
             if nearest is not None:
-                return nearest, False, self._ttl(first)
+                return nearest, False, min(self._ttl(r) for r in responses) if responses else CITY_CACHE_SECONDS
         return None, False, CITY_CACHE_SECONDS
 
-    def _collect_features(self, params: Optional[dict]) -> tuple[Optional[list], Any]:
+    def _collect_features(self, params: Optional[dict]) -> tuple[list, list, bool]:
         """Every feature of one bbox query, following the next links.
 
         A wide box can hold more than one page, and the nearest city can sit on
         the second, so the ``next`` links are followed up to a bounded number of
-        pages. ``(None, None)`` is a failed request or body; the response is the
-        first page's, for its ``Expires``.
+        pages. Returns ``(features, responses, complete)``: the features read so
+        far, every successful response (for ``Expires``), and whether the whole
+        result was read. A failed page, a page cap with more to come, or a link
+        back to a page already read leaves it incomplete.
         """
         url = f"{ECCC_BASE_URL}/collections/{CITYPAGE_COLLECTION}/items"
         features: list = []
-        first = None
+        responses: list = []
+        seen: set = set()
         for _page in range(CITY_PAGE_MAX_PAGES):
             try:
                 response = self._get(url, params)
             except Exception as error:
                 self.host.logger.warning(f"Error fetching Environment Canada city pages: {error}")
-                return None, None
+                return features, responses, False
             if response is None:
-                return None, None
+                return features, responses, False
             if not getattr(response, "ok", False):
                 self.host.logger.warning(
                     "Error fetching weather from Environment Canada: "
                     f"{getattr(response, 'status_code', '?')}"
                 )
-                return None, None
-            body = self._features(response)
+                return features, responses, False
+            body = self._features(response, url)
             if body is None:
                 self.host.logger.warning(
                     "Environment Canada city pages returned an unexpected body"
                 )
-                return None, None
+                return features, responses, False
             page, next_url = body
-            if first is None:
-                first = response
+            responses.append(response)
             features.extend(page)
+            seen.add(_page_key(url, params))
             if not next_url:
-                break
+                return features, responses, True
+            if _page_key(next_url, None) in seen:
+                self.host.logger.warning("Environment Canada city pages link back to a page already read")
+                return features, responses, False
             url, params = next_url, None
-        return features, first
+        # The cap was reached with another page still advertised.
+        return features, responses, False
 
     def _get(self, url: str, params: Optional[dict]):
         """One GET, with the provider's own session or a fresh one."""
@@ -370,7 +399,7 @@ class EcccProvider(WeatherProvider):
         with make_retry_session() as session:
             return session.get(url, params=params, timeout=ECCC_TIMEOUT)
 
-    def _features(self, response) -> Optional[tuple]:
+    def _features(self, response, request_url: str) -> Optional[tuple]:
         """``(features, next href)`` for a successful response, or None.
 
         None is a failure, not an empty answer: a body that is not a feature
@@ -388,7 +417,10 @@ class EcccProvider(WeatherProvider):
         next_url = None
         for link in _list(body.get("links")):
             if isinstance(link, dict) and link.get("rel") == "next" and link.get("href"):
-                next_url = urljoin(ECCC_BASE_URL, str(link["href"]))
+                # Relative links resolve against the page that carried them,
+                # so "?offset=50" stays on the collection endpoint.
+                base = getattr(response, "url", None)
+                next_url = urljoin(base if isinstance(base, str) and base else request_url, str(link["href"]))
                 break
         return [feature for feature in features if isinstance(feature, dict)], next_url
 
