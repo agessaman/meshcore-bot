@@ -61,6 +61,7 @@ from ..weather_providers.base import (
     AlertSummary,
     Coverage,
     ForecastReply,
+    WeatherProvider,
     WeatherUnits,
 )
 from ..weather_providers.noaa import (
@@ -234,6 +235,15 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
          "help": "Only with the noaa or eccc provider: answer wx from Open-Meteo for places the provider "
                  "does not cover (outside the US, or past 150 km from a Canadian city page) instead of "
                  "replying with an error. Shared weather setting."},
+        {"key": "failover_provider", "label": "Failover weather provider", "type": "enum", "section": "Weather",
+         "options": [
+             {"value": "none", "label": "No failover"},
+             *({"value": name, "label": _PROVIDER_LABELS.get(name, name)} for name in PROVIDERS),
+         ],
+         "default": "none",
+         "help": "Answers wx and gwx when the weather provider fails (a timeout or server error), in the "
+                 "provider's units and location label. Not used for places outside the provider's "
+                 "coverage; that is openmeteo_fallback. Shared weather setting."},
         {"key": "default_city", "label": "Default city", "type": "str", "section": "Weather",
          "default": "", "help": "City used for a bare 'wx' when no location is given. Shared weather setting."},
         {"key": "default_state", "label": "Default state", "type": "str", "section": "Weather",
@@ -286,6 +296,10 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
     # The config section whose `enabled` switch gates this command; None: no switch.
     enabled_section: Optional[str] = 'Wx_Command'
 
+    # The provider that answers when the configured one fails ([Weather]
+    # failover_provider), or None. Set per instance in __init__.
+    failover_provider: Optional[WeatherProvider] = None
+
     # The one-line description, in the terms of the provider that answers. It is
     # a class attribute because the settings UI reads it off the class, and
     # __init__ replaces it on the instance when the provider is global.
@@ -313,6 +327,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                 )
                 provider_name = 'noaa'
         self.provider_name = provider_name
+        failover_name = self._failover_provider_name(provider_name)
 
         # A provider that can report no coverage (NOAA outside the US, Environment
         # Canada past 150 km from a city page) can be answered from Open-Meteo.
@@ -323,7 +338,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         # An Open-Meteo provider loads [Weather] weather_model, and its warning
         # comes before the unit warnings, as it did when wx built a gwx command.
         openmeteo_model = None
-        if provider_name == 'openmeteo' or fallback_enabled:
+        if provider_name == 'openmeteo' or fallback_enabled or failover_name == 'openmeteo':
             openmeteo_model = load_open_meteo_model(bot.config, self.logger)
 
         # Units are per provider: NOAA takes [Wx_Command] overrides, Open-Meteo
@@ -377,6 +392,10 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                 'fallback_enabled': fallback_enabled,
             }
         provider_kwargs = dict(shared)
+        if provider_name == 'noaa' and failover_name is not None:
+            # NOAA tells a point outside NWS coverage from an outage only while it
+            # records coverage, and the failover must answer only an outage.
+            provider_kwargs['fallback_enabled'] = True
         if provider_name == 'openmeteo':
             # The model was loaded above, before the unit warnings; handing it to
             # the provider keeps an invalid value from being reported twice.
@@ -408,6 +427,15 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                     "openmeteo_fallback enabled: wx answers places outside Environment Canada "
                     "coverage from Open-Meteo"
                 )
+
+        # The answer when the provider itself fails (a timeout, a server error),
+        # in the provider's units. Built after the fallback so its log line follows.
+        if failover_name is not None:
+            self.failover_provider = self._build_failover_provider(failover_name, units, openmeteo_model)
+            self.logger.info(
+                f"failover_provider = {failover_name}: {self.name} answers from "
+                f"{failover_name} when {provider_name} fails"
+            )
 
         if provider_name == 'openmeteo' and not self.pinned_provider:
             self.logger.info("Weather provider set to 'openmeteo': wx answers from Open-Meteo")
@@ -475,7 +503,8 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         self._shared_session = session
         # Only the providers that share the NOAA session: an alerts provider
         # with its own transport keeps it.
-        for provider in (self.provider, self.alerts_provider, self._noaa_compat, self._nws_compat):
+        for provider in (self.provider, self.alerts_provider, self.failover_provider,
+                         self._noaa_compat, self._nws_compat):
             if isinstance(provider, (NoaaProvider, NwsAlertsProvider)):
                 provider.session = session
 
@@ -535,6 +564,51 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
     ) -> _T:
         """Move blocking provider work off-loop without concurrent Session use."""
         return await asyncio.to_thread(self._run_sync_provider, operation, *args, **kwargs)
+
+    def _failover_provider_name(self, provider_name: str) -> Optional[str]:
+        """The ``[Weather] failover_provider`` key for this command, or None.
+
+        ``none`` (the default) and an empty value turn failover off. An unknown
+        value warns and turns it off. A failover that is the command's own
+        provider is off too; that warns only for an unpinned command, since gwx
+        is pinned to Open-Meteo and ``failover_provider = openmeteo`` is a normal
+        setting for a NOAA wx.
+        """
+        value = self.bot.config.get('Weather', 'failover_provider', fallback='none').strip().lower()
+        if value in ('', 'none'):
+            return None
+        if value not in PROVIDERS:
+            self.logger.warning(
+                f"Unknown [Weather] failover_provider '{value}'; failover is off. "
+                f"Valid values: none, {', '.join(sorted(PROVIDERS))}"
+            )
+            return None
+        if value == provider_name:
+            if not self.pinned_provider:
+                self.logger.warning(
+                    f"[Weather] failover_provider '{value}' is the weather provider itself; failover is off"
+                )
+            return None
+        return value
+
+    def _build_failover_provider(self, name: str, units: WeatherUnits,
+                                 openmeteo_model: Any) -> WeatherProvider:
+        """The failover forecast provider, sharing the command's NOAA state when it is NOAA.
+
+        A NOAA failover never records points as outside coverage: only the
+        configured provider decides where the coverage fallback applies.
+        """
+        kwargs: dict[str, Any] = {}
+        if name == 'noaa':
+            kwargs = {
+                'session': self._compat_session(),
+                'lock': self._sync_provider_lock,
+                'coverage': self._coverage_cache,
+                'fallback_enabled': False,
+            }
+        elif name == 'openmeteo':
+            kwargs = {'weather_model': openmeteo_model}
+        return make_provider(name, host=self, units=units, **kwargs)
 
     def _build_alerts_provider(self, alerts_name: Optional[str], shared: dict) -> Optional[AlertsProvider]:
         """The configured alerts provider, or None.
@@ -1193,6 +1267,19 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                 )
             if result.no_coverage and self.fallback_provider is not None:
                 return self._fallback_reply(location, location_type, lat, lon, forecast_type, num_days, message)
+            if (
+                self.failover_provider is not None
+                and not result.no_coverage
+                and not self._answered(self.provider, result, num_days)
+            ):
+                failover = self._failover_forecast(
+                    result, lat, lon, forecast_type, num_days, location_prefix, message
+                )
+                if failover is not None:
+                    return self._labeled_reply(
+                        lat, lon, location_prefix, failover, forecast_type, max_length,
+                        alerts=not self._alerts_share_the_forecast_service(),
+                    )
             if not result.ok:
                 return self._failed_reply(result.text, lat, lon, forecast_type, max_length)
 
@@ -1224,6 +1311,54 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             return ForecastReply(
                 text=self.translate(f'{provider.translation_ns}.error_fetching'), ok=False
             )
+
+    # The replies a provider sends, with ok set, when its source answered with
+    # data it could not format (a missing field, no day for tomorrow). They keep
+    # their location label as they always have, so ok alone cannot tell them
+    # apart from a forecast; failover has to.
+    _UNREADABLE_REPLY_KEYS = (
+        'tomorrow_error', 'tomorrow_not_available', 'multiday_error',
+        'multiday_not_available', 'hourly_not_available',
+    )
+
+    def _answered(self, provider: WeatherProvider, reply: ForecastReply, num_days: int) -> bool:
+        """Whether a reply is a forecast, rather than an error or an unreadable answer."""
+        if not reply.ok:
+            return False
+        namespace = provider.translation_ns
+        return reply.text not in {
+            self.translate(f'{namespace}.{key}', num_days=num_days) for key in self._UNREADABLE_REPLY_KEYS
+        }
+
+    def _failover_forecast(self, failed: ForecastReply, lat: float, lon: float, forecast_type: str,
+                           num_days: int, location_prefix: str,
+                           message: Optional[MeshMessage]) -> Optional[ForecastReply]:
+        """The failover provider's answer after the provider failed, or None when it fails too.
+
+        It answers in the provider's units, under the provider's location
+        label, so a reply during an outage reads like any other. A multiday
+        request is capped at the failover's own day limit.
+        """
+        failover = self.failover_provider
+        assert failover is not None
+        self.logger.warning(
+            f"{self.provider.name} forecast failed ({failed.text}); "
+            f"answering {round(lat, 2)},{round(lon, 2)} from {failover.name}"
+        )
+        failover.units = self.provider.units
+        days = min(num_days, failover.max_days)
+        lock = self._sync_provider_lock if failover.uses_command_session else nullcontext()
+        with lock:
+            reply = self._forecast_or_error(
+                failover, lat, lon, forecast_type, days,
+                self._count_display_width(location_prefix), message,
+            )
+        if self._answered(failover, reply, days):
+            return reply
+        self.logger.warning(
+            f"{failover.name} failover failed too ({reply.text}); replying with {self.provider.name}'s error"
+        )
+        return None
 
     def _locate_for_forecast(self, location: str, location_type: str, using_companion_location: bool) -> tuple:
         """(error reply or None, lat, lon, location prefix) for a location, in the provider's style."""
@@ -1257,15 +1392,19 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         return f"{location_display}: " if location_display else ""
 
     def _labeled_reply(self, lat: float, lon: float, location_prefix: str, result: ForecastReply,
-                       forecast_type: str, max_length: int) -> str | tuple:
-        """The reply with its location label, plus the second message when there is one."""
+                       forecast_type: str, max_length: int, alerts: bool = True) -> str | tuple:
+        """The reply with its location label, plus the second message when there is one.
+
+        *alerts* False leaves the alert summary out, for a failover answer whose
+        alerts come from the service that just failed.
+        """
         weather = f"{location_prefix}{result.text}"
         if forecast_type != "default":
             return weather
 
         # The alerts provider's summary wins over the forecast's own warning; no
         # configuration produces both today.
-        summary = self._alert_summary(lat, lon, max_length)
+        summary = self._alert_summary(lat, lon, max_length) if alerts else None
         if summary is not None:
             # Always send weather first, then alerts in separate message
             self.logger.info(f"Found {summary.count} alerts - using two-message mode")

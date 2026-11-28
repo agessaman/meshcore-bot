@@ -18,6 +18,7 @@ class ConfigReloadMixin:
     # WeatherService is loaded and caches the rest of the section.
     _COMMAND_ONLY_WEATHER_KEYS = frozenset({
         "alerts_provider",
+        "failover_provider",
         "meteoalarm_api_url",
         "meteoalarm_token",
         "metno_user_agent",
