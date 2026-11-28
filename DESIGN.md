@@ -59,6 +59,16 @@ typography:
     fontSize: "0.7rem"
     fontWeight: 600
     letterSpacing: "0.04em"
+  brand-title:
+    fontFamily: "Outfit, DM Sans, sans-serif"
+    fontSize: "clamp(1.65rem, 5vw, 2.05rem)"
+    fontWeight: 700
+    lineHeight: 1.15
+    letterSpacing: "-0.03em"
+  brand-subtitle:
+    fontFamily: "Outfit, DM Sans, sans-serif"
+    fontSize: "1rem"
+    fontWeight: 600
   mono:
     fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace"
     fontSize: "0.875rem"
@@ -209,6 +219,7 @@ The Mesh page has its own display palette, declared as `--mesh-*` tokens at the 
 ## Typography
 
 **Body Font:** DM Sans (with `system-ui, -apple-system, Segoe UI, Roboto, sans-serif`)
+**Brand Font:** Outfit (with `DM Sans, sans-serif`), login page title and subtitle only
 **Mono Font:** `ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace`
 
 **Character:** A clean, slightly geometric sans that stays legible at the console's small sizes, paired with the platform's own monospace for logs, keys, packet hex, and template fields. DM Sans is the chosen viewer-wide face; today only the login page loads it (with Outfit for its title). Both are self-hosted under `static/fonts/` through `static/css/fonts.css` (Latin subset), so rolling DM Sans out to the rest of the viewer is a stylesheet change, not a new dependency; until then the system stack is what renders.
@@ -219,6 +230,7 @@ The Mesh page has its own display palette, declared as `--mesh-*` tokens at the 
 - **Body** (400, 1rem, 1.5): tables, forms, descriptions.
 - **Readout** (700, 1.6rem, 1.1, tabular numerals): the big number on a stat tile.
 - **Label** (600, 0.7rem, 0.04em tracking, uppercase): stat-tile and health-strip labels. The dashboard section title is its larger sibling (700, 0.8rem, 0.08em tracking, uppercase, followed by a hairline rule).
+- **Brand title** (Outfit 700, `clamp(1.65rem, 5vw, 2.05rem)`, 1.15, -0.03em tracking, signal blue): the operator's `bot_name` on the login card. Its sibling, **Brand subtitle** (Outfit 600, 1rem), sits under it. Outfit appears nowhere else; inside the viewer the navbar brand stays in the body face.
 - **Mono** (400, ~0.875rem): log lines, packet and key fields, template references. Every monospace use reads `--font-mono` from `base.html`, which also feeds Bootstrap's `--bs-font-monospace`, so `.font-monospace`, `code` and `pre` match.
 
 ### Named Rules
